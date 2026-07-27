@@ -11,6 +11,11 @@ const ORDER_ITEM_CHUNK_SIZE = 200;
 
 type ProjectForecastRow = {
   project_id: string;
+  qty_planned: number | string | null;
+  service_activities: {
+    unit_value: number | string | null;
+    voice_point?: number | string | null;
+  } | null;
 };
 
 type ProjectRow = {
@@ -18,7 +23,6 @@ type ProjectRow = {
   sob: string | null;
   service_center: string | null;
   service_center_text: string | null;
-  estimated_value: number | string | null;
   is_active: boolean | null;
   is_test?: boolean | null;
   is_withdrawn?: boolean | null;
@@ -93,7 +97,7 @@ type ProjectPortfolioRow = {
   daysWithoutProduction: number | null;
   workedCycleCount: number;
   cyclesWithoutProduction: number;
-  estimatedValue: number;
+  totalForecastValue: number;
   valueBeforeCycle: number;
   valueInCycle: number;
   accumulatedValue: number;
@@ -268,20 +272,33 @@ async function loadPaged<T>(builder: (from: number, to: number) => PromiseLike<{
   return { data: rows, error: null };
 }
 
-async function loadForecastProjectIds(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
+async function loadForecastPortfolioValues(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
   const result = await loadPaged<ProjectForecastRow>((from, to) =>
     supabase
       .from("project_activity_forecast")
-      .select("project_id")
+      .select("project_id, qty_planned, service_activities!inner(unit_value, voice_point)")
       .eq("tenant_id", tenantId)
       .order("project_id", { ascending: true })
       .range(from, to)
       .returns<ProjectForecastRow[]>(),
   );
 
-  if (result.error) return { projectIds: [] as string[], error: result.error };
+  if (result.error) return { projectIds: [] as string[], values: new Map<string, number>(), error: result.error };
+
+  const values = new Map<string, number>();
+  for (const item of result.data) {
+    const projectId = normalizeUuid(item.project_id);
+    if (!projectId) continue;
+
+    const plannedQuantity = numberValue(item.qty_planned);
+    const unitValue = numberValue(item.service_activities?.unit_value);
+    const points = numberValue(item.service_activities?.voice_point) || 1;
+    values.set(projectId, (values.get(projectId) ?? 0) + points * plannedQuantity * unitValue);
+  }
+
   return {
-    projectIds: Array.from(new Set(result.data.map((item) => normalizeUuid(item.project_id)).filter((id): id is string => Boolean(id)))),
+    projectIds: Array.from(values.keys()),
+    values,
     error: null,
   };
 }
@@ -295,7 +312,7 @@ async function loadProjects(params: {
   for (const projectIdChunk of chunk(params.projectIds, FILTER_CHUNK_SIZE)) {
     const { data, error } = await params.supabase
       .from("project_with_labels")
-      .select("id, sob, service_center, service_center_text, estimated_value, is_active, is_test, is_withdrawn, is_third_party")
+      .select("id, sob, service_center, service_center_text, is_active, is_test, is_withdrawn, is_third_party")
       .eq("tenant_id", params.tenantId)
       .in("id", projectIdChunk)
       .returns<ProjectRow[]>();
@@ -546,15 +563,15 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const serviceCenterIdFilter = normalizeUuid(request.nextUrl.searchParams.get("serviceCenterId"));
   const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
 
-  const forecastProjectIdsResult = await loadForecastProjectIds(resolution.supabase, tenantId);
-  if (forecastProjectIdsResult.error) {
+  const forecastPortfolioResult = await loadForecastPortfolioValues(resolution.supabase, tenantId);
+  if (forecastPortfolioResult.error) {
     return NextResponse.json({ message: "Falha ao carregar projetos com atividades previstas." }, { status: 500 });
   }
 
   const projectsResult = await loadProjects({
     supabase: resolution.supabase,
     tenantId,
-    projectIds: forecastProjectIdsResult.projectIds,
+    projectIds: forecastPortfolioResult.projectIds,
   });
   if (projectsResult.error) {
     return NextResponse.json({ message: "Falha ao carregar carteira de projetos." }, { status: 500 });
@@ -652,8 +669,8 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       .reduce((sum, order) => sum + (valueResult.values.get(order.id) ?? 0), 0);
     const valueInCycle = cycleOrders.reduce((sum, order) => sum + (valueResult.values.get(order.id) ?? 0), 0);
     const accumulatedValue = valueBeforeCycle + valueInCycle;
-    const estimatedValue = numberValue(project.estimated_value);
-    const remainingPotential = Math.max(0, estimatedValue - accumulatedValue);
+    const totalForecastValue = forecastPortfolioResult.values.get(project.id) ?? 0;
+    const remainingPotential = Math.max(0, totalForecastValue - accumulatedValue);
     const workedCycleCount = new Set(projectOrders.map((order) => buildCycleFromDate(order.execution_date).cycleStart)).size;
     const lastCycle = lastActivityDate ? buildCycleFromDate(lastActivityDate) : null;
     const cyclesWithoutProduction = lastCycle && lastCycle.cycleStart < selectedCycle.cycleStart
@@ -695,12 +712,12 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       daysWithoutProduction: lastActivityDate ? diffDays(lastActivityDate, referenceDate) : null,
       workedCycleCount,
       cyclesWithoutProduction,
-      estimatedValue,
+      totalForecastValue,
       valueBeforeCycle,
       valueInCycle,
       accumulatedValue,
       remainingPotential,
-      exploredPercentage: estimatedValue > 0 ? (accumulatedValue / estimatedValue) * 100 : 0,
+      exploredPercentage: totalForecastValue > 0 ? (accumulatedValue / totalForecastValue) * 100 : 0,
     };
   });
 
@@ -719,7 +736,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const concludedRows = filteredProjectRows.filter((project) => project.status === "CONCLUIDO");
   const pendingRows = filteredProjectRows.filter((project) => project.status !== "CONCLUIDO");
   const withdrawnRows = filteredProjectRows.filter((project) => project.isWithdrawn);
-  const totalEstimatedValue = filteredProjectRows.reduce((sum, project) => sum + project.estimatedValue, 0);
+  const totalForecastValue = filteredProjectRows.reduce((sum, project) => sum + project.totalForecastValue, 0);
   const producedInCycle = filteredProjectRows.reduce((sum, project) => sum + project.valueInCycle, 0);
   const accumulatedValue = filteredProjectRows.reduce((sum, project) => sum + project.accumulatedValue, 0);
   const remainingPotential = filteredProjectRows.reduce((sum, project) => sum + project.remainingPotential, 0);
@@ -728,7 +745,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     : 0;
 
   function averageEstimated(rows: ProjectPortfolioRow[]) {
-    return rows.length > 0 ? rows.reduce((sum, project) => sum + project.estimatedValue, 0) / rows.length : 0;
+    return rows.length > 0 ? rows.reduce((sum, project) => sum + project.totalForecastValue, 0) / rows.length : 0;
   }
 
   const originTotalValue = newRows.reduce((sum, project) => sum + project.valueInCycle, 0)
@@ -761,7 +778,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     const bucket = ageBuckets.find((item) => project.workedCycleCount >= item.min && project.workedCycleCount <= item.max);
     if (!bucket) continue;
     bucket.count += 1;
-    bucket.value += project.estimatedValue;
+    bucket.value += project.totalForecastValue;
   }
 
   const supervisorPotential = Array.from(
@@ -774,13 +791,13 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
         accumulatedValue: 0,
         remainingPotential: 0,
         exploredPercentage: 0,
-        estimatedValue: 0,
+        totalForecastValue: 0,
       };
       current.projects += 1;
       current.accumulatedValue += project.accumulatedValue;
       current.remainingPotential += project.remainingPotential;
-      current.estimatedValue += project.estimatedValue;
-      current.exploredPercentage = current.estimatedValue > 0 ? (current.accumulatedValue / current.estimatedValue) * 100 : 0;
+      current.totalForecastValue += project.totalForecastValue;
+      current.exploredPercentage = current.totalForecastValue > 0 ? (current.accumulatedValue / current.totalForecastValue) * 100 : 0;
       map.set(key, current);
       return map;
     }, new Map<string, {
@@ -790,7 +807,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       accumulatedValue: number;
       remainingPotential: number;
       exploredPercentage: number;
-      estimatedValue: number;
+      totalForecastValue: number;
     }>())
       .values(),
   ).sort((left, right) => right.remainingPotential - left.remainingPotential);
@@ -821,7 +838,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
   const renewalRate = workedRows.length > 0 ? (newRows.length / workedRows.length) * 100 : 0;
-  const explorationRate = totalEstimatedValue > 0 ? (accumulatedValue / totalEstimatedValue) * 100 : 0;
+  const explorationRate = totalForecastValue > 0 ? (accumulatedValue / totalForecastValue) * 100 : 0;
   const riskSignals = [
     renewalRate < 10 ? "Apenas " + renewalRate.toFixed(1).replace(".", ",") + "% dos projetos trabalhados sao novos." : "",
     explorationRate > 85 ? "Carteira " + explorationRate.toFixed(1).replace(".", ",") + "% explorada." : "",
@@ -862,7 +879,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       renewalRate,
     },
     financialSummary: {
-      totalPortfolioValue: totalEstimatedValue,
+      totalPortfolioValue: totalForecastValue,
       producedInCycle,
       accumulatedValue,
       remainingPotential,
@@ -877,7 +894,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       {
         stage: "Projetos novos",
         projects: newRows.length,
-        value: newRows.reduce((sum, project) => sum + project.estimatedValue, 0),
+        value: newRows.reduce((sum, project) => sum + project.totalForecastValue, 0),
       },
       {
         stage: "Em andamento",

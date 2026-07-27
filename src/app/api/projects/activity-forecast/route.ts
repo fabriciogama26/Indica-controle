@@ -183,6 +183,7 @@ export async function GET(request: NextRequest) {
       unit: item.service_activities?.unit ?? "",
       unitValue: Number(item.service_activities?.unit_value ?? 0),
       voicePoint: Number(item.service_activities?.voice_point ?? 1),
+      totalValue: Number(item.service_activities?.voice_point ?? 1) * Number(item.qty_planned ?? 0) * Number(item.service_activities?.unit_value ?? 0),
       qtyPlanned: Number(item.qty_planned ?? 0),
       observation: item.observation,
       source: item.source,
