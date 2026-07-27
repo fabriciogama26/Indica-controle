@@ -72,10 +72,6 @@ export function DashboardPortfolioPageView() {
   const quantitySummary = dashboard.quantitySummary;
   const financialSummary = dashboard.financialSummary;
   const maxAgeCount = useMemo(() => maxPortfolioValue(dashboard.ageBuckets.map((item) => item.count)), [dashboard.ageBuckets]);
-  const maxSupervisorPotential = useMemo(
-    () => maxPortfolioValue(dashboard.supervisorPotential.map((item) => item.remainingPotential)),
-    [dashboard.supervisorPotential],
-  );
   const maxFlowValue = useMemo(() => maxPortfolioValue(dashboard.flow.map((item) => item.value)), [dashboard.flow]);
   const totalProjectPages = Math.max(1, Math.ceil(dashboard.projectRows.length / PORTFOLIO_PROJECT_PAGE_SIZE));
   const currentProjectPage = Math.min(projectPage, totalProjectPages);
@@ -120,9 +116,9 @@ export function DashboardPortfolioPageView() {
           <label className={styles.field}>
             <span>Carteira</span>
             <select value={dashboard.draftFilters.portfolioScope} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, portfolioScope: event.target.value as typeof current.portfolioScope }))}>
-              <option value="ACTIVE">Ativa</option>
-              <option value="WITHDRAWN">Retirada</option>
-              <option value="ALL">Ativa + retirada</option>
+              <option value="ACTIVE">Sem retirados</option>
+              <option value="WITHDRAWN">Somente retirados</option>
+              <option value="ALL">Com retirados</option>
             </select>
           </label>
           <label className={styles.field}>
@@ -139,13 +135,6 @@ export function DashboardPortfolioPageView() {
             <select value={dashboard.draftFilters.serviceCenterId} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, serviceCenterId: event.target.value }))}>
               <option value="">Todos</option>
               {dashboard.serviceCenters.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span>Supervisor</span>
-            <select value={dashboard.draftFilters.supervisorId} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, supervisorId: event.target.value }))}>
-              <option value="">Todos</option>
-              {dashboard.supervisors.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
           </label>
         </div>
@@ -262,48 +251,25 @@ export function DashboardPortfolioPageView() {
         </article>
       </div>
 
-      <div className={styles.twoColumnGrid}>
-        <article className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Envelhecimento da carteira</h2>
-              <p className={styles.cardSubtitle}>Distribuicao por quantidade de ciclos com producao.</p>
-            </div>
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <h2 className={styles.cardTitle}>Envelhecimento da carteira</h2>
+            <p className={styles.cardSubtitle}>Distribuicao por quantidade de ciclos com producao.</p>
           </div>
-          <div className={styles.barList}>
-            {dashboard.ageBuckets.map((item) => (
-              <BarRow
-                key={item.label}
-                label={item.label}
-                valueLabel={`${item.count} projetos`}
-                width={(item.count / maxAgeCount) * 100}
-                tone={item.label === "4+ ciclos" ? "redBar" : item.label === "3 ciclos" ? "orangeBar" : "blueBar"}
-              />
-            ))}
-          </div>
-        </article>
-
-        <article className={styles.card}>
-          <div className={styles.cardHeader}>
-            <div>
-              <h2 className={styles.cardTitle}>Potencial por supervisor</h2>
-              <p className={styles.cardSubtitle}>Onde ainda existe valor financeiro para produzir.</p>
-            </div>
-          </div>
-          <div className={styles.barList}>
-            {dashboard.supervisorPotential.slice(0, 8).map((item) => (
-              <BarRow
-                key={item.supervisorId ?? item.supervisorName}
-                label={item.supervisorName}
-                valueLabel={formatPortfolioCurrency(item.remainingPotential, true)}
-                width={(item.remainingPotential / maxSupervisorPotential) * 100}
-                tone="greenBar"
-              />
-            ))}
-            {dashboard.supervisorPotential.length === 0 ? <div className={styles.emptyState}>Nenhum supervisor encontrado.</div> : null}
-          </div>
-        </article>
-      </div>
+        </div>
+        <div className={styles.barList}>
+          {dashboard.ageBuckets.map((item) => (
+            <BarRow
+              key={item.label}
+              label={item.label}
+              valueLabel={`${item.count} projetos`}
+              width={(item.count / maxAgeCount) * 100}
+              tone={item.label === "4+ ciclos" ? "redBar" : item.label === "3 ciclos" ? "orangeBar" : "blueBar"}
+            />
+          ))}
+        </div>
+      </article>
 
       <article className={styles.card}>
         <div className={styles.cardHeader}>
@@ -321,7 +287,6 @@ export function DashboardPortfolioPageView() {
               <tr>
                 <th>Projeto</th>
                 <th>Regional</th>
-                <th>Supervisor</th>
                 <th>Status</th>
                 <th>Carteira</th>
                 <th>Origem</th>
@@ -343,7 +308,6 @@ export function DashboardPortfolioPageView() {
                 <tr key={project.projectId}>
                   <td>{project.projectCode}</td>
                   <td>{project.serviceCenter}</td>
-                  <td>{project.supervisorName}</td>
                   <td><span className={project.status === "CONCLUIDO" ? styles.badgeSuccess : styles.badgeWarning}>{portfolioStatusLabel(project.status)}</span></td>
                   <td><span className={project.isWithdrawn ? styles.badgeWithdrawn : styles.badgeNeutral}>{portfolioScopeLabel(project.portfolioStatus)}</span></td>
                   <td>{portfolioOriginLabel(project.origin)}</td>
@@ -360,7 +324,7 @@ export function DashboardPortfolioPageView() {
                   <td>{formatPortfolioPercent(project.exploredPercentage)}</td>
                 </tr>
               )) : (
-                <tr><td colSpan={17} className={styles.emptyRow}>Nenhum projeto encontrado na carteira operacional.</td></tr>
+                <tr><td colSpan={16} className={styles.emptyRow}>Nenhum projeto encontrado na carteira operacional.</td></tr>
               )}
             </tbody>
           </table>

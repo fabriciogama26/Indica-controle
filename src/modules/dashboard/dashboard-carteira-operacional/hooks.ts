@@ -17,7 +17,6 @@ import type {
   DashboardPortfolioProject,
   DashboardPortfolioQuantitySummary,
   DashboardPortfolioRenewalRow,
-  DashboardPortfolioSupervisorPotential,
 } from "./types";
 
 export function useDashboardPortfolio() {
@@ -28,14 +27,12 @@ export function useDashboardPortfolio() {
   const [cycles, setCycles] = useState<DashboardPortfolioCycle[]>([]);
   const [projects, setProjects] = useState<DashboardPortfolioOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<DashboardPortfolioOption[]>([]);
-  const [supervisors, setSupervisors] = useState<DashboardPortfolioOption[]>([]);
   const [diagnostic, setDiagnostic] = useState<DashboardPortfolioDiagnostic | null>(null);
   const [quantitySummary, setQuantitySummary] = useState<DashboardPortfolioQuantitySummary | null>(null);
   const [financialSummary, setFinancialSummary] = useState<DashboardPortfolioFinancialSummary | null>(null);
   const [flow, setFlow] = useState<DashboardPortfolioFlowRow[]>([]);
   const [renewalChart, setRenewalChart] = useState<DashboardPortfolioRenewalRow[]>([]);
   const [ageBuckets, setAgeBuckets] = useState<DashboardPortfolioAgeBucket[]>([]);
-  const [supervisorPotential, setSupervisorPotential] = useState<DashboardPortfolioSupervisorPotential[]>([]);
   const [projectRows, setProjectRows] = useState<DashboardPortfolioProject[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -54,14 +51,12 @@ export function useDashboardPortfolio() {
       setCycles(data.cycles ?? []);
       setProjects(data.filters?.projects ?? []);
       setServiceCenters(data.filters?.serviceCenters ?? []);
-      setSupervisors(data.filters?.supervisors ?? []);
       setDiagnostic(data.diagnostic ?? null);
       setQuantitySummary(data.quantitySummary ?? null);
       setFinancialSummary(data.financialSummary ?? null);
       setFlow(data.flow ?? []);
       setRenewalChart(data.renewalChart ?? []);
       setAgeBuckets(data.ageBuckets ?? []);
-      setSupervisorPotential(data.supervisorPotential ?? []);
       setProjectRows(data.projects ?? []);
       if (nextCycleStart && !filters.cycleStart) {
         suppressNextAutoLoadRef.current = true;
@@ -97,14 +92,12 @@ export function useDashboardPortfolio() {
     cycles,
     projects,
     serviceCenters,
-    supervisors,
     diagnostic,
     quantitySummary,
     financialSummary,
     flow,
     renewalChart,
     ageBuckets,
-    supervisorPotential,
     projectRows,
     isLoading,
     errorMessage,

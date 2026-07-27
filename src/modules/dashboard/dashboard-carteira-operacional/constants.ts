@@ -4,7 +4,6 @@ export const EMPTY_DASHBOARD_PORTFOLIO_FILTERS = {
   cycleStart: "",
   project: "",
   serviceCenterId: "",
-  supervisorId: "",
   portfolioScope: "ACTIVE",
 } as const;
 

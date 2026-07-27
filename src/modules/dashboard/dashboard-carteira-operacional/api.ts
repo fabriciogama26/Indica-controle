@@ -9,7 +9,6 @@ export async function fetchDashboardPortfolio(params: {
   if (params.filters.cycleStart) searchParams.set("cycleStart", params.filters.cycleStart);
   if (params.filters.project.trim()) searchParams.set("project", params.filters.project.trim());
   if (params.filters.serviceCenterId) searchParams.set("serviceCenterId", params.filters.serviceCenterId);
-  if (params.filters.supervisorId) searchParams.set("supervisorId", params.filters.supervisorId);
   if (params.filters.portfolioScope) searchParams.set("portfolioScope", params.filters.portfolioScope);
 
   const response = await fetch(`${DASHBOARD_PORTFOLIO_ENDPOINT}?${searchParams.toString()}`, {

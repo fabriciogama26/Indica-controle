@@ -28,7 +28,6 @@ type ProjectRow = {
 type MeasurementOrderRow = {
   id: string;
   project_id: string;
-  team_id: string | null;
   execution_date: string;
   status: string;
   project_code_snapshot: string | null;
@@ -38,24 +37,6 @@ type MeasurementOrderRow = {
 type MeasurementOrderItemRow = {
   measurement_order_id: string;
   total_value: number | string | null;
-};
-
-type TeamRow = {
-  id: string;
-  supervisor_person_id: string | null;
-};
-
-type TeamSupervisorHistoryRow = {
-  team_id: string;
-  supervisor_person_id: string | null;
-  supervisor_name_snapshot: string | null;
-  valid_from: string;
-  valid_to: string | null;
-};
-
-type PersonRow = {
-  id: string;
-  nome: string | null;
 };
 
 type ProgrammingCompletionRow = {
@@ -79,8 +60,6 @@ type ProjectPortfolioRow = {
   projectCode: string;
   serviceCenterId: string | null;
   serviceCenter: string;
-  supervisorId: string | null;
-  supervisorName: string;
   status: "CONCLUIDO" | "PENDENTE";
   origin: "NOVO" | "HERDADO" | "SEM_PRODUCAO";
   portfolioStatus: "ATIVA" | "RETIRADA";
@@ -321,7 +300,7 @@ async function loadMeasurementOrders(params: {
     const result = await loadPaged<MeasurementOrderRow>((from, to) =>
       params.supabase
         .from("project_measurement_orders")
-        .select("id, project_id, team_id, execution_date, status, project_code_snapshot, programming_completion_status_snapshot")
+        .select("id, project_id, execution_date, status, project_code_snapshot, programming_completion_status_snapshot")
         .eq("tenant_id", params.tenantId)
         .eq("is_active", true)
         .eq("measurement_kind", "COM_PRODUCAO")
@@ -361,64 +340,6 @@ async function loadMeasurementItemValues(params: {
   }
 
   return { values, error: null };
-}
-
-async function loadTeamSupervisors(params: {
-  supabase: AuthenticatedAppUserContext["supabase"];
-  tenantId: string;
-  teamIds: string[];
-}) {
-  const teamIds = Array.from(new Set(params.teamIds.filter(Boolean)));
-  if (!teamIds.length) {
-    return {
-      teams: [] as TeamRow[],
-      history: [] as TeamSupervisorHistoryRow[],
-      people: [] as PersonRow[],
-      error: null,
-    };
-  }
-
-  const [teamsResult, historyResult] = await Promise.all([
-    params.supabase
-      .from("teams")
-      .select("id, supervisor_person_id")
-      .eq("tenant_id", params.tenantId)
-      .in("id", teamIds)
-      .returns<TeamRow[]>(),
-    params.supabase
-      .from("team_supervisor_history")
-      .select("team_id, supervisor_person_id, supervisor_name_snapshot, valid_from, valid_to")
-      .eq("tenant_id", params.tenantId)
-      .in("team_id", teamIds)
-      .returns<TeamSupervisorHistoryRow[]>(),
-  ]);
-
-  if (teamsResult.error) return { teams: [], history: [], people: [], error: teamsResult.error };
-  if (historyResult.error) return { teams: [], history: [], people: [], error: historyResult.error };
-
-  const personIds = Array.from(
-    new Set([
-      ...(teamsResult.data ?? []).map((team) => team.supervisor_person_id),
-      ...(historyResult.data ?? []).map((entry) => entry.supervisor_person_id),
-    ].filter((id): id is string => Boolean(id))),
-  );
-  const peopleResult = personIds.length
-    ? await params.supabase
-        .from("people")
-        .select("id, nome")
-        .eq("tenant_id", params.tenantId)
-        .in("id", personIds)
-        .returns<PersonRow[]>()
-    : { data: [] as PersonRow[], error: null };
-
-  if (peopleResult.error) return { teams: [], history: [], people: [], error: peopleResult.error };
-
-  return {
-    teams: teamsResult.data ?? [],
-    history: historyResult.data ?? [],
-    people: peopleResult.data ?? [],
-    error: null,
-  };
 }
 
 async function loadCompletionRows(params: {
@@ -472,48 +393,6 @@ function buildCycles(orders: MeasurementOrderRow[], requestedCycleStart: string 
   return Array.from(cycleMap.values()).sort((left, right) => right.cycleStart.localeCompare(left.cycleStart));
 }
 
-function buildSupervisorResolver(params: {
-  teams: TeamRow[];
-  history: TeamSupervisorHistoryRow[];
-  people: PersonRow[];
-}) {
-  const teamMap = new Map(params.teams.map((team) => [team.id, team]));
-  const personMap = new Map(params.people.map((person) => [person.id, normalizeText(person.nome)]));
-  const historyByTeam = new Map<string, TeamSupervisorHistoryRow[]>();
-  for (const entry of params.history) {
-    const current = historyByTeam.get(entry.team_id) ?? [];
-    current.push(entry);
-    historyByTeam.set(entry.team_id, current);
-  }
-  for (const entries of historyByTeam.values()) {
-    entries.sort((left, right) => right.valid_from.localeCompare(left.valid_from));
-  }
-
-  return (teamId: string | null, date: string | null) => {
-    if (!teamId) return { supervisorId: null, supervisorName: "Sem supervisor" };
-
-    if (date) {
-      const history = historyByTeam.get(teamId) ?? [];
-      const effective = history.find((entry) => entry.valid_from <= date && (!entry.valid_to || entry.valid_to >= date));
-      if (effective) {
-        const supervisorId = effective.supervisor_person_id ?? null;
-        return {
-          supervisorId,
-          supervisorName: supervisorId
-            ? (personMap.get(supervisorId) || normalizeText(effective.supervisor_name_snapshot) || "Supervisor nao identificado")
-            : "Sem supervisor",
-        };
-      }
-    }
-
-    const supervisorId = teamMap.get(teamId)?.supervisor_person_id ?? null;
-    return {
-      supervisorId,
-      supervisorName: supervisorId ? (personMap.get(supervisorId) || "Supervisor nao identificado") : "Sem supervisor",
-    };
-  };
-}
-
 export async function handleDashboardPortfolioGet(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar Dashboard Carteira Operacional.",
@@ -548,7 +427,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const portfolioScope = normalizePortfolioScope(request.nextUrl.searchParams.get("portfolioScope"));
   const projectQuery = normalizeText(request.nextUrl.searchParams.get("project")).toLowerCase();
   const serviceCenterIdFilter = normalizeUuid(request.nextUrl.searchParams.get("serviceCenterId"));
-  const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
 
   const forecastPortfolioResult = await loadForecastPortfolioValues(resolution.supabase, tenantId);
   if (forecastPortfolioResult.error) {
@@ -617,17 +495,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar valores medidos da carteira." }, { status: 500 });
   }
 
-  const teamIds = Array.from(new Set(orders.map((order) => order.team_id).filter((id): id is string => Boolean(id))));
-  const supervisorsResult = await loadTeamSupervisors({
-    supabase: resolution.supabase,
-    tenantId,
-    teamIds,
-  });
-  if (supervisorsResult.error) {
-    return NextResponse.json({ message: "Falha ao carregar supervisores da carteira." }, { status: 500 });
-  }
-
-  const resolveSupervisor = buildSupervisorResolver(supervisorsResult);
   const completionByProject = new Map<string, "CONCLUIDO" | "PENDENTE">();
   for (const row of completionRowsResult.data.sort((left, right) => {
     const byDate = right.execution_date.localeCompare(left.execution_date);
@@ -666,8 +533,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     const lastProductionWeek = lastActivityDate
       ? cycleWeeks.findIndex((week) => lastActivityDate >= week.startDate && lastActivityDate <= week.endDate)
       : -1;
-    const supervisorOrder = cycleOrders[cycleOrders.length - 1] ?? lastOrder;
-    const supervisor = resolveSupervisor(supervisorOrder?.team_id ?? null, supervisorOrder?.execution_date ?? null);
     const firstCycleStart = firstActivityDate ? buildCycleFromDate(firstActivityDate).cycleStart : null;
     const origin = valueInCycle <= 0
       ? "SEM_PRODUCAO"
@@ -685,8 +550,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       projectCode: normalizeText(project.sob) || normalizeText(firstOrder?.project_code_snapshot) || "Projeto sem codigo",
       serviceCenterId: project.service_center,
       serviceCenter: normalizeText(project.service_center_text) || "Nao identificado",
-      supervisorId: supervisor.supervisorId,
-      supervisorName: supervisor.supervisorName,
       status: resolvedStatus,
       origin,
       portfolioStatus: project.is_withdrawn ? "RETIRADA" : "ATIVA",
@@ -711,7 +574,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const filteredProjectRows = allProjectRows
     .filter((project) => !projectQuery || project.projectCode.toLowerCase().includes(projectQuery))
     .filter((project) => !serviceCenterIdFilter || project.serviceCenterId === serviceCenterIdFilter)
-    .filter((project) => !supervisorIdFilter || project.supervisorId === supervisorIdFilter)
     .sort((left, right) => {
       const byRemaining = right.remainingPotential - left.remainingPotential;
       return byRemaining !== 0 ? byRemaining : left.projectCode.localeCompare(right.projectCode, "pt-BR");
@@ -768,52 +630,12 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     bucket.value += project.totalForecastValue;
   }
 
-  const supervisorPotential = Array.from(
-    filteredProjectRows.reduce((map, project) => {
-      const key = project.supervisorId ?? "sem-supervisor";
-      const current = map.get(key) ?? {
-        supervisorId: project.supervisorId,
-        supervisorName: project.supervisorName,
-        projects: 0,
-        accumulatedValue: 0,
-        remainingPotential: 0,
-        exploredPercentage: 0,
-        totalForecastValue: 0,
-      };
-      current.projects += 1;
-      current.accumulatedValue += project.accumulatedValue;
-      current.remainingPotential += project.remainingPotential;
-      current.totalForecastValue += project.totalForecastValue;
-      current.exploredPercentage = current.totalForecastValue > 0 ? (current.accumulatedValue / current.totalForecastValue) * 100 : 0;
-      map.set(key, current);
-      return map;
-    }, new Map<string, {
-      supervisorId: string | null;
-      supervisorName: string;
-      projects: number;
-      accumulatedValue: number;
-      remainingPotential: number;
-      exploredPercentage: number;
-      totalForecastValue: number;
-    }>())
-      .values(),
-  ).sort((left, right) => right.remainingPotential - left.remainingPotential);
-
   const serviceCenters = Array.from(
     new Map(eligibleProjects
       .filter((project) => project.service_center)
       .map((project) => [project.service_center as string, {
         id: project.service_center as string,
         label: normalizeText(project.service_center_text) || "Nao identificado",
-      }])).values(),
-  ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
-
-  const supervisorOptions = Array.from(
-    new Map(allProjectRows
-      .filter((project) => project.supervisorId)
-      .map((project) => [project.supervisorId as string, {
-        id: project.supervisorId as string,
-        label: project.supervisorName,
       }])).values(),
   ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
@@ -847,7 +669,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     filters: {
       projects: projectOptions,
       serviceCenters,
-      supervisors: supervisorOptions,
     },
     diagnostic: {
       status: diagnosticStatus,
@@ -896,7 +717,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     ],
     renewalChart,
     ageBuckets: ageBuckets.map(({ label, count, value }) => ({ label, count, value })),
-    supervisorPotential,
     projects: filteredProjectRows,
   };
 

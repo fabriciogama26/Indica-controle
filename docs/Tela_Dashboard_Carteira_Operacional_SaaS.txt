@@ -26,12 +26,12 @@ Cadastro
 - A conclusao do projeto e derivada da programacao (`project_programming.work_completion_status`) ate o fim do ciclo selecionado.
 
 Filtros, auto-complete e listagem
-- Filtros disponiveis: ciclo, carteira, projeto, centro de servico e supervisor.
+- Filtros disponiveis: ciclo, carteira, projeto e centro de servico.
 - Ciclo segue a janela operacional das medicoes, com inicio no dia 21 e fim no dia 20.
 - O filtro de ciclo permite `Ciclo mais recente`, ciclos individuais e `Todos os ciclos`.
-- O filtro `Carteira` permite `Ativa`, `Retirada` e `Ativa + retirada`.
+- O filtro `Carteira` permite `Sem retirados`, `Somente retirados` e `Com retirados`.
 - O carregamento inicial seleciona o ciclo mais recente com producao de projetos elegiveis; se nao houver historico, usa o ciclo corrente.
-- A tabela principal exibe projeto, regional, supervisor, status, carteira, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor previsto, valor acumulado, valor no ciclo e restante.
+- A tabela principal exibe projeto, regional, status, carteira, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor previsto, valor acumulado, valor no ciclo e restante.
 - A tabela e paginada no frontend para manter a leitura rapida.
 
 Indicadores
@@ -40,7 +40,6 @@ Indicadores
 - Fluxo da carteira: projetos novos, em andamento e concluidos, com quantidade e valor.
 - Renovacao: compara novos e herdados, incluindo ticket medio.
 - Envelhecimento: agrupa projetos por idade em ciclos e inclui projetos sem producao no ciclo.
-- Potencial por supervisor: mostra onde ainda existe valor estimado restante na carteira.
 - Diagnostico automatico: classifica o ciclo como saudavel, atencao ou risco com base em renovacao, idade media, exploracao, potencial e participacao de projetos herdados.
 
 Boas praticas
@@ -51,7 +50,7 @@ Boas praticas
 
 Cancelamento e saldo
 - Projetos cancelados/inativos, terceiros ou marcados como teste nao entram na base.
-- Projetos retirados da carteira entram apenas quando o filtro `Carteira` estiver em `Retirada` ou `Ativa + retirada`.
+- Projetos retirados da carteira entram apenas quando o filtro `Carteira` estiver em `Somente retirados` ou `Com retirados`.
 - Ordens de medicao canceladas nao entram no valor produzido, acumulado ou diagnostico.
 - Estados parciais da programacao (`PARCIAL`, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e variantes com beneficio atingido) contam como pendentes.
 - Quando o valor acumulado supera o valor previsto calculado, o restante e exibido como zero e a exploracao fica limitada a 100%.
@@ -65,10 +64,11 @@ Atualizacao 2026-07
 - Criado endpoint `/api/dashboard-carteira-operacional`.
 - Criada migration `332_register_dashboard_portfolio_page.sql`, bloqueada por padrao para usuarios nao administrativos.
 - Criada migration `333_dashboard_portfolio_forecast_values_rpc.sql` para consolidar o valor previsto da carteira por projeto no banco.
-- Incluidos filtros, cards de saude/financeiro, diagnostico automatico, fluxo, renovacao, envelhecimento, potencial por supervisor e tabela analitica.
+- Incluidos filtros, cards de saude/financeiro, diagnostico automatico, fluxo, renovacao, envelhecimento e tabela analitica.
 - A base foi definida exclusivamente por projetos com atividades previstas cadastradas na tela Projetos.
 - Ajustado o filtro para permitir `Todos os ciclos`, analise de projetos retirados da carteira e classificacao dos estados parciais como pendentes.
 - Ajustado o valor da carteira para usar `SUM(voice_point x qty_planned x unit_value x 1)` via RPC, alinhado a regra de pontos da Medicao.
+- Ajustado o filtro `Carteira` para explicitar `Sem retirados`, `Somente retirados` e `Com retirados`, e removidas as leituras por supervisor deste dashboard.
 
 Mapa de Codigo
 - `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.
