@@ -55,6 +55,7 @@
 .badgeWarning { border: 1px solid #fcd34d; background: #fef3c7; color: #92400e; }
 .badgeNeutral { border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; }
 .badgeWithdrawn { border: 1px solid #fed7aa; background: #fff7ed; color: #c2410c; }
+.tableActions { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
 .tableCounter { align-self: center; color: #42557d; font-size: 12px; font-weight: 800; }
 .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 12px; color: #42557d; font-size: 12px; font-weight: 800; }
 .emptyRow, .emptyState { color: #60708f; text-align: center !important; font-weight: 700; }
@@ -64,7 +65,7 @@
   .twoColumnGrid { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
-  .cardHeader, .diagnosticHeader, .pagination { flex-direction: column; align-items: stretch; }
+  .cardHeader, .diagnosticHeader, .pagination, .tableActions { flex-direction: column; align-items: stretch; }
   .filterGrid, .metricGrid { grid-template-columns: 1fr; }
   .flowRow, .barRow { grid-template-columns: 1fr; }
 }

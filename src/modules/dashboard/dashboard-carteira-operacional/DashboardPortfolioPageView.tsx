@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import { useDashboardPortfolio } from "./hooks";
 import type { DashboardPortfolioProject } from "./types";
 import {
+  csvEscapePortfolio,
+  downloadPortfolioCsv,
   formatPortfolioCurrency,
   formatPortfolioNumber,
   formatPortfolioPercent,
@@ -12,6 +14,7 @@ import {
   portfolioOriginLabel,
   portfolioScopeLabel,
   portfolioStatusLabel,
+  toPortfolioIsoDate,
 } from "./utils";
 import { PORTFOLIO_PROJECT_PAGE_SIZE } from "./constants";
 import styles from "./DashboardPortfolioPageView.module.css";
@@ -86,6 +89,49 @@ export function DashboardPortfolioPageView() {
   function applyFilters() {
     setProjectPage(1);
     dashboard.applyFilters();
+  }
+
+  function exportProjectRows() {
+    if (!dashboard.projectRows.length) return;
+
+    const header = [
+      "Projeto",
+      "Regional",
+      "Status",
+      "Carteira",
+      "Origem",
+      "Primeira atuacao",
+      "Ultima atuacao",
+      "Dias parado",
+      "Ciclos",
+      "Ciclos sem producao",
+      "Semana ultima prod.",
+      "Valor previsto",
+      "Valor acumulado",
+      "Valor ciclo",
+      "Restante",
+      "% explorado",
+    ];
+    const lines = dashboard.projectRows.map((project) => [
+      project.projectCode,
+      project.serviceCenter,
+      portfolioStatusLabel(project.status),
+      portfolioScopeLabel(project.portfolioStatus),
+      portfolioOriginLabel(project.origin),
+      project.firstActivityLabel,
+      project.lastActivityLabel,
+      renderDaysWithoutProduction(project),
+      formatPortfolioNumber(project.workedCycleCount),
+      formatPortfolioNumber(project.cyclesWithoutProduction),
+      project.lastProductionWeek ? `${project.lastProductionWeek} semana` : "-",
+      formatPortfolioCurrency(project.totalForecastValue),
+      formatPortfolioCurrency(project.accumulatedValue),
+      formatPortfolioCurrency(project.valueInCycle),
+      formatPortfolioCurrency(project.remainingPotential),
+      formatPortfolioPercent(project.exploredPercentage),
+    ]);
+    const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscapePortfolio).join(";")).join("\n")}`;
+    downloadPortfolioCsv(csv, `dashboard_carteira_operacional_${toPortfolioIsoDate(new Date())}.csv`);
   }
 
   return (
@@ -277,9 +323,14 @@ export function DashboardPortfolioPageView() {
             <h2 className={styles.cardTitle}>Tabela analitica da carteira</h2>
             <p className={styles.cardSubtitle}>Projetos com atividades previstas, valores medidos e potencial restante.</p>
           </div>
-          <span className={styles.tableCounter}>
-            {dashboard.projectRows.length} projetos
-          </span>
+          <div className={styles.tableActions}>
+            <span className={styles.tableCounter}>
+              {dashboard.projectRows.length} projetos
+            </span>
+            <button type="button" className={styles.secondaryButton} disabled={!dashboard.projectRows.length} onClick={exportProjectRows}>
+              Extrair CSV
+            </button>
+          </div>
         </div>
         <div className={styles.tableWrapper}>
           <table className={`${styles.table} ${styles.projectTable}`}>

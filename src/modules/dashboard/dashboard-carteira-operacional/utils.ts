@@ -38,3 +38,27 @@ export function portfolioOriginLabel(origin: "NOVO" | "HERDADO" | "SEM_PRODUCAO"
 export function portfolioScopeLabel(scope: "ATIVA" | "RETIRADA") {
   return scope === "RETIRADA" ? "Retirada" : "Ativa";
 }
+
+export function csvEscapePortfolio(value: unknown) {
+  const normalized = String(value ?? "").replace(/"/g, '""');
+  return `"${normalized}"`;
+}
+
+export function downloadPortfolioCsv(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export function toPortfolioIsoDate(value: Date) {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
