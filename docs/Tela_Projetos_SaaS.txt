@@ -22,11 +22,12 @@ Arquitetura
 - API de materiais previstos (listagem): `src/app/api/projects/forecast/route.ts`
 - API de busca de materiais previstos por projeto: `src/app/api/projects/forecast/catalog/route.ts`
 - API de atividades previstas (listagem e salvamento): `src/app/api/projects/activity-forecast/route.ts`
+- API de importacao XLSX de atividades previstas: `src/app/api/projects/activity-forecast/import/route.ts`
 - API de busca de atividades previstas por projeto: `src/app/api/projects/activity-forecast/catalog/route.ts`
 - Edge Function de template XLSX: `supabase/edge_functions/get_project_forecast_template/index.ts`
 - Edge Function de importacao XLSX: `supabase/edge_functions/import_project_forecast/index.ts`
 - Edge Function de template XLSX de atividades: `supabase/edge_functions/get_project_activity_forecast_template/index.ts`
-- Edge Function de importacao XLSX de atividades: `supabase/edge_functions/import_project_activity_forecast/index.ts`
+- Edge Function legada de importacao XLSX de atividades: `supabase/edge_functions/import_project_activity_forecast/index.ts`
 - Banco: `supabase/migrations/029_create_project_table.sql`
 - Banco (regras de SOB por prioridade): `supabase/migrations/030_project_sob_priority_rules.sql`
 - Banco (tabelas de dominio por tenant): `supabase/migrations/031_create_project_lookup_tables.sql`
@@ -284,6 +285,8 @@ Funcoes principais
   - Responsavel por: pesquisar materiais ativos do tenant para incluir no previsto do projeto.
 - Caminho: `src/app/api/projects/activity-forecast/route.ts`
   - Responsavel por: listar, incluir e editar atividades previstas do projeto, enviando `expectedUpdatedAt` para a RPC na edicao em linha.
+- Caminho: `src/app/api/projects/activity-forecast/import/route.ts`
+  - Responsavel por: validar XLSX de atividades previstas, resolver projeto/atividade no tenant, ignorar codigos ja existentes e inserir o lote por projeto sem depender das RPCs legadas `precheck_project_activity_forecast_import` e `append_project_activity_forecast`.
 - Caminho: `src/app/api/projects/activity-forecast/catalog/route.ts`
   - Responsavel por: pesquisar atividades ativas do tenant para incluir no previsto do projeto.
 - Caminho: `supabase/edge_functions/get_project_forecast_template/index.ts`
@@ -293,7 +296,7 @@ Funcoes principais
 - Caminho: `supabase/edge_functions/get_project_activity_forecast_template/index.ts`
   - Responsavel por: autenticar usuario e entregar o modelo XLSX oficial de atividades previstas.
 - Caminho: `supabase/edge_functions/import_project_activity_forecast/index.ts`
-  - Responsavel por: validar planilha e importar atividades previstas via RPC de protecao.
+  - Responsavel por: fluxo legado de importacao de atividades previstas via RPCs de protecao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
@@ -649,6 +652,7 @@ Atualizacao adicional 2026-07 - selecao de previstos por datalist
 ------------------------------------------------------------------
 - Arquivos alterados/criados:
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/activity-forecast/import/route.ts`
   - `docs/Tela_Projetos_SaaS.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
@@ -661,6 +665,7 @@ Atualizacao adicional 2026-07 - selecao de previstos por datalist
   - `isImportResponseFailure`
   - `submitForecastImport`
   - `submitActivityForecastImport`
+  - `POST /api/projects/activity-forecast/import`
   - estados `selectedProjectForecastOption` e `selectedProjectActivityForecastOption`
 - Comportamento antes/depois:
   - Antes: ao selecionar um item no `datalist`, o texto completo `codigo - descricao` disparava nova busca; quando a API nao retornava essa string composta, o catalogo local era esvaziado e a inclusao manual falhava como item invalido.
@@ -669,4 +674,6 @@ Atualizacao adicional 2026-07 - selecao de previstos por datalist
   - Antes: `Cadastro em massa` podia receber HTTP 207 de importacao parcial e ainda assim ser tratado pelo frontend como sucesso, sem destacar `projectsFailed` no CSV de erros.
   - Depois: respostas `success=false` ou `partial=true` sao tratadas como falha parcial, mantem o modal aberto, mostram os projetos com erro no feedback e adicionam `projectsFailed` ao CSV.
   - Depois: quando existe projeto selecionado na aba, a lista e recarregada mesmo em importacao parcial para refletir linhas que foram inseridas com sucesso.
-- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao; a validacao do catalogo continua restrita ao tenant autenticado nas rotas existentes.
+  - Antes: o Cadastro em massa de `Atividades previstas` dependia da Edge Function `import_project_activity_forecast` e das RPCs `precheck_project_activity_forecast_import`/`append_project_activity_forecast`, que ja haviam apresentado `PGRST202` no remoto.
+  - Depois: a tela envia o XLSX para `/api/projects/activity-forecast/import`, que valida tenant/permissao no servidor, resolve projeto/atividade por tenant e insere os itens por projeto com `created_by`/`updated_by`.
+- Multi-tenant: a nova rota deriva `tenant_id` e usuario da sessao, valida permissao `projetos/create`, filtra projeto e atividade por tenant e grava com service role no backend controlado; sem mudanca de schema/RLS.
