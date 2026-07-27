@@ -111,6 +111,7 @@ Cadastro
   - Permite selecionar projeto por `Projeto (SOB)` em campo de texto com sugestao (datalist).
   - Permite pesquisar atividade ativa por `codigo` ou `descricao`.
   - Permite incluir atividade prevista com `quantidade`.
+  - Exibe `Pontos`, `Valor unitario` e `Valor previsto`, calculado como `Pontos x Quantidade prevista x Valor unitario x taxa`, com taxa `1` nesta versao.
   - O botao `Adicionar atividade` segue o mesmo posicionamento visual do `Adicionar material` da aba `Materiais previstos`.
   - Permite abrir o modal `Cadastro em massa` para baixar o modelo e importar planilha XLSX com `projeto`, `codigo` e `quantidade`, adicionando atividades previstas de varios projetos no mesmo arquivo.
   - Quando a importacao possui erro, gera CSV de erros com `linha`, `coluna`, `valor` e `erro`.
@@ -183,10 +184,10 @@ Boas praticas
 - Tratar `Materiais previstos` como planejamento: nao movimenta saldo fisico nem saldo liquido de projeto.
 - Validar importacao XLSX por tenant (projeto/material e projeto/atividade) antes de persistir.
 - A planilha de importacao de previstos deve conter `projeto`, `codigo` e `quantidade`; descricao/umb/tipo vem do cadastro base `materials`.
-- A planilha de importacao de atividades previstas deve conter `projeto`, `codigo` e `quantidade`; descricao/unidade/tipo/valor unitario vem do cadastro base `service_activities`.
+- A planilha de importacao de atividades previstas deve conter `projeto`, `codigo` e `quantidade`; descricao/unidade/tipo/pontos/valor unitario vem do cadastro base `service_activities`.
 - Importacoes invalidas devem gerar arquivo CSV de erros no padrao `linha;coluna;valor;erro`.
 - Codigos ja existentes no projeto nao bloqueiam o arquivo inteiro; a linha e ignorada, registrada no CSV de erros/avisos e as linhas novas sao cadastradas.
-- `Atividades previstas` do projeto devem ser mantidas com quantidade maior que zero e servem de base para bootstrap inicial da aba `Atividades previstas` na `Locacao`.
+- `Atividades previstas` do projeto devem ser mantidas com quantidade maior que zero e servem de base para bootstrap inicial da aba `Atividades previstas` na `Locacao` e para o valor previsto do Dashboard Carteira Operacional.
 - Exigir controle de concorrencia por `updated_at` na edicao em linha de `Materiais previstos` e `Atividades previstas`.
 - Aplicar limite superior `<= 100000` para quantidades manuais e para edicao em linha dos previstos do projeto.
 - Bloquear a inativacao da obra quando ainda existir programacao operacional com status `PROGRAMADA` ou `ADIADA`.
@@ -677,3 +678,14 @@ Atualizacao adicional 2026-07 - selecao de previstos por datalist
   - Antes: o Cadastro em massa de `Atividades previstas` dependia da Edge Function `import_project_activity_forecast` e das RPCs `precheck_project_activity_forecast_import`/`append_project_activity_forecast`, que ja haviam apresentado `PGRST202` no remoto.
   - Depois: a tela envia o XLSX para `/api/projects/activity-forecast/import`, que valida tenant/permissao no servidor, resolve projeto/atividade por tenant e insere os itens por projeto com `created_by`/`updated_by`.
 - Multi-tenant: a nova rota deriva `tenant_id` e usuario da sessao, valida permissao `projetos/create`, filtra projeto e atividade por tenant e grava com service role no backend controlado; sem mudanca de schema/RLS.
+
+Atualizacao adicional 2026-07 - valor previsto das atividades
+--------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/activity-forecast/route.ts`
+- Comportamento antes/depois:
+  - Antes: a lista de `Atividades previstas` mostrava unidade, valor unitario e quantidade, mas nao mostrava os pontos nem o valor financeiro previsto da linha.
+  - Depois: a API devolve `voicePoint` e `totalValue`, e a tela/CSV exibem `Pontos` e `Valor previsto`.
+  - Depois: o valor previsto da linha segue a formula da Medicao com taxa `1`: `voicePoint x qtyPlanned x unitValue x 1`.
+- Multi-tenant: sem mudanca de schema, RLS ou permissao; a rota continua derivando `tenant_id` da sessao.

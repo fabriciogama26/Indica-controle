@@ -20,7 +20,8 @@ Arquitetura
 Cadastro
 - A tela nao cadastra dados.
 - A entrada da carteira vem da aba `Atividades previstas` da tela Projetos.
-- O valor potencial da carteira usa `project.estimated_value`.
+- O valor potencial da carteira e calculado no backend a partir de `project_activity_forecast` + `service_activities`: `voice_point x qty_planned x unit_value x taxa`.
+- Nesta versao a taxa considerada para o valor previsto e `1`.
 - A producao do ciclo usa ordens de medicao ativas, com `measurement_kind = COM_PRODUCAO`, status diferente de `CANCELADA` e itens ativos de `project_measurement_order_items`.
 - A conclusao do projeto e derivada da programacao (`project_programming.work_completion_status`) ate o fim do ciclo selecionado.
 
@@ -30,7 +31,7 @@ Filtros, auto-complete e listagem
 - O filtro de ciclo permite `Ciclo mais recente`, ciclos individuais e `Todos os ciclos`.
 - O filtro `Carteira` permite `Ativa`, `Retirada` e `Ativa + retirada`.
 - O carregamento inicial seleciona o ciclo mais recente com producao de projetos elegiveis; se nao houver historico, usa o ciclo corrente.
-- A tabela principal exibe projeto, regional, supervisor, status, carteira, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor total, valor acumulado, valor no ciclo e restante.
+- A tabela principal exibe projeto, regional, supervisor, status, carteira, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor previsto, valor acumulado, valor no ciclo e restante.
 - A tabela e paginada no frontend para manter a leitura rapida.
 
 Indicadores
@@ -46,14 +47,14 @@ Boas praticas
 - Manter a separacao entre quantidade e valor; quantidade explica fluxo operacional, valor explica impacto financeiro.
 - Nao comparar ticket medio de projeto diretamente com produtividade de equipe.
 - Usar o Dashboard Carteira Operacional para explicar causa de queda/subida da producao, e o Dashboard Equipes para explicar quem produziu.
-- Tratar o valor restante como estimativa gerencial, pois depende da qualidade do `estimated_value` do projeto.
+- Tratar o valor restante como estimativa gerencial, pois depende da qualidade das atividades previstas e dos pontos/valores unitarios cadastrados.
 
 Cancelamento e saldo
 - Projetos cancelados/inativos, terceiros ou marcados como teste nao entram na base.
 - Projetos retirados da carteira entram apenas quando o filtro `Carteira` estiver em `Retirada` ou `Ativa + retirada`.
 - Ordens de medicao canceladas nao entram no valor produzido, acumulado ou diagnostico.
 - Estados parciais da programacao (`PARCIAL`, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e variantes com beneficio atingido) contam como pendentes.
-- Quando o valor acumulado supera o valor estimado, o restante e exibido como zero e a exploracao fica limitada a 100%.
+- Quando o valor acumulado supera o valor previsto calculado, o restante e exibido como zero e a exploracao fica limitada a 100%.
 
 Atalhos
 - Menu principal: `Visao Geral > Carteira Operacional`.
@@ -66,6 +67,7 @@ Atualizacao 2026-07
 - Incluidos filtros, cards de saude/financeiro, diagnostico automatico, fluxo, renovacao, envelhecimento, potencial por supervisor e tabela analitica.
 - A base foi definida exclusivamente por projetos com atividades previstas cadastradas na tela Projetos.
 - Ajustado o filtro para permitir `Todos os ciclos`, analise de projetos retirados da carteira e classificacao dos estados parciais como pendentes.
+- Ajustado o valor da carteira para usar `SUM(voice_point x qty_planned x unit_value x 1)` no backend, alinhado a regra de pontos da Medicao.
 
 Mapa de Codigo
 - `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.

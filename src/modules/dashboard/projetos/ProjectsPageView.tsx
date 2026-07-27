@@ -217,7 +217,9 @@ type ProjectActivityForecastItem = {
   type: string | null;
   unit: string;
   unitValue: number;
+  voicePoint: number;
   qtyPlanned: number;
+  totalValue: number;
   observation: string | null;
   source: string;
   createdAt: string;
@@ -519,8 +521,10 @@ function buildActivityForecastCsv(forecastItems: ProjectActivityForecastItem[]) 
     "Descricao",
     "Tipo",
     "Unidade",
+    "Pontos",
     "Valor unitario",
     "Quantidade prevista",
+    "Valor previsto",
     "Observacao",
     "Origem",
     "Criado em",
@@ -531,8 +535,10 @@ function buildActivityForecastCsv(forecastItems: ProjectActivityForecastItem[]) 
     item.description,
     item.type ?? "",
     item.unit,
+    item.voicePoint,
     item.unitValue.toFixed(2),
     item.qtyPlanned,
+    item.totalValue.toFixed(2),
     item.observation ?? "",
     item.source,
     formatDateTime(item.createdAt),
@@ -3565,8 +3571,10 @@ export function ProjectsPageView() {
                   <th>Descricao</th>
                   <th>Tipo</th>
                   <th>Unidade</th>
+                  <th>Pontos</th>
                   <th>Valor unitario</th>
                   <th>Quantidade prevista</th>
+                  <th>Valor previsto</th>
                   <th>Observacao</th>
                   <th>Atualizado em</th>
                   <th>Acoes</th>
@@ -3580,6 +3588,10 @@ export function ProjectsPageView() {
                       observation: item.observation ?? "",
                       updatedAt: item.updatedAt,
                     };
+                    const draftQuantity = Number(String(draft.quantity).replace(",", "."));
+                    const draftTotalValue = Number.isFinite(draftQuantity)
+                      ? item.voicePoint * draftQuantity * item.unitValue
+                      : item.totalValue;
 
                     return (
                       <tr key={item.id}>
@@ -3587,6 +3599,7 @@ export function ProjectsPageView() {
                         <td>{item.description}</td>
                         <td>{item.type ?? "-"}</td>
                         <td>{item.unit}</td>
+                        <td>{item.voicePoint}</td>
                         <td>{formatCurrency(item.unitValue)}</td>
                         <td>
                           <input
@@ -3604,6 +3617,7 @@ export function ProjectsPageView() {
                             }
                           />
                         </td>
+                        <td>{formatCurrency(draftTotalValue)}</td>
                         <td>
                           <input
                             className={styles.tableInput}
@@ -3635,7 +3649,7 @@ export function ProjectsPageView() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={9} className={styles.emptyRow}>
+                    <td colSpan={11} className={styles.emptyRow}>
                       {isLoadingActivityForecast
                         ? "Carregando atividades previstas..."
                         : "Nenhuma atividade prevista encontrada para os filtros informados."}

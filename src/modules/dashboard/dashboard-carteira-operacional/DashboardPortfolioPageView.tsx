@@ -198,7 +198,7 @@ export function DashboardPortfolioPageView() {
           </div>
         </div>
         <div className={styles.metricGrid}>
-          <MetricCard label="Carteira total" value={formatPortfolioCurrency(financialSummary?.totalPortfolioValue ?? 0, true)} />
+          <MetricCard label="Carteira prevista" value={formatPortfolioCurrency(financialSummary?.totalPortfolioValue ?? 0, true)} />
           <MetricCard label="Valor produzido no ciclo" value={formatPortfolioCurrency(financialSummary?.producedInCycle ?? 0, true)} tone="blue" />
           <MetricCard label="Valor acumulado" value={formatPortfolioCurrency(financialSummary?.accumulatedValue ?? 0, true)} />
           <MetricCard label="Potencial restante" value={formatPortfolioCurrency(financialSummary?.remainingPotential ?? 0, true)} tone="green" />
@@ -331,7 +331,7 @@ export function DashboardPortfolioPageView() {
                 <th>Ciclos</th>
                 <th>Ciclos sem producao</th>
                 <th>Semana ultima prod.</th>
-                <th>Valor total</th>
+                <th>Valor previsto</th>
                 <th>Valor acumulado</th>
                 <th>Valor ciclo</th>
                 <th>Restante</th>
@@ -353,7 +353,7 @@ export function DashboardPortfolioPageView() {
                   <td>{project.workedCycleCount}</td>
                   <td>{project.cyclesWithoutProduction}</td>
                   <td>{project.lastProductionWeek ? `${project.lastProductionWeek} semana` : "-"}</td>
-                  <td>{formatPortfolioCurrency(project.estimatedValue)}</td>
+                  <td>{formatPortfolioCurrency(project.totalForecastValue)}</td>
                   <td>{formatPortfolioCurrency(project.accumulatedValue)}</td>
                   <td>{formatPortfolioCurrency(project.valueInCycle)}</td>
                   <td>{formatPortfolioCurrency(project.remainingPotential)}</td>

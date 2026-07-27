@@ -73,7 +73,7 @@ export type DashboardPortfolioSupervisorPotential = {
   accumulatedValue: number;
   remainingPotential: number;
   exploredPercentage: number;
-  estimatedValue: number;
+  totalForecastValue: number;
 };
 
 export type DashboardPortfolioProject = {
@@ -95,7 +95,7 @@ export type DashboardPortfolioProject = {
   daysWithoutProduction: number | null;
   workedCycleCount: number;
   cyclesWithoutProduction: number;
-  estimatedValue: number;
+  totalForecastValue: number;
   valueBeforeCycle: number;
   valueInCycle: number;
   accumulatedValue: number;
