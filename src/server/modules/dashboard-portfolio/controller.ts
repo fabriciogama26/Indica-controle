@@ -9,13 +9,9 @@ const QUERY_PAGE_SIZE = 1000;
 const FILTER_CHUNK_SIZE = 100;
 const ORDER_ITEM_CHUNK_SIZE = 200;
 
-type ProjectForecastRow = {
+type ProjectForecastValueRow = {
   project_id: string;
-  qty_planned: number | string | null;
-  service_activities: {
-    unit_value: number | string | null;
-    voice_point?: number | string | null;
-  } | null;
+  total_forecast_value: number | string | null;
 };
 
 type ProjectRow = {
@@ -273,27 +269,18 @@ async function loadPaged<T>(builder: (from: number, to: number) => PromiseLike<{
 }
 
 async function loadForecastPortfolioValues(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
-  const result = await loadPaged<ProjectForecastRow>((from, to) =>
-    supabase
-      .from("project_activity_forecast")
-      .select("project_id, qty_planned, service_activities!inner(unit_value, voice_point)")
-      .eq("tenant_id", tenantId)
-      .order("project_id", { ascending: true })
-      .range(from, to)
-      .returns<ProjectForecastRow[]>(),
-  );
+  const { data, error } = await supabase.rpc("dashboard_portfolio_forecast_values", {
+    p_tenant_id: tenantId,
+  });
 
-  if (result.error) return { projectIds: [] as string[], values: new Map<string, number>(), error: result.error };
+  if (error) return { projectIds: [] as string[], values: new Map<string, number>(), error };
 
   const values = new Map<string, number>();
-  for (const item of result.data) {
+  for (const item of (data ?? []) as ProjectForecastValueRow[]) {
     const projectId = normalizeUuid(item.project_id);
     if (!projectId) continue;
 
-    const plannedQuantity = numberValue(item.qty_planned);
-    const unitValue = numberValue(item.service_activities?.unit_value);
-    const points = numberValue(item.service_activities?.voice_point) || 1;
-    values.set(projectId, (values.get(projectId) ?? 0) + points * plannedQuantity * unitValue);
+    values.set(projectId, numberValue(item.total_forecast_value));
   }
 
   return {
