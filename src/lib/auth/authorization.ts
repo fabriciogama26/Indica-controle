@@ -5,6 +5,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/dash-estoque", pageKey: "dash-estoque" },
   { prefix: "/dashboard-medicao", pageKey: "dashboard-medicao" },
   { prefix: "/dashboard-equipes", pageKey: "dashboard-equipes" },
+  { prefix: "/dashboard-carteira-operacional", pageKey: "dashboard-carteira-operacional" },
   { prefix: "/dash-operacional-faturamento", pageKey: "dash-operacional-faturamento" },
   { prefix: "/projetos", pageKey: "projetos" },
   { prefix: "/cronograma-solicitacoes", pageKey: "cronograma-solicitacoes" },
@@ -113,7 +114,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   ];
 
   if (normalized === "master" || normalized === "admin") {
-    return defaultPageAccess;
+    return [...defaultPageAccess, "dashboard-carteira-operacional"];
   }
 
   if (normalized === "supervisor") {

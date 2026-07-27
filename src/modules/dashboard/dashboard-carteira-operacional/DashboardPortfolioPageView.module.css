@@ -1,0 +1,70 @@
+.wrapper { display: flex; flex-direction: column; gap: 16px; color: #001f5b; }
+.card { min-width: 0; border: 1px solid #d9e1ef; border-radius: 8px; background: #fff; padding: 16px; box-shadow: 0 10px 24px rgba(16, 37, 78, .06); }
+.cardHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.cardTitle { margin: 0; color: #002b7f; font-size: 18px; font-weight: 800; }
+.cardSubtitle { margin: 4px 0 0; color: #42557d; font-size: 12px; }
+.filterGrid { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 12px; }
+.field { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #002b7f; font-size: 12px; font-weight: 800; }
+.field select, .field input { width: 100%; height: 36px; border: 1px solid #c8d4ea; border-radius: 8px; background: #fff; color: #001f5b; padding: 0 10px; font: inherit; font-weight: 600; }
+.primaryButton, .secondaryButton { min-height: 36px; border-radius: 8px; padding: 0 16px; font-weight: 800; cursor: pointer; }
+.primaryButton { border: 0; background: #1f4ea3; color: #fff; }
+.secondaryButton { border: 1px solid #c8d4ea; background: #fff; color: #1f4ea3; }
+.primaryButton:disabled, .secondaryButton:disabled { cursor: not-allowed; opacity: .65; }
+.diagnosticCard { display: flex; flex-direction: column; gap: 10px; border-left: 5px solid #17a884; }
+.diagnosticCard p { margin: 0; color: #12213d; font-size: 15px; font-weight: 800; }
+.diagnosticHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.diagnosticHeader strong { color: #42557d; font-size: 12px; }
+.statusHealthy, .statusWarning, .statusRisk { display: inline-flex; min-height: 28px; align-items: center; border-radius: 999px; padding: 0 12px; font-size: 12px; font-weight: 800; }
+.statusHealthy { border: 1px solid #86efac; background: #dcfce7; color: #047857; }
+.statusWarning { border: 1px solid #fcd34d; background: #fef3c7; color: #92400e; }
+.statusRisk { border: 1px solid #fecaca; background: #fee2e2; color: #b91c1c; }
+.signalList { display: flex; flex-wrap: wrap; gap: 8px; }
+.signalList span { border: 1px solid #f0d48a; border-radius: 999px; background: #fff9e8; color: #6f5311; padding: 6px 10px; font-size: 12px; font-weight: 700; }
+.metricGrid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; }
+.metric { display: flex; min-height: 84px; flex-direction: column; justify-content: center; gap: 7px; border: 1px solid #d9e1ef; border-radius: 8px; background: #fbfdff; padding: 14px; }
+.metric span { color: #42557d; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.metric strong { color: #002b7f; font-size: 21px; font-weight: 900; }
+.metric small { color: #42557d; font-size: 11px; font-weight: 700; }
+.metric.green { border-color: #b8e6cd; background: #f2fbf6; }
+.metric.orange { border-color: #f2cf99; background: #fff8ed; }
+.metric.red { border-color: #f2b7b7; background: #fff5f5; }
+.metric.blue { border-color: #b8c9ef; background: #f4f8ff; }
+.twoColumnGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.flowList, .barList { display: flex; flex-direction: column; gap: 12px; }
+.flowRow { position: relative; display: grid; grid-template-columns: minmax(150px, 1fr) minmax(160px, 2fr) minmax(92px, auto); align-items: center; gap: 12px; min-height: 48px; color: #001f5b; font-size: 12px; }
+.flowRow div:first-child { display: flex; flex-direction: column; gap: 3px; }
+.flowRow div:first-child span { color: #42557d; font-weight: 700; }
+.flowTrack, .barTrack { position: relative; height: 14px; overflow: hidden; border-radius: 999px; background: #e8edf6; }
+.flowTrack span, .barFill { position: absolute; inset-block: 0; left: 0; border-radius: 999px; background: #4b77c7; }
+.flowArrow { position: absolute; left: 14px; bottom: -9px; color: #60708f; font-size: 11px; font-weight: 900; }
+.barRow { display: grid; grid-template-columns: minmax(125px, 1fr) minmax(160px, 2fr) minmax(96px, auto); align-items: center; gap: 10px; min-height: 32px; color: #001f5b; font-size: 12px; }
+.barRow strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blueBar { background: #4b77c7; }
+.greenBar { background: #17a884; }
+.orangeBar { background: #f07f2f; }
+.redBar { background: #e25555; }
+.tableWrapper { overflow-x: auto; border: 1px solid #d9e1ef; border-radius: 8px; }
+.table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12px; }
+.table th { border-bottom: 1px solid #d9e1ef; background: #eef2f8; color: #002b7f; padding: 10px; text-align: left; font-weight: 800; white-space: nowrap; }
+.table td { border-bottom: 1px solid #e2e8f3; color: #001f5b; padding: 10px; white-space: nowrap; }
+.table tbody tr:nth-child(even) { background: #f8fbff; }
+.projectTable { min-width: 1760px; }
+.projectTable th:nth-child(n+9), .projectTable td:nth-child(n+9) { text-align: right; font-variant-numeric: tabular-nums; }
+.badgeSuccess, .badgeWarning, .badgeNeutral, .badgeWithdrawn { display: inline-flex; min-height: 24px; align-items: center; border-radius: 999px; padding: 0 9px; font-size: 11px; font-weight: 800; }
+.badgeSuccess { border: 1px solid #86efac; background: #dcfce7; color: #047857; }
+.badgeWarning { border: 1px solid #fcd34d; background: #fef3c7; color: #92400e; }
+.badgeNeutral { border: 1px solid #bfdbfe; background: #eff6ff; color: #1d4ed8; }
+.badgeWithdrawn { border: 1px solid #fed7aa; background: #fff7ed; color: #c2410c; }
+.tableCounter { align-self: center; color: #42557d; font-size: 12px; font-weight: 800; }
+.pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 12px; color: #42557d; font-size: 12px; font-weight: 800; }
+.emptyRow, .emptyState { color: #60708f; text-align: center !important; font-weight: 700; }
+.errorMessage { margin: 0; border: 1px solid #e6a4a4; border-radius: 8px; background: #fff3f3; color: #a52a2a; padding: 10px 12px; font-size: 12px; font-weight: 700; }
+@media (max-width: 1200px) {
+  .filterGrid, .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .twoColumnGrid { grid-template-columns: 1fr; }
+}
+@media (max-width: 700px) {
+  .cardHeader, .diagnosticHeader, .pagination { flex-direction: column; align-items: stretch; }
+  .filterGrid, .metricGrid { grid-template-columns: 1fr; }
+  .flowRow, .barRow { grid-template-columns: 1fr; }
+}

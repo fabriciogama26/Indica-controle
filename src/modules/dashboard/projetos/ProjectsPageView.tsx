@@ -2073,27 +2073,16 @@ export function ProjectsPageView() {
       return;
     }
 
-    const functionsBaseUrl = supabaseFunctionsBaseUrl();
-    const anonKey = supabaseAnonKey();
-    if (!functionsBaseUrl || !anonKey) {
-      setFeedback({
-        type: "error",
-        message: "Ambiente sem configuracao de Supabase para importar atividades previstas.",
-      });
-      return;
-    }
-
     setIsImportingActivityForecast(true);
     setActivityForecastImportErrorReport(null);
     try {
       const payload = new FormData();
       payload.set("file", activityForecastImportFile);
 
-      const response = await fetch(`${functionsBaseUrl}/functions/v1/import_project_activity_forecast`, {
+      const response = await fetch("/api/projects/activity-forecast/import", {
         method: "POST",
         cache: "no-store",
         headers: {
-          apikey: anonKey,
           Authorization: `Bearer ${session.accessToken}`,
         },
         body: payload,

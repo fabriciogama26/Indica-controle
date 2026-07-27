@@ -926,3 +926,8 @@ Observacao
 - Saneia itens ativos duplicados em `project_measurement_order_items`, preservando o registro mais recente por `tenant_id + measurement_order_id + service_activity_id`.
 - Cria o indice unico parcial `idx_project_measurement_order_items_unique_active_activity` para impedir nova duplicidade ativa da mesma atividade na mesma ordem de Medicao.
 - Mantem RLS/policies inalteradas e preserva `tenant_id` como prefixo da regra de unicidade.
+
+332_register_dashboard_portfolio_page.sql
+- Cadastra `dashboard-carteira-operacional` em `app_pages` com `default_user_access = false`.
+- Preenche permissoes ausentes em `role_page_permissions` e `app_user_page_permissions`, liberando perfis administrativos e mantendo usuarios nao administrativos bloqueados por padrao.
+- Nao cria tabelas operacionais, RPCs, grants ou policies novas.

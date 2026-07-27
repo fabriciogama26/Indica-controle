@@ -59,6 +59,7 @@ const permissionCatalog = [
   { pageKey: "dash-estoque", label: "Dashboard Estoque", path: "/dash-estoque", section: "Visao Geral" },
   { pageKey: "dashboard-medicao", label: "Dashboard Medicao", path: "/dashboard-medicao", section: "Visao Geral" },
   { pageKey: "dashboard-equipes", label: "Dashboard Equipes", path: "/dashboard-equipes", section: "Visao Geral" },
+  { pageKey: "dashboard-carteira-operacional", label: "Dashboard Carteira Operacional", path: "/dashboard-carteira-operacional", section: "Visao Geral" },
   { pageKey: "dash-operacional-faturamento", label: "Dash operacional e faturamento", path: "/dash-operacional-faturamento", section: "Visao Geral" },
   { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
   { pageKey: "cronograma-solicitacoes", label: "Cronograma de Solicitacoes", path: "/cronograma-solicitacoes", section: "Operacao" },
