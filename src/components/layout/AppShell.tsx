@@ -21,6 +21,7 @@ const menuSections = [
       { href: "/dash-estoque", label: "Dashboard Estoque", icon: "box" },
       { href: "/dashboard-medicao", label: "Dashboard Medicao", icon: "calendar" },
       { href: "/dashboard-equipes", label: "Dashboard Equipes", icon: "users" },
+      { href: "/dashboard-carteira-operacional", label: "Carteira Operacional", icon: "briefcase" },
       { href: "/dash-operacional-faturamento", label: "Dash operacional e faturamento", icon: "calendar" },
     ],
   },
@@ -98,6 +99,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/dashboard-equipes": {
     title: "Dashboard Equipes",
     subtitle: "Desempenho por MK, encarregado e supervisor no ciclo.",
+  },
+  "/dashboard-carteira-operacional": {
+    title: "Dashboard Carteira Operacional",
+    subtitle: "Saude, renovacao, envelhecimento e potencial financeiro da carteira em operacao.",
   },
   "/dash-estoque": {
     title: "Dashboard Estoque",

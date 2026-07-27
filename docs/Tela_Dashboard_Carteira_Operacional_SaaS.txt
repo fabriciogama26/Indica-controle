@@ -1,0 +1,83 @@
+Tela: Dashboard Carteira Operacional
+
+Visao geral
+- Rota: `/dashboard-carteira-operacional`.
+- Objetivo: analisar a saude operacional da carteira de projetos em execucao, separando quantidade, valor, renovacao, envelhecimento e potencial financeiro.
+- A base da carteira usa somente projetos que possuem atividade prevista cadastrada na tela Projetos (`project_activity_forecast`).
+- Projetos de teste, terceiros ou inativos ficam fora da base.
+- Projetos retirados da carteira podem ser analisados pelo filtro `Carteira`, sem misturar esse recorte com a carteira ativa por padrao.
+- A tela e read-only e exige permissao `dashboard-carteira-operacional/read`.
+
+Arquitetura
+- Page route: `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`.
+- View: `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.tsx`.
+- API: `src/app/api/dashboard-carteira-operacional/route.ts`.
+- Controller: `src/server/modules/dashboard-portfolio/controller.ts`.
+- Menu e titulo: `src/components/layout/AppShell.tsx`.
+- Permissao: `src/lib/auth/authorization.ts` e `src/modules/dashboard/permissoes/PermissionsPageView.tsx`.
+- Registro da pagina: `supabase/migrations/332_register_dashboard_portfolio_page.sql`.
+
+Cadastro
+- A tela nao cadastra dados.
+- A entrada da carteira vem da aba `Atividades previstas` da tela Projetos.
+- O valor potencial da carteira usa `project.estimated_value`.
+- A producao do ciclo usa ordens de medicao ativas, com `measurement_kind = COM_PRODUCAO`, status diferente de `CANCELADA` e itens ativos de `project_measurement_order_items`.
+- A conclusao do projeto e derivada da programacao (`project_programming.work_completion_status`) ate o fim do ciclo selecionado.
+
+Filtros, auto-complete e listagem
+- Filtros disponiveis: ciclo, carteira, projeto, centro de servico e supervisor.
+- Ciclo segue a janela operacional das medicoes, com inicio no dia 21 e fim no dia 20.
+- O filtro de ciclo permite `Ciclo mais recente`, ciclos individuais e `Todos os ciclos`.
+- O filtro `Carteira` permite `Ativa`, `Retirada` e `Ativa + retirada`.
+- O carregamento inicial seleciona o ciclo mais recente com producao de projetos elegiveis; se nao houver historico, usa o ciclo corrente.
+- A tabela principal exibe projeto, regional, supervisor, status, carteira, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor total, valor acumulado, valor no ciclo e restante.
+- A tabela e paginada no frontend para manter a leitura rapida.
+
+Indicadores
+- Saude da carteira: projetos trabalhados, novos, herdados, concluidos, pendentes, retirados, idade media e indice de renovacao.
+- Financeiro da carteira: valor produzido no ciclo, valor acumulado, potencial restante, exploracao da carteira, valor medio dos novos, valor medio dos herdados e ticket medio dos concluidos.
+- Fluxo da carteira: projetos novos, em andamento e concluidos, com quantidade e valor.
+- Renovacao: compara novos e herdados, incluindo ticket medio.
+- Envelhecimento: agrupa projetos por idade em ciclos e inclui projetos sem producao no ciclo.
+- Potencial por supervisor: mostra onde ainda existe valor estimado restante na carteira.
+- Diagnostico automatico: classifica o ciclo como saudavel, atencao ou risco com base em renovacao, idade media, exploracao, potencial e participacao de projetos herdados.
+
+Boas praticas
+- Manter a separacao entre quantidade e valor; quantidade explica fluxo operacional, valor explica impacto financeiro.
+- Nao comparar ticket medio de projeto diretamente com produtividade de equipe.
+- Usar o Dashboard Carteira Operacional para explicar causa de queda/subida da producao, e o Dashboard Equipes para explicar quem produziu.
+- Tratar o valor restante como estimativa gerencial, pois depende da qualidade do `estimated_value` do projeto.
+
+Cancelamento e saldo
+- Projetos cancelados/inativos, terceiros ou marcados como teste nao entram na base.
+- Projetos retirados da carteira entram apenas quando o filtro `Carteira` estiver em `Retirada` ou `Ativa + retirada`.
+- Ordens de medicao canceladas nao entram no valor produzido, acumulado ou diagnostico.
+- Estados parciais da programacao (`PARCIAL`, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e variantes com beneficio atingido) contam como pendentes.
+- Quando o valor acumulado supera o valor estimado, o restante e exibido como zero e a exploracao fica limitada a 100%.
+
+Atalhos
+- Menu principal: `Visao Geral > Carteira Operacional`.
+- Permissoes: `Permissoes > Dashboard Carteira Operacional`.
+
+Atualizacao 2026-07
+- Criada a tela `Dashboard Carteira Operacional`.
+- Criado endpoint `/api/dashboard-carteira-operacional`.
+- Criada migration `332_register_dashboard_portfolio_page.sql`, bloqueada por padrao para usuarios nao administrativos.
+- Incluidos filtros, cards de saude/financeiro, diagnostico automatico, fluxo, renovacao, envelhecimento, potencial por supervisor e tabela analitica.
+- A base foi definida exclusivamente por projetos com atividades previstas cadastradas na tela Projetos.
+- Ajustado o filtro para permitir `Todos os ciclos`, analise de projetos retirados da carteira e classificacao dos estados parciais como pendentes.
+
+Mapa de Codigo
+- `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.
+- `src/app/api/dashboard-carteira-operacional/route.ts`: entrada HTTP do payload da carteira.
+- `src/server/modules/dashboard-portfolio/controller.ts`: consolidacao server-side por tenant, permissao, filtros, medicoes, programacao e diagnostico.
+- `src/modules/dashboard/dashboard-carteira-operacional/types.ts`: contratos do payload.
+- `src/modules/dashboard/dashboard-carteira-operacional/api.ts`: fetch autenticado.
+- `src/modules/dashboard/dashboard-carteira-operacional/hooks.ts`: estado da tela e filtros.
+- `src/modules/dashboard/dashboard-carteira-operacional/utils.ts`: formatadores e labels.
+- `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.tsx`: composicao visual.
+- `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.module.css`: estilos da tela.
+- `src/components/layout/AppShell.tsx`: menu e titulo da rota.
+- `src/lib/auth/authorization.ts`: mapeamento de rota para permissao.
+- `src/modules/dashboard/permissoes/PermissionsPageView.tsx`: catalogo de permissoes.
+- `supabase/migrations/332_register_dashboard_portfolio_page.sql`: cadastro da pagina e permissoes iniciais.
