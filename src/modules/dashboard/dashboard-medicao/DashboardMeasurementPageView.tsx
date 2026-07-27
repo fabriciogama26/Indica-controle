@@ -42,6 +42,9 @@ type CycleComparison = {
   projectCount: number;
   averageTicketValue: number;
   averageServiceTicketValue: number;
+  completedProjectCount: number;
+  completedAverageTicketValue: number;
+  projectDetails: CycleProjectDetail[];
   executedWorkdays: number;
   averageDailyValue: number;
   workedObjectiveValue: number;
@@ -78,6 +81,8 @@ type PeriodSummary = {
   projectCount: number;
   averageTicketValue: number;
   averageServiceTicketValue: number;
+  completedProjectCount: number;
+  completedAverageTicketValue: number;
 };
 
 type CompletionTableTotals = {
@@ -92,6 +97,17 @@ type ProjectProductionDetail = {
   serviceCenter: string;
   totalValue: number;
   orderCount: number;
+};
+
+type CycleProjectDetail = {
+  projectId: string;
+  projectCode: string;
+  firstActivity: string;
+  valueBeforeCycle: number;
+  valueInCycle: number;
+  accumulatedValue: number;
+  workedCycleCount: number;
+  week: number | null;
 };
 
 type DashboardResponse = {
@@ -118,9 +134,16 @@ type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | "annual"
 type MetaMode = "cycle" | "standard" | "worked";
 
 type ProjectDetailModal = {
+  kind: "production";
   title: string;
   subtitle: string;
   rows: ProjectProductionDetail[];
+  filename: string;
+} | {
+  kind: "cycle";
+  title: string;
+  subtitle: string;
+  rows: CycleProjectDetail[];
   filename: string;
 } | null;
 
@@ -449,10 +472,21 @@ export function DashboardMeasurementPageView() {
 
   function openCompletionProjectDetails(row: CompletionChartItem, subtitle: string, filenamePrefix: string) {
     setProjectDetailModal({
+      kind: "production",
       title: `Projetos - ${row.label}`,
       subtitle,
       rows: row.projects,
       filename: `${filenamePrefix}_${filenameToken(row.label)}_${todayToken()}.csv`,
+    });
+  }
+
+  function openCycleProjectDetails() {
+    setProjectDetailModal({
+      kind: "cycle",
+      title: "Projetos atuados no ciclo",
+      subtitle: cycleComparison?.label ?? selectedCycleLabel,
+      rows: cycleComparison?.projectDetails ?? [],
+      filename: `dashboard_medicao_projetos_ciclo_${todayToken()}.csv`,
     });
   }
 
@@ -472,13 +506,25 @@ export function DashboardMeasurementPageView() {
     setIsExportingProjectDetails(true);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
-      const header = ["Projeto", "Centro", "Valor cobrado", "Ordens"];
-      const rows = projectDetailModal.rows.map((item) => [
-        item.projectCode,
-        item.serviceCenter,
-        item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        item.orderCount,
-      ]);
+      const header = projectDetailModal.kind === "cycle"
+        ? ["Projeto", "Primeira atuacao", "Valor antes do ciclo", "Valor no ciclo", "Valor acumulado", "N de ciclos trabalhados", "Semana"]
+        : ["Projeto", "Centro", "Valor cobrado", "Ordens"];
+      const rows = projectDetailModal.kind === "cycle"
+        ? projectDetailModal.rows.map((item) => [
+            item.projectCode,
+            item.firstActivity,
+            item.valueBeforeCycle.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            item.valueInCycle.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            item.accumulatedValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            item.workedCycleCount,
+            item.week ?? "",
+          ])
+        : projectDetailModal.rows.map((item) => [
+            item.projectCode,
+            item.serviceCenter,
+            item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            item.orderCount,
+          ]);
       const csv = buildCsvContent(header, rows);
       downloadCsvFile(csv, projectDetailModal.filename);
     } finally {
@@ -950,6 +996,10 @@ export function DashboardMeasurementPageView() {
             <strong>{formatCurrency(periodSummary?.averageTicketValue ?? 0)}</strong>
           </div>
           <div className={styles.metric}>
+            <span>Ticket medio / Projetos (concluidos)</span>
+            <strong>{formatCurrency(periodSummary?.completedAverageTicketValue ?? 0)}</strong>
+          </div>
+          <div className={styles.metric}>
             <span>Ticket medio / Servicos</span>
             <strong>{formatCurrency(periodSummary?.averageServiceTicketValue ?? 0)}</strong>
           </div>
@@ -1001,12 +1051,20 @@ export function DashboardMeasurementPageView() {
             <strong>{formatCurrency(cycleComparison?.averageTicketValue ?? 0)}</strong>
           </div>
           <div className={styles.metric}>
+            <span>Ticket medio / Projetos (concluidos)</span>
+            <strong>{formatCurrency(cycleComparison?.completedAverageTicketValue ?? 0)}</strong>
+          </div>
+          <div className={styles.metric}>
             <span>Ticket medio / Servicos</span>
             <strong>{formatCurrency(cycleComparison?.averageServiceTicketValue ?? 0)}</strong>
           </div>
           <div className={styles.metric}>
             <span>Projetos no ciclo</span>
             <strong>{cycleComparison?.projectCount ?? 0}</strong>
+          </div>
+          <div className={styles.metric}>
+            <span>Projetos no ciclo (concluidos)</span>
+            <strong>{cycleComparison?.completedProjectCount ?? 0}</strong>
           </div>
           <div className={styles.metric}>
             <span>Ordens de Servicos no ciclo</span>
@@ -1066,7 +1124,14 @@ export function DashboardMeasurementPageView() {
                     : undefined;
 
                 return (
-                  <tr>
+                  <tr
+                    className={styles.clickableRow}
+                    role="button"
+                    tabIndex={0}
+                    title="Ver projetos atuados no ciclo"
+                    onClick={openCycleProjectDetails}
+                    onKeyDown={(event) => handleProjectDetailRowKeyDown(event, openCycleProjectDetails)}
+                  >
                     <td>{cycleComparison.label}</td>
                     <td>{formatCurrency(cycleComparison.value)}</td>
                     <td>{cycleComparison.projectCount}</td>
@@ -1559,40 +1624,86 @@ export function DashboardMeasurementPageView() {
             </div>
             <div className={styles.modalBody}>
               <div className={styles.tableWrapper}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Projeto</th>
-                      <th>Centro</th>
-                      <th>Valor cobrado</th>
-                      <th>Ordens</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {projectDetailModal.rows.length ? (
-                      projectDetailModal.rows.map((item) => (
-                        <tr key={item.projectId}>
-                          <td>{item.projectCode}</td>
-                          <td>{item.serviceCenter}</td>
-                          <td>{formatCurrency(item.totalValue)}</td>
-                          <td>{item.orderCount}</td>
-                        </tr>
-                      ))
-                    ) : (
+                {projectDetailModal.kind === "cycle" ? (
+                  <table className={`${styles.table} ${styles.cycleProjectTable}`}>
+                    <thead>
                       <tr>
-                        <td colSpan={4} className={styles.emptyRow}>Nenhum projeto encontrado no recorte selecionado.</td>
+                        <th>Projeto</th>
+                        <th>Primeira atuacao</th>
+                        <th>Valor antes do ciclo</th>
+                        <th>Valor no ciclo</th>
+                        <th>Valor acumulado</th>
+                        <th>N de ciclos trabalhados</th>
+                        <th>Semana</th>
                       </tr>
-                    )}
-                  </tbody>
-                  <tfoot>
-                    <tr>
-                      <td>Total</td>
-                      <td>{projectDetailModal.rows.length} projetos</td>
-                      <td>{formatCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td>
-                      <td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </thead>
+                    <tbody>
+                      {projectDetailModal.rows.length ? (
+                        projectDetailModal.rows.map((item) => (
+                          <tr key={item.projectId}>
+                            <td>{item.projectCode}</td>
+                            <td>{item.firstActivity}</td>
+                            <td>{formatCurrency(item.valueBeforeCycle)}</td>
+                            <td>{formatCurrency(item.valueInCycle)}</td>
+                            <td>{formatCurrency(item.accumulatedValue)}</td>
+                            <td>{item.workedCycleCount}</td>
+                            <td>{item.week ?? "-"}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className={styles.emptyRow}>Nenhum projeto encontrado no ciclo selecionado.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td>Total</td>
+                        <td>{projectDetailModal.rows.length} projetos</td>
+                        <td>{formatCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.valueBeforeCycle, 0))}</td>
+                        <td>{formatCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.valueInCycle, 0))}</td>
+                        <td>{formatCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.accumulatedValue, 0))}</td>
+                        <td>-</td>
+                        <td>-</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                ) : (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Projeto</th>
+                        <th>Centro</th>
+                        <th>Valor cobrado</th>
+                        <th>Ordens</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectDetailModal.rows.length ? (
+                        projectDetailModal.rows.map((item) => (
+                          <tr key={item.projectId}>
+                            <td>{item.projectCode}</td>
+                            <td>{item.serviceCenter}</td>
+                            <td>{formatCurrency(item.totalValue)}</td>
+                            <td>{item.orderCount}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className={styles.emptyRow}>Nenhum projeto encontrado no recorte selecionado.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td>Total</td>
+                        <td>{projectDetailModal.rows.length} projetos</td>
+                        <td>{formatCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td>
+                        <td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                )}
               </div>
             </div>
           </div>
