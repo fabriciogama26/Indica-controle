@@ -20,7 +20,7 @@ Arquitetura
 Cadastro
 - A tela nao cadastra dados.
 - A entrada da carteira vem da aba `Atividades previstas` da tela Projetos.
-- O valor potencial da carteira e calculado no backend a partir de `project_activity_forecast` + `service_activities`: `voice_point x qty_planned x unit_value x taxa`.
+- O valor potencial da carteira e calculado pela RPC `dashboard_portfolio_forecast_values`, a partir de `project_activity_forecast` + `service_activities`: `voice_point x qty_planned x unit_value x taxa`.
 - Nesta versao a taxa considerada para o valor previsto e `1`.
 - A producao do ciclo usa ordens de medicao ativas, com `measurement_kind = COM_PRODUCAO`, status diferente de `CANCELADA` e itens ativos de `project_measurement_order_items`.
 - A conclusao do projeto e derivada da programacao (`project_programming.work_completion_status`) ate o fim do ciclo selecionado.
@@ -64,10 +64,11 @@ Atualizacao 2026-07
 - Criada a tela `Dashboard Carteira Operacional`.
 - Criado endpoint `/api/dashboard-carteira-operacional`.
 - Criada migration `332_register_dashboard_portfolio_page.sql`, bloqueada por padrao para usuarios nao administrativos.
+- Criada migration `333_dashboard_portfolio_forecast_values_rpc.sql` para consolidar o valor previsto da carteira por projeto no banco.
 - Incluidos filtros, cards de saude/financeiro, diagnostico automatico, fluxo, renovacao, envelhecimento, potencial por supervisor e tabela analitica.
 - A base foi definida exclusivamente por projetos com atividades previstas cadastradas na tela Projetos.
 - Ajustado o filtro para permitir `Todos os ciclos`, analise de projetos retirados da carteira e classificacao dos estados parciais como pendentes.
-- Ajustado o valor da carteira para usar `SUM(voice_point x qty_planned x unit_value x 1)` no backend, alinhado a regra de pontos da Medicao.
+- Ajustado o valor da carteira para usar `SUM(voice_point x qty_planned x unit_value x 1)` via RPC, alinhado a regra de pontos da Medicao.
 
 Mapa de Codigo
 - `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.

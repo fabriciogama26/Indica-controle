@@ -931,3 +931,8 @@ Observacao
 - Cadastra `dashboard-carteira-operacional` em `app_pages` com `default_user_access = false`.
 - Preenche permissoes ausentes em `role_page_permissions` e `app_user_page_permissions`, liberando perfis administrativos e mantendo usuarios nao administrativos bloqueados por padrao.
 - Nao cria tabelas operacionais, RPCs, grants ou policies novas.
+
+333_dashboard_portfolio_forecast_values_rpc.sql
+- Cria a RPC `dashboard_portfolio_forecast_values(p_tenant_id)` para consolidar o valor previsto da carteira por projeto.
+- Formula: `SUM(coalesce(nullif(service_activities.voice_point, 0), 1) * project_activity_forecast.qty_planned * coalesce(service_activities.unit_value, 0) * 1)`.
+- Mantem `SECURITY INVOKER`, revoga `public`/`anon` e concede `EXECUTE` para `authenticated` e `service_role`.
