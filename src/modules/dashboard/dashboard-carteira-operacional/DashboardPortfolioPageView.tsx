@@ -25,6 +25,11 @@ const diagnosticLabels = {
   RISCO: "Risco",
 } as const;
 
+const diagnosticCriteriaText = "Parametros: saudavel quando renovacao >= 20%, exploracao <= 75% e idade media <= 3 ciclos. Atencao quando renovacao fica entre 10% e 19,9%, exploracao entre 75,1% e 85% ou idade media entre 3,1 e 4 ciclos. Risco quando renovacao < 10%, exploracao > 85% ou idade media > 4 ciclos.";
+const flowCriteriaText = "Parametros: Projetos novos sao os trabalhados pela primeira vez no periodo filtrado. Em andamento sao os projetos pendentes. Concluidos usam o ultimo estado de trabalho da programacao ou snapshot da Medicao ate o fim do periodo.";
+const renewalCriteriaText = "Parametros: renovacao = projetos novos com producao no periodo / projetos trabalhados com producao no periodo. Novo tem primeira atuacao dentro do periodo; herdado ja tinha atuacao anterior. Ticket medio = valor do ciclo / quantidade de projetos da origem.";
+const agingCriteriaText = "Parametros: idade da carteira = quantidade de ciclos com producao por projeto. Sem producao indica projeto com atividade prevista, mas sem medicao produtiva ate o periodo. Ciclos sem producao compara a ultima atuacao com o ciclo selecionado.";
+
 function clampPercent(value: number) {
   return `${Math.max(0, Math.min(100, value)).toFixed(4)}%`;
 }
@@ -58,6 +63,14 @@ function BarRow(props: {
       </div>
       <span>{props.valueLabel}</span>
     </div>
+  );
+}
+
+function InfoButton(props: { label: string; text: string }) {
+  return (
+    <button type="button" className={styles.infoButton} aria-label={props.label} title={props.text}>
+      i
+    </button>
   );
 }
 
@@ -192,9 +205,12 @@ export function DashboardPortfolioPageView() {
 
       <article className={`${styles.card} ${styles.diagnosticCard}`}>
         <div className={styles.diagnosticHeader}>
-          <span className={dashboard.diagnostic?.status === "RISCO" ? styles.statusRisk : dashboard.diagnostic?.status === "ATENCAO" ? styles.statusWarning : styles.statusHealthy}>
-            {dashboard.diagnostic ? diagnosticLabels[dashboard.diagnostic.status] : "Sem diagnostico"}
-          </span>
+          <div className={styles.statusGroup}>
+            <span className={dashboard.diagnostic?.status === "RISCO" ? styles.statusRisk : dashboard.diagnostic?.status === "ATENCAO" ? styles.statusWarning : styles.statusHealthy}>
+              {dashboard.diagnostic ? diagnosticLabels[dashboard.diagnostic.status] : "Sem diagnostico"}
+            </span>
+            <InfoButton label="Parametros do diagnostico" text={diagnosticCriteriaText} />
+          </div>
           <strong>{selectedCycleLabel}</strong>
         </div>
         <p>{dashboard.diagnostic?.message ?? "Carregue a carteira para gerar o diagnostico do ciclo."}</p>
@@ -248,7 +264,10 @@ export function DashboardPortfolioPageView() {
         <article className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h2 className={styles.cardTitle}>Fluxo da carteira</h2>
+              <div className={styles.titleWithInfo}>
+                <h2 className={styles.cardTitle}>Fluxo da carteira</h2>
+                <InfoButton label="Parametros do fluxo da carteira" text={flowCriteriaText} />
+              </div>
               <p className={styles.cardSubtitle}>Quantidade e valor por etapa operacional.</p>
             </div>
           </div>
@@ -272,7 +291,10 @@ export function DashboardPortfolioPageView() {
         <article className={styles.card}>
           <div className={styles.cardHeader}>
             <div>
-              <h2 className={styles.cardTitle}>Renovacao da carteira</h2>
+              <div className={styles.titleWithInfo}>
+                <h2 className={styles.cardTitle}>Renovacao da carteira</h2>
+                <InfoButton label="Parametros da renovacao da carteira" text={renewalCriteriaText} />
+              </div>
               <p className={styles.cardSubtitle}>Projetos novos contra herdados no ciclo.</p>
             </div>
           </div>
@@ -300,7 +322,10 @@ export function DashboardPortfolioPageView() {
       <article className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <h2 className={styles.cardTitle}>Envelhecimento da carteira</h2>
+            <div className={styles.titleWithInfo}>
+              <h2 className={styles.cardTitle}>Envelhecimento da carteira</h2>
+              <InfoButton label="Parametros do envelhecimento da carteira" text={agingCriteriaText} />
+            </div>
             <p className={styles.cardSubtitle}>Distribuicao por quantidade de ciclos com producao.</p>
           </div>
         </div>

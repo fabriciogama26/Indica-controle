@@ -41,7 +41,9 @@ Indicadores
 - Fluxo da carteira: projetos novos, em andamento e concluidos, com quantidade e valor.
 - Renovacao: compara novos e herdados, incluindo ticket medio.
 - Envelhecimento: agrupa projetos por idade em ciclos e inclui projetos sem producao no ciclo.
+- Os blocos Fluxo da carteira, Renovacao da carteira e Envelhecimento da carteira possuem icone de informacao com tooltip nativo contendo a regra de composicao dos indicadores.
 - Diagnostico automatico: classifica o ciclo como saudavel, atencao ou risco com base em renovacao, idade media, exploracao, potencial e participacao de projetos herdados.
+- O selo do diagnostico possui icone de informacao com tooltip nativo contendo os parametros usados: saudavel quando renovacao >= 20%, exploracao <= 75% e idade media <= 3 ciclos; atencao nos intervalos intermediarios; risco quando renovacao < 10%, exploracao > 85% ou idade media > 4 ciclos.
 
 Boas praticas
 - Manter a separacao entre quantidade e valor; quantidade explica fluxo operacional, valor explica impacto financeiro.
@@ -71,6 +73,8 @@ Atualizacao 2026-07
 - Ajustado o valor da carteira para usar `SUM(voice_point x qty_planned x unit_value x 1)` via RPC, alinhado a regra de pontos da Medicao.
 - Ajustado o filtro `Carteira` para explicitar `Sem retirados`, `Somente retirados` e `Com retirados`, e removidas as leituras por supervisor deste dashboard.
 - Incluido botao `Extrair CSV` na tabela analitica da carteira.
+- Incluido icone de informacao no diagnostico automatico para explicar os parametros de saude da carteira.
+- Incluidos icones de informacao nos blocos de fluxo, renovacao e envelhecimento da carteira.
 
 Mapa de Codigo
 - `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.
