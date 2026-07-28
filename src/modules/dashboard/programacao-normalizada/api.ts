@@ -65,6 +65,9 @@ export async function fetchProgrammingStageList(params: {
   if (params.filters.teamIds.length) {
     query.set("teamIds", params.filters.teamIds.join(","));
   }
+  if (params.filters.workCompletionStatuses.length) {
+    query.set("workCompletionStatuses", params.filters.workCompletionStatuses.join(","));
+  }
   if (params.forExport) {
     query.set("forExport", "1");
   }

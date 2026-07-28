@@ -112,10 +112,13 @@ export function useProgrammingStageList(params: {
   // Data de referencia do SERVIDOR (marcador "sem retorno ha N dias").
   const [listToday, setListToday] = useState<string | null>(null);
   const teamIdsKey = filters.teamIds.join(",");
+  const workCompletionKey = filters.workCompletionStatuses.join(",");
 
+  // Voltar para a pagina 1 sempre que o CONJUNTO filtrado muda: a paginacao e por
+  // projeto, entao ficar na pagina 5 de um filtro novo mostraria vazio.
   useEffect(() => {
     setPage(1);
-  }, [filters.dateFrom, filters.dateTo, filters.statusChip, filters.search, filters.municipality, teamIdsKey]);
+  }, [filters.dateFrom, filters.dateTo, filters.statusChip, filters.search, filters.municipality, teamIdsKey, workCompletionKey]);
 
   const loadList = useCallback(async () => {
     if (!accessToken) return;

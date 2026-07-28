@@ -36,7 +36,8 @@ Arquitetura
 - API (plano + historico): `src/app/api/programacao-normalizada/route.ts`
 - API (catalogo): `src/app/api/programacao-normalizada/meta/route.ts`
 - Server module: `src/server/modules/programacao-normalizada/{types,selects,queries,catalogs,normalizers,rpc,handlers}.ts`
-- Migrations: 310–330 (sequencia continua). A colisao historica no numero 318 foi corrigida em
+- Migrations: 310–336 (sequencia continua; 335 = carga de dados legados, 336 = filtro por
+  Estado do Trabalho). A colisao historica no numero 318 foi corrigida em
   2026-07-21 movendo a migration idempotente da serie serial para 319 — ver a nota em
   `docs/planejamento/Mapa_Regras_Programacao.md`. Bancos ja aplicados: reparar com
   `supabase migration repair --status applied 319`.
@@ -508,3 +509,84 @@ Atualizacao 2026-07-28 - Migracao de dados: delta de corte da Programacao Simple
 - Pendente (nao entregue nesta tarefa):
   - O CORTE em si: congelar `programacao-simples` como somente leitura. Enquanto as duas
     telas aceitarem escrita, o delta volta a crescer.
+
+Atualizacao 2026-07-28 - Filtro por Estado do Trabalho + nome do arquivo ENEL NOVO
+------------------------------------------------------------------------------------
+- Problema resolvido:
+  - Nao havia como filtrar a listagem por Estado do Trabalho. Para responder "o que
+    ficou parcial" ou "o que ainda nao teve lancamento" so restava varrer a lista.
+  - O arquivo da `Extracao ENEL NOVO` baixava como `PROGRAMACAO_NORMALIZADA.xlsb`,
+    nome interno do modulo, nao o nome pedido pela operacao.
+- Solucao:
+  - Novo filtro `Estado do trabalho` na barra de Filtros, multi-selecao (mesmo padrao
+    do filtro de Equipe): na operacao se pergunta "parcial OU sem lancamento", nao um
+    estado por vez. Opcoes = catalogo ATIVO do tenant + `Em branco (a fazer)`.
+  - `Em branco (a fazer)` e opcao propria porque a ausencia de lancamento e um estado
+    REAL de negocio (etapa ainda nao executada — ver 329), e `NULL` nao entra num
+    `in (...)`. Vai como sentinela `__EM_BRANCO__` na querystring e na RPC.
+  - O filtro e ORTOGONAL ao chip de status: restringe (AND) o que o chip ja
+    selecionou, inclusive nos chips que ignoram o periodo (Em espera / Sem retorno).
+    Combinar `Pendencias sem retorno` com um Estado preenchido devolve vazio de
+    proposito — o chip ja exige Estado em branco por definicao.
+  - Arquivo do ENEL NOVO passou a baixar como `PROGRAMAÇÃO_ANGRA_INDICA.xlsb`.
+- O filtro entra no BANCO, em TRES pontos (nao em memoria):
+  - A listagem pagina POR PROJETO (323). Se o filtro so fosse aplicado na busca das
+    etapas, um projeto cujas etapas todas falham o filtro ainda ocuparia uma vaga na
+    pagina e apareceria VAZIO, e o contador de total mentiria. Por isso:
+    1. `programming_list_project_page` (migration 336) — passo 1, paginacao;
+    2. query das etapas dos projetos da pagina — passo 2;
+    3. query de exportacao (CSV/ENEL/ENEL NOVO), para o export respeitar o filtro
+       da tela.
+  - Passos 2 e 3 compartilham `applyWorkCompletionFilterToStageQuery` (um lugar so,
+    mesmo motivo de `applyStatusChipToStageQuery`). O passo 1 repete o predicado em
+    SQL na 336 — se um lado mudar, o outro TEM que mudar junto.
+- Seguranca: os codigos entram numa expressao do PostgREST e num array da RPC, entao
+  a rota so aceita codigos que existem no catalogo ATIVO do tenant (mais o sentinela).
+  Codigo desconhecido e descartado em silencio — filtro invalido nao derruba a lista.
+- Mapa de Codigo:
+  - `supabase/migrations/336_list_project_page_work_completion_filter.sql`: recria
+    `programming_list_project_page` com `p_work_completion_status text[]` (ultimo
+    parametro, default null = sem filtro) + indice
+    `programming_tenant_work_completion_idx`.
+  - `src/server/modules/programacao-normalizada/queries.ts`: `WORK_COMPLETION_BLANK_CODE`,
+    `applyWorkCompletionFilterToStageQuery`, aplicacao no export e no passo 2, e o
+    novo argumento da RPC (passado POR NOME).
+  - `src/server/modules/programacao-normalizada/types.ts`: `workCompletionStatuses`
+    em `ProgrammingStageListFilters`.
+  - `src/app/api/programacao-normalizada/route.ts`: le e VALIDA `workCompletionStatuses`
+    contra o catalogo do tenant.
+  - `src/modules/dashboard/programacao-normalizada/constants.ts`:
+    `WORK_COMPLETION_BLANK_FILTER_CODE`/`_LABEL` e o campo no filtro padrao.
+  - `src/modules/dashboard/programacao-normalizada/types.ts`: campo em `StageListFilters`.
+  - `src/modules/dashboard/programacao-normalizada/api.ts`: querystring.
+  - `src/modules/dashboard/programacao-normalizada/hooks.ts`: volta para a pagina 1
+    quando o filtro muda (a paginacao e por projeto).
+  - `src/modules/dashboard/programacao-normalizada/listComponents.tsx`:
+    `WorkCompletionMultiSelectFilter` + prop nova em `ListFiltersBar`.
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`:
+    repassa `meta.workCompletionCatalog` e renomeia o arquivo do ENEL NOVO.
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`:
+    `.filterGrid` passou de 3 colunas fixas para `auto-fit`, senao o 4o filtro cairia
+    sozinho numa linha; de quebra a barra passou a colapsar em tela estreita.
+- Comportamento antes/depois:
+  - Antes: sem filtro por Estado do Trabalho; arquivo `PROGRAMACAO_NORMALIZADA.xlsb`.
+  - Depois: filtro multi-selecao com "Em branco (a fazer)"; arquivo
+    `PROGRAMAÇÃO_ANGRA_INDICA.xlsb`.
+- Como validar:
+  1. Aplicar a migration 336.
+  2. Abrir `/programacao-normalizada`, marcar um Estado do Trabalho e conferir que a
+     lista, o CONTADOR de etapas e a paginacao batem (nenhum projeto vazio na pagina).
+  3. Marcar `Em branco (a fazer)`: so etapas sem Estado lancado.
+  4. Marcar `Em branco` + um codigo: aparecem os dois conjuntos (OU).
+  5. Combinar com um chip (ex.: Programadas) e confirmar que restringe, nao substitui.
+  6. `Limpar filtros` volta para "Todos".
+  7. Exportar com o filtro ativo: o arquivo sai so com as etapas filtradas e o nome
+     `PROGRAMAÇÃO_ANGRA_INDICA.xlsb`.
+- Impacto multi-tenant:
+  - A RPC continua `SECURITY DEFINER` com grant so para `service_role` (o bloco de
+    hardening cobre TODAS as sobrecargas do nome). Toda query segue filtrando
+    `tenant_id`, e os codigos aceitos vem do catalogo DO TENANT autenticado.
+- Nota sobre a sobrecarga da RPC:
+  - A 336 recria a funcao com 10 parametros; a versao de 9 (330) continua existindo
+    ao lado. Nao foi dropada de proposito, para nao quebrar chamada em voo durante o
+    deploy. O backend chama por NOME de argumento, entao resolve sempre para a nova.

@@ -4,10 +4,18 @@ import type { Dispatch, SetStateAction } from "react";
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 
-import { DATE_RANGE_SHORTCUTS, LIST_SEARCH_DEBOUNCE_MS, PENDENCIA_STATUS_LABEL, STATUS_CHIP_OPTIONS, WORK_COMPLETION_SELECT_OPTIONS } from "./constants";
+import {
+  DATE_RANGE_SHORTCUTS,
+  LIST_SEARCH_DEBOUNCE_MS,
+  PENDENCIA_STATUS_LABEL,
+  STATUS_CHIP_OPTIONS,
+  WORK_COMPLETION_BLANK_FILTER_CODE,
+  WORK_COMPLETION_BLANK_FILTER_LABEL,
+  WORK_COMPLETION_SELECT_OPTIONS,
+} from "./constants";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { formatDate, getPendenciaSemRetornoDays, getStageClassificationLabel, getStageStatusLabel, getWorkCompletionLabel, isActiveStageStatus, isPendenciaPrimary } from "./utils";
-import type { StageListFilters, StageListItem, TeamItem } from "./types";
+import type { StageListFilters, StageListItem, TeamItem, WorkCompletionCatalogItem } from "./types";
 
 type ProjectListGroup = {
   projectId: string;
@@ -195,15 +203,61 @@ export function TeamMultiSelectFilter(props: { teams: TeamItem[]; selectedTeamId
   );
 }
 
+// Estado do Trabalho e multi-selecao pela mesma razao da Equipe: na operacao se
+// pergunta "o que ficou parcial OU sem lancamento", nao um estado de cada vez.
+// "Em branco (a fazer)" entra como opcao propria — e a ausencia de lancamento, que
+// e um estado real de negocio (ver migration 329), nao um vazio acidental.
+export function WorkCompletionMultiSelectFilter(props: {
+  catalog: WorkCompletionCatalogItem[];
+  selectedCodes: string[];
+  onChange: (codes: string[]) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const { catalog, selectedCodes, onChange } = props;
+
+  function toggle(code: string) {
+    onChange(selectedCodes.includes(code) ? selectedCodes.filter((item) => item !== code) : [...selectedCodes, code]);
+  }
+
+  const options = [
+    { code: WORK_COMPLETION_BLANK_FILTER_CODE, label: WORK_COMPLETION_BLANK_FILTER_LABEL },
+    ...catalog,
+  ];
+
+  return (
+    <label className={styles.field}>
+      <span>Estado do trabalho</span>
+      <div className={styles.multiSelect}>
+        <button type="button" className={styles.multiSelectTrigger} onClick={() => setIsOpen((current) => !current)}>
+          {selectedCodes.length ? `${selectedCodes.length} selecionado(s)` : "Todos"}
+        </button>
+        {isOpen ? (
+          <div className={styles.multiSelectPanel}>
+            {options.map((option) => (
+              <label key={option.code} className={styles.multiSelectOption}>
+                <input type="checkbox" checked={selectedCodes.includes(option.code)} onChange={() => toggle(option.code)} />
+                <span className={styles.multiSelectOptionText}>
+                  <span className={styles.multiSelectOptionTeam}>{option.label}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </label>
+  );
+}
+
 export function ListFiltersBar(props: {
   filters: StageListFilters;
   setFilters: Dispatch<SetStateAction<StageListFilters>>;
   todayIso: string;
   teams: TeamItem[];
+  workCompletionCatalog: WorkCompletionCatalogItem[];
   total: number;
   onClear: () => void;
 }) {
-  const { filters, setFilters, todayIso, teams, total, onClear } = props;
+  const { filters, setFilters, todayIso, teams, workCompletionCatalog, total, onClear } = props;
   const [searchDraft, setSearchDraft] = useState(filters.search);
   const searchDebounceRef = useRef<number | undefined>(undefined);
 
@@ -230,6 +284,11 @@ export function ListFiltersBar(props: {
 
       <div className={styles.filterGrid}>
         <TeamMultiSelectFilter teams={teams} selectedTeamIds={filters.teamIds} onChange={(teamIds) => setFilters((current) => ({ ...current, teamIds }))} />
+        <WorkCompletionMultiSelectFilter
+          catalog={workCompletionCatalog}
+          selectedCodes={filters.workCompletionStatuses}
+          onChange={(workCompletionStatuses) => setFilters((current) => ({ ...current, workCompletionStatuses }))}
+        />
         <label className={styles.field}>
           <span>Municipio</span>
           <input

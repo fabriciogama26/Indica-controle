@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 
-import { fetchProjects, fetchServiceActivitiesByIds, fetchTeams, type BoardTeamEntry } from "@/server/modules/programacao-normalizada/catalogs";
+import {
+  fetchProgrammingWorkCompletionCatalog,
+  fetchProjects,
+  fetchServiceActivitiesByIds,
+  fetchTeams,
+  type BoardTeamEntry,
+} from "@/server/modules/programacao-normalizada/catalogs";
 import {
   addProgrammingTeam,
   authorizeProgrammingNormalizadaAction,
@@ -24,6 +30,7 @@ import {
   fetchProgrammingPlanForProject,
   fetchProgrammingStageById,
   fetchProgrammingStageList,
+  WORK_COMPLETION_BLANK_CODE,
 } from "@/server/modules/programacao-normalizada/queries";
 import type {
   AppUserLookupRow,
@@ -59,6 +66,20 @@ async function getProgrammingStageListResponse(request: NextRequest, resolution:
     ? STAGE_LIST_EXPORT_MAX_ROWS
     : Math.min(normalizePositiveInteger(params.get("pageSize")) ?? 50, STAGE_LIST_MAX_PAGE_SIZE);
 
+  // Estado do Trabalho: os codigos vao para dentro de uma expressao do PostgREST
+  // (`work_completion_status.in.(...)`) e de um array na RPC, entao nao podem ser
+  // texto livre do cliente — so passa o que existe no catalogo ATIVO deste tenant,
+  // mais o sentinela de "em branco". Codigo desconhecido e descartado em silencio
+  // (filtro invalido nao deve derrubar a listagem).
+  const workCompletionCatalog = await fetchProgrammingWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id);
+  const allowedWorkCompletionCodes = new Set<string>([
+    ...workCompletionCatalog.map((item) => item.code),
+    WORK_COMPLETION_BLANK_CODE,
+  ]);
+  const workCompletionStatuses = normalizeUniqueTextArray(
+    normalizeText(params.get("workCompletionStatuses")).split(",").filter(Boolean),
+  ).filter((code) => allowedWorkCompletionCodes.has(code));
+
   const allProjects = await fetchProjects(resolution.supabase, resolution.appUser.tenant_id);
 
   let projectIdsFromSearch: string[] | null = null;
@@ -76,7 +97,7 @@ async function getProgrammingStageListResponse(request: NextRequest, resolution:
   try {
     const result = await fetchProgrammingStageList({
       supabase: resolution.supabase,
-      filters: { tenantId: resolution.appUser.tenant_id, dateFrom, dateTo, statusChip, teamIds, search, municipality, page, pageSize },
+      filters: { tenantId: resolution.appUser.tenant_id, dateFrom, dateTo, statusChip, teamIds, search, municipality, workCompletionStatuses, page, pageSize },
       projectIdsFromSearch,
       forExport: isExportRequest,
     });

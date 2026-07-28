@@ -171,6 +171,10 @@ export type ProgrammingStageListFilters = {
   teamIds: string[];
   search: string;
   municipality: string;
+  // Codigos do catalogo de Estado do Trabalho. Vazio = sem filtro. O sentinela
+  // WORK_COMPLETION_BLANK_CODE representa "em branco (a fazer)", que e um estado
+  // real de negocio e nao daria para expressar so com os codigos do catalogo.
+  workCompletionStatuses: string[];
   page: number;
   pageSize: number;
 };

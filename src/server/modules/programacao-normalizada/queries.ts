@@ -45,6 +45,39 @@ async function resolveStageIdsByTeamIds(params: { supabase: SupabaseClient; tena
   return Array.from(new Set((data ?? []).map((item) => item.programming_id)));
 }
 
+// Sentinela de "Estado do Trabalho em branco (a fazer)". Em branco e um estado
+// REAL de negocio (etapa ainda nao executada — ver migration 329), mas e NULL no
+// banco e por isso nao entra num `in (...)`. O mesmo valor literal aparece na
+// migration 336 (RPC do passo 1) e em constants.ts do modulo de tela (que monta a
+// querystring) — os tres tem que casar.
+export const WORK_COMPLETION_BLANK_CODE = "__EM_BRANCO__";
+
+// Aplica o filtro de Estado do Trabalho de forma identica no passo 2 e no export.
+// No passo 1 (paginacao por projeto) o mesmo predicado vive na RPC da 336 — se um
+// dos lados mudar, o outro tem que mudar junto, senao a pagina traz projeto que
+// nao tem etapa para mostrar.
+function applyWorkCompletionFilterToStageQuery<Q extends {
+  in(column: string, values: string[]): Q;
+  is(column: string, value: null): Q;
+  or(filters: string): Q;
+}>(query: Q, workCompletionStatuses: string[]): Q {
+  if (!workCompletionStatuses.length) return query;
+
+  const includeBlank = workCompletionStatuses.includes(WORK_COMPLETION_BLANK_CODE);
+  const codes = workCompletionStatuses.filter((code) => code !== WORK_COMPLETION_BLANK_CODE);
+
+  if (includeBlank && !codes.length) {
+    return query.is("work_completion_status", null);
+  }
+  if (!includeBlank) {
+    return query.in("work_completion_status", codes);
+  }
+
+  // "Em branco" OU um dos codigos. Os codigos vem do catalogo do tenant (validados
+  // na rota), entao nao ha texto livre do cliente entrando na expressao do PostgREST.
+  return query.or(`work_completion_status.is.null,work_completion_status.in.(${codes.join(",")})`);
+}
+
 // Aplica o chip de status de forma identica no passo 1 (RPC, no banco) e no
 // passo 2 (etapas dos projetos da pagina). Mantido em um lugar so para os dois
 // passos nunca divergirem.
@@ -140,6 +173,8 @@ export async function fetchProgrammingStageList(params: {
       exportQuery = applyStatusChipToStageQuery(exportQuery, filters.statusChip, todayIso);
     }
 
+    exportQuery = applyWorkCompletionFilterToStageQuery(exportQuery, filters.workCompletionStatuses);
+
     const { data: exportRows, error: exportError, count: exportCount } = await exportQuery
       .order("project_id", { ascending: true })
       .order("execution_date", { ascending: true })
@@ -165,6 +200,10 @@ export async function fetchProgrammingStageList(params: {
     p_today: todayIso,
     p_page: filters.page,
     p_page_size: filters.pageSize,
+    // Migration 336. Passado por NOME: a sobrecarga antiga (9 parametros) continua
+    // existindo no banco, e nomear o argumento garante que a chamada resolva para a
+    // versao nova mesmo antes de a antiga ser removida.
+    p_work_completion_status: filters.workCompletionStatuses.length ? filters.workCompletionStatuses : null,
   });
 
   if (projectError) {
@@ -204,6 +243,8 @@ export async function fetchProgrammingStageList(params: {
   if (stageIdsFromTeamFilter !== null) {
     query = query.in("id", stageIdsFromTeamFilter);
   }
+
+  query = applyWorkCompletionFilterToStageQuery(query, filters.workCompletionStatuses);
 
   const { data, error } = await query
     .order("project_id", { ascending: true })

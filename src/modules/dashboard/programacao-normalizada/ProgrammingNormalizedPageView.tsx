@@ -62,6 +62,7 @@ export function ProgrammingNormalizedPageView() {
   const reasonOptions = meta?.reasonOptions ?? [];
   const sgdTypes = meta?.sgdTypes ?? [];
   const electricalEqCatalog = meta?.electricalEqCatalog ?? [];
+  const workCompletionCatalog = meta?.workCompletionCatalog ?? [];
   const supportOptions = meta?.supportOptions ?? [];
   const totalPages = Math.max(1, Math.ceil(total / STAGE_LIST_PAGE_SIZE));
 
@@ -174,7 +175,7 @@ export function ProgrammingNormalizedPageView() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "PROGRAMACAO_NORMALIZADA.xlsb";
+      link.download = "PROGRAMAÇÃO_ANGRA_INDICA.xlsb";
       link.click();
       URL.revokeObjectURL(url);
       if (truncated) {
@@ -295,7 +296,15 @@ export function ProgrammingNormalizedPageView() {
 
       <SobEntryBar sob={sob} setSob={setSob} onSubmit={openOrCreateBySob} isSubmitting={false} projects={projects} />
 
-      <ListFiltersBar filters={filters} setFilters={setFilters} todayIso={today} teams={teams} total={total} onClear={clearFilters} />
+      <ListFiltersBar
+        filters={filters}
+        setFilters={setFilters}
+        todayIso={today}
+        teams={teams}
+        workCompletionCatalog={workCompletionCatalog}
+        total={total}
+        onClear={clearFilters}
+      />
 
       <StageListTable
         items={items}
