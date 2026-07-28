@@ -449,6 +449,27 @@ as $$
 $$;
 
 -- =============================================================================
+-- 6.1) Remove a sobrecarga antiga de 9 parametros
+-- =============================================================================
+-- A migration 336 criou a versao de 10 parametros e DEIXOU a de 9 (da 330) viva,
+-- com a justificativa de "nao quebrar chamada em voo durante o deploy". Isso
+-- estava ERRADO: com as duas assinaturas coexistindo, o PostgREST nao consegue
+-- escolher e QUALQUER chamada com 9 argumentos falha com
+--
+--   PGRST203: Could not choose the best candidate function between:
+--     programming_list_project_page(... 9 args),
+--     programming_list_project_page(... 10 args)
+--
+-- (confirmado em producao por scripts/diagnose-programming-list-readonly.mjs).
+-- Ou seja, a sobrecarga nao protege deploy nenhum — ela transforma o caminho
+-- antigo em erro garantido. O backend atual chama com os 10 argumentos por nome e
+-- por isso nao quebrou, mas a ambiguidade fica armada para qualquer outro
+-- consumidor. Dropar a assinatura antiga e o correto.
+drop function if exists public.programming_list_project_page(
+  uuid, date, date, uuid[], uuid[], text, date, integer, integer
+);
+
+-- =============================================================================
 -- 7) Hardening de grants: service_role apenas
 -- =============================================================================
 do $$
