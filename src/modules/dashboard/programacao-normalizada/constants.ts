@@ -24,6 +24,9 @@ export const STATUS_CHIP_OPTIONS: Array<{ value: StageListStatusChip; label: str
   // Interseccao operacional (migration 330): pendencia aberta + vencida + sem
   // Estado do Trabalho lancado. Tambem ignora o filtro de periodo.
   { value: "SEM_RETORNO", label: "Pendencias sem retorno" },
+  // Migration 337. Diferente de "Em espera", a cancelada MANTEM execution_date,
+  // entao este chip respeita o filtro de periodo normalmente.
+  { value: "CANCELADAS", label: "Canceladas" },
 ];
 
 // "Em branco (a fazer)" nao e um codigo do catalogo — e a ausencia de Estado do

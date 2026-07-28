@@ -14,7 +14,16 @@ import {
   WORK_COMPLETION_SELECT_OPTIONS,
 } from "./constants";
 import styles from "./ProgrammingNormalizedPageView.module.css";
-import { formatDate, getPendenciaSemRetornoDays, getStageClassificationLabel, getStageStatusLabel, getWorkCompletionLabel, isActiveStageStatus, isPendenciaPrimary } from "./utils";
+import {
+  formatDate,
+  getPendenciaSemRetornoDays,
+  getStageDisplayClassification,
+  getStageDisplayExecutionDate,
+  getStageStatusLabel,
+  getWorkCompletionLabel,
+  isActiveStageStatus,
+  isPendenciaPrimary,
+} from "./utils";
 import type { StageListFilters, StageListItem, TeamItem, WorkCompletionCatalogItem } from "./types";
 
 type ProjectListGroup = {
@@ -33,19 +42,49 @@ function SearchIcon(props: { className?: string }) {
   );
 }
 
-export function ClassificationBadge(props: { stage: Pick<StageListItem, "etapaUnica" | "etapaFinal" | "etapaNumber" | "workCompletionStatus" | "status"> }) {
+export function ClassificationBadge(props: {
+  stage: Pick<
+    StageListItem,
+    | "etapaUnica"
+    | "etapaFinal"
+    | "etapaNumber"
+    | "workCompletionStatus"
+    | "status"
+    | "classificationSnapshotNumber"
+    | "classificationSnapshotUnica"
+    | "classificationSnapshotFinal"
+    | "classificationSnapshotExecutionDate"
+    | "classificationSnapshotAt"
+  >;
+}) {
   const { stage } = props;
   // Coluna Etapa segue a classificacao, nunca a pendencia (spec 3.2): uma etapa
   // em pendencia continua Etapa N/Final com a mesma cor das demais. A pendencia
   // se mostra nas colunas Status e Estado do trabalho.
-  const label = getStageClassificationLabel(stage);
-  const variant = !isActiveStageStatus(stage.status)
+  //
+  // Etapa encerrada (cancelada/em espera/antecipada) mostra a classificacao
+  // HISTORICA — "Era Etapa 2" (migration 337). O plano pode ter uma "Era Etapa 2"
+  // e uma "Etapa 2" ao mesmo tempo: correto, a antiga Etapa 3 assumiu o numero.
+  // Por isso o badge historico e sempre neutro/cinza e vem com o titulo
+  // explicando, para nunca ser lido como etapa operacional.
+  const display = getStageDisplayClassification(stage);
+  const variant = display.isHistorical || !isActiveStageStatus(stage.status)
     ? styles.badgeMuted
     : stage.etapaFinal
       ? styles.badgeWarning
       : styles.badgeAccent;
 
-  return <span className={`${styles.badge} ${variant}`}>{label}</span>;
+  const title = display.isHistorical
+    ? display.originalExecutionDate
+      ? `Classificacao no momento em que saiu do plano: ${display.label.replace("Era ", "")} em ${formatDate(display.originalExecutionDate)}`
+      : `Classificacao no momento em que saiu do plano: ${display.label.replace("Era ", "")}`
+    : undefined;
+
+  return (
+    <span className={`${styles.badge} ${variant}`} title={title}>
+      {display.label}
+    </span>
+  );
 }
 
 // Status da agenda: sempre somente leitura, refletido automaticamente pelo
@@ -600,10 +639,31 @@ export function StageListTable(props: {
                   const isActive = isActiveStageStatus(stage.status);
                   const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
                   const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
+                  // Etapa encerrada continua VISIVEL, so recuada visualmente. Ela e
+                  // parte da historia do projeto e sai nas extracoes (337).
+                  const closedRowClass = isActive
+                    ? ""
+                    : stage.status === "CANCELADA"
+                      ? ` ${styles.stageRowClosed} ${styles.stageRowCanceled}`
+                      : ` ${styles.stageRowClosed}`;
 
                   return (
-                    <div key={stage.id} className={styles.stageRow} role="row">
-                      <span>{stage.executionDate ? formatDate(stage.executionDate) : "Em espera"}</span>
+                    <div key={stage.id} className={`${styles.stageRow}${closedRowClass}`} role="row">
+                      {/* Etapa em espera nao tem data propria: cai para a data que
+                          tinha quando saiu do plano (337), rotulada como original —
+                          sem isso a linha ficaria so "Em espera", sem referencia. */}
+                      <span>
+                        {stage.executionDate ? (
+                          formatDate(stage.executionDate)
+                        ) : getStageDisplayExecutionDate(stage) ? (
+                          <>
+                            {formatDate(getStageDisplayExecutionDate(stage) as string)}
+                            <small className={styles.stageDateHint}>Em espera - data original</small>
+                          </>
+                        ) : (
+                          "Em espera"
+                        )}
+                      </span>
                       <span>
                         <ClassificationBadge stage={stage} />
                       </span>

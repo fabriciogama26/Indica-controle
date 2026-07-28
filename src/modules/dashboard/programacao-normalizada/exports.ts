@@ -12,7 +12,8 @@ import {
   formatWeekday,
   formatWeekdayExecutionEnelNovo,
   getEnelStatusLabel,
-  getStageClassificationLabel,
+  getStageDisplayClassification,
+  getStageDisplayExecutionDate,
   getStageStatusLabel,
   getWorkCompletionLabel,
   isAreaLivreSgd,
@@ -34,6 +35,16 @@ type ExportContext = {
 
 function activeTeamsOf(stage: StageListItem) {
   return stage.teams.filter((team) => team.status === "ATIVA");
+}
+
+// Coluna INFO STATUS dos layouts ENEL/ENEL NOVO no formato que a distribuidora
+// espera ("2ª ETAPA" / "ETAPA FINAL" / "ETAPA ÚNICA"), alimentada pela funcao
+// unica de classificacao (337): etapa ativa usa a atual, etapa encerrada usa a
+// historica. Sem o prefixo "Era" da tela — nos arquivos quem desambigua e a
+// coluna STATUS ao lado.
+function formatInfoStatusEtapaFromDisplay(stage: StageListItem) {
+  const display = getStageDisplayClassification(stage);
+  return formatInfoStatusEtapa(display.number, display.unica, display.final);
 }
 
 function resolveTeamItems(stage: StageListItem, teamMap: Map<string, TeamItem>) {
@@ -98,7 +109,9 @@ export function buildProgrammingCsvContent({ stages, projectMap, sgdTypeMap, eqC
     const sgdType = stage.sgdTypeId ? sgdTypeMap.get(stage.sgdTypeId) : undefined;
 
     return [
-      formatDate(stage.executionDate),
+      // Etapa em espera nao tem data propria: cai para a data que tinha ao sair do
+      // plano (337). A coluna Status ao lado diz que ela esta Adiada.
+      formatDate(getStageDisplayExecutionDate(stage)),
       stage.projectCode || project?.code || stage.projectId,
       stage.city || project?.city || "",
       teamNames,
@@ -113,7 +126,9 @@ export function buildProgrammingCsvContent({ stages, projectMap, sgdTypeMap, eqC
       resolveSupportLabel(stage, supportOptionMap),
       stage.serviceDescription,
       getStageStatusLabel(stage.status),
-      getStageClassificationLabel(stage),
+      // Etapa encerrada exporta a classificacao HISTORICA (337). No CSV vai com o
+      // prefixo "Era", igual a tela — a coluna Status ao lado desambigua.
+      getStageDisplayClassification(stage).label,
       getWorkCompletionLabel(stage.workCompletionStatus),
       stage.affectedCustomers ?? "",
       stage.posteQty,
@@ -179,6 +194,12 @@ export function buildEnelCsvContent({ stages, projectMap, teamMap, sgdTypeMap, e
     "Gestor de campo",
   ];
 
+  // A Extracao ENEL (layout ANTIGO) continua SEM as etapas canceladas, de proposito.
+  // Este arquivo vai para a distribuidora, e passar a incluir linhas canceladas muda
+  // o que o cliente externo recebe — mudanca que nao foi pedida. A inclusao da
+  // cancelada foi decidida so para a `Extracao ENEL NOVO` (337). A classificacao
+  // abaixo, essa sim, ja usa a funcao unica: uma etapa em espera (ADIADA, nao
+  // cancelada) entra aqui e precisa da classificacao/data historica.
   const exportStages = stages.filter((stage) => stage.status !== "CANCELADA");
 
   const rows = exportStages.map((stage) => {
@@ -206,14 +227,14 @@ export function buildEnelCsvContent({ stages, projectMap, teamMap, sgdTypeMap, e
       project?.base ?? "",
       project?.serviceType ?? "",
       stage.projectCode || project?.code || "",
-      formatDate(stage.executionDate),
-      formatWeekday(stage.executionDate ?? ""),
+      formatDate(getStageDisplayExecutionDate(stage)),
+      formatWeekday(getStageDisplayExecutionDate(stage) ?? ""),
       stage.period ?? "",
       (stage.startTime ?? "").slice(0, 5),
       (stage.endTime ?? "").slice(0, 5),
       formatExpectedHours(stage.expectedMinutes),
       getEnelStatusLabel(stage.status),
-      formatInfoStatusEtapa(stage.etapaNumber, stage.etapaUnica, stage.etapaFinal),
+      formatInfoStatusEtapaFromDisplay(stage),
       project?.priority ?? "",
       formatStructureSummaryByCode(codeCount),
       foremanNames,
@@ -251,8 +272,13 @@ export function buildEnelCsvContent({ stages, projectMap, teamMap, sgdTypeMap, e
 }
 
 export function buildEnelNovoWorkbookData({ stages, projectMap, teamMap, sgdTypeMap, eqCatalogMap }: ExportContext) {
+  // 337: a etapa CANCELADA passou a SAIR na extracao. O layout ja tinha as colunas
+  // STATUS e "Motivo do cancelamento" — a linha e que era filtrada, entao a coluna
+  // de motivo nunca podia ser preenchida. Cancelada e etapa em espera agora saem,
+  // com a classificacao historica em INFO STATUS e o STATUS ao lado desambiguando
+  // (o plano pode ter "2ª ETAPA / Cancelada" e "2ª ETAPA / Programada" juntas).
+  // O unico corte que permanece e o de Tipo de Servico EMERGENCIAL.
   const exportStages = stages.filter((stage) => {
-    if (stage.status === "CANCELADA") return false;
     const project = projectMap.get(stage.projectId);
     return (project?.serviceType ?? "").trim().toUpperCase() !== "EMERGENCIAL";
   });
@@ -320,14 +346,20 @@ export function buildEnelNovoWorkbookData({ stages, projectMap, teamMap, sgdType
       extractTextAfterDash(project?.base ?? ""),
       project?.serviceType ?? "",
       stage.projectCode || project?.code || "",
-      toExcelDateSerial(stage.executionDate),
-      formatWeekdayExecutionEnelNovo(stage.executionDate ?? ""),
+      // Etapa em espera perde execution_date: usa a data que tinha ao sair do
+      // plano (337), senao a linha sairia sem data e sem dia da semana.
+      toExcelDateSerial(getStageDisplayExecutionDate(stage)),
+      formatWeekdayExecutionEnelNovo(getStageDisplayExecutionDate(stage) ?? ""),
       resolveEnelNovoPeriod(stage.startTime, stage.endTime),
       (stage.startTime ?? "").slice(0, 5),
       (stage.endTime ?? "").slice(0, 5),
       formatExpectedTimeAsClock(stage.expectedMinutes),
       getEnelStatusLabel(stage.status),
-      formatInfoStatusEtapa(stage.etapaNumber, stage.etapaUnica, stage.etapaFinal),
+      // INFO STATUS sai SEM o prefixo "Era": o layout da ENEL espera o rotulo puro
+      // ("2ª ETAPA") e quem desambigua e a coluna STATUS ao lado (337). Etapa ativa
+      // usa a classificacao atual; encerrada usa a historica — a escolha e da
+      // funcao unica, nao daqui.
+      formatInfoStatusEtapaFromDisplay(stage),
       project?.priority ?? "",
       teamLabels,
       plates,

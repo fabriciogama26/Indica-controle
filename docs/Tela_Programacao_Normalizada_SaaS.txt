@@ -36,8 +36,9 @@ Arquitetura
 - API (plano + historico): `src/app/api/programacao-normalizada/route.ts`
 - API (catalogo): `src/app/api/programacao-normalizada/meta/route.ts`
 - Server module: `src/server/modules/programacao-normalizada/{types,selects,queries,catalogs,normalizers,rpc,handlers}.ts`
-- Migrations: 310–336 (sequencia continua; 335 = carga de dados legados, 336 = filtro por
-  Estado do Trabalho). A colisao historica no numero 318 foi corrigida em
+- Migrations: 310–337 (sequencia continua; 335 = carga de dados legados, 336 = filtro por
+  Estado do Trabalho, 337 = classificacao historica de etapa encerrada). A colisao
+  historica no numero 318 foi corrigida em
   2026-07-21 movendo a migration idempotente da serie serial para 319 — ver a nota em
   `docs/planejamento/Mapa_Regras_Programacao.md`. Bancos ja aplicados: reparar com
   `supabase migration repair --status applied 319`.
@@ -590,3 +591,123 @@ Atualizacao 2026-07-28 - Filtro por Estado do Trabalho + nome do arquivo ENEL NO
   - A 336 recria a funcao com 10 parametros; a versao de 9 (330) continua existindo
     ao lado. Nao foi dropada de proposito, para nao quebrar chamada em voo durante o
     deploy. O backend chama por NOME de argumento, entao resolve sempre para a nova.
+
+Atualizacao 2026-07-28 - Classificacao historica de etapa encerrada (337)
+---------------------------------------------------------------------------
+- Pergunta que originou: por que nao incluir ADIADA e CANCELADA no calculo
+  automatico de etapas, para deixar registrado o que foi cancelado/adiado?
+- DECISAO: NAO incluir na numeracao operacional. Preservar a classificacao que a
+  etapa TINHA no momento em que saiu do plano. Motivos de nao incluir:
+  - uma etapa cancelada poderia continuar sendo a Final do projeto;
+  - ADIADA em espera nao tem `execution_date` - nao ha por onde ordena-la;
+  - relatorios contariam etapas que nao serao executadas como operacionais;
+  - antecipacao e cobertura passariam a considerar etapa encerrada;
+  - a numeracao ativa deixaria de representar o plano atual.
+- Passam a existir DOIS conceitos:
+  - Classificacao ATUAL (`etapa_number`/`etapa_unica`/`etapa_final`): so para etapa
+    no plano ativo. `reclassify` continua EXATAMENTE como estava - numera so
+    PROGRAMADA/REPROGRAMADA com data e zera o resto.
+  - Classificacao HISTORICA (`classification_snapshot_*`): fotografia tirada no
+    momento em que a etapa foi cancelada, colocada em espera ou antecipada.
+- A etapa encerrada NAO fica escondida no historico. Ela continua na lista, no plano
+  do projeto, nos detalhes e nas extracoes. O botao Historico segue servindo para
+  quem/quando/por que - nao para SE a etapa aparece.
+- Quando o snapshot e gravado (migration 337):
+  - `cancel_project_programming_stage`: antes do UPDATE de status (e, portanto,
+    antes do reclassify zerar a classificacao). Ordem importa.
+  - `postpone_project_programming_stage`, rota Deixar em espera (sem data nova).
+  - Cascata da antecipacao: por TRIGGER BEFORE UPDATE
+    (`tg_programming_capture_anticipated_snapshot`), que captura no momento em que o
+    status vira ANTECIPADA. Escolhido em vez de reescrever
+    `mark_project_programming_completed_and_anticipate` inteira (funcao grande, cujas
+    regras de conclusao nao mudam aqui).
+  - `capture_programming_classification_snapshot` NAO sobrescreve snapshot existente:
+    cancelar uma etapa que JA estava em espera preserva a classificacao de quando ela
+    era operacional. Sem essa guarda, a segunda transicao gravaria a classificacao ja
+    zerada e o historico morreria.
+  - Adiar COM data nova (REPROGRAMADA) nao fotografa e AINDA LIMPA o snapshot: a
+    etapa voltou ao plano ativo, a classificacao atual passa a valer e o snapshot
+    antigo nao pode mais mandar na exibicao.
+- Regra de exibicao (fonte UNICA: `getStageDisplayClassification` em utils.ts):
+    Programada/Reprogramada     -> Etapa N / Final / Unica (atual)
+    Cancelada                   -> Era Etapa N / Era Final / Era Unica
+    Adiada sem data (em espera) -> Era Final (+ data original)
+    Adiada que voltou com data  -> classificacao atual recalculada
+    Encerrada antes da 337      -> "-" (legado, sem snapshot)
+  Essa MESMA funcao alimenta lista geral, plano do projeto, detalhes, CSV, Extracao
+  ENEL e Extracao ENEL NOVO. `getStageClassificationLabel` foi REMOVIDA (so lia a
+  classificacao atual e devolvia "-" para etapa encerrada) - manter as duas seria o
+  caminho para tela e export divergirem de novo.
+- Duplicidade aparente de numero e ESPERADA e correta: cancelar a Etapa 2 faz a
+  antiga Etapa 3 virar a nova Etapa 2, entao o plano exibe "Era Etapa 2 (Cancelada)"
+  e "Etapa 2 (Programada)" juntas. Por isso o Status SEMPRE acompanha a
+  classificacao, na tela e nos arquivos - sem ele pareceria duplicacao ou erro.
+- Novo chip `Canceladas` na lista. Diferente de Em espera e Pendencias sem retorno,
+  ele RESPEITA o filtro de periodo: a etapa cancelada MANTEM `execution_date`. So a
+  cancelada que ja estava em espera (sem data) fica fora do periodo - aparece por
+  Em espera ou Todas.
+- Aparencia: etapa encerrada fica visivel e apenas RECUADA (`.stageRowClosed`,
+  opacidade); cancelada ganha risco no texto. Nunca escondida.
+- Data exibida/exportada (`getStageDisplayExecutionDate`): a etapa em espera perdeu
+  `execution_date`, entao cai para a data do snapshot, rotulada como data original
+  na lista. Cancelada mantem a propria data e nao usa o fallback.
+- EXTRACOES:
+  - `Extracao ENEL NOVO`: etapa CANCELADA passou a SAIR no arquivo. O layout ja tinha
+    as colunas `STATUS` e `Motivo do cancelamento` - a linha e que era filtrada, ou
+    seja, a coluna de motivo nunca podia ser preenchida. Continua fora apenas o Tipo
+    de Servico EMERGENCIAL.
+  - `INFO STATUS` sai SEM o prefixo Era (2a ETAPA, ETAPA FINAL): e o formato que a
+    distribuidora espera, e quem desambigua e a coluna `STATUS` ao lado.
+  - `Extracao ENEL` (layout ANTIGO): continua SEM as etapas canceladas, de proposito.
+    Esse arquivo vai para a distribuidora e incluir linhas canceladas mudaria o que o
+    cliente externo recebe - mudanca que NAO foi pedida. A inclusao foi decidida so
+    para o ENEL NOVO. A classificacao/data historica, essa sim, ja se aplica ali
+    (etapa em espera nao e cancelada e entra nesse arquivo).
+  - CSV interno: exporta com o prefixo Era, igual a tela (tem coluna Status ao lado).
+- Mapa de Codigo:
+  - `supabase/migrations/337_preserve_programming_stage_classification_snapshot.sql`:
+    5 colunas de snapshot, `capture_programming_classification_snapshot`, recriacao de
+    `cancel_project_programming_stage` e `postpone_project_programming_stage`, trigger
+    da antecipacao, chip CANCELADAS em `programming_list_project_page` e hardening de
+    grants (service_role) das quatro funcoes.
+  - `src/server/modules/programacao-normalizada/selects.ts`: colunas no select.
+  - `src/server/modules/programacao-normalizada/types.ts`: campos na row + chip novo.
+  - `src/server/modules/programacao-normalizada/queries.ts`: chip CANCELADAS no passo 2
+    e no export.
+  - `src/app/api/programacao-normalizada/route.ts`: chip aceito + campos no DTO.
+  - `src/modules/dashboard/programacao-normalizada/utils.ts`:
+    `getStageDisplayClassification` e `getStageDisplayExecutionDate`;
+    `getStageClassificationLabel` removida.
+  - `.../types.ts`, `.../constants.ts`: campos no DTO da tela e chip `Canceladas`.
+  - `.../listComponents.tsx`, `.../components.tsx`: badges e data via funcao unica.
+  - `.../exports.ts`: `formatInfoStatusEtapaFromDisplay` e uso da funcao unica nos tres.
+  - `.../ProgrammingNormalizedPageView.module.css`: `.stageDateHint`,
+    `.stageRowClosed`, `.stageRowCanceled`.
+- Comportamento antes/depois:
+  - Antes: cancelar a Etapa 2 apagava o numero dela; a coluna Etapa virava "-" e nao
+    havia como saber qual etapa era. Cancelada nao saia no ENEL NOVO.
+  - Depois: Era Etapa 2 na tela e nos arquivos, com o Status ao lado; plano ativo
+    continua sem buracos na numeracao.
+- Como validar:
+  1. Aplicar a migration 337.
+  2. Projeto com 4 etapas: cancelar a Etapa 2. Conferir que ela exibe Era Etapa 2
+     e que a antiga Etapa 3 virou Etapa 2 - as duas visiveis ao mesmo tempo.
+  3. Deixar a Final em espera: exibe Era Final e a data original.
+  4. Dar data de novo a essa etapa (Adiar > nova data): volta a ter classificacao
+     ATUAL recalculada e o Era ... desaparece.
+  5. Cancelar uma etapa que JA estava em espera: mantem a classificacao da epoca em
+     que era operacional (nao vira "-").
+  6. Concluir uma etapa e conferir que as antecipadas pela cascata guardaram o Era.
+  7. Chip `Canceladas` respeitando o periodo selecionado.
+  8. Exportar ENEL NOVO: linha cancelada presente, `INFO STATUS` = 2a ETAPA,
+     `STATUS` = Cancelada, `Motivo do cancelamento` preenchido.
+  9. Etapa cancelada ANTES da 337: coluna Etapa "-" (legado, sem snapshot).
+- Impacto multi-tenant:
+  - Todas as funcoes novas/recriadas sao `SECURITY DEFINER` com EXECUTE apenas para
+    `service_role` (bloco de hardening cobre as quatro). `capture_..._snapshot` exige
+    `tenant_id` no WHERE. Nenhuma RLS, policy ou permissao alterada.
+- Numeracao da migration:
+  - Foi pedida como 331, mas 331 ja estava ocupada
+    (`331_prevent_duplicate_active_measurement_items.sql`) e a sequencia ja estava em
+    336. Numero real: 337. A migration 318 NAO foi alterada, conforme pedido.
+
