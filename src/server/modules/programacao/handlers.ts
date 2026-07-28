@@ -73,7 +73,50 @@ import {
 export const PROGRAMMING_PAGE_KEY = "programacao-simples";
 export const PROGRAMMING_VISUALIZATION_PAGE_KEY = "programacao-visualizacao";
 
+// =============================================================================
+// CORTE: Programacao Simples em SOMENTE LEITURA
+// =============================================================================
+// A tela oficial de Programacao passou a ser a `programacao-normalizada`. Esta
+// tela continua ACESSIVEL para consulta/pesquisa e para as extracoes — o que se
+// bloqueia e SO a escrita em `project_programming`.
+//
+// Motivo: enquanto as duas telas aceitavam escrita, o modelo normalizado voltava
+// a ficar defasado sozinho (medido durante a migration 335: 37 -> 38 -> 39 etapas
+// em cerca de uma hora). Sem congelar a origem, nao existe carga final.
+//
+// POR QUE AQUI E NAO EM CADA HANDLER: os 7 handlers de escrita deste modulo
+// (copyProgramming, copyProgrammingToDates, addTeamToProgramming,
+// transferTeamToProgramming, saveProgrammingBatch, saveProgramming,
+// saveProgrammingWorkCompletionStatus) e o PATCH de Adiar/Cancelar da rota
+// passam TODOS por `authorizeProgrammingAction`. Bloquear aqui cobre todos os
+// caminhos por construcao: um caminho de escrita novo que esqueca esta guarda
+// tambem estaria sem autorizacao, o que nao passaria em review.
+//
+// A leitura (`authorizeProgrammingReadAction`, usada pelo GET) NAO e afetada.
+//
+// PARA REABRIR A ESCRITA: trocar esta constante para `false`. E o unico ponto.
+export const PROGRAMMING_SIMPLES_READ_ONLY = true;
+
+const PROGRAMMING_SIMPLES_READ_ONLY_MESSAGE =
+  "Programacao Simples esta em modo somente leitura. Consulta e extracoes continuam liberadas; "
+  + "novos lancamentos e alteracoes devem ser feitos na tela Programacao (Normalizada).";
+
 export async function authorizeProgrammingAction(context: AuthenticatedAppUserContext, action: PageAction) {
+  // Barreira do corte: vem ANTES da checagem de permissao de proposito. Nenhum
+  // perfil — nem administrador — escreve nesta tela enquanto o corte estiver
+  // ativo; a permissao granular deixaria de ser a fonte da verdade do bloqueio.
+  if (PROGRAMMING_SIMPLES_READ_ONLY) {
+    return NextResponse.json(
+      {
+        message: PROGRAMMING_SIMPLES_READ_ONLY_MESSAGE,
+        code: "PROGRAMMING_SIMPLES_READ_ONLY",
+        pageKey: PROGRAMMING_PAGE_KEY,
+        action,
+      },
+      { status: 423 },
+    );
+  }
+
   const authorization = await requirePageAction({
     context,
     pageKey: PROGRAMMING_PAGE_KEY,

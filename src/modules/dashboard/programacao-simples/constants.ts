@@ -1,5 +1,27 @@
 import type { DocumentKey, ProgrammingStatus } from "./types";
 
+// =============================================================================
+// CORTE: Programacao Simples em SOMENTE LEITURA
+// =============================================================================
+// A tela continua ACESSIVEL para pesquisa: filtros, listagem, detalhes,
+// historico e as tres extracoes (CSV, ENEL, ENEL NOVO) seguem funcionando. O que
+// sai do ar e a ESCRITA — cadastro, edicao, copia, equipe, adiar, reprogramar,
+// cancelar e lancamento de Estado do Trabalho.
+//
+// Esta constante controla apenas a INTERFACE. A barreira real e de servidor,
+// em `PROGRAMMING_SIMPLES_READ_ONLY` (src/server/modules/programacao/handlers.ts):
+// mesmo uma chamada direta a API e recusada com 423. As duas precisam andar
+// juntas — desligar so esta aqui deixaria botao que sempre falha; desligar so a
+// do servidor deixaria a API aberta.
+//
+// PARA REABRIR A ESCRITA: trocar esta para `false` E a do servidor.
+export const PROGRAMACAO_SIMPLES_SOMENTE_LEITURA = true;
+
+export const PROGRAMACAO_SIMPLES_SOMENTE_LEITURA_AVISO =
+  "Somente leitura: esta tela foi congelada e nao aceita mais lancamentos. "
+  + "Consulta, filtros, detalhes, historico e extracoes continuam disponiveis. "
+  + "Para cadastrar ou alterar programacao, use a tela Programacao (Normalizada).";
+
 export const PAGE_SIZE = 20;
 export const HISTORY_PAGE_SIZE = 5;
 export const DEADLINE_CAROUSEL_PAGE_SIZE = 6;
