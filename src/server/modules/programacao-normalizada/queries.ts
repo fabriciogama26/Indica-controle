@@ -103,6 +103,12 @@ function applyStatusChipToStageQuery<Q extends {
   if (statusChip === "ADIADAS") {
     return query.eq("status", "ADIADA");
   }
+  // 337: canceladas MANTEM execution_date, entao — diferente de EM_ESPERA e
+  // SEM_RETORNO — este chip respeita o intervalo de datas normalmente (o filtro de
+  // periodo ja foi aplicado por quem chama).
+  if (statusChip === "CANCELADAS") {
+    return query.eq("status", "CANCELADA");
+  }
   return query;
 }
 

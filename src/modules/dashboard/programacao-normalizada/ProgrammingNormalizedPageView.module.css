@@ -434,6 +434,27 @@
   min-width: 0;
 }
 
+/* Legenda da data original de uma etapa em espera (337): a etapa perdeu a
+   execution_date, entao a data exibida vem do snapshot e precisa ser identificada
+   como original — senao seria lida como data vigente. */
+.stageDateHint {
+  display: block;
+  color: var(--color-text-soft);
+  font-size: 0.68rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+/* Etapa encerrada (cancelada/em espera/antecipada) na lista e no plano: fica
+   visivel, mas visualmente recuada — nunca escondida. */
+.stageRowClosed {
+  opacity: 0.72;
+}
+
+.stageRowCanceled .stageRowCanceledText {
+  text-decoration: line-through;
+}
+
 .workCompletionSelect {
   padding: 0.2rem 0.4rem;
   border-radius: 8px;

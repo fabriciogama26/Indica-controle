@@ -11,7 +11,8 @@ import {
   formatHistoryChangeValue,
   getHistoryActionLabel,
   getHistoryFieldLabel,
-  getStageClassificationLabel,
+  getStageDisplayClassification,
+  getStageDisplayExecutionDate,
   getStageStatusDisplayLabel,
   getStageStatusLabel,
   getWorkCompletionLabel,
@@ -37,7 +38,11 @@ export function StageBadge(props: { stage: ProgrammingStage }) {
   const { stage } = props;
   // Badge de classificacao (coluna Etapa, spec 3.2): segue a posicao, nunca a
   // pendencia. Uma etapa em pendencia continua Etapa N/Final aqui.
-  const classification = getStageClassificationLabel(stage);
+  //
+  // Etapa encerrada exibe a classificacao HISTORICA ("Era Etapa 2", migration
+  // 337): ela some da numeracao ativa, mas continua no plano do projeto e nao
+  // pode perder o registro de qual etapa era.
+  const display = getStageDisplayClassification(stage);
   const variant = !isActiveStageStatus(stage.status)
     ? styles.badgeCancelada
     : stage.workCompletionStatus === "CONCLUIDO"
@@ -48,7 +53,15 @@ export function StageBadge(props: { stage: ProgrammingStage }) {
           ? styles.badgeUnica
           : "";
 
-  return <span className={`${styles.badge} ${variant}`}>{classification}</span>;
+  const title = display.isHistorical && display.originalExecutionDate
+    ? `Classificacao ao sair do plano: ${display.label.replace("Era ", "")} em ${formatDate(display.originalExecutionDate)}`
+    : undefined;
+
+  return (
+    <span className={`${styles.badge} ${variant}`} title={title}>
+      {display.label}
+    </span>
+  );
 }
 
 export function StageCard(props: {
@@ -573,11 +586,17 @@ export function DetailsModal(props: { target: ProgrammingStage | null; onClose: 
     <div className={styles.modalOverlay} onClick={onClose}>
       <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
         <header className={styles.modalHeader}>
-          <h4>Detalhes da etapa — {formatDate(target.executionDate)}</h4>
+          <h4>Detalhes da etapa — {formatDate(getStageDisplayExecutionDate(target))}</h4>
           <button type="button" className={styles.modalCloseButton} onClick={onClose}>Fechar</button>
         </header>
         <div className={styles.detailGrid}>
-          <span><strong>Classificacao:</strong> {getStageClassificationLabel(target)}</span>
+          <span>
+            <strong>Classificacao:</strong> {getStageDisplayClassification(target).label}
+            {/* Etapa em espera perdeu a data: mostra a que tinha ao sair do plano (337). */}
+            {!target.executionDate && getStageDisplayExecutionDate(target)
+              ? ` (data original ${formatDate(getStageDisplayExecutionDate(target))})`
+              : ""}
+          </span>
           <span><strong>Status:</strong> {getStageStatusLabel(target.status)}</span>
           <span><strong>Estado Trabalho:</strong> {getWorkCompletionLabel(target.workCompletionStatus)}</span>
           <span><strong>Periodo:</strong> {target.period ?? "-"}</span>

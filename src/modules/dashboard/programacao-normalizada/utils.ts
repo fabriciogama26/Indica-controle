@@ -45,21 +45,90 @@ export function isActiveStageStatus(status: string) {
   return status === "PROGRAMADA" || status === "REPROGRAMADA";
 }
 
+// NOTA: `getStageClassificationLabel` foi REMOVIDA na 337 e substituida por
+// `getStageDisplayClassification` abaixo. Ela so sabia ler a classificacao ATUAL e
+// devolvia "-" para toda etapa encerrada — manter as duas conviverem era o caminho
+// certo para a tela e os exports divergirem de novo.
+
+// -----------------------------------------------------------------------------
+// Classificacao de EXIBICAO (migration 337) — FONTE UNICA
+// -----------------------------------------------------------------------------
+// Existem dois conceitos de classificacao e eles nao podem ser escolhidos caso a
+// caso em cada tela/export, senao a lista, o plano e o CSV divergem:
+//   - ATUAL     (etapa_number/unica/final): so vale para etapa no plano ativo.
+//                O reclassify ZERA esses campos quando a etapa sai do plano.
+//   - HISTORICA (classificationSnapshot*): fotografia tirada no momento em que a
+//                etapa foi cancelada, colocada em espera ou antecipada.
+//
 // Coluna Etapa (spec 3.2): SO posicao — Etapa N/Final/Unica. Nunca "Pendencia"
-// aqui (a pendencia vive so na coluna Status, via flag). Etapa sem data (em
-// espera) ou fora do calendario nao numera.
-export function getStageClassificationLabel(stage: {
+// aqui (a pendencia vive so na coluna Status, via flag).
+//
+// Regra: etapa no plano ativo mostra a ATUAL; etapa encerrada mostra a HISTORICA
+// (prefixada com "Era", para nao ser confundida com uma etapa operacional — o
+// plano pode ter uma "Etapa 2" cancelada e uma "Etapa 2" programada ao mesmo
+// tempo, e isso esta CERTO: a antiga Etapa 3 assumiu o numero 2 no plano atual).
+//
+// Etapa encerrada ANTES da 337 nao tem snapshot: `label` fica "-" e
+// `isHistorical` false — dado legado, nao ha classificacao historica para exibir.
+//
+// Esta funcao e a unica fonte para: lista geral, plano do projeto, detalhes, CSV,
+// Extracao ENEL e Extracao ENEL NOVO.
+export function getStageDisplayClassification(stage: {
   etapaUnica: boolean;
   etapaFinal: boolean;
   etapaNumber: number | null;
-  workCompletionStatus: string | null;
   status: string;
+  classificationSnapshotNumber?: number | null;
+  classificationSnapshotUnica?: boolean | null;
+  classificationSnapshotFinal?: boolean | null;
+  classificationSnapshotExecutionDate?: string | null;
+  classificationSnapshotAt?: string | null;
+}): {
+  label: string;
+  isHistorical: boolean;
+  unica: boolean;
+  final: boolean;
+  number: number | null;
+  originalExecutionDate: string | null;
+} {
+  if (isActiveStageStatus(stage.status)) {
+    return {
+      label: stage.etapaUnica ? "Unica" : stage.etapaFinal ? "Final" : stage.etapaNumber ? `Etapa ${stage.etapaNumber}` : "-",
+      isHistorical: false,
+      unica: stage.etapaUnica,
+      final: stage.etapaFinal,
+      number: stage.etapaNumber,
+      originalExecutionDate: null,
+    };
+  }
+
+  const unica = stage.classificationSnapshotUnica === true;
+  const final = stage.classificationSnapshotFinal === true;
+  const number = stage.classificationSnapshotNumber ?? null;
+  const hasSnapshot = Boolean(stage.classificationSnapshotAt) && (unica || final || Boolean(number));
+
+  if (!hasSnapshot) {
+    return { label: "-", isHistorical: false, unica: false, final: false, number: null, originalExecutionDate: null };
+  }
+
+  return {
+    label: unica ? "Era Unica" : final ? "Era Final" : `Era Etapa ${number}`,
+    isHistorical: true,
+    unica,
+    final,
+    number,
+    originalExecutionDate: stage.classificationSnapshotExecutionDate ?? null,
+  };
+}
+
+// Data a exibir/exportar: a etapa em espera perde execution_date, entao cai para a
+// data que ela tinha quando saiu do plano (guardada no snapshot). Cancelada mantem
+// a propria data e nao usa o fallback.
+export function getStageDisplayExecutionDate(stage: {
+  executionDate: string | null;
+  classificationSnapshotExecutionDate?: string | null;
 }) {
-  if (!isActiveStageStatus(stage.status)) return "-";
-  if (stage.etapaUnica) return "Unica";
-  if (stage.etapaFinal) return "Final";
-  if (stage.etapaNumber) return `Etapa ${stage.etapaNumber}`;
-  return "-";
+  return stage.executionDate ?? stage.classificationSnapshotExecutionDate ?? null;
 }
 
 export function getStageStatusLabel(status: string) {

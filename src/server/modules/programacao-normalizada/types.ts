@@ -123,6 +123,14 @@ export type ProgrammingStageRow = {
   status: ProgrammingStatus;
   work_completion_status: string | null;
   is_pendencia: boolean;
+  // Classificacao NO MOMENTO EM QUE A ETAPA SAIU DO PLANO ATIVO (migration 337).
+  // Preenchida ao cancelar, deixar em espera ou antecipar. `_at` null = etapa
+  // nunca saiu do plano, ou saiu antes da 337 (legado sem historico).
+  classification_snapshot_number: number | null;
+  classification_snapshot_unica: boolean | null;
+  classification_snapshot_final: boolean | null;
+  classification_snapshot_execution_date: string | null;
+  classification_snapshot_at: string | null;
   service_description: string | null;
   period: ProgrammingPeriod | null;
   start_time: string | null;
@@ -161,7 +169,15 @@ export type ProgrammingStageRow = {
   programming_document: ProgrammingDocumentRow[] | null;
 };
 
-export type ProgrammingStageListStatusChip = "TODAS" | "PROGRAMADAS" | "PENDENCIAS" | "ATRASADAS" | "ADIADAS" | "EM_ESPERA" | "SEM_RETORNO";
+export type ProgrammingStageListStatusChip =
+  | "TODAS"
+  | "PROGRAMADAS"
+  | "PENDENCIAS"
+  | "ATRASADAS"
+  | "ADIADAS"
+  | "EM_ESPERA"
+  | "SEM_RETORNO"
+  | "CANCELADAS";
 
 export type ProgrammingStageListFilters = {
   tenantId: string;

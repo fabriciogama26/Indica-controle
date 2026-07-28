@@ -2,6 +2,8 @@
 // sem join manual no Node (guia_backend regra 24/27 — filtro e agregacao no banco).
 export const PROGRAMMING_STAGE_SELECT_WITH_CHILDREN = `
   id, project_id, execution_date, etapa_number, etapa_unica, etapa_final, status, work_completion_status, is_pendencia,
+  classification_snapshot_number, classification_snapshot_unica, classification_snapshot_final,
+  classification_snapshot_execution_date, classification_snapshot_at,
   service_description, period, start_time, end_time, expected_minutes, outage_start_time, outage_end_time,
   feeder, campo_eletrico, affected_customers, sgd_type_id, electrical_eq_catalog_id, support, support_item_id,
   poste_qty, estrutura_qty, trafo_qty, rede_qty, note,

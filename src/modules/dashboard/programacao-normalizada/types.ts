@@ -100,6 +100,16 @@ export type ProgrammingStage = {
   etapaNumber: number | null;
   etapaUnica: boolean;
   etapaFinal: boolean;
+  // Classificacao que a etapa TINHA ao sair do plano ativo (migration 337).
+  // So vem preenchida em etapa CANCELADA / ADIADA sem data / ANTECIPADA.
+  // `classificationSnapshotAt` null = etapa ativa, ou encerrada antes da 337
+  // (legado, sem classificacao historica). Nunca ler estes campos direto na
+  // exibicao: usar `getStageDisplayClassification`.
+  classificationSnapshotNumber: number | null;
+  classificationSnapshotUnica: boolean | null;
+  classificationSnapshotFinal: boolean | null;
+  classificationSnapshotExecutionDate: string | null;
+  classificationSnapshotAt: string | null;
   status: ProgrammingStageStatus;
   workCompletionStatus: string | null;
   isPendencia: boolean;
@@ -147,7 +157,15 @@ export type StageDetailsResponse = {
   message?: string;
 };
 
-export type StageListStatusChip = "TODAS" | "PROGRAMADAS" | "PENDENCIAS" | "ATRASADAS" | "ADIADAS" | "EM_ESPERA" | "SEM_RETORNO";
+export type StageListStatusChip =
+  | "TODAS"
+  | "PROGRAMADAS"
+  | "PENDENCIAS"
+  | "ATRASADAS"
+  | "ADIADAS"
+  | "EM_ESPERA"
+  | "SEM_RETORNO"
+  | "CANCELADAS";
 
 export type StageListFilters = {
   dateFrom: string;

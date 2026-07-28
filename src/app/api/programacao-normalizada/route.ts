@@ -39,7 +39,7 @@ import type {
   ServiceActivityRow,
 } from "@/server/modules/programacao-normalizada/types";
 
-const STAGE_LIST_STATUS_CHIPS: ProgrammingStageListStatusChip[] = ["TODAS", "PROGRAMADAS", "PENDENCIAS", "ATRASADAS", "ADIADAS", "EM_ESPERA", "SEM_RETORNO"];
+const STAGE_LIST_STATUS_CHIPS: ProgrammingStageListStatusChip[] = ["TODAS", "PROGRAMADAS", "PENDENCIAS", "ATRASADAS", "ADIADAS", "EM_ESPERA", "SEM_RETORNO", "CANCELADAS"];
 const STAGE_LIST_MAX_PAGE_SIZE = 100;
 // Exportacao (CSV/ENEL/ENEL NOVO) ignora a paginacao de tela e busca tudo que
 // bate no filtro atual, ate este teto (guia_backend regra 26 — limite explicito).
@@ -152,6 +152,14 @@ function mapStageRowToDto(
     etapaNumber: stage.etapa_number,
     etapaUnica: stage.etapa_unica,
     etapaFinal: stage.etapa_final,
+    // Classificacao historica (337): so preenchida em etapa encerrada
+    // (cancelada/em espera/antecipada). A tela e os exports escolhem entre esta e
+    // a atual por `getStageDisplayClassification`, nunca decidindo caso a caso.
+    classificationSnapshotNumber: stage.classification_snapshot_number,
+    classificationSnapshotUnica: stage.classification_snapshot_unica,
+    classificationSnapshotFinal: stage.classification_snapshot_final,
+    classificationSnapshotExecutionDate: stage.classification_snapshot_execution_date,
+    classificationSnapshotAt: stage.classification_snapshot_at,
     status: stage.status,
     workCompletionStatus: stage.work_completion_status,
     isPendencia: stage.is_pendencia === true,
