@@ -17,6 +17,7 @@ export const INITIAL_FILTERS: TrafoPositionFilters = {
   projectCode: "",
   teamName: "",
   foremanName: "",
+  cmd: "TODOS",
   currentStatus: "TODOS",
   lastOperationKind: "TODOS",
   entryDateFrom: "",

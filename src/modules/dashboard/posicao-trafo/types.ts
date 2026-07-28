@@ -26,6 +26,7 @@ export type TrafoPositionFilters = {
   projectCode: string;
   teamName: string;
   foremanName: string;
+  cmd: "TODOS" | "SIM" | "NAO";
   currentStatus: "TODOS" | "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE" | "RET";
   lastOperationKind: TrafoPositionOperationFilter;
   entryDateFrom: string;
@@ -46,6 +47,7 @@ export type TrafoPositionListItem = {
   currentStatus: "EM_ESTOQUE" | "COM_EQUIPE" | "FORA_ESTOQUE" | "RET";
   currentTeamName: string | null;
   currentForemanName: string | null;
+  cmd: boolean;
   canMove: boolean;
   canRetire: boolean;
   retiredAt: string | null;
@@ -98,6 +100,7 @@ export type TrafoPositionHistoryEntry = {
   teamName: string | null;
   foremanName: string | null;
   notes: string | null;
+  cmd?: boolean;
   isReversal: boolean;
   isReversed: boolean;
   reversalReason: string | null;

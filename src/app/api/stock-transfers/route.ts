@@ -56,6 +56,7 @@ type StockTransferItemRow = {
   quantity: number;
   serial_number: string | null;
   lot_code: string | null;
+  cmd?: boolean | null;
 };
 
 type StockCenterRow = {
@@ -110,11 +111,13 @@ type TransferPayload = {
   quantity?: unknown;
   serialNumber?: unknown;
   lotCode?: unknown;
+  cmd?: unknown;
   items?: Array<{
     materialId?: unknown;
     quantity?: unknown;
     serialNumber?: unknown;
     lotCode?: unknown;
+    cmd?: unknown;
   }>;
 };
 
@@ -133,6 +136,7 @@ type TransferListItem = {
   quantity: number;
   serialNumber: string | null;
   lotCode: string | null;
+  cmd: boolean;
   entryDate: string;
   entryType: "SUCATA" | "NOVO";
   fromStockCenterId: string;
@@ -325,6 +329,20 @@ function normalizeOperationPurpose(value: unknown) {
   return "NORMAL" as const;
 }
 
+function normalizeBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return normalized === "TRUE" || normalized === "T" || normalized === "1" || normalized === "SIM" || normalized === "S" || normalized === "YES";
+}
+
+function normalizeCmdFilter(value: string | null) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "SIM" || normalized === "NAO") {
+    return normalized as "SIM" | "NAO";
+  }
+  return "TODOS" as const;
+}
+
 function rowMatchesListFilters(params: {
   row: TransferListItem;
   startDate: string | null;
@@ -335,6 +353,7 @@ function rowMatchesListFilters(params: {
   projectCodeFilter: string;
   materialCodeFilter: string;
   reversalStatus: ReturnType<typeof normalizeReversalStatus>;
+  cmdFilter: ReturnType<typeof normalizeCmdFilter>;
 }) {
   const {
     row,
@@ -346,6 +365,7 @@ function rowMatchesListFilters(params: {
     projectCodeFilter,
     materialCodeFilter,
     reversalStatus,
+    cmdFilter,
   } = params;
 
   if (startDate && row.entryDate < startDate) return false;
@@ -360,6 +380,8 @@ function rowMatchesListFilters(params: {
   if (entryType && row.entryType !== entryType) return false;
   if (projectCodeFilter && !normalizeCodeFilter(row.projectCode).includes(projectCodeFilter)) return false;
   if (materialCodeFilter && !normalizeCodeFilter(row.materialCode).includes(materialCodeFilter)) return false;
+  if (cmdFilter === "SIM" && !row.cmd) return false;
+  if (cmdFilter === "NAO" && row.cmd) return false;
 
   if (reversalStatus === "ESTORNADAS") return row.isReversed && !row.isReversal;
   if (reversalStatus === "ESTORNOS") return row.isReversal;
@@ -506,12 +528,8 @@ function buildTransferItems(payload: TransferPayload) {
         const quantity = parsePositiveNumber(item.quantity);
         const serialNumber = normalizeText(item.serialNumber) || null;
         const lotCode = normalizeText(item.lotCode) || null;
-        return {
-          materialId,
-          quantity,
-          serialNumber,
-          lotCode,
-        };
+        const cmd = normalizeBoolean(item.cmd);
+        return { materialId, quantity, serialNumber, lotCode, cmd };
       })
       .filter((item) => item.materialId && item.quantity !== null)
       .map(
@@ -521,6 +539,7 @@ function buildTransferItems(payload: TransferPayload) {
             quantity: item.quantity as number,
             serialNumber: item.serialNumber,
             lotCode: item.lotCode,
+            cmd: item.cmd,
           }) satisfies StockTransferItemInput,
       );
 
@@ -539,6 +558,7 @@ function buildTransferItems(payload: TransferPayload) {
       quantity: singleQuantity,
       serialNumber: normalizeText(payload.serialNumber) || null,
       lotCode: normalizeText(payload.lotCode) || null,
+      cmd: normalizeBoolean(payload.cmd),
     },
   ];
 }
@@ -576,6 +596,7 @@ async function loadTransferList(request: NextRequest) {
   const projectCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("projectCode"));
   const materialCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("materialCode"));
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
+  const cmdFilter = normalizeCmdFilter(request.nextUrl.searchParams.get("cmd"));
 
   // Pre-filters run in parallel before the main query
   const needsTeamOpExclusion = !movementType || movementType === "TRANSFER";
@@ -738,12 +759,17 @@ async function loadTransferList(request: NextRequest) {
     (chunk) => {
       let itemsQuery = supabase
         .from("stock_transfer_items")
-        .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+        .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code, cmd")
         .eq("tenant_id", appUser.tenant_id)
         .in("stock_transfer_id", chunk);
 
       if (materialFilterResult?.materialIds.length) {
         itemsQuery = itemsQuery.in("material_id", materialFilterResult.materialIds);
+      }
+      if (cmdFilter === "SIM") {
+        itemsQuery = itemsQuery.eq("cmd", true);
+      } else if (cmdFilter === "NAO") {
+        itemsQuery = itemsQuery.eq("cmd", false);
       }
 
       return itemsQuery.returns<StockTransferItemRow[]>();
@@ -966,6 +992,7 @@ async function loadTransferList(request: NextRequest) {
         quantity: Number(item.quantity ?? 0),
         serialNumber: item.serial_number,
         lotCode: item.lot_code,
+        cmd: Boolean(item.cmd),
         entryDate: transfer.entry_date,
         entryType: transfer.entry_type,
         fromStockCenterId: transfer.from_stock_center_id,
@@ -998,6 +1025,7 @@ async function loadTransferList(request: NextRequest) {
       projectCodeFilter,
       materialCodeFilter,
       reversalStatus,
+      cmdFilter,
     }),
   );
 
@@ -1316,6 +1344,7 @@ export async function POST(request: NextRequest) {
       const material = materialMap.get(item.materialId);
       const serialTrackingType = normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE"));
       const hasSerial = Boolean(normalizeText(item.serialNumber));
+      item.cmd = serialTrackingType === "RELIGADOR" ? Boolean(item.cmd) : false;
 
       if (!isSerialTrackedMaterial(serialTrackingType)) {
         continue;

@@ -53,6 +53,7 @@ type SerialOption = {
   serialTrackingType: SerialTrackingType;
   serialNumber: string | null;
   lotCode: string | null;
+  cmd?: boolean;
   currentStockCenterId: string | null;
   updatedAt: string | null;
 };
@@ -77,6 +78,7 @@ type TransferListItem = {
   quantity: number;
   serialNumber: string | null;
   lotCode: string | null;
+  cmd: boolean;
   entryDate: string;
   entryType: "SUCATA" | "NOVO";
   fromStockCenterId: string;
@@ -192,6 +194,7 @@ type TransferFormItem = {
   quantity: number;
   serialNumber: string;
   lotCode: string;
+  cmd: boolean;
   entryType: "SUCATA" | "NOVO";
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
@@ -212,6 +215,7 @@ type FormState = {
   quantity: string;
   serialNumber: string;
   lotCode: string;
+  cmd: boolean;
   entryDate: string;
   entryType: "SUCATA" | "NOVO" | "";
   balanceCorrectionReason: string;
@@ -227,6 +231,7 @@ type FilterState = {
   projectCode: string;
   materialCode: string;
   entryType: "TODOS" | "NOVO" | "SUCATA";
+  cmd: "TODOS" | "SIM" | "NAO";
   reversalStatus: "TODOS" | "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
 };
 
@@ -253,6 +258,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   quantity: "Quantidade",
   serialNumber: "Serial",
   lotCode: "LP",
+  cmd: "CMD",
   entryDate: "Data da movimentacao",
   entryType: "Tipo",
   reversalReason: "Motivo do estorno",
@@ -267,6 +273,7 @@ const IMPORT_TEMPLATE_HEADERS = [
   "quantidade",
   "serial",
   "lp",
+  "cmd",
   "data_entrada",
   "observacao",
 ] as const;
@@ -284,6 +291,7 @@ const INITIAL_FORM: FormState = {
   quantity: "",
   serialNumber: "",
   lotCode: "",
+  cmd: false,
   entryDate: toIsoDate(new Date()),
   entryType: "",
   balanceCorrectionReason: "",
@@ -298,6 +306,7 @@ const INITIAL_FILTERS: FilterState = {
   projectCode: "",
   materialCode: "",
   entryType: "TODOS",
+  cmd: "TODOS",
   reversalStatus: "TODOS",
 };
 
@@ -311,6 +320,11 @@ function normalizeCode(value: string) {
 
 function normalizeUnitText(value: string | null | undefined) {
   return normalizeText(value).toUpperCase();
+}
+
+function normalizeBooleanInput(value: string | null | undefined) {
+  const normalized = normalizeText(value).toUpperCase();
+  return normalized === "TRUE" || normalized === "T" || normalized === "1" || normalized === "SIM" || normalized === "S" || normalized === "YES";
 }
 
 function toIsoDate(value: Date) {
@@ -428,6 +442,10 @@ function movementSignalLabel(value: string | null | undefined) {
 
 function operationPurposeLabel(value: string | null | undefined) {
   return value === "BALANCE_CORRECTION" ? "Correcao de saldo" : "Movimentacao normal";
+}
+
+function booleanLabel(value: boolean | null | undefined) {
+  return value ? "Sim" : "Nao";
 }
 
 function rowStatusLabel(item: Pick<TransferListItem, "isReversal" | "isReversed">) {
@@ -613,6 +631,7 @@ export function StockTransfersPageView() {
     () => materials.find((material) => material.id === form.materialId) ?? null,
     [form.materialId, materials],
   );
+  const selectedMaterialSupportsCmd = selectedMaterial?.serialTrackingType === "RELIGADOR";
   const selectedReversalReason = useMemo(
     () => reversalReasons.find((reason) => reason.code === reversalReasonCode) ?? null,
     [reversalReasons, reversalReasonCode],
@@ -679,6 +698,7 @@ export function StockTransfersPageView() {
     materialCode: normalizeCode(searchParams.get("materialCode") ?? ""),
     serialNumber: normalizeText(searchParams.get("serialNumber")),
     lotCode: normalizeText(searchParams.get("lotCode")),
+    cmd: normalizeText(searchParams.get("cmd")).toUpperCase() === "SIM",
   }), [searchParams]);
   const buildHistoryListParams = useCallback((
     direction: "initial" | "older" | "newer",
@@ -700,6 +720,7 @@ export function StockTransfersPageView() {
     if (activeFilters.projectCode) params.set("projectCode", activeFilters.projectCode);
     if (activeFilters.materialCode) params.set("materialCode", activeFilters.materialCode);
     if (activeFilters.entryType !== "TODOS") params.set("entryType", activeFilters.entryType);
+    if (activeFilters.cmd !== "TODOS") params.set("cmd", activeFilters.cmd);
     if (activeFilters.reversalStatus !== "TODOS") params.set("reversalStatus", activeFilters.reversalStatus);
     return params;
   }, []);
@@ -847,6 +868,7 @@ export function StockTransfersPageView() {
         "quantidade",
         "serial",
         "lp",
+        "cmd",
         "data_entrada",
         "estornada",
         "estorno",
@@ -869,6 +891,7 @@ export function StockTransfersPageView() {
         String(item.quantity),
         item.serialNumber ?? "",
         item.lotCode ?? "",
+        booleanLabel(item.cmd),
         formatDate(item.entryDate),
         item.isReversed ? "Sim" : "Nao",
         item.isReversal ? "Sim" : "Nao",
@@ -939,6 +962,7 @@ export function StockTransfersPageView() {
       quantity: "1",
       serialNumber: transferPrefill.serialNumber,
       lotCode: transferPrefill.lotCode,
+      cmd: matchedMaterial.serialTrackingType === "RELIGADOR" ? transferPrefill.cmd : false,
       entryType: normalizeMaterialEntryType(matchedMaterial.materialType ?? ""),
       balanceCorrectionReason: "",
     }));
@@ -1091,6 +1115,7 @@ export function StockTransfersPageView() {
         : current.quantity,
       serialNumber: "",
       lotCode: "",
+      cmd: false,
     }));
   }
 
@@ -1163,6 +1188,9 @@ export function StockTransfersPageView() {
     const matchedOptions = serialOptions.filter((option) =>
       normalizeUnitText(option.serialNumber) === normalizeUnitText(value),
     );
+    const matchedOption = matchedOptions.find((option) =>
+      normalizeUnitText(option.lotCode || "-") === normalizeUnitText(form.lotCode || "-"),
+    ) ?? matchedOptions[0] ?? null;
     const nextLotCode = requiresLotFields && matchedOptions.length === 1
       ? matchedOptions[0].lotCode
       : "";
@@ -1171,12 +1199,22 @@ export function StockTransfersPageView() {
       ...current,
       serialNumber: value,
       lotCode: requiresLotFields && current.movementType !== "ENTRY" ? (nextLotCode ?? "") : current.lotCode,
+      cmd: selectedMaterialSupportsCmd && current.movementType !== "ENTRY" && matchedOption ? Boolean(matchedOption.cmd) : current.cmd,
       quantity: isSerialTrackedMaterial(selectedMaterial?.serialTrackingType) && normalizeText(value) ? "1" : current.quantity,
     }));
   }
 
   function handleLotCodeChange(value: string) {
-    updateFormField("lotCode", value);
+    const matchedOption = serialOptions.find((option) =>
+      normalizeUnitText(option.serialNumber) === normalizeUnitText(form.serialNumber)
+      && normalizeUnitText(option.lotCode || "-") === normalizeUnitText(value || "-"),
+    ) ?? null;
+
+    setForm((current) => ({
+      ...current,
+      lotCode: value,
+      cmd: selectedMaterialSupportsCmd && current.movementType !== "ENTRY" && matchedOption ? Boolean(matchedOption.cmd) : current.cmd,
+    }));
   }
 
   function isValidCenterPairByMovementType() {
@@ -1324,6 +1362,7 @@ export function StockTransfersPageView() {
         quantity,
         serialNumber: normalizeText(form.serialNumber),
         lotCode: normalizeText(form.lotCode) || (requiresLotCode(selectedMaterial.serialTrackingType) ? "" : "-"),
+        cmd: selectedMaterial.serialTrackingType === "RELIGADOR" ? form.cmd : false,
         entryType: normalizedEntryType,
         isTransformer: true,
         serialTrackingType: selectedMaterial.serialTrackingType,
@@ -1374,6 +1413,7 @@ export function StockTransfersPageView() {
       quantity: "",
       serialNumber: "",
       lotCode: "",
+      cmd: false,
       entryType: "",
       items: [
         ...current.items,
@@ -1385,6 +1425,7 @@ export function StockTransfersPageView() {
           quantity,
           serialNumber: normalizedSerial,
           lotCode: normalizedLot || (requiresLotCode(selectedMaterial.serialTrackingType) ? "" : "-"),
+          cmd: selectedMaterial.serialTrackingType === "RELIGADOR" ? form.cmd : false,
           entryType: normalizedEntryType,
           isTransformer: isSerialTrackedMaterial(selectedMaterial.serialTrackingType),
           serialTrackingType: selectedMaterial.serialTrackingType,
@@ -1713,6 +1754,7 @@ export function StockTransfersPageView() {
             quantity: item.quantity,
             serialNumber: normalizeText(item.serialNumber) || null,
             lotCode: normalizeText(item.lotCode) || (requiresLotCode(item.serialTrackingType) ? null : "-"),
+            cmd: item.serialTrackingType === "RELIGADOR" ? item.cmd : false,
           })),
         }),
       });
@@ -1772,6 +1814,7 @@ export function StockTransfersPageView() {
         "1,5",
         "",
         "",
+        "",
         toIsoDate(new Date()),
         "Material comum com decimal",
       ],
@@ -1784,6 +1827,7 @@ export function StockTransfersPageView() {
         "1",
         "SER-REL-001",
         "",
+        "SIM",
         toIsoDate(new Date()),
         "Religador exige Serial",
       ],
@@ -1796,6 +1840,7 @@ export function StockTransfersPageView() {
         "1",
         "SER-TRAFO-001",
         "LP-001",
+        "",
         toIsoDate(new Date()),
         "TRAFO exige Serial e LP",
       ],
@@ -1846,6 +1891,7 @@ export function StockTransfersPageView() {
     params.set("materialCode", item.materialCode);
     params.set("serialNumber", item.serialNumber);
     params.set("lotCode", item.lotCode || "-");
+    params.set("cmd", item.cmd ? "SIM" : "NAO");
 
     router.push(`/entrada?${params.toString()}`);
   }
@@ -1863,6 +1909,7 @@ export function StockTransfersPageView() {
       projectCode: normalizeCode(filterDraft.projectCode),
       materialCode: normalizeCode(filterDraft.materialCode),
       entryType: filterDraft.entryType,
+      cmd: filterDraft.cmd,
       reversalStatus: filterDraft.reversalStatus,
     });
   }
@@ -2264,6 +2311,8 @@ export function StockTransfersPageView() {
         const serialNumber = normalizeText(serialNumberRaw) || null;
         const lotCodeRaw = readCsvField(row, ["lp", "lot_code", "lote"]);
         const lotCode = normalizeText(lotCodeRaw) || null;
+        const cmdRaw = readCsvField(row, ["cmd"]);
+        const cmd = normalizeBooleanInput(cmdRaw);
         const entryDateRaw = readCsvField(row, ["data_entrada", "entry_date", "data_movimentacao"]);
         const entryDate = normalizeDateInput(entryDateRaw);
         const notes = normalizeText(readCsvField(row, ["observacao", "notes", "obs"])) || null;
@@ -2390,6 +2439,7 @@ export function StockTransfersPageView() {
               quantity,
               serialNumber,
               lotCode: isSerialTrackedMaterial(material.serialTrackingType) && !requiresLotCode(material.serialTrackingType) ? "-" : lotCode,
+              cmd: material.serialTrackingType === "RELIGADOR" ? cmd : false,
             },
           ],
         });
@@ -2741,6 +2791,18 @@ export function StockTransfersPageView() {
                 />
               </label>
 
+              {selectedMaterialSupportsCmd ? (
+                <label className={styles.checkboxField}>
+                  <input
+                    type="checkbox"
+                    checked={form.cmd}
+                    onChange={(event) => updateFormField("cmd", event.target.checked)}
+                    disabled={isSubmitting}
+                  />
+                  <span>CMD</span>
+                </label>
+              ) : null}
+
               <div className={styles.subCardActionRow}>
                 <button
                   type="button"
@@ -2766,6 +2828,7 @@ export function StockTransfersPageView() {
                     <th>Tipo</th>
                     <th>Serial</th>
                     <th>LP</th>
+                    <th>CMD</th>
                     <th>Quantidade</th>
                     <th>Acoes</th>
                   </tr>
@@ -2778,6 +2841,7 @@ export function StockTransfersPageView() {
                       <td>{item.entryType}</td>
                       <td>{item.serialNumber || "-"}</td>
                       <td>{item.lotCode || "-"}</td>
+                      <td>{booleanLabel(item.cmd)}</td>
                       <td className={styles.tableQuantityCell}>{item.quantity.toLocaleString("pt-BR")}</td>
                       <td className={styles.actionsCell}>
                         <button
@@ -2792,7 +2856,7 @@ export function StockTransfersPageView() {
                     </tr>
                   )) : (
                     <tr>
-                      <td colSpan={7} className={styles.emptyRow}>
+                      <td colSpan={8} className={styles.emptyRow}>
                         Nenhum material adicionado.
                       </td>
                     </tr>
@@ -2949,6 +3013,17 @@ export function StockTransfersPageView() {
             </select>
           </label>
           <label className={styles.field}>
+            <span>CMD</span>
+            <select
+              value={filterDraft.cmd}
+              onChange={(event) => setFilterDraft((current) => ({ ...current, cmd: event.target.value as FilterState["cmd"] }))}
+            >
+              <option value="TODOS">Todos</option>
+              <option value="SIM">Sim</option>
+              <option value="NAO">Nao</option>
+            </select>
+          </label>
+          <label className={styles.field}>
             <span>Estorno</span>
             <select
               value={filterDraft.reversalStatus}
@@ -2998,6 +3073,7 @@ export function StockTransfersPageView() {
                 <th>Material (Codigo)</th>
                 <th className={styles.tableDescriptionCell}>Descricao</th>
                 <th className={styles.tableQuantityCell}>Quantidade</th>
+                <th>CMD</th>
                 <th className={styles.tableSignalCell}>Sinalizacao</th>
                 <th>Data da movimentacao</th>
                 <th>Atualizado em</th>
@@ -3007,7 +3083,7 @@ export function StockTransfersPageView() {
             <tbody>
               {!isLoadingHistory && historyItems.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className={styles.emptyRow}>
+                  <td colSpan={11} className={styles.emptyRow}>
                     Nenhuma movimentacao encontrada.
                   </td>
                 </tr>
@@ -3029,6 +3105,7 @@ export function StockTransfersPageView() {
                   <td>{item.materialCode}</td>
                   <td className={styles.tableDescriptionCell}>{item.description}</td>
                   <td className={styles.tableQuantityCell}>{item.quantity}</td>
+                  <td>{booleanLabel(item.cmd)}</td>
                   <td className={styles.tableSignalCell}>
                     <div className={styles.signalStack}>
                       <span className={`${styles.signalChip} ${
@@ -3236,6 +3313,7 @@ export function StockTransfersPageView() {
                 <div><strong>Quantidade:</strong> {detailItem.quantity.toLocaleString("pt-BR")}</div>
                 <div><strong>Serial:</strong> {detailItem.serialNumber ?? "-"}</div>
                 <div><strong>LP:</strong> {detailItem.lotCode ?? "-"}</div>
+                <div><strong>CMD:</strong> {booleanLabel(detailItem.cmd)}</div>
                 <div><strong>{movementDateLabel(detailItem.movementType)}:</strong> {formatDate(detailItem.entryDate)}</div>
                 <div><strong>Transferencia de estorno:</strong> {detailItem.reversalTransferId ?? "-"}</div>
                 <div><strong>Transferencia original:</strong> {detailItem.originalTransferId ?? "-"}</div>
@@ -3490,7 +3568,7 @@ export function StockTransfersPageView() {
                     <strong>Preencha a planilha</strong>
                     <p>Colunas obrigatorias: operacao, centro_de, centro_para, projeto, material_codigo, quantidade, data_entrada.</p>
                     <p>Colunas condicionais: serial para materiais rastreaveis; lp somente para TRAFO.</p>
-                    <p>Coluna opcional: observacao.</p>
+                    <p>Colunas opcionais: cmd e observacao.</p>
                     <p>Operacao: ENTRADA, SAIDA ou TRANSFERENCIA (tambem aceita ENTRY, EXIT, TRANSFER).</p>
                     <p>LP = identificador de lote/plaqueta do material (equivalente ao campo lot_code).</p>
                   </div>

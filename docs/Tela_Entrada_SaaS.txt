@@ -25,6 +25,7 @@ Arquitetura
 - Banco (estorno por item): `supabase/migrations/179_add_stock_transfer_item_reversal.sql`
 - Banco (TRAFO unitario): `supabase/migrations/136_enforce_transformer_unit_rules_on_stock_transfer.sql`
 - Banco (instancia unitaria TRAFO): `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
+- Banco (CMD por serial): `supabase/migrations/339_add_cmd_to_serial_stock_movements.sql`
 
 Cadastro
 --------
@@ -43,6 +44,7 @@ Cadastro
   - `direct_purchase` (`Compra direta`, permitido somente para `Entrada`)
   - `serial_number` (no bloco `Material da Operacao`)
   - `lot_code` (no bloco `Material da Operacao`)
+  - `cmd` (checkbox `CMD`, visivel no bloco `Materiais da Movimentacao` somente para material `RELIGADOR`)
   - `notes`
   - `balance_correction_reason` (obrigatorio quando `operation_purpose = BALANCE_CORRECTION`)
 - Regras de validacao:
@@ -59,6 +61,7 @@ Cadastro
   - `entry_date` nao pode ser futura.
   - `TRAFO` sempre exige `serial_number` e `lot_code` (`Serial + LP`) em qualquer movimentacao.
   - `RELIGADOR` e `CHAVE` podem entrar ou ser transferidos sem `serial_number` somente quando `materials.allow_pending_serial_identification = true`.
+  - `CMD` e persistido apenas para `RELIGADOR`; demais materiais gravam `false` para manter leitura consistente.
   - Quando a pendencia de serial e permitida e o serial nao foi informado, a quantidade deve ser inteira e positiva.
   - `EXIT` normal nao aceita pendencia de serial; material rastreavel sem serial continua bloqueado.
   - A combinacao `material_id + serial_number + lot_code` de TRAFO nao pode ficar duplicada em centros `OWN`.
@@ -84,6 +87,7 @@ Filtros, auto-complete e listagem
 - Cadastro manual com auto-complete por `material_code` (`input + datalist`).
 - Cadastro manual com auto-complete por `Serial` para material rastreavel em `Saida` e `Transferencia`, carregando apenas unidades registradas em `trafo_instances.current_stock_center_id = Centro DE`.
 - Cadastro manual com auto-complete por `LP` quando o material exige LP (`TRAFO`), filtrando pelas unidades disponiveis no centro `DE`.
+- Ao selecionar um serial de `RELIGADOR` ja rastreado em `Saida` ou `Transferencia`, a tela preserva o valor atual de `CMD` retornado pelas opcoes de serial.
 - Ao selecionar `material_code`, a `description` e preenchida automaticamente.
 - O formulario manual separa os campos do item em um sub-card `Materiais da Movimentacao`, no mesmo padrao visual da tela `Operacoes de Equipe`.
 - O cadastro manual agora funciona por lista local de itens:
@@ -108,6 +112,7 @@ Filtros, auto-complete e listagem
   - `quantidade`
   - `serial` (condicional para TRAFO)
   - `lp` (condicional para TRAFO; equivalente ao antigo `lot_code`)
+  - `cmd` (opcional; aceita `SIM`/`NAO`, aplicado somente para `RELIGADOR`)
   - `data_entrada`
   - `observacao` (opcional)
 - Opcoes aceitas em `operacao`:
@@ -133,9 +138,13 @@ Filtros, auto-complete e listagem
   - `Todas`
   - `Movimentacao normal`
   - `Correcao de saldo`
+- Filtro adicional de `CMD`:
+  - `Todos`
+  - `Sim`
+  - `Nao`
 - A lista aplica os filtros no nivel da linha retornada, nao apenas no cabecalho/lote da movimentacao.
 - Quando uma mesma movimentacao contem varios materiais, o filtro `Material (codigo)` retorna somente as linhas dos materiais cujo codigo corresponde ao filtro.
-- Os filtros de periodo, operacao, finalidade, projeto, material, tipo e estorno sao revalidados depois do enriquecimento da linha, evitando exibir itens associados ao mesmo lote que nao atendem ao filtro solicitado.
+- Os filtros de periodo, operacao, finalidade, projeto, material, tipo, CMD e estorno sao revalidados depois do enriquecimento da linha, evitando exibir itens associados ao mesmo lote que nao atendem ao filtro solicitado.
 - O filtro de estorno considera tanto vinculos integrais em `stock_transfer_reversals` quanto estornos por item em `stock_transfer_item_reversals`.
 - Ordem das colunas da lista:
   - Centro DE
@@ -144,6 +153,7 @@ Filtros, auto-complete e listagem
   - Material (Codigo)
   - Descricao
   - Quantidade
+  - CMD
   - Sinalizacao
   - Data da movimentacao
   - Atualizado em
@@ -718,3 +728,32 @@ Mapa de Codigo (funcoes, hooks e constantes)
   - cria `stock_serial_pending_balances` com FKs compostas de material, centro e projeto por tenant;
   - cria `adjust_stock_serial_pending_balance` e `identify_pending_serial_tracked_unit`;
   - atualiza triggers/RPCs de movimentacao e reforca Operacoes de Equipe com serial obrigatorio.
+
+Atualizacao 2026-07 - CMD para RELIGADOR
+----------------------------------------
+Visao geral
+- Materiais com rastreio `RELIGADOR` passam a ter a marcacao booleana `CMD` no bloco `Materiais da Movimentacao`.
+- A marcacao fica disponivel no cadastro manual, cadastro em massa CSV, lista de movimentacoes, exportacao CSV, detalhes, historico funcional e pre-preenchimento vindo do Rastreio de SERIAL.
+
+Cadastro e filtros
+- O checkbox `CMD` aparece somente quando o material selecionado e `RELIGADOR`.
+- Para `Saida` e `Transferencia`, a selecao de serial carrega o `CMD` atual da unidade em `trafo_instances`.
+- O CSV de importacao aceita a coluna opcional `cmd`, com leitura booleana por `SIM`/`NAO`, `TRUE`/`FALSE`, `1`/`0` e equivalentes.
+- A listagem e a API aceitam filtro `cmd = SIM|NAO|TODOS`, aplicado por item em `stock_transfer_items`.
+
+Arquitetura
+- `stock_transfer_items.cmd` guarda a marcacao historica do item da movimentacao.
+- `trafo_instances.cmd` guarda o estado atual da unidade serializada para a tela de Rastreio de SERIAL e para o prefill de novas movimentacoes.
+- A migration `339_add_cmd_to_serial_stock_movements.sql` adiciona as colunas, atualiza a RPC base de movimentacao, sincroniza `CMD` do item para a instancia serializada e faz backfill conservador pelo ultimo item de movimentacao de cada unidade.
+
+Mapa de Codigo
+- `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - checkbox `CMD`, parser/export CSV, filtro `CMD`, detalhe da linha e prefill.
+- `src/app/api/stock-transfers/route.ts`
+  - normaliza `cmd`, persiste no item, lista/exporta por linha e aplica filtro server-side.
+- `src/app/api/stock-transfers/import/route.ts`
+  - aceita `cmd` no cadastro em massa.
+- `src/app/api/stock-transfers/serial-options/route.ts`
+  - retorna `cmd` da unidade para `Saida`/`Transferencia`.
+- `supabase/migrations/339_add_cmd_to_serial_stock_movements.sql`
+  - adiciona persistencia e sincronizacao de `CMD`.

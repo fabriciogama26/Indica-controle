@@ -26,6 +26,7 @@ type TrafoInstanceRow = {
   material_id: string;
   serial_number: string;
   lot_code: string;
+  cmd?: boolean | null;
   current_stock_center_id: string | null;
   retired_at: string | null;
   retired_by: string | null;
@@ -82,6 +83,7 @@ type StockTransferItemRow = {
   quantity: number;
   serial_number: string | null;
   lot_code: string | null;
+  cmd?: boolean | null;
 };
 
 type StockCenterRow = {
@@ -129,6 +131,7 @@ type TrafoHistoryApiEntry = {
   teamName: string | null;
   foremanName: string | null;
   notes: string | null;
+  cmd?: boolean;
   isReversal: boolean;
   isReversed: boolean;
   reversalReason: string | null;
@@ -177,6 +180,14 @@ function normalizeOperationFilter(value: string | null) {
     return normalized as TrafoHistoryApiEntry["operationKind"];
   }
 
+  return "TODOS" as const;
+}
+
+function normalizeCmdFilter(value: string | null) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (normalized === "SIM" || normalized === "NAO") {
+    return normalized as "SIM" | "NAO";
+  }
   return "TODOS" as const;
 }
 
@@ -305,7 +316,7 @@ async function loadTrafoHistory(request: NextRequest) {
 
   const { data: itemRows, error: itemsError } = await supabase
     .from("stock_transfer_items")
-    .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+    .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code, cmd")
     .eq("tenant_id", appUser.tenant_id)
     .eq("material_id", trafoInstance.material_id)
     .eq("serial_number", trafoInstance.serial_number)
@@ -510,6 +521,7 @@ async function loadTrafoHistory(request: NextRequest) {
           teamName: teamState?.teamName ?? null,
           foremanName: teamState?.foremanName ?? null,
           notes: transfer.notes,
+          cmd: Boolean(item.cmd),
           isReversal: Boolean(reversalFromReversal),
           isReversed: Boolean(reversalFromOriginal),
           reversalReason: reversalFromOriginal?.reversalReason ?? reversalFromReversal?.reversalReason ?? null,
@@ -583,6 +595,7 @@ export async function GET(request: NextRequest) {
     const currentStatus = normalizeCurrentStatus(request.nextUrl.searchParams.get("currentStatus"));
     const serialTrackingType = normalizeSerialTrackingFilter(request.nextUrl.searchParams.get("serialTrackingType"));
     const lastOperationKind = normalizeOperationFilter(request.nextUrl.searchParams.get("lastOperationKind"));
+    const cmdFilter = normalizeCmdFilter(request.nextUrl.searchParams.get("cmd"));
     const entryDateFrom = normalizeIsoDate(request.nextUrl.searchParams.get("entryDateFrom"));
     const entryDateTo = normalizeIsoDate(request.nextUrl.searchParams.get("entryDateTo"));
 
@@ -594,6 +607,7 @@ export async function GET(request: NextRequest) {
           "material_id",
           "serial_number",
           "lot_code",
+          "cmd",
           "current_stock_center_id",
           "retired_at",
           "retired_by",
@@ -636,6 +650,12 @@ export async function GET(request: NextRequest) {
 
     if (lotCode) {
       query = query.ilike("lot_code", `%${lotCode}%`);
+    }
+
+    if (cmdFilter === "SIM") {
+      query = query.eq("cmd", true);
+    } else if (cmdFilter === "NAO") {
+      query = query.eq("cmd", false);
     }
 
     if (entryDateFrom) {
@@ -823,6 +843,7 @@ export async function GET(request: NextRequest) {
           currentStatus: resolvedCurrentStatus,
           currentTeamName: resolvedCurrentStatus === "COM_EQUIPE" ? teamState?.teamName ?? null : null,
           currentForemanName: resolvedCurrentStatus === "COM_EQUIPE" ? teamState?.foremanName ?? null : null,
+          cmd: Boolean(row.cmd),
           canMove: (resolvedCurrentStatus === "EM_ESTOQUE" || resolvedCurrentStatus === "RET") && Boolean(physicalReferenceCenterId),
           canRetire: resolvedCurrentStatus === "EM_ESTOQUE" && Boolean(physicalReferenceCenterId),
           retiredAt: row.retired_at,

@@ -81,6 +81,10 @@ function currentStatusChipClass(value: TrafoPositionListItem["currentStatus"]) {
   return `${styles.statusChip} ${styles.statusChipExternal}`;
 }
 
+function booleanLabel(value: boolean | null | undefined) {
+  return value ? "Sim" : "Nao";
+}
+
 function historyStatusLabel(entry: TrafoPositionHistoryEntry) {
   if (entry.isRetirement) return "RET aplicado";
   if (entry.isReversal) return "Movimentacao de estorno";
@@ -270,6 +274,7 @@ export function TrafoPositionPageView() {
       projectCode: normalizeText(filterDraft.projectCode).toUpperCase(),
       teamName: normalizeText(filterDraft.teamName),
       foremanName: normalizeText(filterDraft.foremanName),
+      cmd: filterDraft.cmd,
       currentStatus: filterDraft.currentStatus,
       lastOperationKind: filterDraft.lastOperationKind,
       entryDateFrom: filterDraft.entryDateFrom,
@@ -363,6 +368,7 @@ export function TrafoPositionPageView() {
     params.set("materialCode", item.materialCode);
     params.set("serialNumber", item.serialNumber);
     params.set("lotCode", item.lotCode);
+    params.set("cmd", item.cmd ? "SIM" : "NAO");
 
     router.push(`/entrada?${params.toString()}`);
   }
@@ -491,7 +497,7 @@ export function TrafoPositionPageView() {
 
       const headers = [
         "centro_fisico", "situacao", "equipe_atual", "encarregado_atual", "projeto_ultimo",
-        "material_codigo", "descricao", "rastreio", "serial", "lp", "ultima_operacao",
+        "material_codigo", "descricao", "rastreio", "serial", "lp", "cmd", "ultima_operacao",
         "data_ultima_movimentacao", "atualizado_em", "ultima_transferencia", "ret_em", "ret_por", "ret_motivo",
       ];
       const rows = exportedItems.map((item) => [
@@ -505,6 +511,7 @@ export function TrafoPositionPageView() {
         serialTrackingLabel(item.serialTrackingType),
         item.serialNumber,
         item.lotCode,
+        booleanLabel(item.cmd),
         movementTypeLabel(item.lastOperationKind),
         formatDate(item.lastEntryDate),
         formatDateTime(item.updatedAt),
@@ -592,6 +599,18 @@ export function TrafoPositionPageView() {
               <option value="RETURN">Devolucao</option>
               <option value="FIELD_RETURN">Retorno de campo</option>
               <option value="RET">RET</option>
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>CMD</span>
+            <select
+              value={filterDraft.cmd}
+              onChange={(event) => updateFilterDraft("cmd", event.target.value as TrafoPositionFilters["cmd"])}
+            >
+              <option value="TODOS">Todos</option>
+              <option value="SIM">Sim</option>
+              <option value="NAO">Nao</option>
             </select>
           </label>
 
@@ -763,6 +782,7 @@ export function TrafoPositionPageView() {
                 <th>Rastreio</th>
                 <th>Serial</th>
                 <th>LP</th>
+                <th>CMD</th>
                 <th>Ultima operacao</th>
                 <th>Data ultima movimentacao</th>
                 <th>Atualizado em</th>
@@ -785,6 +805,7 @@ export function TrafoPositionPageView() {
                   <td>{serialTrackingLabel(item.serialTrackingType)}</td>
                   <td>{item.serialNumber}</td>
                   <td>{item.lotCode}</td>
+                  <td>{booleanLabel(item.cmd)}</td>
                   <td>
                     <span className={movementChipClass(item.lastOperationKind)}>
                       {movementTypeLabel(item.lastOperationKind)}
@@ -837,7 +858,7 @@ export function TrafoPositionPageView() {
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={13} className={styles.emptyRow}>
+                  <td colSpan={14} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando rastreio de serial..." : "Nenhuma unidade encontrada para os filtros aplicados."}
                   </td>
                 </tr>
@@ -887,6 +908,7 @@ export function TrafoPositionPageView() {
                 <div><strong>Rastreio:</strong> {serialTrackingLabel(detailItem.serialTrackingType)}</div>
                 <div><strong>Serial:</strong> {detailItem.serialNumber}</div>
                 <div><strong>LP:</strong> {detailItem.lotCode}</div>
+                <div><strong>CMD:</strong> {booleanLabel(detailItem.cmd)}</div>
                 <div><strong>Ultima operacao:</strong> <span className={detailMovementChipClass}>{movementTypeLabel(detailItem.lastOperationKind)}</span></div>
                 <div><strong>Data ultima movimentacao:</strong> {formatDate(detailItem.lastEntryDate)}</div>
                 <div><strong>Atualizado em:</strong> {formatDateTime(detailItem.updatedAt)}</div>
@@ -1008,6 +1030,7 @@ export function TrafoPositionPageView() {
                     <div><strong>Encarregado:</strong> {entry.foremanName || "-"}</div>
                     <div><strong>Data da movimentacao:</strong> {formatDate(entry.entryDate)}</div>
                     <div><strong>Tipo tecnico:</strong> {movementTypeLabel(entry.movementType)}</div>
+                    <div><strong>CMD:</strong> {booleanLabel(entry.cmd)}</div>
                     <div className={styles.detailWide}><strong>Motivo do estorno:</strong> {entry.reversalReason || "-"}</div>
                     <div className={styles.detailWide}><strong>Observacao:</strong> {entry.notes || "-"}</div>
                   </div>

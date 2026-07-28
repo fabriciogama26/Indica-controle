@@ -33,6 +33,7 @@ export function buildTrafoPositionQuery(filters: TrafoPositionFilters, page: num
   params.set("currentStatus", filters.currentStatus);
   params.set("serialTrackingType", filters.serialTrackingType);
   params.set("lastOperationKind", filters.lastOperationKind);
+  params.set("cmd", filters.cmd);
 
   if (filters.stockCenterId) params.set("stockCenterId", filters.stockCenterId);
   if (filters.materialType) params.set("materialType", filters.materialType);

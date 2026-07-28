@@ -23,6 +23,7 @@ type TrafoInstanceRow = {
   material_id: string;
   serial_number: string;
   lot_code: string;
+  cmd?: boolean | null;
   current_stock_center_id: string | null;
   updated_at: string | null;
 };
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("trafo_instances")
-      .select("id, material_id, serial_number, lot_code, current_stock_center_id, updated_at")
+      .select("id, material_id, serial_number, lot_code, cmd, current_stock_center_id, updated_at")
       .eq("tenant_id", appUser.tenant_id)
       .eq("material_id", materialId)
       .eq("current_stock_center_id", fromStockCenterId)
@@ -129,6 +130,7 @@ export async function GET(request: NextRequest) {
         serialTrackingType,
         serialNumber: row.serial_number,
         lotCode: row.lot_code,
+        cmd: Boolean(row.cmd),
         currentStockCenterId: row.current_stock_center_id,
         updatedAt: row.updated_at,
       })),

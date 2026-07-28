@@ -941,3 +941,8 @@ Observacao
 - Cria a RPC `dashboard_portfolio_goal_coverage(p_tenant_id, p_cycle_start, p_produced_value, p_remaining_potential, p_reference_date)` para calcular meta restante, cobertura da meta, autonomia em dias uteis e data prevista de esgotamento da carteira.
 - Usa a meta oficial salva em `measurement_cycle_workdays` e `measurement_cycle_target_items`, somando `cycle_goal` e `daily_goal` do ciclo.
 - Mantem `SECURITY INVOKER`, revoga `public`/`anon` e concede `EXECUTE` para `authenticated` e `service_role`.
+
+339_add_cmd_to_serial_stock_movements.sql
+- Adiciona `cmd boolean not null default false` em `stock_transfer_items` e `trafo_instances`, com indices parciais por tenant para filtros `CMD = Sim`.
+- Atualiza a RPC base de Movimentacao de Estoque para persistir `cmd` nos itens e cria trigger para sincronizar a marcacao do item com a instancia serializada atual.
+- Faz backfill conservador em `trafo_instances` pelo item de movimentacao mais recente da unidade e mantem EXECUTE da trigger function fechado para `public`/`anon`/`authenticated`.
