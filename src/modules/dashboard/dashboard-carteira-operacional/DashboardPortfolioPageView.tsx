@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 
 import { useDashboardPortfolio } from "./hooks";
-import type { DashboardPortfolioProject } from "./types";
+import type { DashboardPortfolioActivityForecastItem, DashboardPortfolioProject } from "./types";
 import {
   csvEscapePortfolio,
   downloadPortfolioCsv,
@@ -12,7 +12,6 @@ import {
   formatPortfolioPercent,
   maxPortfolioValue,
   portfolioOriginLabel,
-  portfolioScopeLabel,
   portfolioStatusLabel,
   toPortfolioIsoDate,
 } from "./utils";
@@ -104,6 +103,10 @@ function goalCoverageBarClass(status: keyof typeof goalCoverageLabels) {
 export function DashboardPortfolioPageView() {
   const dashboard = useDashboardPortfolio();
   const [projectPage, setProjectPage] = useState(1);
+  const [activityProject, setActivityProject] = useState<DashboardPortfolioProject | null>(null);
+  const [activityRows, setActivityRows] = useState<DashboardPortfolioActivityForecastItem[]>([]);
+  const [isActivityLoading, setIsActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState("");
   const selectedCycleLabel = dashboard.filters.cycleStart === "ALL"
     ? "Todos os ciclos"
     : dashboard.cycles.find((cycle) => cycle.cycleStart === dashboard.filters.cycleStart)?.label ?? "Ciclo selecionado";
@@ -121,6 +124,10 @@ export function DashboardPortfolioPageView() {
     ),
     [currentProjectPage, dashboard.projectRows],
   );
+  const activityTotalValue = useMemo(
+    () => activityRows.reduce((total, item) => total + item.totalValue, 0),
+    [activityRows],
+  );
 
   function applyFilters() {
     setProjectPage(1);
@@ -134,7 +141,6 @@ export function DashboardPortfolioPageView() {
       "Projeto",
       "Regional",
       "Status",
-      "Carteira",
       "Origem",
       "Primeira atuacao",
       "Ultima atuacao",
@@ -152,7 +158,6 @@ export function DashboardPortfolioPageView() {
       project.projectCode,
       project.serviceCenter,
       portfolioStatusLabel(project.status),
-      portfolioScopeLabel(project.portfolioStatus),
       portfolioOriginLabel(project.origin),
       project.firstActivityLabel,
       project.lastActivityLabel,
@@ -168,6 +173,22 @@ export function DashboardPortfolioPageView() {
     ]);
     const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscapePortfolio).join(";")).join("\n")}`;
     downloadPortfolioCsv(csv, `dashboard_carteira_operacional_${toPortfolioIsoDate(new Date())}.csv`);
+  }
+
+  async function openActivityForecast(project: DashboardPortfolioProject) {
+    setActivityProject(project);
+    setActivityRows([]);
+    setActivityError("");
+    setIsActivityLoading(true);
+
+    try {
+      const rows = await dashboard.loadProjectActivities(project.projectId);
+      setActivityRows(rows);
+    } catch (error) {
+      setActivityError(error instanceof Error ? error.message : "Falha ao carregar atividades previstas do projeto.");
+    } finally {
+      setIsActivityLoading(false);
+    }
   }
 
   return (
@@ -424,7 +445,6 @@ export function DashboardPortfolioPageView() {
                 <th>Projeto</th>
                 <th>Regional</th>
                 <th>Status</th>
-                <th>Carteira</th>
                 <th>Origem</th>
                 <th>Primeira atuacao</th>
                 <th>Ultima atuacao</th>
@@ -437,6 +457,7 @@ export function DashboardPortfolioPageView() {
                 <th>Valor ciclo</th>
                 <th>Restante</th>
                 <th>% explorado</th>
+                <th>Acao</th>
               </tr>
             </thead>
             <tbody>
@@ -445,7 +466,6 @@ export function DashboardPortfolioPageView() {
                   <td>{project.projectCode}</td>
                   <td>{project.serviceCenter}</td>
                   <td><span className={project.status === "CONCLUIDO" ? styles.badgeSuccess : styles.badgeWarning}>{portfolioStatusLabel(project.status)}</span></td>
-                  <td><span className={project.isWithdrawn ? styles.badgeWithdrawn : styles.badgeNeutral}>{portfolioScopeLabel(project.portfolioStatus)}</span></td>
                   <td>{portfolioOriginLabel(project.origin)}</td>
                   <td>{project.firstActivityLabel}</td>
                   <td>{project.lastActivityLabel}</td>
@@ -458,6 +478,11 @@ export function DashboardPortfolioPageView() {
                   <td>{formatPortfolioCurrency(project.valueInCycle)}</td>
                   <td>{formatPortfolioCurrency(project.remainingPotential)}</td>
                   <td>{formatPortfolioPercent(project.exploredPercentage)}</td>
+                  <td>
+                    <button type="button" className={styles.tableActionButton} onClick={() => void openActivityForecast(project)}>
+                      Ver
+                    </button>
+                  </td>
                 </tr>
               )) : (
                 <tr><td colSpan={16} className={styles.emptyRow}>Nenhum projeto encontrado na carteira operacional.</td></tr>
@@ -471,6 +496,58 @@ export function DashboardPortfolioPageView() {
           <button type="button" className={styles.secondaryButton} disabled={currentProjectPage >= totalProjectPages} onClick={() => setProjectPage((page) => Math.min(totalProjectPages, page + 1))}>Proxima</button>
         </div>
       </article>
+      {activityProject ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setActivityProject(null)}>
+          <div className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="portfolio-activity-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 id="portfolio-activity-title" className={styles.cardTitle}>Atividades previstas</h2>
+                <p className={styles.cardSubtitle}>{activityProject.projectCode} - {formatPortfolioCurrency(activityTotalValue)}</p>
+              </div>
+              <button type="button" className={styles.secondaryButton} onClick={() => setActivityProject(null)}>
+                Fechar
+              </button>
+            </div>
+            {activityError ? <p className={styles.errorMessage}>{activityError}</p> : null}
+            {isActivityLoading ? (
+              <p className={styles.emptyState}>Carregando atividades previstas...</p>
+            ) : (
+              <div className={styles.tableWrapper}>
+                <table className={`${styles.table} ${styles.activityTable}`}>
+                  <thead>
+                    <tr>
+                      <th>Codigo</th>
+                      <th>Descricao</th>
+                      <th>Tipo</th>
+                      <th>Unidade</th>
+                      <th>Pontos</th>
+                      <th>Quantidade</th>
+                      <th>Valor unit.</th>
+                      <th>Valor previsto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activityRows.length ? activityRows.map((item) => (
+                      <tr key={item.id}>
+                        <td>{item.code || "-"}</td>
+                        <td title={item.description}>{item.description || "-"}</td>
+                        <td>{item.type ?? "-"}</td>
+                        <td>{item.unit || "-"}</td>
+                        <td>{formatPortfolioNumber(item.voicePoint, 2)}</td>
+                        <td>{formatPortfolioNumber(item.qtyPlanned, 2)}</td>
+                        <td>{formatPortfolioCurrency(item.unitValue)}</td>
+                        <td>{formatPortfolioCurrency(item.totalValue)}</td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan={8} className={styles.emptyRow}>Nenhuma atividade prevista cadastrada para este projeto.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

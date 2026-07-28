@@ -107,6 +107,32 @@ export type DashboardPortfolioProject = {
   exploredPercentage: number;
 };
 
+export type DashboardPortfolioActivityForecastItem = {
+  id: string;
+  activityId: string;
+  code: string;
+  description: string;
+  type: string | null;
+  unit: string;
+  unitValue: number;
+  voicePoint: number;
+  totalValue: number;
+  qtyPlanned: number;
+  observation: string | null;
+  source: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+};
+
+export type DashboardPortfolioActivityForecastResponse = {
+  message?: string;
+  project?: {
+    id: string;
+    sob: string;
+  };
+  items?: DashboardPortfolioActivityForecastItem[];
+};
+
 export type DashboardPortfolioResponse = {
   message?: string;
   cycles?: DashboardPortfolioCycle[];

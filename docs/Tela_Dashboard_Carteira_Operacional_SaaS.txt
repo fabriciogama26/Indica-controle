@@ -33,9 +33,10 @@ Filtros, auto-complete e listagem
 - O filtro de ciclo permite `Ciclo mais recente`, ciclos individuais e `Todos os ciclos`.
 - O filtro `Carteira` permite `Sem retirados`, `Somente retirados` e `Com retirados`.
 - O carregamento inicial seleciona o ciclo mais recente com producao de projetos elegiveis; se nao houver historico, usa o ciclo corrente.
-- A tabela principal exibe projeto, regional, status, carteira, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor previsto, valor acumulado, valor no ciclo e restante.
+- A tabela principal exibe projeto, regional, status, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor previsto, valor acumulado, valor no ciclo, restante, percentual explorado e acao para consultar as atividades previstas.
 - A tabela e paginada no frontend para manter a leitura rapida.
 - O botao `Extrair CSV` exporta todas as linhas filtradas da tabela analitica, nao apenas a pagina visivel.
+- A acao `Ver` abre a lista de atividades previstas do projeto pela rota `/api/projects/activity-forecast`, mantendo o calculo de valor previsto vindo da API.
 
 Indicadores
 - Saude da carteira: projetos trabalhados, novos, herdados, concluidos, pendentes, retirados, idade media e indice de renovacao.
@@ -80,6 +81,7 @@ Atualizacao 2026-07
 - Incluido icone de informacao no diagnostico automatico para explicar os parametros de saude da carteira.
 - Incluidos icones de informacao nos blocos de fluxo, renovacao e envelhecimento da carteira.
 - Criada a RPC `334_dashboard_portfolio_goal_coverage_rpc.sql` e incluido o bloco `Cobertura da meta` para medir se a carteira sustenta a meta restante do ciclo.
+- Removida a coluna `Carteira` da tabela analitica e incluida a acao `Ver` para abrir as atividades previstas do projeto.
 
 Mapa de Codigo
 - `src/app/(dashboard)/dashboard-carteira-operacional/page.tsx`: rota autenticada da tela.
