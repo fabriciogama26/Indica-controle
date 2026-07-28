@@ -111,6 +111,11 @@ export function useProgrammingStageList(params: {
   const [isLoadingList, setIsLoadingList] = useState(false);
   // Data de referencia do SERVIDOR (marcador "sem retorno ha N dias").
   const [listToday, setListToday] = useState<string | null>(null);
+  // FALHA e LISTA VAZIA sao coisas diferentes e a tela precisa distinguir. Antes,
+  // o catch so zerava items/total: qualquer erro de API (ex.: coluna faltando
+  // porque a migration nao foi aplicada) aparecia como "Nenhuma etapa encontrada
+  // para os filtros atuais", mandando o usuario procurar problema no filtro.
+  const [listError, setListError] = useState<string | null>(null);
   const teamIdsKey = filters.teamIds.join(",");
   const workCompletionKey = filters.workCompletionStatuses.join(",");
 
@@ -129,9 +134,13 @@ export function useProgrammingStageList(params: {
       setItems(data.list ?? []);
       setTotal(data.total ?? 0);
       setListToday(data.today ?? null);
+      setListError(null);
     } catch (error) {
       setItems([]);
       setTotal(0);
+      // `fetchProgrammingStageList` lanca com a mensagem que o servidor devolveu —
+      // aproveitar essa mensagem em vez de descarta-la.
+      setListError(error instanceof Error ? error.message : "Falha ao carregar a lista de programacoes.");
       void onError?.("Falha ao carregar lista de programacoes.", error, { operation: "load_stage_list" });
     } finally {
       setIsLoadingList(false);
@@ -142,7 +151,7 @@ export function useProgrammingStageList(params: {
     void loadList();
   }, [loadList]);
 
-  return { items, total, page, setPage, isLoadingList, listToday, reloadList: loadList };
+  return { items, total, page, setPage, isLoadingList, listToday, listError, reloadList: loadList };
 }
 
 export function useProgrammingPlan(params: {

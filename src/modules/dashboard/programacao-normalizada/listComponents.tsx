@@ -438,6 +438,8 @@ function buildProjectGroups(items: StageListItem[]) {
 export function StageListTable(props: {
   items: StageListItem[];
   isLoading: boolean;
+  // Mensagem de falha da carga da lista. Null = carregou (mesmo que vazia).
+  loadError: string | null;
   isSubmitting: boolean;
   todayIso: string | null;
   onOpenProject: (projectId: string) => void;
@@ -462,6 +464,7 @@ export function StageListTable(props: {
   const {
     items,
     isLoading,
+    loadError,
     isSubmitting,
     todayIso,
     onOpenProject,
@@ -564,6 +567,21 @@ export function StageListTable(props: {
           {exportButtons}
         </div>
         <p className={styles.emptyHint}>Carregando lista...</p>
+      </article>
+    );
+  }
+
+  // FALHA vem ANTES do estado vazio: os dois zeram a lista, mas so um deles e
+  // problema de filtro. Mostrar "nenhuma etapa" quando a API falhou manda o
+  // usuario mexer no filtro atras de um erro que esta no servidor.
+  if (loadError) {
+    return (
+      <article className={styles.card}>
+        <div className={styles.tableHeader}>
+          <h3 className={styles.cardTitle}>Programacoes</h3>
+          {exportButtons}
+        </div>
+        <p className={styles.feedbackError}>Nao foi possivel carregar a lista: {loadError}</p>
       </article>
     );
   }

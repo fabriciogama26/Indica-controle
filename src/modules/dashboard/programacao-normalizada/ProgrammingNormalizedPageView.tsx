@@ -53,7 +53,7 @@ export function ProgrammingNormalizedPageView() {
   const enelExportCooldown = useExportCooldown();
 
   const { meta } = useProgrammingMeta({ accessToken, onError: logError });
-  const { items, total, page, setPage, isLoadingList, listToday, reloadList } = useProgrammingStageList({ accessToken, filters, onError: logError });
+  const { items, total, page, setPage, isLoadingList, listToday, listError, reloadList } = useProgrammingStageList({ accessToken, filters, onError: logError });
   const historyModal = useHistoryModal({ accessToken, onError: logError });
   const actions = useProgrammingStageActions({ accessToken, setFeedback, onSuccess: reloadList, onError: logError });
 
@@ -309,6 +309,7 @@ export function ProgrammingNormalizedPageView() {
       <StageListTable
         items={items}
         isLoading={isLoadingList}
+        loadError={listError}
         isSubmitting={actions.isSubmitting}
         todayIso={listToday}
         onOpenProject={openProject}
