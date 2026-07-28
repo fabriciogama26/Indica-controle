@@ -36,8 +36,9 @@ Arquitetura
 - API (plano + historico): `src/app/api/programacao-normalizada/route.ts`
 - API (catalogo): `src/app/api/programacao-normalizada/meta/route.ts`
 - Server module: `src/server/modules/programacao-normalizada/{types,selects,queries,catalogs,normalizers,rpc,handlers}.ts`
-- Migrations: 310–337 (sequencia continua; 335 = carga de dados legados, 336 = filtro por
-  Estado do Trabalho, 337 = classificacao historica de etapa encerrada). A colisao
+- Migrations: 310–338 (sequencia continua; 335 = carga de dados legados, 336 = filtro por
+  Estado do Trabalho, 337 = classificacao historica de etapa encerrada, 338 = backfill
+  dessa classificacao para as etapas ja encerradas antes da 337). A colisao
   historica no numero 318 foi corrigida em
   2026-07-21 movendo a migration idempotente da serie serial para 319 — ver a nota em
   `docs/planejamento/Mapa_Regras_Programacao.md`. Bancos ja aplicados: reparar com
@@ -710,4 +711,68 @@ Atualizacao 2026-07-28 - Classificacao historica de etapa encerrada (337)
   - Foi pedida como 331, mas 331 ja estava ocupada
     (`331_prevent_duplicate_active_measurement_items.sql`) e a sequencia ja estava em
     336. Numero real: 337. A migration 318 NAO foi alterada, conforme pedido.
+
+
+Atualizacao 2026-07-28 - Colunas em branco na extracao (INFO STATUS e Tempo previsto)
+--------------------------------------------------------------------------------------
+- Sintoma relatado: `PROGRAMACAO_ANGRA_INDICA` saindo com `INFO STATUS` e
+  `Tempo previsto` em branco em varias linhas.
+- Sao DUAS causas diferentes, medidas em producao em 2026-07-28 (472 etapas):
+
+1) INFO STATUS em branco -> migration 338 (backfill)
+   - Causa: a 337 fotografa a classificacao no momento em que a etapa sai do plano,
+     mas so vale dali para frente. Toda etapa encerrada ANTES dela ficou sem
+     snapshot: 153 de 472 etapas (87 CANCELADA + 66 ADIADA), TODAS sem snapshot.
+     Um terco do arquivo saia sem classificacao.
+   - O que NAO da para recuperar: a verdade historica. A classificacao de uma etapa
+     dependia de quais OUTRAS estavam ativas naquele dia, e esse conjunto nunca foi
+     registrado (o historico guarda a acao, nao a numeracao vigente).
+   - O que DA: a POSICAO CRONOLOGICA da etapa no projeto â€” a mesma nocao que a
+     numeracao expressa. Regra do backfill, por projeto, sobre TODAS as etapas COM
+     data (ativas e encerradas), ordenadas por data:
+       1 etapa no conjunto             -> Unica
+       posicao == ultima (maior data)  -> Final
+       demais                          -> Etapa N
+     E a regra do reclassify aplicada ao conjunto COMPLETO em vez de so ao ativo, e
+     por isso reconstitui "qual etapa esta era quando existia". Bate com o exemplo
+     de negocio: cancelar a Etapa 2 deixa "Era Etapa 2" (cancelada) convivendo com a
+     nova "Etapa 2" (a antiga 3, renumerada).
+   - Isto e RECONSTRUCAO, nao fotografia, e o dado registra isso: a coluna nova
+     `classification_snapshot_source` marca CAPTURED (fotografado pela 337) ou
+     BACKFILL_338 (reconstruido). As capturas novas passaram a gravar CAPTURED, e a
+     rota "nova data" do Adiar limpa a procedencia junto com o snapshot (trigger
+     `tg_programming_clear_snapshot_source`), para nao sobrar procedencia orfa.
+   - Simulacao previa (somente leitura, antes de aplicar): as 153 recebem
+     classificacao e NENHUMA sobra em branco. Distribuicao: 1a ETAPA 31, 2a 24,
+     3a 18, ETAPA FINAL 15, 4a 13, 5a 11, 6a 9, ETAPA UNICA 8, demais em cauda.
+   - A migration e IDEMPOTENTE: so escreve onde `classification_snapshot_at is null`,
+     entao nunca sobrescreve fotografia real e pode ser reexecutada.
+   - Etapa encerrada SEM data continua sem classificacao historica â€” nao ha por onde
+     ordenar. Hoje esse caso nao existe (as 153 tem data).
+
+2) Tempo previsto em branco -> so exibicao, sem migration
+   - Causa: 3 etapas (todas PROGRAMADA) com `expected_minutes` nulo, mas COM hora de
+     inicio e termino preenchidas. `formatExpectedTimeAsClock` devolve "" para nulo,
+     entao a coluna saia vazia mesmo havendo como calcular.
+   - Correcao: `resolveExpectedMinutes` (utils.ts) usa `expected_minutes` quando ele
+     existe e, so quando ele falta, deriva de inicio/termino (tratando jornada que
+     vira o dia). NAO grava nada no banco e nunca sobrescreve valor informado.
+   - Aplicado nas duas extracoes que tem a coluna (ENEL e ENEL NOVO).
+- Mapa de Codigo:
+  - `supabase/migrations/338_backfill_classification_snapshot_for_legacy_closed_stages.sql`
+  - `src/modules/dashboard/programacao-normalizada/utils.ts`: `resolveExpectedMinutes`.
+  - `src/modules/dashboard/programacao-normalizada/exports.ts`: usa o helper nas duas
+    extracoes.
+- Como validar:
+  1. Aplicar a 338. O log traz duas linhas NOTICE com quantas etapas foram
+     reconstruidas e quantas seguem sem classificacao (esperado: 153 e 0).
+  2. Gerar `Extracao ENEL NOVO`: linhas ADIADO/CANCELADO passam a trazer INFO STATUS.
+  3. Conferir as 3 etapas que estavam sem Tempo previsto: a coluna passa a mostrar a
+     diferenca entre hora de inicio e termino.
+  4. Auditar procedencia:
+     select classification_snapshot_source, count(*) from public.programming group by 1;
+- Impacto multi-tenant:
+  - O backfill particiona por (tenant_id, project_id) e o UPDATE casa `tenant_id`.
+    Nenhuma RLS, policy ou permissao alterada. A funcao de captura mantem EXECUTE
+    apenas para service_role.
 

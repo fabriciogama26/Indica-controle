@@ -233,6 +233,30 @@ function parseTimeToMinutes(value: string | null) {
   return (hours * 60) + minutes;
 }
 
+// Tempo previsto para exibicao/exportacao. `expected_minutes` e um campo proprio,
+// mas existe etapa gravada com ele nulo tendo hora de inicio e termino
+// preenchidas (3 casos em producao em 2026-07-28) — ai a coluna "Tempo previsto"
+// saia em branco mesmo havendo como calcular. Deriva de inicio/termino nesse caso.
+//
+// NAO grava nada: e so apresentacao. O campo continua sendo a fonte quando existe,
+// e a derivacao nunca sobrescreve um valor informado.
+export function resolveExpectedMinutes(stage: {
+  expectedMinutes: number | null;
+  startTime: string | null;
+  endTime: string | null;
+}) {
+  const informed = Number(stage.expectedMinutes ?? 0);
+  if (Number.isFinite(informed) && informed > 0) return informed;
+
+  const start = parseTimeToMinutes(stage.startTime);
+  const end = parseTimeToMinutes(stage.endTime);
+  if (start === null || end === null) return null;
+
+  // Termino menor que o inicio = jornada que vira o dia.
+  const diff = end >= start ? end - start : end + 24 * 60 - start;
+  return diff > 0 ? diff : null;
+}
+
 export function resolveEnelNovoPeriod(startTime: string | null, endTime: string | null) {
   const startMinutes = parseTimeToMinutes(startTime);
   const endMinutes = parseTimeToMinutes(endTime);

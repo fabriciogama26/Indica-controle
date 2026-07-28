@@ -19,6 +19,7 @@ import {
   isAreaLivreSgd,
   normalizeSgdNumberForExport,
   resolveEnelNovoPeriod,
+  resolveExpectedMinutes,
   resolveTeamStructureCode,
   toExcelDateSerial,
 } from "./utils";
@@ -232,7 +233,7 @@ export function buildEnelCsvContent({ stages, projectMap, teamMap, sgdTypeMap, e
       stage.period ?? "",
       (stage.startTime ?? "").slice(0, 5),
       (stage.endTime ?? "").slice(0, 5),
-      formatExpectedHours(stage.expectedMinutes),
+      formatExpectedHours(resolveExpectedMinutes(stage)),
       getEnelStatusLabel(stage.status),
       formatInfoStatusEtapaFromDisplay(stage),
       project?.priority ?? "",
@@ -353,7 +354,7 @@ export function buildEnelNovoWorkbookData({ stages, projectMap, teamMap, sgdType
       resolveEnelNovoPeriod(stage.startTime, stage.endTime),
       (stage.startTime ?? "").slice(0, 5),
       (stage.endTime ?? "").slice(0, 5),
-      formatExpectedTimeAsClock(stage.expectedMinutes),
+      formatExpectedTimeAsClock(resolveExpectedMinutes(stage)),
       getEnelStatusLabel(stage.status),
       // INFO STATUS sai SEM o prefixo "Era": o layout da ENEL espera o rotulo puro
       // ("2ª ETAPA") e quem desambigua e a coluna STATUS ao lado (337). Etapa ativa
