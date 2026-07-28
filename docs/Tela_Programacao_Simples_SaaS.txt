@@ -3053,3 +3053,26 @@ Atualizacao 2026-07-22 - Data Execucao como data no ENEL NOVO
   - Abrir Programacao Simples, gerar `Extracao ENEL NOVO` e confirmar no Excel que a coluna D permite filtro/ordenacao por data.
 - Impacto multi-tenant:
   - Nenhuma query, RLS, migration, endpoint ou escopo de tenant alterado.
+
+Atualizacao 2026-07-28 - Dados transpostos para a Programacao Normalizada (335)
+--------------------------------------------------------------------------------
+- O que mudou nesta tela: NADA no codigo. Nenhuma rota, componente, query ou
+  permissao de `programacao-simples` foi alterada, e `project_programming` continua
+  sendo a fonte da verdade desta tela.
+- O que aconteceu ao redor:
+  - A migration `335_migrate_legacy_programming_delta.sql` LE `project_programming` e
+    transpoe o que faltava para o modelo normalizado (`programming`/`programming_team`/
+    `programming_document`), complementando a 315 (foto de 2026-07-19, ja aplicada).
+  - A migration NAO altera, apaga nem trava nada em `project_programming`.
+- Politica de conflito aplicada (merge conservador): onde as duas telas divergiram, o
+  valor ja decidido na tela nova PREVALECE. As edicoes feitas aqui depois de 2026-07-19
+  que colidem com uma decisao da tela nova NAO foram transpostas automaticamente —
+  estao listadas em `docs/planejamento/Revisao_Delta_Programacao_335.txt`.
+- Situacao desta tela: segue em producao e aceitando escrita. Enquanto isso, cada
+  cadastro/edicao feito aqui volta a criar defasagem com a tela nova.
+- Decisao registrada (2026-07-28): o objetivo e CORTE — a Programacao Normalizada passa
+  a ser a tela oficial e esta aqui deve virar somente leitura. Esse congelamento NAO foi
+  implementado nesta entrega; enquanto nao for, a 335 precisa ser regerada e reaplicada
+  para emparelhar de novo.
+- Detalhe completo da migracao: `docs/Tela_Programacao_Normalizada_SaaS.txt`, secao
+  "Atualizacao 2026-07-28".

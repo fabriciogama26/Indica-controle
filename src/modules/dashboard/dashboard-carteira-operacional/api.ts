@@ -1,5 +1,9 @@
 import { DASHBOARD_PORTFOLIO_ENDPOINT } from "./constants";
-import type { DashboardPortfolioFilters, DashboardPortfolioResponse } from "./types";
+import type {
+  DashboardPortfolioActivityForecastResponse,
+  DashboardPortfolioFilters,
+  DashboardPortfolioResponse,
+} from "./types";
 
 export async function fetchDashboardPortfolio(params: {
   accessToken: string;
@@ -21,6 +25,26 @@ export async function fetchDashboardPortfolio(params: {
 
   if (!response.ok) {
     throw new Error(data.message ?? "Falha ao carregar Dashboard Carteira Operacional.");
+  }
+
+  return data;
+}
+
+export async function fetchDashboardPortfolioProjectActivities(params: {
+  accessToken: string;
+  projectId: string;
+}) {
+  const searchParams = new URLSearchParams({ projectId: params.projectId });
+  const response = await fetch(`/api/projects/activity-forecast?${searchParams.toString()}`, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+    },
+  });
+  const data = (await response.json().catch(() => ({}))) as DashboardPortfolioActivityForecastResponse;
+
+  if (!response.ok) {
+    throw new Error(data.message ?? "Falha ao carregar atividades previstas do projeto.");
   }
 
   return data;

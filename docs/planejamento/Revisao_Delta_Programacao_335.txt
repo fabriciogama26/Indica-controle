@@ -1,0 +1,27 @@
+Revisao manual — delta Programacao Simples -> Programacao Normalizada (migration 335)
+==========================================================================================
+Gerado em: 2026-07-28T14:25:04.553Z
+
+Estes casos NAO foram aplicados pela migration 335. O merge conservador nao
+sobrescreve valor ja decidido na tela nova, entao cada linha abaixo precisa de
+decisao humana — e como o corte congela a tela Simples, nao havera nova chance
+de trazer esse dado automaticamente.
+
+------------------------------------------------------------------------------------------
+ESTADO_DIVERGENTE (5)
+As duas telas lancaram Estado do Trabalho diferente para a mesma etapa. O destino estava preenchido e venceu. Conferir e, se a legada estiver certa, ajustar na tela nova.
+------------------------------------------------------------------------------------------
+  SOB A044811036 | 2026-07-28 | legada=PARCIAL_PLANEJADO | destino=PARCIAL_NAO_PLANEJADO (destino preenchido vence — nao alterado)
+  SOB A049563851 | 2026-06-02 | legada=PARCIAL_NAO_PLANEJADO | destino=CONCLUIDO (destino preenchido vence — nao alterado)
+  SOB A051378598 | 2026-07-15 | legada=PARCIAL_NAO_PLANEJADO | destino=CONCLUIDO (destino preenchido vence — nao alterado)
+  SOB A051696331 | 2026-07-10 | legada=PARCIAL_NAO_PLANEJADO | destino=CONCLUIDO (destino preenchido vence — nao alterado)
+  SOB A052579602 | 2026-07-15 | legada=PARCIAL_NAO_PLANEJADO | destino=CONCLUIDO (destino preenchido vence — nao alterado)
+
+------------------------------------------------------------------------------------------
+AGENDA_DIVERGENTE (4)
+As duas telas decidiram a agenda de formas diferentes. O destino ja saiu de PROGRAMADA, entao a decisao da tela nova prevaleceu. Conferir qual das duas e a real e ajustar na tela nova (Adiar / Cancelar / Corrigir data).
+------------------------------------------------------------------------------------------
+  SOB A053692566 | 2026-07-19 | legada=ADIADA | destino=REPROGRAMADA (destino ja decidiu a agenda — nao alterado)
+  SOB CT0324155486 | 2026-07-20 | legada=CANCELADA | destino=REPROGRAMADA (destino ja decidiu a agenda — nao alterado)
+  SOB RC0323603600 | 2026-08-03 | legada=ADIADA | destino=REPROGRAMADA (destino ja decidiu a agenda — nao alterado)
+  SOB ZX323929013 | 2026-07-19 | legada=ADIADA | destino=REPROGRAMADA (destino ja decidiu a agenda — nao alterado)

@@ -8,8 +8,11 @@ Visao geral
   Elimina a duplicacao de campos por equipe que hoje exige triggers de sincronizacao em
   cima de `project_programming` (migrations 267, 273, 275-282).
 - Fonte da verdade do desenho: `docs/planejamento/Spec_Nova_Programacao_Modelo_Normalizado.md`.
-- `programacao-simples` continua intocada e em producao; nenhum dado foi migrado para o
-  schema novo nesta entrega (tabelas nascem vazias).
+- `programacao-simples` continua intocada e em producao (nenhuma mudanca de codigo nela).
+  ATENCAO: a frase original "nenhum dado foi migrado (tabelas nascem vazias)" valia so
+  para a entrega inicial (310) e ficou DESATUALIZADA. O dado legado FOI migrado:
+  migration 315 (foto de 2026-07-19, aplicada) e migration 335 (delta de corte,
+  2026-07-28). Ver "Atualizacao 2026-07-28" no fim deste doc.
 - Classificacao de etapa (Unica/N/Final) e derivada da posicao por data, nunca digitada.
 - Pendencia (modelo FINAL, migration 318 — supersede a 317): virou a flag booleana
   `is_pendencia`, ortogonal a tudo. NAO e status nem Estado do trabalho ('PENDENCIA' saiu
@@ -245,7 +248,8 @@ Atalhos
 -------
 - Rota: `/programacao-normalizada`.
 - Secao no menu: `Operacao`, ao lado de `Programacao` (`programacao-simples`).
-- Tela irma (dado legado, nao migrado): `/programacao-simples`.
+- Tela irma (fonte do dado legado, ja transposto pelas migrations 315 e 335):
+  `/programacao-simples`.
 
 Atualizacao 2026-07
 --------------------
@@ -418,3 +422,89 @@ Atualizacao 2026-07-22 - Data Execucao como data no ENEL NOVO
   - Abrir Programacao Normalizada, gerar `Extracao ENEL NOVO` e confirmar no Excel que a coluna D permite filtro/ordenacao por data.
 - Impacto multi-tenant:
   - Nenhuma query, RLS, migration, endpoint ou escopo de tenant alterado.
+
+Atualizacao 2026-07-28 - Migracao de dados: delta de corte da Programacao Simples (335)
+----------------------------------------------------------------------------------------
+- Problema resolvido:
+  - A migration 315 (aplicada) migrou uma FOTO de 2026-07-19 de `project_programming`.
+    As duas telas seguiram em producao em paralelo depois disso, entao o modelo
+    normalizado estava defasado: etapas cadastradas na Simples nao existiam aqui, e
+    lancamentos feitos na Simples nao chegavam ao destino.
+  - A afirmacao "nenhum dado foi migrado / tabelas nascem vazias" no topo deste doc
+    ficou desatualizada a partir da 315 e nao foi corrigida na epoca.
+- Situacao medida antes da 335 (auditoria somente-leitura em 2026-07-28):
+  - 466 etapas na legada x 433 no destino; 429 pareadas; 4 nascidas so na tela nova.
+  - 38 etapas so na legada; 42 pareadas com valor divergente; 0 equipe/documento faltando.
+  - 16 das divergencias sao de DESENHO, nao edicao: 'PENDENCIA' saiu dos dois eixos na
+    318 e virou `is_pendencia`.
+- Solucao — migration `335_migrate_legacy_programming_delta.sql` (MERGE CONSERVADOR):
+  - Etapa ausente no destino: inserida integralmente (etapa + equipes + documentos).
+  - Etapa presente nos dois lados: so PREENCHE o que o destino nao decidiu.
+    * `work_completion_status`: atualizado so quando o destino esta em branco (null).
+    * `status`: status nunca e nulo, entao o equivalente a "em branco" e 'PROGRAMADA'
+      (default de quem nunca mexeu na agenda). Destino ja em REPROGRAMADA/ADIADA/
+      CANCELADA/ANTECIPADA = decisao da tela nova e NAO e sobrescrita.
+    * equipes/documentos: apenas os ausentes (aditivo — nada e removido).
+  - Nenhum valor decidido na tela nova e regredido. As divergencias reais que sobraram
+    NAO foram aplicadas: estao em `docs/planejamento/Revisao_Delta_Programacao_335.txt`
+    para decisao humana (4 conclusoes feitas aqui contra PARCIAL_* na legada, 4 agendas
+    que a tela nova ja decidiu).
+  - Remapeamentos de modelo aplicados: PARCIAL_PLANEJADO_BENFICIO_ATINGIDO ->
+    BENEFICIO_ATINGIDO (310); 'PENDENCIA' (status ou estado) -> `is_pendencia` (318).
+  - Respeita o indice unico da 321 (um CONCLUIDO ativo nao-pendencia por projeto): o
+    gerador simula a ocupacao dessa vaga e, em vez de quebrar a migration, deixa a
+    etapa sem Estado do Trabalho e registra o caso no TXT de revisao.
+  - `reclassify_project_programming_stages` roda por projeto tocado no fim do arquivo —
+    classificacao Unica/Etapa N/Final nunca e gravada a mao.
+  - `project_programming` NAO e alterado nem apagado (so leitura). Historico legado e
+    lineage (copied_from_id/copy_batch_id/anticipated_by_id) seguem fora, como na 315.
+- Mapa de Codigo:
+  - `scripts/audit-programming-delta-readonly.mjs`: auditoria somente-leitura do delta.
+  - `scripts/generate-migration-335-programming-delta.mjs`: gerador da migration.
+  - `scripts/verify-migration-335-delta-readonly.mjs`: confere o SQL gerado contra o banco.
+  - `supabase/migrations/335_migrate_legacy_programming_delta.sql`: a carga (gerada).
+  - `docs/planejamento/Revisao_Delta_Programacao_335.txt`: casos de decisao humana.
+- Comportamento antes/depois:
+  - Antes: modelo normalizado congelado na foto de 2026-07-19.
+  - Depois: emparelhado com a Simples, sem perder nada que a tela nova ja tinha decidido.
+- ON CONFLICT e o indice parcial da 318 (bug corrigido na 1a tentativa de aplicar):
+  - A primeira versao da 335 usava `on conflict (tenant_id, project_id, execution_date)
+    do nothing`, copiado da 315, e a aplicacao ABORTOU com
+    `ERROR: 42P10: there is no unique or exclusion constraint matching the ON CONFLICT
+    specification`.
+  - Causa: a 318 DROPOU a constraint `programming_tenant_project_date_key` e a
+    substituiu por um INDICE UNICO PARCIAL (`where execution_date is not null`, para
+    permitir varias etapas "em espera" sem data no mesmo projeto). O Postgres so infere
+    um indice parcial quando o predicado aparece no alvo do ON CONFLICT.
+  - Correcao: o alvo passou a ser
+    `on conflict (tenant_id, project_id, execution_date) where execution_date is not null
+    do nothing`. A 315 funcionou com a forma antiga porque foi aplicada ANTES da 318.
+  - `verify-migration-335-delta-readonly.mjs` passou a checar esse predicado, para o
+    caso nao voltar silenciosamente numa regeracao.
+- Pre-voo do gerador (aborta antes de escrever o arquivo):
+  - Valida contra o banco real todas as FK referenciadas (`sgd_type_id`,
+    `electrical_eq_catalog_id`, `support_item_id` por tenant; `team_id` em
+    `public.teams (id, tenant_id)`; `created_by`/`updated_by`/`canceled_by` em
+    `app_users`) e os CHECK de quantidade nao-negativa (325) e de `period`.
+  - Se algo falhar, NENHUM arquivo e escrito e a geracao sai com erro — a migration roda
+    como um bloco so, entao uma linha invalida custaria outra tentativa perdida.
+- Como validar:
+  1. `node scripts/audit-programming-delta-readonly.mjs` — delta atual.
+  2. `node scripts/generate-migration-335-programming-delta.mjs` — REGERAR (o pre-voo
+     roda aqui; exit 0 = nenhuma FK/CHECK quebrada).
+  3. `node scripts/verify-migration-335-delta-readonly.mjs` — todas as linhas devem dar OK.
+  4. Aplicar e conferir na tela: projeto com etapa nova aparece com a numeracao correta;
+     etapa concluida na tela nova continua CONCLUIDO; nenhuma etapa duplicada por data.
+- ATENCAO — o delta e alvo movel:
+  - A Simples continua gravando. Duas execucoes do gerador com minutos de diferenca
+    deram 37 e 38 etapas. REGERAR e REVERIFICAR imediatamente antes de aplicar.
+  - Mitigacao no arquivo: todo UPDATE carrega no WHERE o valor esperado (`and
+    work_completion_status is null`, `and status = 'PROGRAMADA'`) e todo INSERT usa
+    ON CONFLICT DO NOTHING. Se o dado mudar entre gerar e aplicar, a linha e ignorada
+    em vez de sobrescrever a alteracao mais nova. O arquivo e re-executavel.
+- Impacto multi-tenant:
+  - Todo INSERT carrega `tenant_id` explicito e todo UPDATE filtra por `tenant_id` (a
+    verificacao falha se algum nao filtrar). Nenhuma RLS, policy ou endpoint alterado.
+- Pendente (nao entregue nesta tarefa):
+  - O CORTE em si: congelar `programacao-simples` como somente leitura. Enquanto as duas
+    telas aceitarem escrita, o delta volta a crescer.

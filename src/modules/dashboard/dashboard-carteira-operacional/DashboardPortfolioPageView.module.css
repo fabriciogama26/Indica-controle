@@ -60,8 +60,14 @@
 .table th { border-bottom: 1px solid #d9e1ef; background: #eef2f8; color: #002b7f; padding: 10px; text-align: left; font-weight: 800; white-space: nowrap; }
 .table td { border-bottom: 1px solid #e2e8f3; color: #001f5b; padding: 10px; white-space: nowrap; }
 .table tbody tr:nth-child(even) { background: #f8fbff; }
-.projectTable { min-width: 1640px; }
-.projectTable th:nth-child(n+9), .projectTable td:nth-child(n+9) { text-align: right; font-variant-numeric: tabular-nums; }
+.projectTable { min-width: 1600px; }
+.projectTable th:nth-child(n+8):not(:last-child), .projectTable td:nth-child(n+8):not(:last-child) { text-align: right; font-variant-numeric: tabular-nums; }
+.activityTable { min-width: 960px; }
+.activityTable th:nth-child(n+5), .activityTable td:nth-child(n+5) { text-align: right; font-variant-numeric: tabular-nums; }
+.tableActionButton { min-height: 30px; border: 1px solid #c8d4ea; border-radius: 8px; background: #fff; color: #1f4ea3; padding: 0 12px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.modalBackdrop { position: fixed; z-index: 60; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(7, 18, 42, .45); padding: 18px; }
+.modalCard { width: min(1040px, 100%); max-height: min(760px, calc(100vh - 36px)); overflow: auto; border: 1px solid #d9e1ef; border-radius: 8px; background: #fff; padding: 16px; box-shadow: 0 24px 70px rgba(8, 20, 45, .25); }
+.modalHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .badgeSuccess, .badgeWarning, .badgeNeutral, .badgeWithdrawn { display: inline-flex; min-height: 24px; align-items: center; border-radius: 999px; padding: 0 9px; font-size: 11px; font-weight: 800; }
 .badgeSuccess { border: 1px solid #86efac; background: #dcfce7; color: #047857; }
 .badgeWarning { border: 1px solid #fcd34d; background: #fef3c7; color: #92400e; }
@@ -77,7 +83,7 @@
   .twoColumnGrid { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
-  .cardHeader, .diagnosticHeader, .pagination, .tableActions { flex-direction: column; align-items: stretch; }
+  .cardHeader, .diagnosticHeader, .modalHeader, .pagination, .tableActions { flex-direction: column; align-items: stretch; }
   .filterGrid, .metricGrid { grid-template-columns: 1fr; }
   .flowRow, .barRow { grid-template-columns: 1fr; }
 }

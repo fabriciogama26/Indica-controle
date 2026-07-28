@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
-import { fetchDashboardPortfolio } from "./api";
+import { fetchDashboardPortfolio, fetchDashboardPortfolioProjectActivities } from "./api";
 import { EMPTY_DASHBOARD_PORTFOLIO_FILTERS } from "./constants";
 import type {
   DashboardPortfolioAgeBucket,
@@ -79,6 +79,25 @@ export function useDashboardPortfolio() {
     }
   }, [filters, logError, session?.accessToken]);
 
+  const loadProjectActivities = useCallback(async (projectId: string) => {
+    if (!session?.accessToken) {
+      throw new Error("Sessao invalida para carregar atividades previstas.");
+    }
+
+    try {
+      const data = await fetchDashboardPortfolioProjectActivities({
+        accessToken: session.accessToken,
+        projectId,
+      });
+      return data.items ?? [];
+    } catch (error) {
+      await logError("Falha ao carregar atividades previstas no Dashboard Carteira Operacional", error, {
+        projectId,
+      });
+      throw error;
+    }
+  }, [logError, session?.accessToken]);
+
   useEffect(() => {
     if (suppressNextAutoLoadRef.current) {
       suppressNextAutoLoadRef.current = false;
@@ -103,6 +122,7 @@ export function useDashboardPortfolio() {
     renewalChart,
     ageBuckets,
     projectRows,
+    loadProjectActivities,
     isLoading,
     errorMessage,
   };
