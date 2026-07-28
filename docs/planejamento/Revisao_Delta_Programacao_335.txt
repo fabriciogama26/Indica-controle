@@ -1,6 +1,6 @@
 Revisao manual — delta Programacao Simples -> Programacao Normalizada (migration 335)
 ==========================================================================================
-Gerado em: 2026-07-28T14:19:30.847Z
+Gerado em: 2026-07-28T14:25:04.553Z
 
 Estes casos NAO foram aplicados pela migration 335. O merge conservador nao
 sobrescreve valor ja decidido na tela nova, entao cada linha abaixo precisa de

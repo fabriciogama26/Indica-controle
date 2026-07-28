@@ -467,9 +467,31 @@ Atualizacao 2026-07-28 - Migracao de dados: delta de corte da Programacao Simple
 - Comportamento antes/depois:
   - Antes: modelo normalizado congelado na foto de 2026-07-19.
   - Depois: emparelhado com a Simples, sem perder nada que a tela nova ja tinha decidido.
+- ON CONFLICT e o indice parcial da 318 (bug corrigido na 1a tentativa de aplicar):
+  - A primeira versao da 335 usava `on conflict (tenant_id, project_id, execution_date)
+    do nothing`, copiado da 315, e a aplicacao ABORTOU com
+    `ERROR: 42P10: there is no unique or exclusion constraint matching the ON CONFLICT
+    specification`.
+  - Causa: a 318 DROPOU a constraint `programming_tenant_project_date_key` e a
+    substituiu por um INDICE UNICO PARCIAL (`where execution_date is not null`, para
+    permitir varias etapas "em espera" sem data no mesmo projeto). O Postgres so infere
+    um indice parcial quando o predicado aparece no alvo do ON CONFLICT.
+  - Correcao: o alvo passou a ser
+    `on conflict (tenant_id, project_id, execution_date) where execution_date is not null
+    do nothing`. A 315 funcionou com a forma antiga porque foi aplicada ANTES da 318.
+  - `verify-migration-335-delta-readonly.mjs` passou a checar esse predicado, para o
+    caso nao voltar silenciosamente numa regeracao.
+- Pre-voo do gerador (aborta antes de escrever o arquivo):
+  - Valida contra o banco real todas as FK referenciadas (`sgd_type_id`,
+    `electrical_eq_catalog_id`, `support_item_id` por tenant; `team_id` em
+    `public.teams (id, tenant_id)`; `created_by`/`updated_by`/`canceled_by` em
+    `app_users`) e os CHECK de quantidade nao-negativa (325) e de `period`.
+  - Se algo falhar, NENHUM arquivo e escrito e a geracao sai com erro — a migration roda
+    como um bloco so, entao uma linha invalida custaria outra tentativa perdida.
 - Como validar:
   1. `node scripts/audit-programming-delta-readonly.mjs` — delta atual.
-  2. `node scripts/generate-migration-335-programming-delta.mjs` — REGERAR.
+  2. `node scripts/generate-migration-335-programming-delta.mjs` — REGERAR (o pre-voo
+     roda aqui; exit 0 = nenhuma FK/CHECK quebrada).
   3. `node scripts/verify-migration-335-delta-readonly.mjs` — todas as linhas devem dar OK.
   4. Aplicar e conferir na tela: projeto com etapa nova aparece com a numeracao correta;
      etapa concluida na tela nova continua CONCLUIDO; nenhuma etapa duplicada por data.
