@@ -35,6 +35,8 @@ import {
 import {
   DOCUMENT_KEYS,
   PAGE_SIZE,
+  PROGRAMACAO_SIMPLES_SOMENTE_LEITURA,
+  PROGRAMACAO_SIMPLES_SOMENTE_LEITURA_AVISO,
   VALIDATION_FIELD_LABELS,
 } from "./constants";
 import {
@@ -113,6 +115,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
   const formCardRef = useRef<HTMLElement | null>(null);
   const feedbackRef = useRef<HTMLDivElement | null>(null);
   const isVisualizationMode = mode === "visualizacao";
+  // CORTE (ver PROGRAMACAO_SIMPLES_SOMENTE_LEITURA em constants.ts): a tela segue
+  // acessivel para consulta, filtro, detalhes, historico e extracoes — so a
+  // ESCRITA sai do ar. O bloqueio real e do servidor; isto aqui existe para o
+  // usuario nao encontrar botao que sempre falharia.
+  //
+  // Conceito separado de `isVisualizationMode` de proposito: aquele modo, alem de
+  // esconder a escrita, TROCA a listagem pelo calendario semanal — que e da tela
+  // `programacao-visualizacao` e nao deve aparecer aqui.
+  const isWriteDisabled = isVisualizationMode || PROGRAMACAO_SIMPLES_SOMENTE_LEITURA;
 
   const today = useMemo(() => toIsoDate(new Date()), []);
   const currentYearDateRange = useMemo(() => get90DayWindowDateRange(today), [today]);
@@ -1552,7 +1563,8 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         return;
       }
 
-      if (!isVisualizationMode) {
+      // O card do formulario nao existe quando a escrita esta desativada.
+      if (!isWriteDisabled) {
         formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       }
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -2376,7 +2388,15 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
         </div>
       ) : null}
 
-      {!isVisualizationMode ? (
+      {/* Aviso do corte: so na tela de cadastro. Em `visualizacao` a ausencia de
+          escrita sempre foi o comportamento normal e o aviso seria ruido. */}
+      {PROGRAMACAO_SIMPLES_SOMENTE_LEITURA && !isVisualizationMode ? (
+        <div className={styles.readOnlyNotice} role="status">
+          {PROGRAMACAO_SIMPLES_SOMENTE_LEITURA_AVISO}
+        </div>
+      ) : null}
+
+      {!isWriteDisabled ? (
         <>
           <ProgrammingFormPanel
             formCardRef={formCardRef}
@@ -2651,7 +2671,7 @@ export function ProgrammingSimplePageView({ mode = "cadastro" }: { mode?: Progra
                               <path d="M12 8.5v3.75l2.5 1.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
                             </svg>
                           </button>
-                          {!isVisualizationMode ? (
+                          {!isWriteDisabled ? (
                             <>
                               <button
                                 type="button"

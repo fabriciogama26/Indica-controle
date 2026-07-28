@@ -3076,3 +3076,67 @@ Atualizacao 2026-07-28 - Dados transpostos para a Programacao Normalizada (335)
   para emparelhar de novo.
 - Detalhe completo da migracao: `docs/Tela_Programacao_Normalizada_SaaS.txt`, secao
   "Atualizacao 2026-07-28".
+
+Atualizacao 2026-07-28 - CORTE: tela congelada em somente leitura
+------------------------------------------------------------------
+- O que mudou: a tela NAO aceita mais escrita. Continua ACESSIVEL e completa para
+  pesquisa: filtros, listagem, carrossel de prazos, detalhes, historico e as tres
+  extracoes (CSV, ENEL, ENEL NOVO) seguem funcionando igual.
+- O que saiu do ar: cadastro, cadastro em lote, edicao, copia, copia para datas,
+  adicionar equipe, transferir equipe, adiar, reprogramar, cancelar e lancamento de
+  Estado do Trabalho.
+- Motivo: a tela oficial passou a ser `programacao-normalizada`. Enquanto as duas
+  aceitavam escrita, o modelo normalizado voltava a ficar defasado sozinho â€” medido
+  durante a geracao da migration 335: 37 -> 38 -> 39 etapas em cerca de uma hora.
+  Sem congelar a origem nao existe carga final.
+- DUAS barreiras, e as duas precisam andar juntas:
+  1. SERVIDOR (a que vale): `PROGRAMMING_SIMPLES_READ_ONLY` em
+     `src/server/modules/programacao/handlers.ts`. Fica DENTRO de
+     `authorizeProgrammingAction` e ANTES da checagem de permissao â€” nenhum perfil,
+     nem administrador, escreve enquanto o corte estiver ativo. Responde 423 com
+     `code: PROGRAMMING_SIMPLES_READ_ONLY`. Chamada direta a API tambem e recusada.
+  2. INTERFACE: `PROGRAMACAO_SIMPLES_SOMENTE_LEITURA` em
+     `src/modules/dashboard/programacao-simples/constants.ts`. Esconde o formulario
+     e os botoes de escrita da listagem, e exibe o aviso permanente no topo. Existe
+     so para o usuario nao encontrar botao que sempre falharia.
+  Desligar so a da interface deixaria a API aberta; desligar so a do servidor
+  deixaria botao quebrado na tela.
+- POR QUE O BLOQUEIO DE SERVIDOR FICA EM `authorizeProgrammingAction`: os 7 handlers
+  de escrita do modulo (copyProgramming, copyProgrammingToDates, addTeamToProgramming,
+  transferTeamToProgramming, saveProgrammingBatch, saveProgramming,
+  saveProgrammingWorkCompletionStatus) e o PATCH de Adiar/Cancelar da rota passam
+  TODOS por ela. Bloquear ali cobre todo caminho de escrita por construcao: um
+  caminho novo que esqueca a guarda estaria tambem sem autorizacao.
+  `authorizeProgrammingReadAction` (GET) NAO foi tocada.
+- `isWriteDisabled` e um conceito SEPARADO de `isVisualizationMode` de proposito:
+  o modo visualizacao, alem de esconder a escrita, TROCA a listagem pelo calendario
+  semanal â€” que e da tela `programacao-visualizacao` e nao deve aparecer aqui.
+  `isWriteDisabled = isVisualizationMode || PROGRAMACAO_SIMPLES_SOMENTE_LEITURA`.
+- Escopo verificado: nenhuma Edge Function e nenhuma outra rota escreve em
+  `project_programming` â€” a busca por INSERT/UPDATE/DELETE/RPC fora deste modulo nao
+  retornou nada. `/api/programacao` e o unico caminho de escrita da tabela legada.
+- A rota `/programacao` e apenas um `redirect()` para `/programacao-simples`. O
+  componente `src/modules/dashboard/programacao/ProgrammingPageView.tsx` nao e
+  renderizado por nenhuma pagina (codigo morto pre-existente, nao removido nesta
+  tarefa) â€” mesmo que fosse, escreveria pela mesma rota ja bloqueada.
+- ORDEM DE APLICACAO (importante):
+  1. Publicar este congelamento PRIMEIRO.
+  2. So depois REGERAR e aplicar a migration 335
+     (`node scripts/generate-migration-335-programming-delta.mjs` +
+      `node scripts/verify-migration-335-delta-readonly.mjs`).
+  Invertendo a ordem, a carga nasce defasada de novo â€” foi exatamente o que se
+  observou durante a geracao dela.
+- PARA REABRIR A ESCRITA: trocar as DUAS constantes para `false`. Nao ha outro ponto.
+- Como validar:
+  1. Abrir `/programacao-simples`: aviso amarelo no topo, sem formulario de cadastro,
+     e nas linhas da lista so os botoes de Detalhes e Historico.
+  2. Filtrar, paginar, abrir detalhes, abrir historico e gerar as tres extracoes:
+     tudo deve continuar funcionando.
+  3. Chamar a API direto (ex.: POST /api/programacao) com sessao valida: 423 e a
+     mensagem de somente leitura.
+  4. `/programacao-visualizacao` deve seguir igual (calendario semanal, sem aviso â€”
+     naquela tela a ausencia de escrita sempre foi o normal).
+- Impacto multi-tenant:
+  - Nenhuma mudanca de RLS, policy, permissao ou escopo de tenant. O bloqueio e
+    global por tela e independe de perfil.
+
