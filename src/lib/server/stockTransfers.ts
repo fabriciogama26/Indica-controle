@@ -5,6 +5,7 @@ export type StockTransferItemInput = {
   quantity: number;
   serialNumber?: string | null;
   lotCode?: string | null;
+  cmd?: boolean;
 };
 
 export type SaveStockTransferPayload = {

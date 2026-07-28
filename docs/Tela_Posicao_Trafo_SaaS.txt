@@ -29,6 +29,7 @@ Arquitetura
   - `supabase/migrations/137_create_trafo_instances_stock_unit_ledger.sql`
   - `supabase/migrations/138_add_trafo_position_page_permissions.sql`
   - `supabase/migrations/181_create_serial_retirement_flow.sql`
+  - `supabase/migrations/339_add_cmd_to_serial_stock_movements.sql`
 
 Cadastro
 --------
@@ -46,6 +47,7 @@ Filtros, auto-complete e listagem
   - `Descricao`
   - `Serial`
   - `LP`
+  - `CMD` (`Todos`, `Sim`, `Nao`)
   - `Projeto ultimo`
   - `Equipe atual`
   - `Encarregado atual`
@@ -60,6 +62,7 @@ Filtros, auto-complete e listagem
   - `Descricao`
   - `Serial`
   - `LP`
+  - `CMD`
   - `Ultima operacao`
   - `Data ultima movimentacao`
   - `Atualizado em`
@@ -78,7 +81,7 @@ Filtros, auto-complete e listagem
   - O cabecalho exibe `Registros filtrados`, `Em estoque proprio`, `Com equipe`, `RET` e `Fora do estoque proprio`.
   - Os cards por situacao usam o resumo filtrado completo retornado pelo backend antes da paginacao da lista.
   - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos e exporta todos os registros filtrados percorrendo as paginas da API.
-  - Os filtros por `Material`, `Descricao`, `Rastreio`, `Tipo material`, `Serial`, `LP` e periodo de movimentacao sao aplicados na consulta base de `trafo_instances`/`materials`.
+  - Os filtros por `Material`, `Descricao`, `Rastreio`, `Tipo material`, `Serial`, `LP`, `CMD` e periodo de movimentacao sao aplicados na consulta base de `trafo_instances`/`materials`.
   - Os filtros por `Centro fisico`, `Situacao`, `Ultima operacao`, `Projeto ultimo`, `Equipe atual` e `Encarregado atual` sao aplicados apos a API resolver centro fisico de referencia, equipe e projeto.
   - O periodo `Mov. de`/`Mov. ate` usa `last_entry_date` e bloqueia no frontend a data inicial maior que a data final.
 - Acoes:
@@ -89,7 +92,7 @@ Filtros, auto-complete e listagem
 - A acao `Movimentar esta unidade`:
   - fica habilitada apenas quando a unidade estiver efetivamente em centro fisico `OWN`;
   - redireciona para `/entrada`;
-  - pre-preenche o modo dedicado de movimentacao da unidade com `Centro DE`, `Material`, `Serial`, `LP` e `Quantidade = 1`;
+  - pre-preenche o modo dedicado de movimentacao da unidade com `Centro DE`, `Material`, `Serial`, `LP`, `CMD` e `Quantidade = 1`;
   - permite concluir `Saida` ou `Transferencia`.
 - A acao `RET`:
   - fica habilitada apenas quando a unidade estiver em estoque fisico proprio e ainda nao estiver marcada como RET;
@@ -103,7 +106,7 @@ Filtros, auto-complete e listagem
   - bloqueia uso operacional por equipe para evitar que material RET seja requisitado como material disponivel.
 - O modal `Historico`:
   - mostra a cadeia de movimentos da unidade, incluindo `Entrada`, `Saida`, `Transferencia`, `Requisicao`, `Devolucao`, `Retorno de campo`, `RET` e `Estorno`;
-  - mostra `Centro DE`, `Centro PARA`, `Equipe`, `Encarregado`, `Projeto`, `Data da movimentacao` e `Observacao`.
+  - mostra `Centro DE`, `Centro PARA`, `Equipe`, `Encarregado`, `Projeto`, `CMD`, `Data da movimentacao` e `Observacao`.
 
 Boas praticas
 -------------
@@ -182,13 +185,20 @@ Atualizacao 2026-04
   - A exportacao CSV passou a usar lote de `100` registros, alinhado ao limite maximo do `GET /api/trafo-positions`, e o loop passou a respeitar o `pageSize` efetivo retornado pela API para nao interromper antes de exportar todos os registros filtrados.
   - A area de filtros passou a incluir condicoes adicionais por rastreio, ultima operacao, tipo material, descricao, projeto ultimo, equipe atual, encarregado atual e periodo da ultima movimentacao.
 
+Atualizacao 2026-07:
+  - A tela passou a exibir a coluna `CMD` para unidades rastreadas, usando `trafo_instances.cmd` como estado atual.
+  - A area de filtros recebeu `CMD` com opcoes `Todos`, `Sim` e `Nao`, aplicado diretamente na consulta base.
+  - Detalhes, historico e exportacao CSV passam a incluir `CMD`.
+  - O atalho `Movimentar esta unidade` envia `cmd=SIM|NAO` para `/entrada`, preservando a marcacao ao movimentar `RELIGADOR`.
+  - A migration `339_add_cmd_to_serial_stock_movements.sql` adiciona `cmd` em `stock_transfer_items` e `trafo_instances` e sincroniza o valor historico do item para a posicao atual da unidade.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
-  - Responsavel por: carregar metadados, validar periodo, aplicar filtros ampliados, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade, aplicar RET com confirmacao e redirecionar para movimentacao pre-preenchida quando elegivel.
+  - Responsavel por: carregar metadados, validar periodo, aplicar filtros ampliados incluindo `CMD`, buscar a lista paginada, exportar CSV, exibir detalhes, abrir o historico da unidade, aplicar RET com confirmacao e redirecionar para movimentacao pre-preenchida quando elegivel.
 - Caminho: `src/app/api/trafo-positions/route.ts`
-  - Responsavel por: listar a posicao unitaria de materiais rastreados por serial por tenant a partir de `trafo_instances`, aplicar filtros diretos e derivados, calcular resumo filtrado por situacao antes da paginacao, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal, expor o historico por unidade e aplicar RET via RPC.
+  - Responsavel por: listar a posicao unitaria de materiais rastreados por serial por tenant a partir de `trafo_instances`, aplicar filtros diretos e derivados incluindo `CMD`, calcular resumo filtrado por situacao antes da paginacao, reinterpretar `Requisicao/Devolucao` para manter o centro fisico na leitura principal, expor o historico por unidade e aplicar RET via RPC.
 - Caminho: `src/app/api/trafo-positions/meta/route.ts`
   - Responsavel por: listar centros ativos `OWN` fisicos para os filtros da tela, excluindo centros vinculados a equipes.
 - Caminho: `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
@@ -203,6 +213,8 @@ Constantes e configuracoes
   - Responsavel por: cadastrar a tela em `app_pages` e fazer backfill de permissao por role e por usuario.
 - Caminho: `supabase/migrations/181_create_serial_retirement_flow.sql`
   - Responsavel por: versionar o fluxo RET, auditoria em `serial_retirements`, baixa de saldo disponivel, marcacao em `trafo_instances` e movimentacao fisica posterior sem recompor disponibilidade.
+- Caminho: `supabase/migrations/339_add_cmd_to_serial_stock_movements.sql`
+  - Responsavel por: adicionar `CMD` ao historico dos itens e ao estado atual de cada unidade serializada.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/posicao-trafo/utils.ts`

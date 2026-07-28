@@ -26,11 +26,13 @@ type ImportEntryPayload = {
   quantity?: unknown;
   serialNumber?: unknown;
   lotCode?: unknown;
+  cmd?: unknown;
   items?: Array<{
     materialId?: unknown;
     quantity?: unknown;
     serialNumber?: unknown;
     lotCode?: unknown;
+    cmd?: unknown;
   }>;
 };
 
@@ -67,7 +69,8 @@ function normalizeImportItems(entry: ImportEntryPayload) {
         const quantity = parsePositiveNumber(item.quantity);
         const serialNumber = normalizeText(item.serialNumber) || null;
         const lotCode = normalizeText(item.lotCode) || null;
-        return { materialId, quantity, serialNumber, lotCode };
+        const cmd = normalizeBoolean(item.cmd);
+        return { materialId, quantity, serialNumber, lotCode, cmd };
       })
       .filter((item) => item.materialId && item.quantity !== null)
       .map(
@@ -77,6 +80,7 @@ function normalizeImportItems(entry: ImportEntryPayload) {
             quantity: item.quantity as number,
             serialNumber: item.serialNumber,
             lotCode: item.lotCode,
+            cmd: item.cmd,
           }) satisfies StockTransferItemInput,
       );
   }
@@ -93,8 +97,15 @@ function normalizeImportItems(entry: ImportEntryPayload) {
       quantity,
       serialNumber: normalizeText(entry.serialNumber) || null,
       lotCode: normalizeText(entry.lotCode) || null,
+      cmd: normalizeBoolean(entry.cmd),
     },
   ];
+}
+
+function normalizeBoolean(value: unknown) {
+  if (typeof value === "boolean") return value;
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return normalized === "TRUE" || normalized === "T" || normalized === "1" || normalized === "SIM" || normalized === "S" || normalized === "YES";
 }
 
 export async function POST(request: NextRequest) {
@@ -291,10 +302,11 @@ export async function POST(request: NextRequest) {
 
       const normalizedItems = items.map((item) => {
         const material = materialMap.get(item.materialId);
+        const cmd = material?.serialTrackingType === "RELIGADOR" ? Boolean(item.cmd) : false;
         if (isSerialTrackedMaterial(material?.serialTrackingType) && !requiresLotCode(material?.serialTrackingType)) {
-          return { ...item, lotCode: "-" };
+          return { ...item, lotCode: "-", cmd };
         }
-        return item;
+        return { ...item, cmd };
       });
       const operationBatchKey = JSON.stringify({
         movementType,
