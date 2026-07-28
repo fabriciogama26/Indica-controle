@@ -26,6 +26,14 @@ export const STATUS_CHIP_OPTIONS: Array<{ value: StageListStatusChip; label: str
   { value: "SEM_RETORNO", label: "Pendencias sem retorno" },
 ];
 
+// "Em branco (a fazer)" nao e um codigo do catalogo — e a ausencia de Estado do
+// Trabalho (null no banco), que e um estado real de negocio (etapa ainda nao
+// executada, ver migration 329). Vai como sentinela na querystring. O MESMO valor
+// literal existe em `WORK_COMPLETION_BLANK_CODE` (server/modules/programacao-
+// normalizada/queries.ts) e na migration 336 — os tres tem que casar.
+export const WORK_COMPLETION_BLANK_FILTER_CODE = "__EM_BRANCO__";
+export const WORK_COMPLETION_BLANK_FILTER_LABEL = "Em branco (a fazer)";
+
 export function createDefaultListFilters(todayIso: string): StageListFilters {
   const dateFrom = getFirstDayOfMonthIso(todayIso);
 
@@ -36,6 +44,7 @@ export function createDefaultListFilters(todayIso: string): StageListFilters {
     teamIds: [],
     search: "",
     municipality: "",
+    workCompletionStatuses: [],
   };
 }
 

@@ -156,6 +156,9 @@ export type StageListFilters = {
   teamIds: string[];
   search: string;
   municipality: string;
+  // Codigos do catalogo de Estado do Trabalho; vazio = sem filtro. Inclui o
+  // sentinela WORK_COMPLETION_BLANK_FILTER_CODE para "Em branco (a fazer)".
+  workCompletionStatuses: string[];
 };
 
 // Mesma riqueza de campos da etapa (ProgrammingStage) — a lista reusa o DTO do

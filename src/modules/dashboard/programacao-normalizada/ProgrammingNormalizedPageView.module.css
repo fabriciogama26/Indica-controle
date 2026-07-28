@@ -134,11 +134,20 @@
   color: #f7fbff;
 }
 
-.filterGrid,
 .filtersRow {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* auto-fit em vez de 3 colunas fixas: a barra passou a ter 4 filtros (Equipe,
+   Estado do trabalho, Municipio, Buscar) e com colunas fixas o quarto caia
+   sozinho numa linha. Tambem faz a barra colapsar em telas estreitas, que a
+   regra fixa anterior nao fazia. */
+.filterGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
 .dateRangeRow {
