@@ -929,3 +929,60 @@ Atualizacao 2026-07-29 - Extracao ENEL: coluna Nº EQ e colunas SGD com Ponto El
 - Arquivos alterados:
   - `src/modules/dashboard/programacao-normalizada/exports.ts`
 
+
+Atualizacao 2026-07-29 - Fase 1 do corte: mapeamento do ID legado (migration 342)
+-----------------------------------------------------------------------------------
+- CORRECAO DE INFORMACAO DESATUALIZADA NESTE DOC: a escrita da `programacao-simples`
+  NAO esta mais ativa. A tela foi congelada em SOMENTE LEITURA no commit `7ecd00a`
+  (`PROGRAMMING_SIMPLES_READ_ONLY` em `src/server/modules/programacao/handlers.ts`,
+  espelhado em `PROGRAMACAO_SIMPLES_SOMENTE_LEITURA` no front). Consulta, filtros,
+  historico e as tres extracoes continuam liberados; qualquer POST/PUT/PATCH e
+  recusado com HTTP 423, inclusive para administrador.
+- Problema que a 342 resolve: as migrations 315 e 335 migraram o dado legado gerando
+  UUIDs NOVOS e sem guardar a origem. Nao existia caminho de volta do ID legado para
+  a etapa nova — e tres tabelas ainda apontam para a linha legada por FK:
+  `project_measurement_orders.programming_id` (112), `project_apr_controls.programming_id`
+  (226) e `cronograma_solicitacoes.programacao_id` (304).
+- Migration `342_create_programming_legacy_map.sql` cria `programming_legacy_map`:
+  PK `legacy_programming_id`, mais `tenant_id`, `programming_id`, `legacy_team_id` e
+  `programming_team_id` (nulavel).
+- Por que TABELA e nao coluna em `programming`: o legado tem uma linha POR EQUIPE
+  (unique tenant+projeto+equipe+data, 067) e o normalizado tem uma etapa por
+  projeto+data (unique `programming_tenant_project_date_key`, 310). A relacao e N:1;
+  N linhas legadas nao cabem numa coluna da etapa.
+- Chave de resolucao da etapa: `(tenant_id, project_id, execution_date)` — a unica
+  chave comum aos dois modelos, e a mesma que os geradores da 315/335 usaram para
+  agrupar. O mapa portanto reproduz as fusoes que eles fizeram (varios grupos legados
+  colidindo no mesmo projeto+data viraram uma etapa so).
+- Chave de resolucao da equipe: `programming_team` da etapa com o mesmo `team_id`,
+  preferindo `ATIVA`. O desempate existe porque a unique de `programming_team` e
+  PARCIAL (`where status = 'ATIVA'`), entao linha REMOVIDA/TRANSFERIDA da mesma equipe
+  pode conviver com a ativa. `programming_team_id` nulo e resultado legitimo e nao
+  invalida o mapeamento da etapa.
+- FKs do mapa: compostas com `tenant_id` (padrao 231/310). Para `programming`,
+  `on delete cascade` (etapa apagada = vinculo sem sentido). Para `programming_team`,
+  `on delete set null (programming_team_id)`. Para `project_programming`, SEM cascade
+  de proposito: apagar a fonte legada nao pode levar o mapa junto enquanto as tres FKs
+  de Medicao/APR/Cronograma dependerem dele.
+- RLS ligada com policy apenas de `select` via `user_can_access_tenant`; nenhuma policy
+  de escrita, nenhuma RPC nova, nenhuma funcao `SECURITY DEFINER`.
+- A migration termina com `raise notice` reportando: total legado, mapeadas, sem etapa
+  correspondente (com amostra de ate 10 por SOB + data), sem equipe resolvida, e a
+  contagem de FKs sem par nas tres tabelas consumidoras — os tres precisam sair 0, senao
+  a Fase 5 (remapeamento das FKs) nao tem como funcionar.
+- `project_programming` e `project_programming_history` seguem SOMENTE LEITURA: o unico
+  ALTER e a garantia idempotente da unique `(id, tenant_id)`, no mesmo padrao da 226.
+  Nenhum consumidor mudou de comportamento nesta entrega.
+- Decisoes do corte tomadas junto com esta fase, para as fases seguintes:
+  * historico legado (`project_programming_history`) SERA migrado para
+    `programming_history` (Fase 2, migration 343) — contraria o "NAO migrado" registrado
+    nos cabecalhos da 310/315/335, que fica valendo so ate a 343 ser aplicada;
+  * `Transferir equipe` SERA implementada no modelo novo (Fase 4): RPC nova gravando
+    `programming_team.status = 'TRANSFERIDA'` e filha nova no destino com `added_from_id`
+    — os dois campos ja existem na 310 e nenhuma RPC os usava para isso;
+  * Controle APR passa a casar programacao por PROJETO + DATA (nao mais projeto + equipe
+    + data, como faz hoje a `save_project_apr_control` da 226);
+  * `programacao-visualizacao` passa a ser modo de consulta desta tela (Fase 6).
+- Arquivos alterados:
+  - `supabase/migrations/342_create_programming_legacy_map.sql` (novo)
+  - `supabase/migrations/README.txt`
