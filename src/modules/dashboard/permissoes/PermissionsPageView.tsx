@@ -71,6 +71,28 @@ const permissionCatalog = [
     path: "/programacao-normalizada",
     section: "Operacao",
   },
+  // Permissoes granulares da Programacao (Normalizada) — migration 328. Nao sao
+  // rotas navegaveis: o path e virtual (mesmo padrao de saida-requisicao) e o
+  // backend checa a page_key DENTRO da operacao. Sem estas entradas aqui a
+  // permissao nasce bloqueada e nao existe como conceder pela aplicacao.
+  {
+    pageKey: "programacao-concluir",
+    label: "Concluir/Reabrir (Programacao Normalizada)",
+    path: "/programacao-concluir",
+    section: "Operacao",
+  },
+  {
+    pageKey: "programacao-pendencia",
+    label: "Pendencia (Programacao Normalizada)",
+    path: "/programacao-pendencia",
+    section: "Operacao",
+  },
+  {
+    pageKey: "programacao-corrigir-data",
+    label: "Corrigir data (Programacao Normalizada)",
+    path: "/programacao-corrigir-data",
+    section: "Operacao",
+  },
   {
     pageKey: "programacao-visualizacao",
     label: "Visualizacao Programacao",

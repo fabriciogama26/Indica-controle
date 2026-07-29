@@ -80,6 +80,10 @@ export function StageCard(props: {
   onDetails: () => void;
   onHistory: () => void;
   isSubmitting: boolean;
+  // Permissoes granulares da migration 328 (uso visual; o backend revalida).
+  canComplete: boolean;
+  canPendencia: boolean;
+  canCorrectDate: boolean;
 }) {
   const {
     stage,
@@ -97,6 +101,9 @@ export function StageCard(props: {
     onDetails,
     onHistory,
     isSubmitting,
+    canComplete,
+    canPendencia,
+    canCorrectDate,
   } = props;
   const isActive = isActiveStageStatus(stage.status);
   const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
@@ -143,15 +150,17 @@ export function StageCard(props: {
               >
                 <ActionIcon name="postpone" />
               </button>
-              <button
-                type="button"
-                className={`${styles.actionButton} ${styles.actionEdit}`}
-                title="Corrigir data (mantem a etapa; para remarcar use Adiar)"
-                onClick={onCorrectDate}
-                disabled={isSubmitting}
-              >
-                <ActionIcon name="transfer" />
-              </button>
+              {canCorrectDate ? (
+                <button
+                  type="button"
+                  className={`${styles.actionButton} ${styles.actionEdit}`}
+                  title="Corrigir data (mantem a etapa; para remarcar use Adiar)"
+                  onClick={onCorrectDate}
+                  disabled={isSubmitting}
+                >
+                  <ActionIcon name="transfer" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className={`${styles.actionButton} ${styles.actionCancel}`}
@@ -161,18 +170,20 @@ export function StageCard(props: {
               >
                 <ActionIcon name="cancel" />
               </button>
-              <button
-                type="button"
-                className={`${styles.actionButton} ${styles.actionComplete}`}
-                title={activeTeamIds.size === 0 ? "Aloque ao menos uma equipe antes de concluir" : "Concluir"}
-                onClick={onComplete}
-                disabled={isSubmitting || activeTeamIds.size === 0}
-              >
-                <ActionIcon name="activate" />
-              </button>
+              {canComplete ? (
+                <button
+                  type="button"
+                  className={`${styles.actionButton} ${styles.actionComplete}`}
+                  title={activeTeamIds.size === 0 ? "Aloque ao menos uma equipe antes de concluir" : "Concluir"}
+                  onClick={onComplete}
+                  disabled={isSubmitting || activeTeamIds.size === 0}
+                >
+                  <ActionIcon name="activate" />
+                </button>
+              ) : null}
             </>
           ) : null}
-          {isActive && isCompleted ? (
+          {isActive && isCompleted && canComplete ? (
             <button
               type="button"
               className={`${styles.actionButton} ${styles.actionComplete}`}
@@ -219,7 +230,7 @@ export function StageCard(props: {
         </div>
       </div>
 
-      {isActive ? (
+      {isActive && canPendencia ? (
         <label className={styles.pendenciaToggle}>
           <input
             type="checkbox"
@@ -648,6 +659,10 @@ export function StageFormPanel(props: {
   isLoadingActivities: boolean;
   onSubmit: () => void;
   onCancelEdit: () => void;
+  // Permissao granular programacao-pendencia (migration 328): criar etapa com a
+  // flag fura a trava de projeto concluido, entao o backend recusa o INSERT sem
+  // a permissao — a checkbox nao pode aparecer para quem nao a tem.
+  canPendencia: boolean;
 }) {
   const {
     form,
@@ -663,6 +678,7 @@ export function StageFormPanel(props: {
     isLoadingActivities,
     onSubmit,
     onCancelEdit,
+    canPendencia,
   } = props;
 
   function setField<K extends keyof FormState>(field: K, value: FormState[K]) {
@@ -741,7 +757,7 @@ export function StageFormPanel(props: {
           />
         </label>
 
-        {!isEditing ? (
+        {!isEditing && canPendencia ? (
           <label className={`${styles.pendenciaToggle} ${styles.fieldFullRow}`}>
             <input
               type="checkbox"
