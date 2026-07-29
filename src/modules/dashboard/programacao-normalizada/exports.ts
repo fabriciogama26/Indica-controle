@@ -66,6 +66,27 @@ function resolveEqLabel(stage: StageListItem, eqCatalogMap: Map<string, Electric
   return item ? `${item.code} - ${item.label}` : "";
 }
 
+// "No EQ *" na tela e o LABEL do catalogo — o select do formulario renderiza
+// `item.label`, nao `item.code`.
+function resolveEqOptionLabel(stage: StageListItem, eqCatalogMap: Map<string, ElectricalEqCatalogItem>) {
+  if (!stage.electricalEqCatalogId) return "";
+  return eqCatalogMap.get(stage.electricalEqCatalogId)?.label ?? "";
+}
+
+// Coluna "Nº EQ (RE, CO, CF, CC ou TR)" das extracoes ENEL: "Ponto Eletrico - No EQ".
+// Antes usava `resolveEqLabel`, que monta `code - label` do proprio catalogo — como
+// nesses itens code e label sao iguais, a coluna saia "#CHAVE - #CHAVE" e o Ponto
+// Eletrico (campoEletrico) nunca aparecia. O separador so entra quando os dois
+// lados existem, para nao gerar " - #CHAVE" em etapa sem Ponto Eletrico (o campo e
+// obrigatorio no formulario, mas dado legado migrado pode estar vazio).
+function resolveEnelEqNumber(stage: StageListItem, eqCatalogMap: Map<string, ElectricalEqCatalogItem>) {
+  const electricalPoint = (stage.campoEletrico ?? "").trim();
+  const eqOption = resolveEqOptionLabel(stage, eqCatalogMap);
+
+  if (electricalPoint && eqOption) return `${electricalPoint} - ${eqOption}`;
+  return electricalPoint || eqOption;
+}
+
 function findDocumentNumber(stage: StageListItem, documentType: "SGD" | "PI" | "PEP") {
   return stage.documents.find((document) => document.documentType === documentType)?.number ?? "";
 }
@@ -214,7 +235,9 @@ export function buildEnelCsvContent({ stages, projectMap, teamMap, sgdTypeMap, e
     const isSgdBt = sgdExportColumn === "SGD_BT" || sgdExportColumn === "SGD BT" || sgdTypeDescription === "SGD_BT" || sgdTypeDescription === "SGD BT";
     const isSgdTet = sgdExportColumn === "SGD_TET" || sgdExportColumn === "SGD TET" || sgdTypeDescription === "SGD_TET" || sgdTypeDescription === "SGD TET";
     const isSgdAtMtVyp = !isAreaLivre && !isSgdBt && !isSgdTet;
-    const eqLabel = resolveEqLabel(stage, eqCatalogMap);
+    // As tres colunas de SGD recebem o Ponto Eletrico puro; quem leva o par
+    // "Ponto Eletrico - No EQ" e so a coluna Nº EQ.
+    const electricalPoint = (stage.campoEletrico ?? "").trim();
 
     const codeCount: Record<string, number> = {};
     for (const team of teamItems) {
@@ -246,10 +269,10 @@ export function buildEnelCsvContent({ stages, projectMap, teamMap, sgdTypeMap, e
       "INDICA",
       sgdType?.description ?? "",
       stage.affectedCustomers ?? "",
-      isSgdAtMtVyp ? eqLabel : "",
-      isSgdBt ? eqLabel : "",
-      isSgdTet ? eqLabel : "",
-      eqLabel,
+      isSgdAtMtVyp ? electricalPoint : "",
+      isSgdBt ? electricalPoint : "",
+      isSgdTet ? electricalPoint : "",
+      resolveEnelEqNumber(stage, eqCatalogMap),
       (stage.outageStartTime ?? "").slice(0, 5),
       (stage.outageEndTime ?? "").slice(0, 5),
       stage.feeder,
@@ -374,7 +397,7 @@ export function buildEnelNovoWorkbookData({ stages, projectMap, teamMap, sgdType
       sgdType?.description ?? "",
       normalizeSgdNumberForExport(findDocumentNumber(stage, "SGD")),
       stage.affectedCustomers ?? "",
-      resolveEqLabel(stage, eqCatalogMap),
+      resolveEnelEqNumber(stage, eqCatalogMap),
       (stage.outageStartTime ?? "").slice(0, 5),
       (stage.outageEndTime ?? "").slice(0, 5),
       stage.feeder,
