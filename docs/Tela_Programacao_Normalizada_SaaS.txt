@@ -821,3 +821,38 @@ Atualizacao 2026-07-29 - Visual do leque e equipes
   - `src/modules/dashboard/programacao-normalizada/components.tsx`
   - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`
 
+Atualizacao 2026-07-29 - Falha ao cadastrar etapa (`v_current is not assigned yet`) e mensagens de erro
+-------------------------------------------------------------------------------------------------------
+- Sintoma: ao criar etapa nova a tela mostrava
+  `Falha ao chamar save_project_programming_stage: record "v_current" is not assigned yet`,
+  de forma INTERMITENTE (as vezes cadastrava, as vezes nao).
+- Causa raiz (migration 318, mantida na 324): `v_current` era `record` puro e so recebia
+  `select * into` no ramo de UPDATE, mas a trava de projeto concluido referenciava o campo
+  no ramo de INSERT dentro de um CASE:
+    `if not (case when v_is_insert then v_is_pendencia else v_current.is_pendencia end)`
+  O CASE nao protege: para PREPARAR a expressao o PL/pgSQL precisa resolver o TIPO de
+  `v_current.is_pendencia`, e `record` sem atribuicao nao tem descritor de tupla — o erro
+  sai antes de escolher o ramo.
+- Por que era intermitente: a expressao preparada fica em cache na sessao do backend. Numa
+  conexao do pooler cujo primeiro save foi um UPDATE, `v_current` estava atribuido, a
+  expressao preparava e os INSERTs seguintes daquela conexao passavam; numa conexao que
+  comecou com INSERT, estourava. Nada a ver com o dado da etapa nem com permissao.
+- Correcao (migration `340_fix_save_stage_unassigned_record.sql`), sem mudar regra de negocio:
+  1) `v_current` passa a ser `public.programming%rowtype` — descritor conhecido em compilacao,
+     variavel nasce com campos NULL em vez de "nao atribuida". O teste `v_current.id is null`
+     de etapa nao encontrada continua valendo.
+  2) A trava de concluido resolve a flag em IF explicito (`v_pendencia_exception`), entao o
+     ramo de INSERT nao referencia `v_current` de forma alguma.
+  Corpo restante identico ao da 324 (diff De/Para do UPDATE_STAGE preservado).
+- Mensagens de erro (`src/server/modules/programacao-normalizada/rpc.ts`): `failedRpcResult`
+  parou de jogar o texto cru do Postgres e o nome da funcao na tela. Agora monta
+  "Nao foi possivel <operacao>. <explicacao>", com o rotulo da operacao vindo de
+  `RPC_OPERATION_LABEL` e a explicacao de `describeDatabaseFailure` (falha interna da rotina,
+  concorrencia/lock, permissao/RLS, ou generico). Em todos os casos a mensagem diz
+  explicitamente que a operacao NAO foi gravada. O detalhe tecnico vai para o log do
+  servidor via `console.error("[programacao-normalizada] RPC <nome> falhou.", ...)` — mesmo
+  padrao ja usado em `src/server/modules` — e nao volta no corpo da resposta.
+- Arquivos alterados:
+  - `supabase/migrations/340_fix_save_stage_unassigned_record.sql` (novo)
+  - `src/server/modules/programacao-normalizada/rpc.ts`
+

@@ -12,12 +12,59 @@ function missingRpcResult(rpcName: string) {
   };
 }
 
+// Rotulo por RPC para a mensagem de erro do usuario. Sem entrada aqui a operacao
+// cai no texto generico — nunca no nome cru da funcao do banco.
+const RPC_OPERATION_LABEL: Record<string, string> = {
+  save_project_programming_stage: "salvar a etapa",
+  add_project_programming_team: "adicionar a equipe",
+  remove_project_programming_team: "remover a equipe",
+  postpone_project_programming_stage: "adiar a etapa",
+  set_project_programming_pendencia_flag: "alterar a Pendencia",
+  cancel_project_programming_stage: "cancelar a etapa",
+  mark_project_programming_completed_and_anticipate: "concluir a etapa",
+  reopen_project_programming_completed: "reabrir a etapa",
+  set_project_programming_work_completion_status: "alterar o Estado do trabalho",
+  change_completed_stage_work_status: "alterar o Estado do trabalho",
+  correct_project_programming_stage_date: "corrigir a data da etapa",
+};
+
+// Erros de banco que tem traducao util para quem esta na tela. O resto vira
+// mensagem generica + orientacao, porque texto cru do Postgres (ex.:
+// `record "v_current" is not assigned yet`) nao ajuda o usuario e ainda expoe
+// detalhe interno.
+function describeDatabaseFailure(errorMessage: string) {
+  const normalized = errorMessage.toLowerCase();
+
+  if (normalized.includes("is not assigned yet") || normalized.includes("statement is too complex")) {
+    return "Falha interna na rotina do banco desta operacao. Avise o suporte tecnico informando o horario — a operacao NAO foi gravada.";
+  }
+
+  if (normalized.includes("deadlock detected") || normalized.includes("lock timeout") || normalized.includes("canceling statement")) {
+    return "A operacao demorou demais porque outro usuario estava alterando o mesmo projeto. Tente novamente em alguns segundos.";
+  }
+
+  if (normalized.includes("permission denied") || normalized.includes("row-level security")) {
+    return "Sem permissao no banco para concluir esta operacao. Confirme suas permissoes com um administrador.";
+  }
+
+  return "Falha inesperada no banco de dados. A operacao NAO foi gravada. Tente novamente e, se persistir, avise o suporte tecnico.";
+}
+
 function failedRpcResult(rpcName: string, errorMessage: string | undefined) {
+  const technicalDetail = normalizeText(errorMessage);
+  const operationLabel = RPC_OPERATION_LABEL[rpcName] ?? "concluir a operacao";
+
+  // O detalhe tecnico fica no log do servidor (mesmo padrao de
+  // `console.error` ja usado em src/server/modules), nunca na tela.
+  console.error(`[programacao-normalizada] RPC ${rpcName} falhou.`, { rpcName, technicalDetail });
+
   return {
     ok: false as const,
     status: 500,
     reason: "RPC_FAILED",
-    message: errorMessage ? `Falha ao chamar ${rpcName}: ${errorMessage}` : `Falha ao chamar ${rpcName}.`,
+    message: `Nao foi possivel ${operationLabel}. ${
+      technicalDetail ? describeDatabaseFailure(technicalDetail) : "Falha inesperada no banco de dados. A operacao NAO foi gravada."
+    }`,
   };
 }
 
