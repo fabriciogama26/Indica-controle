@@ -856,3 +856,47 @@ Atualizacao 2026-07-29 - Falha ao cadastrar etapa (`v_current is not assigned ye
   - `supabase/migrations/340_fix_save_stage_unassigned_record.sql` (novo)
   - `src/server/modules/programacao-normalizada/rpc.ts`
 
+Atualizacao 2026-07-29 - Conflito de agenda: com quem conflitou e janelas livres (fase 1)
+------------------------------------------------------------------------------------------
+- Antes: qualquer sobreposicao de agenda de equipe devolvia so
+  "Equipe ja tem alocacao ativa com horario sobreposto nesta data." — sem dizer COM QUEM
+  conflitou nem QUANDO a equipe esta livre. O dado ja existia e era descartado:
+  `programming_team_schedule_conflict` (317) retorna projeto e horario da etapa conflitante,
+  mas todos os chamadores fazem `limit 1` e so testam `programming_id is not null`.
+- Depois: migration `341_team_schedule_agenda_for_conflict.sql` cria a funcao de LEITURA
+  `programming_team_schedule_agenda`, que devolve em jsonb a janela pretendida e a agenda
+  ocupada de cada equipe naquela data (SOB + horario). Nenhuma RPC transacional foi
+  alterada — o caminho de escrita continua intocado.
+- O backend (`scheduleConflict.ts`) so chama essa funcao QUANDO a RPC responde
+  `TEAM_TIME_CONFLICT`, e reescreve a mensagem. Formato:
+    `Conflito de agenda em 23/07/2026. Voce pediu 08:00-17:00. ALFA: ocupada por
+     2307202601 (08:00-17:00). Livre: ate 08:00; a partir de 17:00`
+  Com varias equipes em conflito, cada uma vira um bloco separado por `|`, com teto de 3
+  equipes detalhadas (`MAX_TEAMS_IN_MESSAGE`) e sufixo `(+N equipes em conflito)`.
+- EXPEDIENTE NAO E ASSUMIDO (decisao do usuario: "pode ter variacao"). As folgas sao
+  derivadas apenas dos intervalos ocupados: os buracos ENTRE etapas saem com horario exato
+  e duracao; os extremos saem abertos, como "ate HH:MM" e "a partir de HH:MM". Definir
+  janela de trabalho por equipe/tipo de servico e a FASE 2, ainda nao construida.
+- Quando a janela pretendida e conhecida, buracos menores que a duracao pedida sao omitidos
+  (nao adianta sugerir 1h para um servico de 9h). Intervalos colados (08:00-12:00 +
+  12:00-17:00) sao unidos antes do calculo, para nao gerar folga de zero minuto.
+- Cobertura: os 4 caminhos do modulo que retornam `TEAM_TIME_CONFLICT` — salvar etapa,
+  adicionar equipe, adiar (nova data) e corrigir data. Em `adicionar equipe`/`adiar`/
+  `corrigir data` o front so tem a etapa, entao a funcao resolve equipes, data e horario a
+  partir de `p_programming_id`.
+- Degradacao: se a funcao 341 nao existir no ambiente ou a leitura falhar, o detalhe e
+  descartado e a mensagem original da RPC e mantida. O detalhe nunca transforma um 409 de
+  negocio em erro de infraestrutura.
+- Fora do escopo desta fase: sugerir horario ANTES do submit (consultar a agenda ao escolher
+  equipe+data no formulario) e sugerir OUTRA equipe livre na janela. Continua sendo erro
+  reativo — so que agora um erro que ensina.
+- Divergencia registrada (nao corrigida aqui): `programming_team_schedule_conflict` ainda
+  filtra `p.status in ('PROGRAMADA','REPROGRAMADA','PENDENCIA')`, mas a 318 tirou 'PENDENCIA'
+  do CHECK de status (virou a flag is_pendencia). O valor e morto — nao quebra nada, porque
+  a etapa de pendencia hoje tem status de agenda e continua ocupando — mas engana quem le.
+  A funcao nova ja nasce sem ele.
+- Arquivos alterados:
+  - `supabase/migrations/341_team_schedule_agenda_for_conflict.sql` (novo)
+  - `src/server/modules/programacao-normalizada/scheduleConflict.ts` (novo)
+  - `src/server/modules/programacao-normalizada/rpc.ts`
+

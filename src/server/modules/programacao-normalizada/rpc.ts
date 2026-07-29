@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { isMissingRpcFunctionError, normalizeText } from "./normalizers";
+import { describeTeamScheduleConflict } from "./scheduleConflict";
 import type { ProgrammingRpcResult } from "./types";
 
 function missingRpcResult(rpcName: string) {
@@ -79,6 +80,20 @@ function failedResultFromPayload(result: ProgrammingRpcResult) {
   };
 }
 
+// TEAM_TIME_CONFLICT: a RPC so informa QUE houve sobreposicao. Aqui trocamos o
+// texto generico por "com quem conflitou + janelas livres" (migration 341).
+// Falha ao detalhar mantem a mensagem original — o detalhe e um extra.
+async function failedResultWithScheduleDetail(
+  result: ProgrammingRpcResult,
+  agenda: Parameters<typeof describeTeamScheduleConflict>[0],
+) {
+  const base = failedResultFromPayload(result);
+  if (base.reason !== "TEAM_TIME_CONFLICT") return base;
+
+  const detail = await describeTeamScheduleConflict(agenda);
+  return detail ? { ...base, message: detail } : base;
+}
+
 export async function saveProgrammingStageViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -152,7 +167,17 @@ export async function saveProgrammingStageViaRpc(params: {
   }
 
   const result = (data ?? {}) as ProgrammingRpcResult;
-  if (result.success !== true || !result.programming_id) return failedResultFromPayload(result);
+  if (result.success !== true || !result.programming_id) {
+    return failedResultWithScheduleDetail(result, {
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      teamIds: params.teamIds,
+      executionDate: params.executionDate,
+      startTime: params.startTime ?? null,
+      endTime: params.endTime ?? null,
+      excludeProgrammingId: params.programmingId ?? null,
+    });
+  }
 
   return {
     ok: true as const,
@@ -184,7 +209,16 @@ export async function addProgrammingTeamViaRpc(params: {
   }
 
   const result = (data ?? {}) as ProgrammingRpcResult;
-  if (result.success !== true) return failedResultFromPayload(result);
+  if (result.success !== true) {
+    // A etapa ja existe e define a janela pretendida; a funcao de agenda resolve
+    // data/horario a partir de p_programming_id.
+    return failedResultWithScheduleDetail(result, {
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      teamIds: [params.teamId],
+      programmingId: params.programmingId,
+    });
+  }
 
   return {
     ok: true as const,
@@ -250,7 +284,16 @@ export async function postponeProgrammingStageViaRpc(params: {
   }
 
   const result = (data ?? {}) as ProgrammingRpcResult;
-  if (result.success !== true || !result.programming_id) return failedResultFromPayload(result);
+  if (result.success !== true || !result.programming_id) {
+    // Conflito aqui e sempre na NOVA data (rota "em espera" nao tem data e nao
+    // chega a checar agenda); as equipes vem da propria etapa.
+    return failedResultWithScheduleDetail(result, {
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      programmingId: params.programmingId,
+      executionDate: params.newExecutionDate,
+    });
+  }
 
   return {
     ok: true as const,
@@ -322,7 +365,14 @@ export async function correctProgrammingStageDateViaRpc(params: {
   }
 
   const result = (data ?? {}) as ProgrammingRpcResult;
-  if (result.success !== true || !result.programming_id) return failedResultFromPayload(result);
+  if (result.success !== true || !result.programming_id) {
+    return failedResultWithScheduleDetail(result, {
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      programmingId: params.programmingId,
+      executionDate: params.newExecutionDate,
+    });
+  }
 
   return {
     ok: true as const,
