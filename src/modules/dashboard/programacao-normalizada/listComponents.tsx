@@ -30,6 +30,7 @@ type ProjectListGroup = {
   projectId: string;
   projectCode: string;
   stages: StageListItem[];
+  activeTeams: Array<{ teamId: string; teamName: string; startTime: string | null; endTime: string | null }>;
   activeTeamCount: number;
 };
 
@@ -38,6 +39,20 @@ function SearchIcon(props: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={props.className}>
       <circle cx="11" cy="11" r="6.25" stroke="currentColor" strokeWidth="1.7" />
       <path d="m19.5 19.5-4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ExpandChevron(props: { isExpanded: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className={styles.expandChevron}>
+      <path
+        d={props.isExpanded ? "M6.5 9.5 12 15l5.5-5.5" : "M9.5 6.5 15 12l-5.5 5.5"}
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -413,6 +428,7 @@ function buildProjectGroups(items: StageListItem[]) {
       projectId: stage.projectId,
       projectCode: stage.projectCode,
       stages: [stage],
+      activeTeams: [],
       activeTeamCount: 0,
     });
   }
@@ -420,16 +436,23 @@ function buildProjectGroups(items: StageListItem[]) {
   const groups = Array.from(groupMap.values());
   for (const group of groups) {
     group.stages.sort((first, second) => (first.executionDate ?? "9999").localeCompare(second.executionDate ?? "9999"));
-    const activeTeamIds = new Set<string>();
+    const activeTeamMap = new Map<string, { teamId: string; teamName: string; startTime: string | null; endTime: string | null }>();
 
     for (const stage of group.stages) {
       if (!isActiveStageStatus(stage.status)) continue;
       for (const team of stage.teams) {
-        if (team.status === "ATIVA") activeTeamIds.add(team.teamId);
+        if (team.status !== "ATIVA" || activeTeamMap.has(team.teamId)) continue;
+        activeTeamMap.set(team.teamId, {
+          teamId: team.teamId,
+          teamName: team.teamName,
+          startTime: stage.startTime,
+          endTime: stage.endTime,
+        });
       }
     }
 
-    group.activeTeamCount = activeTeamIds.size;
+    group.activeTeams = Array.from(activeTeamMap.values()).sort((first, second) => first.teamName.localeCompare(second.teamName));
+    group.activeTeamCount = group.activeTeams.length;
   }
 
   return groups;
@@ -606,7 +629,7 @@ export function StageListTable(props: {
       </div>
       <div className={styles.listTable} role="table">
       <div className={`${styles.projectRow} ${styles.listHeaderRow}`} role="row">
-        <span />
+        <span className={styles.expandColumnHeader}>Plano</span>
         <span>Id</span>
         <span>Projeto</span>
         <span>Etapas</span>
@@ -623,15 +646,30 @@ export function StageListTable(props: {
               <button
                 type="button"
                 className={styles.expandButton}
+                title={isProjectExpanded ? "Recolher etapas" : "Abrir leque de etapas"}
                 onClick={() => toggleProjectExpanded(group.projectId)}
                 aria-label={isProjectExpanded ? `Recolher etapas do projeto ${group.projectCode}` : `Expandir etapas do projeto ${group.projectCode}`}
+                aria-expanded={isProjectExpanded}
               >
-                {isProjectExpanded ? "v" : ">"}
+                <ExpandChevron isExpanded={isProjectExpanded} />
               </button>
               <span className={styles.projectIdText} title={group.projectId}>{group.projectId}</span>
               <span className={styles.projectCodeText}>{group.projectCode}</span>
               <span className={styles.emptyHint}>{group.stages.length} etapa{group.stages.length === 1 ? "" : "s"}</span>
-              <span className={styles.emptyHint}>{group.activeTeamCount} equipe{group.activeTeamCount === 1 ? "" : "s"}</span>
+              <span className={styles.projectTeamPreview} title={group.activeTeams.map((team) => team.teamName).join(", ")}>
+                {group.activeTeams.length ? (
+                  <>
+                    {group.activeTeams.slice(0, 3).map((team) => (
+                      <span key={team.teamId} className={`${styles.teamChip} ${styles.projectTeamChip}`}>
+                        <span className={styles.teamChipMain}>{team.teamName}</span>
+                      </span>
+                    ))}
+                    {group.activeTeams.length > 3 ? <span className={styles.teamOverflowBadge}>+{group.activeTeams.length - 3}</span> : null}
+                  </>
+                ) : (
+                  <span className={styles.emptyHint}>Sem equipe ativa</span>
+                )}
+              </span>
               <span className={styles.rowActions}>
                 <button type="button" className={styles.openPlanButton} onClick={() => onOpenProject(group.projectId)}>
                   Abrir plano
@@ -688,10 +726,10 @@ export function StageListTable(props: {
                       <span className={styles.stageTeamsCell}>
                         {activeTeams.length ? (
                           activeTeams.map((team) => (
-                            <span key={team.id} className={styles.teamChip}>
-                              {team.teamName}
+                            <span key={team.id} className={`${styles.teamChip} ${isActive && !isCompleted ? styles.teamChipRemovable : ""}`}>
+                              <span className={styles.teamChipMain}>{team.teamName}</span>
                               {stage.startTime || stage.endTime ? (
-                                <small>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
+                                <small className={styles.teamChipTime}>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
                               ) : null}
                               {isActive && !isCompleted ? (
                                 <button type="button" aria-label={`Remover ${team.teamName}`} onClick={() => onRemoveTeam(team.id)}>

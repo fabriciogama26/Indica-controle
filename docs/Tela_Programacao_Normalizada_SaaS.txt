@@ -776,3 +776,26 @@ Atualizacao 2026-07-28 - Colunas em branco na extracao (INFO STATUS e Tempo prev
     Nenhuma RLS, policy ou permissao alterada. A funcao de captura mantem EXECUTE
     apenas para service_role.
 
+Atualizacao 2026-07-29 - Visual do leque e equipes
+---------------------------------------------------
+- Ajuste visual sem mudanca de API, banco, RLS ou permissao.
+- Lista de Programacoes:
+  - o botao de expandir/recolher do projeto deixou de usar texto simples `>`/`v` e
+    passou a ser um botao circular com chevron maior, tooltip e estado visual aberto;
+  - a coluna `Equipes` da linha-pai agora mostra uma previa das equipes ativas em
+    chips compactos, com contador `+N` quando houver mais equipes do que cabem na
+    previa;
+  - as equipes das etapas expandidas usam chips com nome em destaque, horario da
+    etapa e botao de remover mais claro quando a etapa permite edicao.
+- Dentro de `Abrir plano`:
+  - o card de cada etapa ganhou bloco proprio `Equipes alocadas`, com contador e
+    chips mais legiveis;
+  - o seletor de equipes do formulario passou a destacar visualmente as equipes
+    marcadas e organizar a lista em grid responsivo;
+  - a area `Adicionar equipe` recebeu tratamento visual separado para ficar menos
+    perdida no card.
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-normalizada/listComponents.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`
+
