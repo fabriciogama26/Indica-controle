@@ -946,3 +946,8 @@ Observacao
 - Adiciona `cmd boolean not null default false` em `stock_transfer_items` e `trafo_instances`, com indices parciais por tenant para filtros `CMD = Sim`.
 - Atualiza a RPC base de Movimentacao de Estoque para persistir `cmd` nos itens e cria trigger para sincronizar a marcacao do item com a instancia serializada atual.
 - Faz backfill conservador em `trafo_instances` pelo item de movimentacao mais recente da unidade e mantem EXECUTE da trigger function fechado para `public`/`anon`/`authenticated`.
+
+342_create_programming_legacy_map.sql
+- Cria `programming_legacy_map`, o de/para do ID legado de `project_programming` (uma linha por equipe) para a etapa em `programming` (uma por projeto+data) e para a linha de equipe em `programming_team`, resolvido pela chave natural `(tenant_id, project_id, execution_date)`.
+- Popula por `insert ... select` re-executavel e reporta por `raise notice` as linhas legadas sem etapa correspondente e o numero de FKs sem par em `project_measurement_orders`, `project_apr_controls` e `cronograma_solicitacoes`.
+- Mantem `project_programming` somente leitura (unico ALTER e a garantia idempotente da unique `(id, tenant_id)`, padrao da 226), com RLS de leitura por `user_can_access_tenant` e nenhuma policy de escrita.
