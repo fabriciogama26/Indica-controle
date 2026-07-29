@@ -754,6 +754,9 @@ npm run build
 - `As telas estornos nao estao cadastradas em app_pages.`:
   - Causa: frontend com a tela `Estornos` publicado em um ambiente onde o catalogo de permissoes ficou sem `page_key = estornos`.
   - Solucao: aplicar `215_repair_reversals_page_permissions.sql` e repetir o salvamento da credencial.
+- `Falha ao chamar save_project_programming_stage: record "v_current" is not assigned yet` ao criar etapa na Programacao (Normalizada):
+  - Causa: ambiente sem a migration `340`. Em `save_project_programming_stage`, `v_current` era `record` puro e so recebia valor no ramo de UPDATE, mas a trava de projeto concluido referenciava o campo tambem no ramo de INSERT — o PL/pgSQL falha ao resolver o tipo do campo de um record nao atribuido. Intermitente porque a expressao preparada fica em cache por conexao do pooler.
+  - Solucao: aplicar `340_fix_save_stage_unassigned_record.sql`. A operacao nao chega a gravar nada, entao nao ha dado parcial para limpar.
 - `Acesso negado para executar read em programacao-concluir.` (ou `programacao-pendencia` / `programacao-corrigir-data`):
   - Causa: permissao granular por operacao da Programacao (Normalizada), criada bloqueada pela migration `328`. Admin passa porque `requirePageAction` libera admin antes de consultar a permissao.
   - Solucao: liberar a permissao na tela `/permissoes`, secao `Operacao` (`Concluir/Reabrir`, `Pendencia`, `Corrigir data` — Programacao Normalizada), e o usuario entrar novamente para reidratar `pageAccess`.
