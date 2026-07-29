@@ -153,6 +153,28 @@ Filtros, auto-complete e listagem
 - Permissoes granulares (migration 328): `programacao-concluir` (Concluir/Reabrir/sair de
   Concluido), `programacao-pendencia` (flag e criacao de etapa de pendencia) e
   `programacao-corrigir-data`. Nascem bloqueadas; as demais operacoes seguem sob a permissao da tela.
+  - ONDE CONCEDER: tela `Permissoes`, secao `Operacao`, entradas "Concluir/Reabrir",
+    "Pendencia" e "Corrigir data" (Programacao Normalizada). Nao sao rotas navegaveis — o
+    path e virtual, mesmo padrao de `saida-requisicao`. Ate a correcao destas entradas as
+    3 permissoes nasciam bloqueadas e NAO existia como conceder pela aplicacao (so admin
+    passava, porque `requirePageAction` libera admin antes de consultar a permissao).
+  - ESCOPO EXATO DE `programacao-concluir` (o que fica indisponivel sem ela):
+    - Card: botoes `Concluir` e `Reabrir` nao sao renderizados.
+    - Lista: botao `Reabrir` na linha da etapa nao e renderizado.
+    - Select "Estado do trabalho": a opcao `Concluido` some, e etapa JA concluida vira badge
+      de leitura (sair de Concluido reabre a etapa, entao tambem exige a permissao).
+    - CONTINUA LIBERADO sob a permissao da tela: em branco / Parcial planejado / Parcial nao
+      planejado / Beneficio atingido (`set_project_programming_work_completion_status`),
+      alem de cadastrar, editar, adicionar/remover equipe, adiar, cancelar, detalhes,
+      historico, duplicar e exportar.
+  - ESCOPO EXATO DE `programacao-pendencia`: some a checkbox `Pendencia` do card e a do
+    formulario de nova etapa; `submitForm` forca `isPendencia = false` para nao enviar flag
+    invisivel. O selo "Pend." e o status Pendencia continuam VISIVEIS (leitura).
+  - ESCOPO EXATO DE `programacao-corrigir-data`: some o botao `Corrigir data` do card.
+    `Adiar` (remarcar/deixar em espera) continua liberado sob a permissao da tela.
+  - O gating de UI e apenas visual (guia_frontend regra 19): os handlers em
+    `src/server/modules/programacao-normalizada/handlers.ts` continuam chamando
+    `requirePageAction` dentro de cada operacao.
 - Botoes essenciais por etapa: `Editar`, `Adicionar equipe`, `Remover equipe`, `Adiar`,
   `Cancelar`, `Concluir`/`Reabrir`, `Detalhes`, `Historico`, `Nova etapa a partir desta`
   (duplicar). Icones em botao redondo colorido (`.actionButton` + `.action<Tipo>`), mesmo

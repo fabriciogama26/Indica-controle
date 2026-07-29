@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+
+import { useAuth } from "@/hooks/useAuth";
+import { hasPageAccess, isAdminRole } from "@/lib/auth/authorization";
 
 import {
   addProgrammingTeam,
@@ -35,6 +38,35 @@ import type {
 } from "./types";
 
 type ErrorLogHandler = (message: string, error?: unknown, context?: Record<string, unknown>) => void | Promise<void>;
+
+// Permissoes granulares da tela (migration 328), so para uso VISUAL: esconder da
+// UI o que o backend ja recusa, em vez de deixar o usuario clicar e tomar 403.
+// Nao substitui a checagem server-side (guia_frontend regra 19) — os handlers
+// continuam chamando requirePageAction em cada operacao.
+// isAdminRole entra como rede de seguranca: requirePageAction libera admin antes
+// de consultar permissao, entao a UI nao pode esconder o botao de um admin que
+// ainda nao tenha linha em app_user_page_permissions.
+export function useProgrammingGranularPermissions() {
+  const { session } = useAuth();
+
+  const accessContext = useMemo(
+    () => ({
+      role: session?.user.role,
+      pageAccess: session?.user.pageAccess,
+      hasCustomPermissions: session?.user.hasCustomPermissions,
+    }),
+    [session?.user.hasCustomPermissions, session?.user.pageAccess, session?.user.role],
+  );
+
+  return useMemo(() => {
+    const isAdmin = isAdminRole(accessContext.role);
+    return {
+      canComplete: isAdmin || hasPageAccess(accessContext, "programacao-concluir"),
+      canPendencia: isAdmin || hasPageAccess(accessContext, "programacao-pendencia"),
+      canCorrectDate: isAdmin || hasPageAccess(accessContext, "programacao-corrigir-data"),
+    };
+  }, [accessContext]);
+}
 
 export function useProgrammingMeta(params: { accessToken: string | null; onError?: ErrorLogHandler }) {
   const { accessToken, onError } = params;

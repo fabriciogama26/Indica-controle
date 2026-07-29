@@ -754,6 +754,9 @@ npm run build
 - `As telas estornos nao estao cadastradas em app_pages.`:
   - Causa: frontend com a tela `Estornos` publicado em um ambiente onde o catalogo de permissoes ficou sem `page_key = estornos`.
   - Solucao: aplicar `215_repair_reversals_page_permissions.sql` e repetir o salvamento da credencial.
+- `Acesso negado para executar read em programacao-concluir.` (ou `programacao-pendencia` / `programacao-corrigir-data`):
+  - Causa: permissao granular por operacao da Programacao (Normalizada), criada bloqueada pela migration `328`. Admin passa porque `requirePageAction` libera admin antes de consultar a permissao.
+  - Solucao: liberar a permissao na tela `/permissoes`, secao `Operacao` (`Concluir/Reabrir`, `Pendencia`, `Corrigir data` — Programacao Normalizada), e o usuario entrar novamente para reidratar `pageAccess`.
 - `Falha ao enviar convite do usuario.`:
   - Causa: usuario sem email, sem `matricula`, sem `login_name` ou ja vinculado ao Auth do Supabase.
   - Solucao: revisar o pre-cadastro em `app_users` antes de usar o botao `Enviar convite` na tela `/permissoes`.

@@ -142,14 +142,25 @@ function getWorkCompletionBadgeVariant(workCompletionStatus: string | null) {
 export function WorkCompletionCell(props: {
   stage: StageListItem;
   isSubmitting: boolean;
+  // Permissao granular programacao-concluir: entrar em Concluido reusa a acao
+  // Concluir e SAIR de Concluido reabre a etapa — as duas pontas sao recusadas
+  // pelo backend sem a permissao, entao a celula vira badge de leitura quando a
+  // etapa ja esta Concluida e some so a opcao "Concluido" nos demais casos.
+  canComplete: boolean;
   onChange: (stage: StageListItem, value: string | null) => void;
 }) {
-  const { stage, isSubmitting, onChange } = props;
-  const isEditable = isActiveStageStatus(stage.status) && stage.workCompletionStatus !== "ANTECIPADO";
+  const { stage, isSubmitting, canComplete, onChange } = props;
+  const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
+  const isEditable =
+    isActiveStageStatus(stage.status) && stage.workCompletionStatus !== "ANTECIPADO" && (canComplete || !isCompleted);
 
   if (!isEditable) {
     return <span className={`${styles.badge} ${getWorkCompletionBadgeVariant(stage.workCompletionStatus)}`}>{getWorkCompletionLabel(stage.workCompletionStatus)}</span>;
   }
+
+  const options = canComplete
+    ? WORK_COMPLETION_SELECT_OPTIONS
+    : WORK_COMPLETION_SELECT_OPTIONS.filter((option) => option.value !== "CONCLUIDO");
 
   return (
     <select
@@ -159,7 +170,7 @@ export function WorkCompletionCell(props: {
       disabled={isSubmitting}
       aria-label={`Estado do trabalho da etapa ${stage.projectCode}`}
     >
-      {WORK_COMPLETION_SELECT_OPTIONS.map((option) => (
+      {options.map((option) => (
         <option key={option.value} value={option.value}>{option.label}</option>
       ))}
     </select>
@@ -475,6 +486,8 @@ export function StageListTable(props: {
   onReopen: (stage: StageListItem) => void;
   onRemoveTeam: (programmingTeamId: string) => void;
   onChangeWorkCompletionStatus: (stage: StageListItem, value: string | null) => void;
+  // Permissao granular programacao-concluir (migration 328).
+  canComplete: boolean;
   isExportingCsv: boolean;
   isExportingEnel: boolean;
   isExportingEnelNovo: boolean;
@@ -500,6 +513,7 @@ export function StageListTable(props: {
     onReopen,
     onRemoveTeam,
     onChangeWorkCompletionStatus,
+    canComplete,
     isExportingCsv,
     isExportingEnel,
     isExportingEnelNovo,
@@ -759,7 +773,7 @@ export function StageListTable(props: {
                         })()}
                       </span>
                       <span>
-                        <WorkCompletionCell stage={stage} isSubmitting={isSubmitting} onChange={onChangeWorkCompletionStatus} />
+                        <WorkCompletionCell stage={stage} isSubmitting={isSubmitting} canComplete={canComplete} onChange={onChangeWorkCompletionStatus} />
                       </span>
                       <span className={styles.rowActions}>
                         {isActive && !isCompleted ? (
@@ -807,7 +821,7 @@ export function StageListTable(props: {
                             >
                               <ActionIcon name="details" />
                             </button>
-                            {isCompleted ? (
+                            {isCompleted && canComplete ? (
                               <button
                                 type="button"
                                 className={`${styles.actionButton} ${styles.actionComplete}`}

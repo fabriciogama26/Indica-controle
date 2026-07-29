@@ -310,3 +310,22 @@ Ajuda contextual
 - Depois: `src/lib/server/appUsersAdmin.ts` aplica uma guarda explicita para manter o contrato tipado das rotas administrativas e liberar o build do Vercel.
 - Antes: funcoes `SECURITY DEFINER` antigas ainda herdavam permissao de execucao de `PUBLIC`/`anon`/`authenticated` e algumas funcoes legadas nao tinham `search_path` fixo.
 - Depois: as funcoes antigas apontadas pelo advisor passam a ter `search_path` fixo, e funcoes `SECURITY DEFINER` do schema `public` deixam de ser chamaveis diretamente por roles expostas, permanecendo disponiveis ao backend por `service_role`.
+
+Atualizacao 2026-07-29
+----------------------
+- Antes: a migration 328 cadastrou as permissoes granulares `programacao-concluir`,
+  `programacao-pendencia` e `programacao-corrigir-data` em `app_pages` (todas com
+  `default_user_access = false` e backfill liberando so admin), mas nao entraram no
+  `permissionCatalog` do frontend. Como a tela renderiza apenas o catalogo hardcoded (nao le
+  `app_pages`), nao existia como conceder essas permissoes pela aplicacao: usuario `user`
+  recebia `Acesso negado para executar read em programacao-concluir` ao mudar o Estado do
+  trabalho para/de `Concluido`, e admin passava so porque `requirePageAction` libera admin
+  antes de consultar a permissao.
+- Depois: as 3 entradas foram adicionadas ao `permissionCatalog` na secao `Operacao`, com path
+  virtual (`/programacao-concluir`, `/programacao-pendencia`, `/programacao-corrigir-data`),
+  mesmo padrao de `saida-requisicao`. Continuam fora do `defaultPageAccess`, entao seguem
+  nascendo bloqueadas para perfis nao administrativos — a diferenca e que agora sao
+  concediveis por role e por usuario na tela.
+- Reforco do checklist: permissao granular POR OPERACAO tambem entra no `permissionCatalog`.
+  Nao entra em `ROUTE_PAGE_KEYS`/`menuSections`/`titleMap` de `authorization.ts`/`AppShell`,
+  porque nao e rota navegavel.

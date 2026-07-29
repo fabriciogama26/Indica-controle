@@ -12,7 +12,7 @@ import { AddTeamModal, CancelModal, DetailsModal, HistoryModal, PostponeModal } 
 import { STAGE_LIST_PAGE_SIZE, createDefaultListFilters } from "./constants";
 import { buildEnelCsvContent, buildEnelNovoWorkbookData, buildProgrammingCsvContent } from "./exports";
 import { fetchProgrammingPlan, fetchProgrammingStageDetails, fetchProgrammingStageList } from "./api";
-import { useHistoryModal, useProgrammingMeta, useProgrammingStageActions, useProgrammingStageList } from "./hooks";
+import { useHistoryModal, useProgrammingGranularPermissions, useProgrammingMeta, useProgrammingStageActions, useProgrammingStageList } from "./hooks";
 import { ListFiltersBar, SobEntryBar, StageListTable } from "./listComponents";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { ProjectPlanView } from "./ProjectPlanView";
@@ -52,6 +52,7 @@ export function ProgrammingNormalizedPageView() {
   const commonExportCooldown = useExportCooldown();
   const enelExportCooldown = useExportCooldown();
 
+  const { canComplete } = useProgrammingGranularPermissions();
   const { meta } = useProgrammingMeta({ accessToken, onError: logError });
   const { items, total, page, setPage, isLoadingList, listToday, listError, reloadList } = useProgrammingStageList({ accessToken, filters, onError: logError });
   const historyModal = useHistoryModal({ accessToken, onError: logError });
@@ -332,6 +333,7 @@ export function ProgrammingNormalizedPageView() {
         onReopen={handleReopen}
         onRemoveTeam={handleRemoveTeam}
         onChangeWorkCompletionStatus={(stage, value) => void actions.changeWorkCompletionStatus(stage, value)}
+        canComplete={canComplete}
         isExportingCsv={isExportingCsv}
         isExportingEnel={isExportingEnel}
         isExportingEnelNovo={isExportingEnelNovo}

@@ -15,7 +15,14 @@ import {
   StageFormPanel,
 } from "./components";
 import { createInitialForm } from "./constants";
-import { useActivityCatalogSearch, useHistoryModal, useProgrammingMeta, useProgrammingPlan, useProgrammingStageActions } from "./hooks";
+import {
+  useActivityCatalogSearch,
+  useHistoryModal,
+  useProgrammingGranularPermissions,
+  useProgrammingMeta,
+  useProgrammingPlan,
+  useProgrammingStageActions,
+} from "./hooks";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { buildReasonText, isFormReadyToSave, isTimeRangeValid } from "./validators";
 import { findActiveCompletedStage, sortStagesByDate, toIsoDate } from "./utils";
@@ -106,6 +113,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
   const [detailsTarget, setDetailsTarget] = useState<ProgrammingStage | null>(null);
 
+  const { canComplete, canPendencia, canCorrectDate } = useProgrammingGranularPermissions();
   const { meta } = useProgrammingMeta({ accessToken, onError: logError });
   const { stages, reloadPlan } = useProgrammingPlan({ accessToken, projectId, onError: logError });
   const historyModal = useHistoryModal({ accessToken, onError: logError });
@@ -175,7 +183,10 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       trafoQty: form.trafoQty,
       redeQty: form.redeQty,
       note: form.note,
-      isPendencia: form.isPendencia,
+      // Sem a permissao a checkbox nem e renderizada; forcar false aqui garante
+      // que nenhum caminho de reset/heranca de formulario mande a flag invisivel
+      // para o backend (padrao de permissao granular do CLAUDE.md, item 2).
+      isPendencia: canPendencia && form.isPendencia,
       activities: form.activities.map((item) => ({ catalogId: item.catalogId, quantity: item.quantity })),
       documents: form.documents,
     };
@@ -298,7 +309,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
       {activeCompletedStage ? (
         <div className={`${styles.feedback} ${styles.feedbackError}`}>
-          Projeto concluido em {activeCompletedStage.executionDate}. Reabra a etapa concluida antes de inserir, editar, adicionar equipe, adiar ou cancelar — exceto criar uma etapa de Pendencia (marque a checkbox no formulario), que e permitida sem reabrir.
+          Projeto concluido em {activeCompletedStage.executionDate}. Reabra a etapa concluida antes de inserir, editar, adicionar equipe, adiar ou cancelar
+          {canPendencia ? " — exceto criar uma etapa de Pendencia (marque a checkbox no formulario), que e permitida sem reabrir." : "."}
+          {!canComplete ? " Voce nao tem permissao para reabrir etapa concluida: peca a um administrador." : ""}
         </div>
       ) : null}
 
@@ -329,6 +342,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
           isLoadingActivities={isLoadingActivities}
           onSubmit={submitForm}
           onCancelEdit={editingStageId ? cancelEdit : onBack}
+          canPendencia={canPendencia}
         />
 
         <div className={styles.stageList}>
@@ -351,6 +365,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
               onCorrectDate={() => openCorrectDateModal(stage)}
               onDetails={() => setDetailsTarget(stage)}
               onHistory={() => historyModal.openHistory(stage)}
+              canComplete={canComplete}
+              canPendencia={canPendencia}
+              canCorrectDate={canCorrectDate}
             />
           ))}
         </div>
