@@ -900,3 +900,32 @@ Atualizacao 2026-07-29 - Conflito de agenda: com quem conflitou e janelas livres
   - `src/server/modules/programacao-normalizada/scheduleConflict.ts` (novo)
   - `src/server/modules/programacao-normalizada/rpc.ts`
 
+Atualizacao 2026-07-29 - Extracao ENEL: coluna Nº EQ e colunas SGD com Ponto Eletrico
+--------------------------------------------------------------------------------------
+- Antes: a coluna `Nº EQ (RE, CO, CF, CC ou TR)` e as tres colunas `SGD AT/MT/VyP`,
+  `SGD BT` e `SGD TeT` usavam `resolveEqLabel`, que monta `code - label` do PROPRIO
+  catalogo de EQ. Como nesses itens `code` e `label` sao iguais, a coluna saia
+  `#CHAVE - #CHAVE` e o campo `Ponto Eletrico *` (`campoEletrico`) nunca aparecia na
+  extracao.
+- Mapeamento correto dos campos da tela (confirmado no formulario):
+  - `Ponto Eletrico *` -> `stage.campoEletrico` (input de texto, ex.: `AN555851`);
+  - `No EQ *`          -> LABEL do catalogo (`ElectricalEqCatalogItem.label`) — o select
+                          renderiza `item.label`, nao `item.code`;
+  - `Tipo de SGD *`    -> `sgdType.description`/`exportColumn`, que decide QUAL das tres
+                          colunas SGD e preenchida.
+- Depois:
+  - `Nº EQ (RE, CO, CF, CC ou TR)` = `Ponto Eletrico - No EQ` (ex.: `AN555851 - #CHAVE`),
+    via a funcao nova `resolveEnelEqNumber`.
+  - `SGD AT/MT/VyP`, `SGD BT` e `SGD TeT` recebem o `Ponto Eletrico` PURO (sem o par),
+    cada uma conforme o Tipo de SGD, mantendo a logica de selecao que ja existia
+    (`isSgdAtMtVyp`/`isSgdBt`/`isSgdTet`).
+- Vale para as DUAS extracoes: `Extracao ENEL` (CSV, layout antigo) e `Extracao ENEL NOVO`
+  (.xlsb). A NOVO nao tem as colunas SGD AT/MT/VyP/BT/TeT — nela mudou so o `Nº EQ`.
+- O separador " - " so entra quando os DOIS lados existem: etapa sem Ponto Eletrico sai so
+  com o No EQ (nunca ` - #CHAVE`), e etapa sem No EQ sai so com o Ponto Eletrico. O campo
+  e obrigatorio no formulario, mas dado legado migrado (315/335) pode estar vazio.
+- `resolveEqLabel` FICOU como estava e continua em uso na exportacao interna
+  (`Exportar Excel (CSV)`, coluna `No EQ`) — essa nao foi pedida e nao mudou.
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-normalizada/exports.ts`
+
