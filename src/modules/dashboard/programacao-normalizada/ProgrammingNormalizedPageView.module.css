@@ -378,10 +378,10 @@
 
 .projectRow {
   display: grid;
-  grid-template-columns: 1.5rem minmax(0, 1fr) minmax(0, 1.3fr) 0.7fr 0.8fr auto;
+  grid-template-columns: 3rem minmax(0, 0.95fr) minmax(0, 1.15fr) 0.65fr minmax(190px, 1.45fr) auto;
   align-items: center;
   gap: 0.6rem;
-  padding: 0.7rem 0.9rem;
+  padding: 0.75rem 0.9rem;
   font-size: 0.88rem;
 }
 
@@ -434,6 +434,14 @@
   min-width: 0;
 }
 
+.projectTeamPreview {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
 /* Legenda da data original de uma etapa em espera (337): a etapa perdeu a
    execution_date, entao a data exibida vem do snapshot e precisa ser identificada
    como original — senao seria lida como data vigente. */
@@ -476,13 +484,43 @@
   text-align: right;
 }
 
+.expandColumnHeader {
+  text-align: center;
+}
+
 .expandButton {
-  background: none;
-  border: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 52, 122, 0.2);
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(23, 52, 122, 0.12);
   cursor: pointer;
-  color: var(--color-text-soft);
-  font-size: 0.8rem;
+  color: #17347a;
   padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.expandButton:hover {
+  background: #edf4ff;
+  border-color: rgba(23, 52, 122, 0.38);
+  box-shadow: 0 10px 22px rgba(23, 52, 122, 0.18);
+  transform: translateY(-1px);
+}
+
+.expandButton[aria-expanded="true"] {
+  background: #17347a;
+  border-color: #17347a;
+  color: #ffffff;
+}
+
+.expandChevron {
+  width: 20px;
+  height: 20px;
 }
 
 .expandButton:disabled {
@@ -577,13 +615,51 @@
 .teamChip {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  background: var(--color-surface);
-  border: 0.5px solid var(--color-border);
+  min-width: 0;
+  gap: 0.42rem;
+  padding: 0.28rem 0.62rem;
+  border-radius: 10px;
+  background: #f7fbff;
+  border: 1px solid rgba(23, 52, 122, 0.14);
   font-size: 0.78rem;
-  color: var(--color-text-soft);
+  color: #1b294c;
+  line-height: 1.15;
+}
+
+.projectTeamChip {
+  max-width: 112px;
+  padding-block: 0.22rem;
+  background: #ffffff;
+}
+
+.teamChipLarge {
+  min-height: 38px;
+  padding: 0.36rem 0.7rem;
+}
+
+.teamChipRemovable {
+  padding-right: 0.36rem;
+}
+
+.teamChipMain {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: #17347a;
+}
+
+.teamOverflowBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 0.55rem;
+  border-radius: 999px;
+  background: rgba(23, 52, 122, 0.08);
+  color: #17347a;
+  font-size: 0.75rem;
+  font-weight: 800;
 }
 
 .teamChip small {
@@ -591,18 +667,29 @@
   font-size: 0.72rem;
 }
 
+.teamChipTime {
+  flex-shrink: 0;
+}
+
 .teamChip button {
-  background: none;
-  border: none;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(198, 40, 40, 0.18);
+  background: #ffffff;
   cursor: pointer;
-  color: var(--color-text-soft);
+  color: #c62828;
   font-size: 0.9rem;
   line-height: 1;
   padding: 0;
 }
 
 .teamChip button:hover {
-  color: var(--color-danger);
+  background: #fdecea;
 }
 
 /* Plano do projeto */
@@ -629,6 +716,26 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+.stageTeamsBlock {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  border-radius: 12px;
+  background: #fbfcff;
+}
+
+.stageTeamsTitle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  color: #17347a;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .pendenciaToggle {
@@ -728,6 +835,7 @@
 
 .teamList {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 8px;
   max-height: 260px;
   overflow: auto;
@@ -742,6 +850,17 @@
   padding: 8px;
   border: 1px solid rgba(23, 52, 122, 0.12);
   background: #ffffff;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.teamOption:hover {
+  border-color: rgba(23, 52, 122, 0.28);
+  box-shadow: 0 8px 16px rgba(23, 52, 122, 0.08);
+}
+
+.teamOptionSelected {
+  border-color: rgba(31, 141, 69, 0.42);
+  background: #f0fbf4;
 }
 
 .teamOption strong {
@@ -833,6 +952,13 @@
 
 .openPlanButton:hover {
   background: rgba(37, 74, 156, 0.16);
+}
+
+.addTeamPanel {
+  padding: 0.65rem 0.75rem;
+  border-radius: 12px;
+  border: 1px dashed rgba(23, 52, 122, 0.22);
+  background: #ffffff;
 }
 
 .buttonPrimary {
@@ -992,7 +1118,7 @@
   }
 
   .projectRow {
-    grid-template-columns: 1.2rem minmax(0, 1.4fr) 0.7fr 0.8fr auto;
+    grid-template-columns: 2.6rem minmax(0, 1.4fr) 0.7fr minmax(150px, 1fr) auto;
   }
 
   .stageRow {
@@ -1058,5 +1184,13 @@
 
   .rowActions {
     justify-content: flex-start;
+  }
+
+  .expandButton {
+    justify-self: flex-start;
+  }
+
+  .projectTeamPreview {
+    align-items: flex-start;
   }
 }

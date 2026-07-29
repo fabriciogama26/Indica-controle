@@ -100,7 +100,8 @@ export function StageCard(props: {
   } = props;
   const isActive = isActiveStageStatus(stage.status);
   const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
-  const activeTeamIds = new Set(stage.teams.filter((team) => team.status === "ATIVA").map((team) => team.teamId));
+  const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
+  const activeTeamIds = new Set(activeTeams.map((team) => team.teamId));
   const availableTeams = teamOptions.filter((team) => !activeTeamIds.has(team.id));
 
   return (
@@ -187,23 +188,35 @@ export function StageCard(props: {
 
       <p className={styles.emptyHint}>{stage.serviceDescription || "Sem descricao do servico."}</p>
 
-      <div className={styles.teamChips}>
-        {stage.teams.filter((team) => team.status === "ATIVA").map((team) => (
-          <span key={team.id} className={styles.teamChip}>
-            {team.teamName}
-            {isActive && !isCompleted ? (
-              <button
-                type="button"
-                aria-label={`Remover ${team.teamName}`}
-                onClick={() => onRemoveTeam(team.id, team.updatedAt)}
-                disabled={isSubmitting}
-              >
-                ×
-              </button>
-            ) : null}
+      <div className={styles.stageTeamsBlock}>
+        <div className={styles.stageTeamsTitle}>
+          <span>Equipes alocadas</span>
+          <span className={`${styles.badge} ${activeTeams.length ? styles.badgeAccent : styles.badgeMuted}`}>
+            {activeTeams.length || "0"} equipe{activeTeams.length === 1 ? "" : "s"}
           </span>
-        ))}
-        {!stage.teams.some((team) => team.status === "ATIVA") ? <span className={styles.emptyHint}>Sem equipe alocada.</span> : null}
+        </div>
+        <div className={styles.teamChips}>
+          {activeTeams.map((team) => (
+            <span key={team.id} className={`${styles.teamChip} ${styles.teamChipLarge} ${isActive && !isCompleted ? styles.teamChipRemovable : ""}`}>
+              <span className={styles.teamChipMain}>{team.teamName}</span>
+              {stage.startTime || stage.endTime ? (
+                <small className={styles.teamChipTime}>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
+              ) : null}
+              {isActive && !isCompleted ? (
+                <button
+                  type="button"
+                  title="Remover equipe"
+                  aria-label={`Remover ${team.teamName}`}
+                  onClick={() => onRemoveTeam(team.id, team.updatedAt)}
+                  disabled={isSubmitting}
+                >
+                ×
+                </button>
+              ) : null}
+            </span>
+          ))}
+          {!activeTeams.length ? <span className={styles.emptyHint}>Sem equipe alocada.</span> : null}
+        </div>
       </div>
 
       {isActive ? (
@@ -219,7 +232,7 @@ export function StageCard(props: {
       ) : null}
 
       {isActive && !isCompleted && availableTeams.length ? (
-        <div className={styles.field}>
+        <div className={`${styles.field} ${styles.addTeamPanel}`}>
           <label htmlFor={`add-team-${stage.id}`}><span>Adicionar equipe</span></label>
           <select
             id={`add-team-${stage.id}`}
@@ -874,7 +887,7 @@ export function StageFormPanel(props: {
           <div className={styles.teamList}>
             {visibleTeamOptions.length ? (
               visibleTeamOptions.map((team) => (
-                <label key={team.id} className={styles.teamOption}>
+                <label key={team.id} className={form.teamIds.includes(team.id) ? `${styles.teamOption} ${styles.teamOptionSelected}` : styles.teamOption}>
                   <input
                     type="checkbox"
                     checked={form.teamIds.includes(team.id)}
