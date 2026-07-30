@@ -956,3 +956,8 @@ Observacao
 - Migra `project_programming_history` para `programming_history` via `programming_legacy_map` (342), colapsando as linhas irmas que o modelo antigo gravava uma por equipe (2594 legadas -> 2027 apos dedupe, medido em producao em 2026-07-29).
 - Preserva o `action_type` legado sem traduzir (CREATE/BATCH_CREATE/UPDATE/RESCHEDULE/COPY/ADIADA/CANCELADA), porque as operacoes nao sao equivalentes as do modelo novo; campos sem coluna no destino vao para `metadata` com prefixo `legacy`, e `programming_team_id` fica nulo por serem eventos de etapa.
 - Idempotente por indice unico parcial sobre `metadata->>'legacyHistoryId'`, criado antes da carga; `project_programming_history` (fonte) nao e alterado.
+
+344_cronograma_read_normalized_programming.sql
+- Reponta `cronograma_solicitacoes.programacao_id` de `project_programming` para `programming`, trocando a FK simples por composta com `tenant_id` (regra 12 do guia_sql.md); 0 linhas a remapear em producao, com guarda que aborta se aparecer valor sem par no `programming_legacy_map`.
+- Reescreve `get_cronograma_asbuilt_project_ids` para ler `programming`, mantendo as regras anteriores (ignora CANCELADA, exige Estado do Trabalho preenchido, ultimo por `execution_date`/`updated_at`) e o grant restrito a `service_role`.
+- Adiciona `BENEFICIO_ATINGIDO` aos estados que liberam As Built: e o mesmo estado de negocio de `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` com o codigo corrigido pela 310, e sem ele a troca de fonte tiraria As Built de 7 projetos.
