@@ -40,20 +40,24 @@ type ProjectRow = {
   is_third_party?: boolean | null;
 };
 
+// Uma linha = uma ETAPA (projeto + data), com as equipes como filhas. No modelo
+// antigo cada equipe tinha a propria linha com todos os campos repetidos, e por
+// isso `team_id` vinha na raiz.
 type ProgrammingRow = {
   id: string;
   project_id: string | null;
-  team_id: string | null;
   status: string | null;
   execution_date: string | null;
   etapa_number: number | null;
   etapa_unica: boolean | null;
   etapa_final?: boolean | null;
   work_completion_status: string | null;
+  is_pendencia: boolean | null;
   cancellation_reason: string | null;
   note: string | null;
   created_at: string | null;
   updated_at: string | null;
+  programming_team: Array<{ team_id: string | null; status: string | null }> | null;
 };
 
 type TeamRow = {
@@ -87,20 +91,7 @@ type WorkCompletionCatalogRow = {
 };
 
 type TeamProgrammingRow = {
-  team_id: string | null;
-};
-
-type TransferHistoryRow = {
-  id: string;
-  programming_id: string | null;
-  related_programming_id: string | null;
-  project_id: string | null;
-  team_id: string | null;
-  from_execution_date: string | null;
-  to_execution_date: string | null;
-  reason: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string | null;
+  programming_team: Array<{ team_id: string | null; status: string | null }> | null;
 };
 
 function normalizeText(value: unknown) {
@@ -285,46 +276,6 @@ function buildTeamLookup(teams: TeamRow[], teamTypeMap: Map<string, string>, peo
   );
 }
 
-function readMetadataText(metadata: Record<string, unknown> | null, key: string) {
-  return normalizeText(metadata?.[key]);
-}
-
-function buildTransferEvents(params: {
-  rows: TransferHistoryRow[];
-  projectMap: Map<string, ProjectRow>;
-  teamMap: Map<string, ReturnType<typeof buildTeamLookup> extends Map<string, infer T> ? T : never>;
-}) {
-  return params.rows.map((row) => {
-    const sourceProjectId = readMetadataText(row.metadata, "sourceProjectId") || normalizeText(row.project_id);
-    const destinationProjectId = readMetadataText(row.metadata, "destinationProjectId");
-    const teamId = readMetadataText(row.metadata, "sourceTeamId") || normalizeText(row.team_id);
-    const sourceProject = sourceProjectId ? params.projectMap.get(sourceProjectId) : null;
-    const destinationProject = destinationProjectId ? params.projectMap.get(destinationProjectId) : null;
-    const team = teamId ? params.teamMap.get(teamId) : null;
-
-    return {
-      id: row.id,
-      changedAt: normalizeText(row.created_at),
-      reason: normalizeText(row.reason),
-      teamId,
-      teamName: team?.name ?? teamId,
-      sourceProjectId,
-      sourceProjectCode: normalizeText(sourceProject?.sob) || sourceProjectId,
-      sourceServiceCenter: normalizeText(sourceProject?.service_center_text),
-      sourceProgrammingId: readMetadataText(row.metadata, "sourceProgrammingId") || normalizeText(row.programming_id),
-      sourceDate: normalizeIsoDate(readMetadataText(row.metadata, "sourceExecutionDate")) ?? normalizeIsoDate(row.from_execution_date) ?? "",
-      sourceStage: readMetadataText(row.metadata, "sourceEtapaNumber"),
-      destinationProjectId,
-      destinationProjectCode: normalizeText(destinationProject?.sob) || destinationProjectId,
-      destinationServiceCenter: normalizeText(destinationProject?.service_center_text),
-      destinationProgrammingId: readMetadataText(row.metadata, "destinationProgrammingId"),
-      newProgrammingId: readMetadataText(row.metadata, "newProgrammingId") || normalizeText(row.related_programming_id),
-      destinationDate: normalizeIsoDate(readMetadataText(row.metadata, "destinationExecutionDate")) ?? normalizeIsoDate(row.to_execution_date) ?? "",
-      destinationStage: readMetadataText(row.metadata, "destinationEtapaNumber"),
-    };
-  });
-}
-
 async function authorizeMapProgrammingRead(context: AuthenticatedAppUserContext) {
   const authorization = await requirePageAction({
     context,
@@ -399,10 +350,13 @@ async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
     .filter((project) => !isEmergencyServiceType(project.service_type_text));
 }
 
+// Fonte: `programming` (modelo normalizado). As equipes vem por embedding do
+// PostgREST em `programming_team`, no lugar do `team_id` que existia na raiz da
+// linha legada.
 async function fetchProgrammingRows(supabase: SupabaseClient, tenantId: string, windowStart: string) {
   const { data, error } = await supabase
-    .from("project_programming")
-    .select("id, project_id, team_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, cancellation_reason, note, created_at, updated_at")
+    .from("programming")
+    .select("id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, programming_team(team_id, status)")
     .eq("tenant_id", tenantId)
     .not("project_id", "is", null)
     .gte("execution_date", windowStart)
@@ -470,23 +424,6 @@ async function fetchTeams(supabase: SupabaseClient, tenantId: string) {
   return buildTeamLookup(teamRows, teamTypeMap, peopleMap, serviceCenterMap);
 }
 
-async function fetchTransferHistoryRows(supabase: SupabaseClient, tenantId: string) {
-  const { data, error } = await supabase
-    .from("project_programming_history")
-    .select("id, programming_id, related_programming_id, project_id, team_id, from_execution_date, to_execution_date, reason, metadata, created_at")
-    .eq("tenant_id", tenantId)
-    .eq("action_type", "TRANSFER_TEAM")
-    .order("created_at", { ascending: false })
-    .limit(100)
-    .returns<TransferHistoryRow[]>();
-
-  if (error) {
-    throw new Error("Falha ao carregar rastreio de transferencias da Programacao.");
-  }
-
-  return data ?? [];
-}
-
 async function fetchProgrammedTeamIds(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -494,8 +431,8 @@ async function fetchProgrammedTeamIds(params: {
   endDate: string;
 }) {
   const { data, error } = await params.supabase
-    .from("project_programming")
-    .select("team_id")
+    .from("programming")
+    .select("programming_team(team_id, status)")
     .eq("tenant_id", params.tenantId)
     .gte("execution_date", params.startDate)
     .lte("execution_date", params.endDate)
@@ -506,7 +443,16 @@ async function fetchProgrammedTeamIds(params: {
     throw new Error("Falha ao carregar programacoes das equipes no periodo.");
   }
 
-  return new Set((data ?? []).map((item) => normalizeText(item.team_id)).filter(Boolean));
+  const teamIds = new Set<string>();
+  for (const row of data ?? []) {
+    for (const team of row.programming_team ?? []) {
+      if (normalizeToken(team.status) !== "ATIVA") continue;
+      const teamId = normalizeText(team.team_id);
+      if (teamId) teamIds.add(teamId);
+    }
+  }
+
+  return teamIds;
 }
 
 export async function GET(request: NextRequest) {
