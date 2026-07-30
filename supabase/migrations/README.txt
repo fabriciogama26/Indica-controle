@@ -961,3 +961,9 @@ Observacao
 - Reponta `cronograma_solicitacoes.programacao_id` de `project_programming` para `programming`, trocando a FK simples por composta com `tenant_id` (regra 12 do guia_sql.md); 0 linhas a remapear em producao, com guarda que aborta se aparecer valor sem par no `programming_legacy_map`.
 - Reescreve `get_cronograma_asbuilt_project_ids` para ler `programming`, mantendo as regras anteriores (ignora CANCELADA, exige Estado do Trabalho preenchido, ultimo por `execution_date`/`updated_at`) e o grant restrito a `service_role`.
 - Adiciona `BENEFICIO_ATINGIDO` aos estados que liberam As Built: e o mesmo estado de negocio de `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` com o codigo corrigido pela 310, e sem ele a troca de fonte tiraria As Built de 7 projetos.
+
+345_identify_pending_serial_in_stock_exit.sql
+- Republica `save_stock_transfer_record` para permitir `Saida` de `CHAVE`/`RELIGADOR` com serial informado ainda nao identificado, consumindo uma pendencia de `stock_serial_pending_balances` do centro `DE`.
+- Mantem `TRAFO` exigindo unidade previamente registrada com `Serial + LP` e mantem `EXIT` sem serial bloqueado pelas validacoes existentes.
+- Executa identificacao + gravacao da movimentacao no mesmo bloco transacional; se a gravacao falhar, a pendencia consumida e a unidade temporariamente criada em `trafo_instances` sao revertidas.
+- Endurece os grants das assinaturas publicas de `save_stock_transfer_record`, revogando `anon`/`authenticated` e mantendo EXECUTE apenas para `service_role`, pois o backend chama a RPC via client admin.

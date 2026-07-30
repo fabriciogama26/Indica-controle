@@ -469,6 +469,11 @@ function canCreatePendingSerialEntry(material: Pick<MaterialOption, "serialTrack
     && (movementType === "ENTRY" || movementType === "TRANSFER");
 }
 
+function canIdentifyPendingSerialOnExit(material: Pick<MaterialOption, "serialTrackingType" | "allowPendingSerialIdentification"> | null | undefined, movementType: FormState["movementType"]) {
+  return allowsPendingSerialIdentification(material?.serialTrackingType, material?.allowPendingSerialIdentification)
+    && movementType === "EXIT";
+}
+
 function parsePositiveNumber(value: string) {
   const normalized = normalizeText(value).replace(/\s+/g, "");
   if (!/^\d+(?:[,.]\d{1,3})?$/.test(normalized)) return null;
@@ -666,6 +671,7 @@ export function StockTransfersPageView() {
   );
 
   const selectedMaterialAllowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
+  const selectedMaterialAllowsExitSerialIdentification = canIdentifyPendingSerialOnExit(selectedMaterial, form.movementType);
   const hasSerialDraft = Boolean(normalizeText(form.serialNumber));
   const serialFieldAvailable = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
   const requiresSerialFields = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType)
@@ -1511,7 +1517,13 @@ export function StockTransfersPageView() {
     const fromCenter = centerMap.get(form.fromStockCenterId);
     const fromCenterName = fromCenter?.name ?? "centro de origem";
 
-    if (item.isTransformer) {
+    if (
+      item.isTransformer
+      && (
+        requiresLotCode(item.serialTrackingType)
+        || !canIdentifyPendingSerialOnExit(item, form.movementType)
+      )
+    ) {
       if (canCreatePendingSerialEntry(item, form.movementType) && !normalizeText(item.serialNumber)) {
         return { ok: true } as const;
       }
@@ -2753,7 +2765,9 @@ export function StockTransfersPageView() {
                     requiresSerialFields
                       ? form.movementType === "ENTRY"
                         ? "Informe o serial novo"
-                        : "Digite para selecionar do centro DE"
+                        : selectedMaterialAllowsExitSerialIdentification
+                          ? "Informe ou selecione o serial"
+                          : "Digite para selecionar do centro DE"
                       : selectedMaterialAllowsPendingSerial
                         ? "Opcional; vazio gera pendencia"
                       : "Disponivel apenas para material rastreavel"
@@ -2765,7 +2779,9 @@ export function StockTransfersPageView() {
                       ? "Carregando seriais disponiveis..."
                       : matchedSerialOption
                         ? `Selecionado no centro DE: ${fromStockCenterName}.`
-                        : "Use um serial listado no centro DE."}
+                        : selectedMaterialAllowsExitSerialIdentification
+                          ? "Serial novo sera identificado a partir da pendencia do centro DE."
+                          : "Use um serial listado no centro DE."}
                   </small>
                 ) : null}
               </label>
