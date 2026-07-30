@@ -8,6 +8,11 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
+import {
+  countActiveStagesForProject,
+  fetchProjectIdsByProgrammingFilter,
+  fetchProjectIdsWithCompletedWork,
+} from "@/server/modules/programacao-normalizada";
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 import { parsePagination } from "@/lib/server/apiHelpers";
 
@@ -284,27 +289,6 @@ function normalizeUuid(value: unknown) {
   return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
 }
 
-function normalizeStatusCatalogCode(value: unknown) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-}
-
-function isMissingWorkCompletionStatusIdColumnError(message: string) {
-  const normalized = normalizeText(message).toLowerCase();
-  return (
-    normalized.includes("work_completion_status_id")
-    && (
-      normalized.includes("does not exist")
-      || normalized.includes("could not find")
-      || normalized.includes("schema cache")
-    )
-  );
-}
-
 function isMissingRpcSignatureError(message: string, functionName: string) {
   const normalized = normalizeText(message).toLowerCase();
   return normalized.includes(functionName.toLowerCase())
@@ -331,168 +315,45 @@ function parseStructuredDatabaseError(message: string) {
   }
 }
 
-async function fetchCompletedProgrammingProjectIdsCompat(params: {
+// Projetos com alguma etapa concluida, para o resumo da lista.
+//
+// Fonte: `programming` (modelo normalizado), via a fachada da Programacao. A
+// versao anterior lia `project_programming` por DOIS caminhos — ids do catalogo em
+// `work_completion_status_id` e texto em `work_completion_status` — com deteccao de
+// schema legado sem a coluna de id. No modelo normalizado nao existe coluna de id:
+// `work_completion_status` guarda o CODIGO e a FK e por codigo (migration 310).
+// Os dois caminhos e o fallback sairam junto com a troca de fonte.
+async function fetchCompletedProgrammingProjectIds(params: {
   supabase: SupabaseClient;
   tenantId: string;
   projectIds?: string[];
 }) {
-  const resultIds = new Set<string>();
+  const result = await fetchProjectIdsWithCompletedWork({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds: params.projectIds,
+  });
 
-  const { data: workCompletionCatalogRows } = await params.supabase
-    .from("programming_work_completion_catalog")
-    .select("id, code")
-    .eq("tenant_id", params.tenantId)
-    .eq("is_active", true)
-    .returns<Array<{ id: string; code: string }>>();
-
-  const concludedCatalogIds = (workCompletionCatalogRows ?? [])
-    .filter((item) => normalizeStatusCatalogCode(item.code) === "CONCLUIDO")
-    .map((item) => normalizeText(item.id))
-    .filter(Boolean);
-
-  if (concludedCatalogIds.length) {
-    let statusIdQuery = params.supabase
-      .from("project_programming")
-      .select("project_id")
-      .eq("tenant_id", params.tenantId)
-      .in("work_completion_status_id", concludedCatalogIds);
-
-    if (params.projectIds?.length) {
-      statusIdQuery = statusIdQuery.in("project_id", params.projectIds);
-    }
-
-    const { data: statusIdRows, error: statusIdError } = await statusIdQuery
-      .returns<Array<{ project_id: string }>>();
-
-    if (statusIdError && !isMissingWorkCompletionStatusIdColumnError(String(statusIdError.message ?? ""))) {
-      return { projectIds: [] as string[], error: statusIdError };
-    }
-
-    for (const row of statusIdRows ?? []) {
-      const projectId = normalizeText(row.project_id);
-      if (projectId) {
-        resultIds.add(projectId);
-      }
-    }
-  }
-
-  let legacyStatusQuery = params.supabase
-    .from("project_programming")
-    .select("project_id")
-    .eq("tenant_id", params.tenantId)
-    .in("work_completion_status", ["CONCLUIDO", "CONCLUÍDO"]);
-
-  if (params.projectIds?.length) {
-    legacyStatusQuery = legacyStatusQuery.in("project_id", params.projectIds);
-  }
-
-  const { data: legacyStatusRows, error: legacyStatusError } = await legacyStatusQuery
-    .returns<Array<{ project_id: string }>>();
-
-  if (legacyStatusError) {
-    return { projectIds: [] as string[], error: legacyStatusError };
-  }
-
-  for (const row of legacyStatusRows ?? []) {
-    const projectId = normalizeText(row.project_id);
-    if (projectId) {
-      resultIds.add(projectId);
-    }
-  }
-
-  return { projectIds: Array.from(resultIds), error: null };
+  return { projectIds: result.projectIds, error: result.error };
 }
 
-async function fetchProjectIdsByProgrammingFiltersCompat(params: {
+// Recorte da lista por Estado do Trabalho e/ou Tipo de SGD da Programacao.
+// Devolve `null` quando nenhum filtro foi pedido — "sem recorte" e diferente de
+// "recorte sem resultado" ([]).
+async function fetchProjectIdsByProgrammingFilters(params: {
   supabase: SupabaseClient;
   tenantId: string;
   workCompletionStatus: ProjectWorkCompletionStatusFilter;
   sgdTypeId: string | null;
 }) {
-  const hasWorkCompletionFilter = params.workCompletionStatus !== "TODOS";
-  const hasSgdTypeFilter = Boolean(params.sgdTypeId);
+  const result = await fetchProjectIdsByProgrammingFilter({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    workCompletionStatus: params.workCompletionStatus,
+    sgdTypeId: params.sgdTypeId,
+  });
 
-  if (!hasWorkCompletionFilter && !hasSgdTypeFilter) {
-    return { projectIds: null as string[] | null, error: null };
-  }
-
-  const normalizedStatusCode = hasWorkCompletionFilter
-    ? normalizeStatusCatalogCode(params.workCompletionStatus)
-    : "";
-
-  let statusCatalogIds: string[] = [];
-  if (hasWorkCompletionFilter && params.workCompletionStatus !== "NAO_INFORMADO") {
-    const { data: catalogRows, error: catalogError } = await params.supabase
-      .from("programming_work_completion_catalog")
-      .select("id, code")
-      .eq("tenant_id", params.tenantId)
-      .eq("is_active", true)
-      .returns<Array<{ id: string; code: string }>>();
-
-    if (catalogError) {
-      return { projectIds: [] as string[], error: catalogError };
-    }
-
-    statusCatalogIds = (catalogRows ?? [])
-      .filter((item) => normalizeStatusCatalogCode(item.code) === normalizedStatusCode)
-      .map((item) => normalizeText(item.id))
-      .filter(Boolean);
-  }
-
-  const collectProjectIds = (rows: Array<{ project_id: string }> | null | undefined) =>
-    Array.from(new Set((rows ?? []).map((item) => normalizeText(item.project_id)).filter(Boolean)));
-
-  let query = params.supabase
-    .from("project_programming")
-    .select("project_id")
-    .eq("tenant_id", params.tenantId);
-
-  if (hasSgdTypeFilter && params.sgdTypeId) {
-    query = query.eq("sgd_type_id", params.sgdTypeId);
-  }
-
-  if (hasWorkCompletionFilter) {
-    if (params.workCompletionStatus === "NAO_INFORMADO") {
-      query = query.is("work_completion_status_id", null);
-    } else if (statusCatalogIds.length > 0) {
-      query = query.in("work_completion_status_id", statusCatalogIds);
-    } else {
-      return { projectIds: [] as string[], error: null };
-    }
-  }
-
-  const { data, error } = await query.returns<Array<{ project_id: string }>>();
-  if (!error) {
-    return { projectIds: collectProjectIds(data), error: null };
-  }
-
-  if (!(hasWorkCompletionFilter && isMissingWorkCompletionStatusIdColumnError(String(error.message ?? "")))) {
-    return { projectIds: [] as string[], error };
-  }
-
-  let legacyQuery = params.supabase
-    .from("project_programming")
-    .select("project_id")
-    .eq("tenant_id", params.tenantId);
-
-  if (hasSgdTypeFilter && params.sgdTypeId) {
-    legacyQuery = legacyQuery.eq("sgd_type_id", params.sgdTypeId);
-  }
-
-  if (params.workCompletionStatus === "NAO_INFORMADO") {
-    legacyQuery = legacyQuery.or("work_completion_status.is.null,work_completion_status.eq.");
-  } else {
-    legacyQuery = legacyQuery.ilike("work_completion_status", params.workCompletionStatus);
-  }
-
-  const { data: legacyData, error: legacyError } = await legacyQuery
-    .returns<Array<{ project_id: string }>>();
-
-  if (legacyError) {
-    return { projectIds: [] as string[], error: legacyError };
-  }
-
-  return { projectIds: collectProjectIds(legacyData), error: null };
+  return { projectIds: result.projectIds, error: result.error };
 }
 
 function isIsoDate(value: string) {
@@ -993,7 +854,7 @@ async function fetchProjectsSummaryCompat(params: {
 
   for (let index = 0; index < projectIds.length; index += chunkSize) {
     const chunk = projectIds.slice(index, index + chunkSize);
-    const completedProjectIdsResult = await fetchCompletedProgrammingProjectIdsCompat({
+    const completedProjectIdsResult = await fetchCompletedProgrammingProjectIds({
       supabase: params.supabase,
       tenantId: params.tenantId,
       projectIds: chunk,
@@ -1516,7 +1377,7 @@ export async function GET(request: NextRequest) {
     const workCompletionStatus = normalizeProjectWorkCompletionStatusFilter(params.get("workCompletionStatus"));
     const sgdTypeId = normalizeUuid(params.get("sgdTypeId"));
     const { page, pageSize, from, to } = parsePagination(params, { maxPageSize: 100 });
-    const programmingFilteredProjectIdsResult = await fetchProjectIdsByProgrammingFiltersCompat({
+    const programmingFilteredProjectIdsResult = await fetchProjectIdsByProgrammingFilters({
       supabase,
       tenantId: appUser.tenant_id,
       workCompletionStatus,
@@ -1821,12 +1682,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (action === "CANCEL") {
-      const { count: programmingCount, error: programmingGuardError } = await supabase
-        .from("project_programming")
-        .select("id", { count: "exact", head: true })
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("project_id", projectId)
-        .in("status", ["PROGRAMADA", "REPROGRAMADA", "ADIADA"]);
+      // Fonte: `programming` (modelo normalizado), via a fachada da Programacao.
+      // A guarda so precisa saber se existe etapa em aberto; o criterio de
+      // "aberto" (PROGRAMADA/REPROGRAMADA/ADIADA) e o mesmo de antes.
+      const { count: programmingCount, error: programmingGuardError } = await countActiveStagesForProject({
+        supabase,
+        tenantId: appUser.tenant_id,
+        projectId,
+      });
 
       if (programmingGuardError) {
         return NextResponse.json({ message: "Falha ao validar programacoes vinculadas ao projeto." }, { status: 500 });

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
+import { fetchWorkCompletionTimelineByProject } from "@/server/modules/programacao-normalizada";
 import {
   calculateTeamPerformanceWindow,
   type TeamPerformanceOrder,
@@ -441,20 +442,19 @@ async function fetchProjectCompletionTimeline(params: {
   const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
   if (!projectIds.length) return new Map<string, ProgrammingCompletionTimelineItem[]>();
 
-  const { data, error } = await params.supabase
-    .from("project_programming")
-    .select("project_id, execution_date, status, work_completion_status, updated_at")
-    .eq("tenant_id", params.tenantId)
-    .in("project_id", projectIds)
-    .lte("execution_date", params.endDate)
-    .neq("status", "CANCELADA")
-    .not("work_completion_status", "is", null)
-    .returns<ProgrammingCompletionRow[]>();
+  // Fonte: `programming` (modelo normalizado), via a fachada da Programacao. A
+  // mesma query existia duplicada aqui e no Dashboard Carteira Operacional.
+  const { rows, error } = await fetchWorkCompletionTimelineByProject({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds,
+    endDate: params.endDate,
+  });
 
   if (error) return new Map<string, ProgrammingCompletionTimelineItem[]>();
 
   const result = new Map<string, ProgrammingCompletionTimelineItem[]>();
-  for (const row of data ?? []) {
+  for (const row of rows as ProgrammingCompletionRow[]) {
     if (isCanceledProgrammingStatus(row.status)) continue;
 
     const status = normalizeCompletionStatus(row.work_completion_status);

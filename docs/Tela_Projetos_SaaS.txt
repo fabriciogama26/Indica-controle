@@ -689,3 +689,79 @@ Atualizacao adicional 2026-07 - valor previsto das atividades
   - Depois: a API devolve `voicePoint` e `totalValue`, e a tela/CSV exibem `Pontos` e `Valor previsto`.
   - Depois: o valor previsto da linha segue a formula da Medicao com taxa `1`: `voicePoint x qtyPlanned x unitValue x 1`.
 - Multi-tenant: sem mudanca de schema, RLS ou permissao; a rota continua derivando `tenant_id` da sessao.
+
+
+Atualizacao 2026-07-29 - Fase 3b do corte: Projetos e os tres dashboards
+--------------------------------------------------------------------------
+- Quatro consumidores deixaram de ler `project_programming` e passaram a ler
+  `programming` pela fachada `@/server/modules/programacao-normalizada`:
+  * `src/app/api/projects/route.ts` (resumo "concluidas", filtro por Estado do
+    Trabalho/Tipo de SGD, guarda de inativacao de projeto);
+  * `src/server/modules/dashboard-measurement/controller.ts` (timeline);
+  * `src/server/modules/dashboard-portfolio/controller.ts` (timeline);
+  * `src/app/api/dash-operacional-faturamento/route.ts` (ultimo Estado do Trabalho).
+- Com isso, dos 7 consumidores mapeados no inicio do corte sobram 2:
+  `src/app/api/mapa-programacao/route.ts` (Fase 4) e `src/app/api/medicao/route.ts`
+  (Fase 5, junto com Controle APR).
+- Funcoes novas na fachada: `fetchWorkCompletionTimelineByProject`,
+  `fetchProjectIdsWithCompletedWork`, `fetchProjectIdsByProgrammingFilter`,
+  `countActiveStagesForProject` e `toCanonicalWorkCompletionCode`.
+
+SIMPLIFICACAO QUE VEIO DE GRACA
+- A leitura antiga de Projetos consultava por DOIS caminhos: ids do catalogo em
+  `work_completion_status_id` e texto em `work_completion_status`, com deteccao de
+  schema legado sem a coluna de id (`isMissingWorkCompletionStatusIdColumnError`).
+  `programming` nao tem coluna de id — `work_completion_status` guarda o CODIGO e a
+  FK e por codigo (migration 310). Os dois caminhos, o fallback e ~120 linhas de
+  compatibilidade sairam junto com a troca de fonte.
+
+DUAS QUEBRAS SILENCIOSAS ENCONTRADAS E CORRIGIDAS
+- `PENDENCIA` no filtro de Estado do Trabalho da tela Projetos: o codigo continua
+  ATIVO no catalogo e por isso e oferecido no filtro, mas a migration 318 tirou o
+  valor de status E de Estado do Trabalho e transformou na flag `is_pendencia`.
+  Comparar pelo codigo devolveria ZERO projeto (13 -> 0 na medicao), um "nenhum
+  resultado" falso que parece boa noticia. A fachada passa a traduzir esse filtro
+  para `is_pendencia = true`. Medido depois da correcao: 14 projetos (13 legados +
+  1 marcado na tela nova desde o corte).
+- `NAO_INFORMADO` passou a exigir tambem `is_pendencia = false`: etapa em pendencia
+  nao e "sem informacao", so guarda a informacao em outra coluna.
+- Os dois codigos de catalogo que significam o mesmo estado
+  (`PARCIAL_PLANEJADO_BENFICIO_ATINGIDO`, legado com typo, e `BENEFICIO_ATINGIDO`,
+  correto pela 310) sao reconciliados por `toCanonicalWorkCompletionCode`. Antes,
+  escolher `BENEFICIO_ATINGIDO` no filtro devolvia 0 projetos; agora as duas opcoes
+  devolvem os mesmos 10.
+
+MUDANCA DELIBERADA DE COMPORTAMENTO: DASH OPERACIONAL FATURAMENTO
+- Esta tela era a divergente das cinco que calculavam "ultimo Estado do Trabalho por
+  projeto": NAO excluia etapa CANCELADA e ordenava so por `updated_at`, ignorando
+  `execution_date`. Um apontamento antigo, editado depois, vencia o mais recente, e
+  etapa cancelada podia definir o estado do projeto.
+- Agora usa o criterio unico da fachada (ignora CANCELADA; ultimo = maior
+  `execution_date`, desempate por `updated_at`). O dashboard MUDA DE NUMERO em 26
+  projetos e passa a concordar com Cronograma, Projetos e os outros dashboards.
+- A maioria das mudancas e o legado estando desatualizado: a tela nova ja avancou o
+  estado para CONCLUIDO e `project_programming` ficou parado, porque o merge
+  conservador da 335 nao sobrescreveu o destino de proposito.
+
+IMPACTO MEDIDO EM PRODUCAO (2026-07-29)
+- Dash Operacional Faturamento: 26 projetos mudam de Estado do Trabalho exibido;
+  total com estado vai de 112 para 111.
+- Projetos, resumo "concluidas": 56 -> 61 (5 projetos que a tela nova concluiu e o
+  legado nao registrou, mais A053714340 que sai — ver abaixo).
+- Projetos, filtro por Estado do Trabalho: BENEFICIO_ATINGIDO 0 -> 10,
+  CONCLUIDO 56 -> 61, PENDENCIA 13 -> 14 (apos a correcao),
+  PARCIAL_PLANEJADO_BENFICIO_ATINGIDO 10 -> 10, RETIRADO 1 -> 1.
+- Projetos, guarda de inativacao: 138 -> 141 projetos bloqueados. Os tres novos
+  (2307202601, CT0324197309, A055472265) tem etapa em aberto criada na tela nova,
+  que o legado nunca conheceu. A guarda passa a refletir a realidade atual.
+- A053714340 continua sendo o unico caso que PERDE estado concluido, pelo motivo ja
+  registrado na Fase 3a: a carga 315/335 fundiu duas linhas da mesma data e o
+  vencedor foi a ADIADA sem estado. Segue pendente de decisao do usuario.
+
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/server/modules/programacao-normalizada/index.ts`
+  - `src/app/api/projects/route.ts`
+  - `src/app/api/dash-operacional-faturamento/route.ts`
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `src/server/modules/dashboard-portfolio/controller.ts`
