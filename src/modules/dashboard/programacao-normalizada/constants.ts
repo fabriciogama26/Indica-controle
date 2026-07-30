@@ -162,6 +162,19 @@ export const HISTORY_ACTION_LABELS: Record<string, string> = {
   CHANGE_COMPLETED_WORK_STATUS: "Saida de Concluido",
   SET_PENDENCIA_FLAG: "Pendencia",
   CORRECT_STAGE_DATE: "Correcao de data",
+
+  // Eventos migrados da tela anterior pela migration 343. O `action_type` legado
+  // e preservado como esta em vez de traduzido para o vocabulario acima, porque
+  // as operacoes nao sao equivalentes — `RESCHEDULE`, por exemplo, e uma edicao
+  // em que a data mudou, e nao o adiamento (`POSTPONE_STAGE`) do modelo novo.
+  // O sufixo identifica a origem sem exigir mudanca no componente de historico.
+  CREATE: "Cadastro (Programacao Simples)",
+  BATCH_CREATE: "Cadastro em lote (Programacao Simples)",
+  UPDATE: "Edicao (Programacao Simples)",
+  RESCHEDULE: "Edicao com troca de data (Programacao Simples)",
+  COPY: "Copia para outra data (Programacao Simples)",
+  ADIADA: "Adiamento (Programacao Simples)",
+  CANCELADA: "Cancelamento (Programacao Simples)",
 };
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
@@ -193,4 +206,37 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   anticipatedById: "Etapa que antecipou",
   anticipatedCount: "Etapas antecipadas",
   restoredCount: "Etapas restauradas",
+
+  // Campos que so aparecem no `changes` do historico migrado da tela anterior
+  // (migration 343). Nomes conferidos nas 2594 linhas legadas de producao.
+  // Rotulos alinhados com programacao-simples/constants.ts, com duas excecoes
+  // deliberadas: `electricalField` usa "Ponto Eletrico" (a tela antiga chamava de
+  // "Nº EQ (numero)", nomenclatura ja corrigida no modelo novo) e `electricalEq`
+  // usa "No EQ", igual a `electricalEqCatalogId`.
+  project: "Projeto",
+  projectId: "Projeto",
+  team: "Equipe",
+  expectedMinutes: "Tempo previsto",
+  electricalField: "Ponto Eletrico",
+  electricalEq: "No EQ",
+  sgdType: "Tipo de SGD",
+  etapaNumber: "ETAPA",
+  etapaUnica: "ETAPA UNICA",
+  etapaFinal: "ETAPA FINAL",
+  workCompletionStatusId: "Estado Trabalho",
+  isActive: "Ativo",
+  cancellationReason: "Motivo do cancelamento",
+  canceledAt: "Data do cancelamento",
+  activities: "Atividades",
+  sgdNumber: "SGD",
+  sgdApprovedAt: "SGD Data Aprovada",
+  sgdRequestedAt: "SGD Data Pedido",
+  piNumber: "PI",
+  piApprovedAt: "PI Data Aprovada",
+  piRequestedAt: "PI Data Pedido",
+  pepNumber: "PEP",
+  pepApprovedAt: "PEP Data Aprovada",
+  pepRequestedAt: "PEP Data Pedido",
+  copiedFromProgrammingId: "Copiada de",
+  anticipatedByProgrammingId: "Etapa que antecipou",
 };

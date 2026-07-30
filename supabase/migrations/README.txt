@@ -951,3 +951,8 @@ Observacao
 - Cria `programming_legacy_map`, o de/para do ID legado de `project_programming` (uma linha por equipe) para a etapa em `programming` (uma por projeto+data) e para a linha de equipe em `programming_team`, resolvido pela chave natural `(tenant_id, project_id, execution_date)`.
 - Popula por `insert ... select` re-executavel e reporta por `raise notice` as linhas legadas sem etapa correspondente e o numero de FKs sem par em `project_measurement_orders`, `project_apr_controls` e `cronograma_solicitacoes`.
 - Mantem `project_programming` somente leitura (unico ALTER e a garantia idempotente da unique `(id, tenant_id)`, padrao da 226), com RLS de leitura por `user_can_access_tenant` e nenhuma policy de escrita.
+
+343_migrate_legacy_programming_history.sql
+- Migra `project_programming_history` para `programming_history` via `programming_legacy_map` (342), colapsando as linhas irmas que o modelo antigo gravava uma por equipe (2594 legadas -> 2027 apos dedupe, medido em producao em 2026-07-29).
+- Preserva o `action_type` legado sem traduzir (CREATE/BATCH_CREATE/UPDATE/RESCHEDULE/COPY/ADIADA/CANCELADA), porque as operacoes nao sao equivalentes as do modelo novo; campos sem coluna no destino vao para `metadata` com prefixo `legacy`, e `programming_team_id` fica nulo por serem eventos de etapa.
+- Idempotente por indice unico parcial sobre `metadata->>'legacyHistoryId'`, criado antes da carga; `project_programming_history` (fonte) nao e alterado.

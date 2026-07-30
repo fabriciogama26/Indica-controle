@@ -298,3 +298,96 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: exportacoes CSV da tela nao compartilhavam o modal padrao.
 - Depois: listas e modal de prazos exibem `ExportProgressModal`/`CsvExportButton` durante a geracao.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+
+Planejado 2026-07-29 - Fase 4 do corte para a Programacao Normalizada
+----------------------------------------------------------------------
+- Nada foi alterado nesta tela ainda. Esta secao registra o escopo decidido para
+  quando o Mapa passar a ler o modelo normalizado
+  (`programming`/`programming_team`), na Fase 4 do corte. Ate la a tela continua
+  lendo `project_programming`, sem mudanca de comportamento.
+- Contexto: a `programacao-simples` esta congelada em somente leitura desde o
+  commit `7ecd00a`; o de/para do ID legado para a etapa nova e a migration 342
+  (`programming_legacy_map`).
+
+BLOCOS QUE PERDEM A RAZAO DE EXISTIR (remover, mas SO depois da virada — ver
+"Ordem" no fim desta secao)
+- `Revisao de etapas` (card, tabela dedicada, coluna, CSV, `resolveStageReviewIssue`,
+  o nivel `INCONSISTENCY` de `priorityLevel` e o ramo correspondente de
+  `actionRequired`). O bloco detecta etapa cancelada/adiada com etapa ativa de
+  numero maior depois — sinal de numeracao furada. Ele so existe porque no modelo
+  antigo a renumeracao automatica nunca foi implementada (tarefa ainda aberta na
+  linha 50 do `TASKS.md`). No normalizado, `reclassify_project_programming_stages`
+  renumera a cada operacao e a classificacao e derivada da posicao por data, nunca
+  digitada: a condicao nao se forma.
+- `Interrompidas com Estado concluido` (card, tabela, CSV,
+  `resolveInterruptedCompletedIssue`). Detecta ADIADA/CANCELADA com Estado do
+  Trabalho concluido. Impossivel por construcao no modelo novo: o cancelamento faz
+  `work_completion_status = null` (migration 318) e o adiamento tambem (migration
+  326). O que hoje e expectativa apos a migration 284 vira garantia de banco.
+- `programmingCount` como coluna separada de `stageCount`. Hoje
+  `programmingCount = projectRows.length` conta LINHAS legadas, ou seja
+  etapas x equipes. No normalizado uma linha e uma etapa e os dois numeros passam a
+  ser sempre iguais — duas colunas com o mesmo valor na tabela e no detalhe. O dado
+  que tinha valor de verdade ali e "quantas equipes", que vira
+  `COUNT(DISTINCT team_id)` em `programming_team` (a tela normalizada ja faz isso na
+  linha-pai).
+- Tratamento de `TRANSFERIDA` como status de programacao. No normalizado
+  `TRANSFERIDA` e status de `programming_team`, nao de `programming` — o
+  `programming_status_check` da 310 so aceita PROGRAMADA/REPROGRAMADA/ADIADA/
+  CANCELADA/ANTECIPADA. A regra documentada nesta tela ("TRANSFERIDA e status
+  interno de linha") deixa de se aplicar.
+
+BUGS QUE A VIRADA CRIA SE NINGUEM MEXER (corrigir JUNTO com a troca de fonte, nao
+depois)
+- Card `Pendentes`: `isPendingWorkStatus` casa a substring `PENDEN` em
+  `work_completion_status`. A migration 318 tirou `PENDENCIA` dos DOIS eixos (status
+  e Estado do Trabalho) e transformou na flag `is_pendencia`. Sem trocar a fonte, o
+  card vai a zero permanente — e zero aqui nao significa "sem pendencia", significa
+  que a tela parou de olhar.
+- `latestTeamName` / `latestForemanName`: hoje exibem UMA equipe porque a linha
+  legada tem uma so. Etapa com 3 equipes ja hoje mostra uma e esconde duas (a
+  escolha sai do desempate de `compareProgrammingRows`). No normalizado a etapa tem
+  N equipes explicitas e o campo deve virar lista/contador.
+
+O QUE FICA
+- A heuristica de "ultimo Estado do Trabalho valido" e a regra de nao reabrir obra
+  concluida por cancelada/adiada posterior. Simplifica (some a divergencia entre
+  linhas irmas do mesmo grupo), mas continua necessaria: etapa posterior sem estado
+  preenchido continua existindo.
+- (nada alem do acima — ver a revisao de 2026-07-29 logo abaixo, que move o
+  `Rastreio de transferencias` para a lista de remocao.)
+
+REVISAO 2026-07-29 - `Rastreio de transferencias` passa para a lista de remocao
+- Quando esta secao foi escrita, o bloco estava na lista "o que fica", com a ressalva
+  de que so ganharia conteudo apos a RPC de transferir equipe do modelo novo. A
+  medicao em producao mostrou que a ressalva estava errada pelo motivo oposto:
+  * `project_programming` com status TRANSFERIDA: 0
+  * `programming_team` com status TRANSFERIDA: 0
+  * eventos `TRANSFER_TEAM` no historico legado: 0 (de 2594 linhas)
+- O bloco foi entregue em 2026-07-02 (commit `8f60db1`, mesma entrega da RPC 286 e do
+  modal na tela antiga) e NUNCA exibiu uma linha. A tela antiga congelou em
+  2026-07-28: 26 dias com o botao visivel para todo usuario que escrevia, zero usos.
+- Com isso, a implementacao de `Transferir equipe` no modelo novo saiu do plano da
+  Fase 4 (ver `docs/Tela_Programacao_Normalizada_SaaS.txt`), e o bloco de rastreio
+  perde o unico motivo para continuar existindo. Remover junto com `Revisao de etapas`
+  e `Interrompidas com Estado concluido`.
+- Diferenca de tratamento em relacao aos outros dois: estes dependem de um ciclo de
+  observacao em zero antes da remocao, porque dado historico migrado pode fazer os
+  detectores dispararem legitimamente. O rastreio de transferencias nao — ele nunca
+  teve dado, nem legado nem novo, entao pode ser removido junto com a troca de fonte.
+- O `.limit(100)` global vira ponto morto junto com o bloco; nao precisa ser revisado.
+
+ORDEM (importante)
+- Nao remover `Revisao de etapas` nem `Interrompidas com Estado concluido` na mesma
+  entrega que troca a fonte de dados. Dois motivos: (1) as migrations 315/335
+  copiaram `status` e `work_completion_status` como estavam, entao etapa historica
+  migrada pode carregar legitimamente a combinacao "interrompida + concluido", e o
+  detector vai disparar em dado antigo mesmo com a regra nova em vigor; (2) e
+  exatamente durante a virada que esses dois detectores valem mais — se o
+  remapeamento da Fase 5 errar, eles sao o alarme.
+- Sequencia: Fase 4 aponta o Mapa para o modelo novo MANTENDO os dois blocos e
+  corrigindo `programmingCount`, o card `Pendentes` e a exibicao de equipes (que sao
+  bug, nao limpeza). Depois de um ciclo com os detectores em zero, remover em
+  entrega propria de limpeza — remocao com evidencia de que nao e usado, como pede
+  o `guias/guia_backend.md`.

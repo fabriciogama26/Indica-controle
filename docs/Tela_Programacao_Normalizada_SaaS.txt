@@ -986,3 +986,96 @@ Atualizacao 2026-07-29 - Fase 1 do corte: mapeamento do ID legado (migration 342
 - Arquivos alterados:
   - `supabase/migrations/342_create_programming_legacy_map.sql` (novo)
   - `supabase/migrations/README.txt`
+
+Atualizacao 2026-07-29 - Fase 2 do corte: historico legado migrado (migration 343)
+------------------------------------------------------------------------------------
+- CORRECAO: os cabecalhos das migrations 310, 315 e 335 dizem que o historico legado
+  NAO seria migrado. Essa decisao foi revista com o usuario em 2026-07-29 — a
+  migration 343 migra. As frases nas 315/335 valem so como registro do que era
+  verdade quando foram escritas.
+- Levantamento em producao que originou o desenho (2026-07-29, via
+  `scripts/audit-programming-legacy-map-readonly.mjs`, somente leitura):
+  * historico legado: 2594 linhas (o numero 2406 citado no TASKS.md era contagem
+    antiga; a tela seguiu em uso ate o congelamento);
+  * sem etapa correspondente: 0 — tudo e migravel;
+  * apos dedupe de linhas irmas: 2027 (567 colapsadas, 21,9%);
+  * `programming_history` ja tinha 414 linhas de uso real da tela nova;
+  * `action_type` reais: UPDATE 1376, BATCH_CREATE 486, RESCHEDULE 270, COPY 145,
+    CANCELADA 142, ADIADA 99, CREATE 76.
+- ACHADO IMPORTANTE: NAO existe `ADD_TEAM` nem `TRANSFER_TEAM` no historico legado.
+  A lista de acoes que se supunha (derivada de `HISTORY_ALLOWED_ACTIONS` do front da
+  tela antiga) estava errada — `BATCH_CREATE`, `COPY` e `CREATE`, 27% do volume, nao
+  estavam previstos, e as duas acoes de equipe previstas nunca ocorreram.
+
+Decisao: `action_type` preservado, nao traduzido
+- O de/para para o vocabulario novo (CREATE_STAGE/UPDATE_STAGE/POSTPONE_STAGE...) foi
+  descartado porque afirmaria equivalencias falsas. Caso mais claro: `RESCHEDULE` na
+  tela antiga e uma EDICAO em que a data mudou (`v_is_reschedule`, migration 106),
+  enquanto `POSTPONE_STAGE` aqui ADIA a etapa — cria outra e marca a anterior como
+  ADIADA. Sao operacoes diferentes; reescrever o rotulo deixaria o historico mais
+  bonito e menos verdadeiro.
+- Os 7 codigos legados ganharam rotulo proprio em `HISTORY_ACTION_LABELS`, cada um
+  sufixado com "(Programacao Simples)". A origem do evento fica visivel na tela sem
+  mudanca no componente de historico.
+
+Dedupe de linhas irmas
+- No modelo antigo uma acao de grupo gravava N linhas de historico, uma por equipe da
+  mesma etapa — o maior caso em producao tem 10 linhas do mesmo UPDATE no mesmo
+  instante. Sem colapsar, a mesma entrada apareceria 10x no historico da etapa.
+- Chave de colapso: (etapa destino, action_type, created_at, created_by, reason).
+  Representante: linha de menor `id`. O que o grupo perde vai para `metadata`
+  (`legacySiblingCount`, `legacyTeamIds`).
+- `programming_team_id` fica NULL em tudo que e migrado: sao eventos de ETAPA, e
+  apontar para a equipe de um irmao arbitrario seria informacao falsa. Sem perda
+  pratica — nao existe evento de escopo de equipe no legado.
+
+Campos e exibicao
+- `changes` passa intacto: ja esta no formato {campo: {from, to}} que esta tela
+  renderiza. Conferido nas 2594 linhas; o unico fora do padrao e
+  `operationalGroupSync` (31 ocorrencias), que o renderizador descarta sozinho por
+  nao ter from/to.
+- Os ~25 nomes de campo que so aparecem no historico legado foram adicionados a
+  `HISTORY_FIELD_LABELS` (sem isso, as 2027 linhas migradas apareceriam com nome cru
+  em camelCase). Rotulos alinhados com `programacao-simples/constants.ts`, com duas
+  excecoes deliberadas: `electricalField` usa "Ponto Eletrico" (a tela antiga chamava
+  de "Nº EQ (numero)", nomenclatura ja corrigida aqui) e `electricalEq` usa "No EQ".
+- Campos sem coluna no destino vao para `metadata` com prefixo `legacy`: project_id,
+  related_programming_id, from/to_status, from/to_execution_date,
+  from/to_etapa_number.
+
+Idempotencia e seguranca
+- Indice unico parcial sobre `metadata->>'legacyHistoryId'`, criado ANTES da carga
+  para valer ja na primeira execucao. Reexecutar nao duplica.
+- As 414 linhas de uso real da tela nova nao tem essa chave e nao sao tocadas.
+- `project_programming_history` (fonte) nao e alterado nem apagado — so leitura.
+- A migration roda dentro de begin/commit e termina com `raise notice` reportando
+  legadas, migraveis, sem etapa, gravadas, colapsadas e a distribuicao por
+  `action_type`.
+- Arquivos alterados:
+  - `supabase/migrations/343_migrate_legacy_programming_history.sql` (novo)
+  - `scripts/audit-programming-legacy-map-readonly.mjs` (novo, somente leitura)
+  - `src/modules/dashboard/programacao-normalizada/constants.ts`
+  - `supabase/migrations/README.txt`
+
+Atualizacao 2026-07-29 - Transferir equipe sai do plano (revisao da decisao)
+------------------------------------------------------------------------------
+- A decisao anterior era implementar `Transferir equipe` no modelo novo (RPC gravando
+  `programming_team.status = 'TRANSFERIDA'` + filha nova no destino com
+  `added_from_id`). REVISTA depois da medicao em producao:
+  * `project_programming` com status TRANSFERIDA: 0
+  * `programming_team` com status TRANSFERIDA: 0
+  * eventos TRANSFER_TEAM no historico legado: 0
+- A funcionalidade existe inteira na tela antiga desde 2026-07-02 (migration 286, RPC,
+  modal, botao proprio na linha da lista habilitado para toda programacao ativa, sem
+  permissao granular separada) e foi congelada em 2026-07-28 sem UMA execucao. Janela
+  curta (26 dias), mas plenamente acessivel a quem escrevia na tela.
+- Decisao: NAO construir agora. `TRANSFERIDA` e `added_from_id` FICAM no schema (ja
+  existem desde a 310, custo zero) — se a operacao se mostrar necessaria, a
+  implementacao e ~1 migration + 1 modal, bem menor que a 286, que copiava cadastro,
+  documentos e atividades inteiros.
+- Enquanto isso o caminho existe: remover a equipe da etapa de origem
+  (`remove_project_programming_team`) e adicionar na de destino
+  (`add_project_programming_team`), ambas ja expostas na tela. Perde atomicidade.
+- Consequencia no Mapa de Programacao: o bloco `Rastreio de transferencias` entra na
+  lista de remocao junto com os outros blocos mortos — ver a secao "Fase 4" em
+  `docs/Tela_Mapa_Programacao_SaaS.txt`.
