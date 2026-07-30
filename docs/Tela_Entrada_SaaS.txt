@@ -63,14 +63,15 @@ Cadastro
   - `RELIGADOR` e `CHAVE` podem entrar ou ser transferidos sem `serial_number` somente quando `materials.allow_pending_serial_identification = true`.
   - `CMD` e persistido apenas para `RELIGADOR`; demais materiais gravam `false` para manter leitura consistente.
   - Quando a pendencia de serial e permitida e o serial nao foi informado, a quantidade deve ser inteira e positiva.
-  - `EXIT` normal nao aceita pendencia de serial; material rastreavel sem serial continua bloqueado.
+  - `EXIT` normal continua exigindo serial informado; para `RELIGADOR`/`CHAVE` com pendencia permitida, se o serial ainda nao existir em `trafo_instances`, a RPC identifica a unidade consumindo `stock_serial_pending_balances` do centro `DE`.
   - A combinacao `material_id + serial_number + lot_code` de TRAFO nao pode ficar duplicada em centros `OWN`.
   - Para `EXIT` e `TRANSFER` de TRAFO, o backend valida a unidade pelo conjunto `material_id + serial_number + lot_code` no centro de origem usando `trafo_instances`.
   - Para `ENTRY` de TRAFO, o backend bloqueia nova entrada da mesma unidade quando ela ja estiver registrada em algum centro `OWN`.
   - Campo `Serial` fica habilitado para TRAFO, RELIGADOR e CHAVE.
   - Campo `LP` fica habilitado somente para TRAFO.
   - Em `Entrada`, Serial/LP pode ser novo e nao deve aparecer como unidade ja ativa no estoque.
-  - Em `Saida` e `Transferencia`, Serial/LP deve existir no centro `DE` real da movimentacao.
+  - Em `Saida` de `RELIGADOR`/`CHAVE`, o serial pode ser novo quando existir quantidade pendente suficiente no centro `DE`; em `Saida` de TRAFO e em movimentacao serializada ja identificada, a unidade deve existir no centro `DE` real.
+  - Em `Transferencia` com serial informado, Serial/LP deve existir no centro `DE` real da movimentacao.
   - Campo `Quantidade` fica travado em `1` quando o material selecionado for TRAFO, quando houver serial digitado ou quando a regra do material nao permitir pendencia.
   - O saldo pendente de identificacao de serial e registrado em `stock_serial_pending_balances` por `tenant_id`, material, centro, projeto e tipo.
   - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
@@ -671,7 +672,7 @@ Atualizacao 2026-06 - Estoque seriado pendente de identificacao
 Visao geral
 - A Movimentacao de Estoque passa a aceitar entrada e transferencia fisica de material rastreavel sem serial somente quando o material nao exige LP e esta configurado com `allow_pending_serial_identification = true`.
 - `TRAFO` permanece fora da flexibilizacao: `Serial + LP` continuam obrigatorios em Entrada, Saida e Transferencia.
-- A Saida externa comum continua exigindo serial identificado; excecao sem identificacao nao foi criada nesta entrega.
+- A Saida externa comum continua exigindo serial informado; a partir de 2026-07, `RELIGADOR`/`CHAVE` com pendencia permitida podem identificar o serial informado no ato da saida, consumindo pendencia do centro `DE`.
 
 Cadastro
 - Para `RELIGADOR` e `CHAVE` com pendencia permitida:
@@ -691,7 +692,7 @@ Arquitetura
 
 Comportamento antes/depois
 - Antes: qualquer material com `serial_tracking_type <> NONE` exigia serial no cadastro manual, CSV e API.
-- Depois: somente material rastreavel sem LP e com flag interna ativa pode entrar/transferir sem serial; `TRAFO` e `EXIT` normal continuam exigindo serial identificado.
+- Depois: somente material rastreavel sem LP e com flag interna ativa pode entrar/transferir sem serial; `TRAFO` continua exigindo unidade identificada. `EXIT` exige serial, mas pode identificar `RELIGADOR`/`CHAVE` pendente durante a gravacao quando ha saldo pendente suficiente no centro `DE`.
 - Antes: a quantidade de material rastreavel ficava sempre travada em `1`.
 - Depois: a quantidade so fica travada em `1` quando a unidade esta identificada, quando e `TRAFO` ou quando a regra do material nao permite pendencia.
 
@@ -728,6 +729,31 @@ Mapa de Codigo (funcoes, hooks e constantes)
   - cria `stock_serial_pending_balances` com FKs compostas de material, centro e projeto por tenant;
   - cria `adjust_stock_serial_pending_balance` e `identify_pending_serial_tracked_unit`;
   - atualiza triggers/RPCs de movimentacao e reforca Operacoes de Equipe com serial obrigatorio.
+
+Atualizacao 2026-07 - Saida com serial pendente de CHAVE/RELIGADOR
+------------------------------------------------------------------
+Visao geral
+- A Movimentacao de Estoque passa a permitir `Saida` de `CHAVE`/`RELIGADOR` com serial informado ainda nao identificado em `trafo_instances`, desde que o material permita pendencia e exista quantidade pendente suficiente em `stock_serial_pending_balances` no centro `DE`.
+- `TRAFO` permanece fora da flexibilizacao e continua exigindo unidade previamente registrada com `Serial + LP` no centro `DE`.
+- A regra nao libera saida sem serial: `EXIT` continua exigindo `serialNumber` para material rastreavel.
+
+Arquitetura
+- A migration `345_identify_pending_serial_in_stock_exit.sql` republica `save_stock_transfer_record` para pre-identificar `CHAVE`/`RELIGADOR` pendente antes de chamar a gravacao base.
+- A identificacao e a gravacao rodam no mesmo bloco transacional: se a movimentacao falhar, a pendencia consumida e a unidade criada em `trafo_instances` sao revertidas.
+- A wrapper de 11 parametros passa a chamar a assinatura completa, mantendo chamadas antigas no mesmo comportamento.
+- As assinaturas de `save_stock_transfer_record` ficam executaveis apenas por `service_role`; a tela continua acessando a regra pela API autenticada.
+
+Comportamento antes/depois
+- Antes: a tela e o banco bloqueavam `Saida` quando o serial digitado nao aparecia em `trafo_instances.current_stock_center_id = centro DE`.
+- Depois: para `CHAVE`/`RELIGADOR` com pendencia permitida, o frontend valida saldo agregado no centro `DE` e a RPC consome uma pendencia para identificar o serial antes de registrar a saida.
+- Se o mesmo serial ja existir em outro centro, o bloqueio `SERIAL_TRACKED_UNIT_NOT_IN_FROM_CENTER` permanece.
+
+Mapa de Codigo
+- `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `canIdentifyPendingSerialOnExit`: reconhece `Saida` de material sem LP com pendencia permitida.
+  - `ensureSourceStockAvailability`: para `Saida` de `CHAVE`/`RELIGADOR` pendente, valida saldo agregado em vez de exigir autocomplete de unidade identificada.
+- `supabase/migrations/345_identify_pending_serial_in_stock_exit.sql`
+  - `save_stock_transfer_record`: identifica pendencia de `CHAVE`/`RELIGADOR` no centro `DE` antes da gravacao e preserva rollback atomico.
 
 Atualizacao 2026-07 - CMD para RELIGADOR
 ----------------------------------------
