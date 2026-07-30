@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { normalizeText } from "@/lib/server/apiHelpers";
+import { fetchWorkCompletionByProject } from "@/server/modules/programacao-normalizada";
 import {
   isPrioridade,
   isTipoSolicitacao,
@@ -48,82 +49,54 @@ export async function fetchProjectLookupMap(
   return new Map((data ?? []).map((item) => [item.id, item]));
 }
 
-// Estado atual da Programacao do projeto = ultima linha por data de execucao/etapa.
+// Estado atual da Programacao do projeto = ultima etapa por data de execucao.
+//
+// Fonte: `programming` (modelo normalizado), via a fachada
+// `@/server/modules/programacao-normalizada`. Antes do corte esta funcao lia
+// `project_programming` direto e reimplementava a regra; a tela antiga esta
+// congelada em somente leitura e o `programmingId` daqui e gravado em
+// `cronograma_solicitacoes.programacao_id`, cuja FK foi repontada para
+// `programming` pela migration 344.
+//
+// Continua devolvendo null quando o projeto nao tem NENHUM Estado do Trabalho
+// preenchido — a fachada distingue presenca de etapa (`hasWorkCompletion`) e e
+// aqui que essa distincao vira "sem estado atual".
 export async function fetchLatestProgrammingState(
   supabase: SupabaseClient,
   tenantId: string,
   projectId: string,
 ): Promise<{ programmingId: string; executionDate: string; rawStatus: string; stateToken: string } | null> {
-  const { data, error } = await supabase
-    .from("project_programming")
-    .select("id, execution_date, work_completion_status, updated_at")
-    .eq("tenant_id", tenantId)
-    .eq("project_id", projectId)
-    .neq("status", "CANCELADA")
-    .not("work_completion_status", "is", null)
-    .order("execution_date", { ascending: false })
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle<{
-      id: string;
-      execution_date: string;
-      work_completion_status: string | null;
-      updated_at: string;
-    }>();
-
-  if (error || !data) return null;
+  const byProject = await fetchWorkCompletionByProject({ supabase, tenantId, projectIds: [projectId] });
+  const current = byProject.get(projectId);
+  if (!current || !current.hasWorkCompletion) return null;
 
   return {
-    programmingId: data.id,
-    executionDate: data.execution_date,
-    rawStatus: normalizeText(data.work_completion_status),
-    stateToken: normalizeWorkCompletionToken(data.work_completion_status),
+    programmingId: current.programmingId,
+    executionDate: current.executionDate,
+    rawStatus: normalizeText(current.rawStatus),
+    stateToken: normalizeWorkCompletionToken(current.rawStatus),
   };
 }
 
 // Estado atual (ultimo Estado Trabalho) por projeto, para uma pagina da lista.
+//
+// Diferente da funcao acima, aqui a PRESENCA de etapa nao-cancelada ja coloca o
+// projeto no mapa mesmo sem estado preenchido: a tela usa a ausencia no mapa para
+// exibir "A PROGRAMAR" e a presenca com estado vazio para exibir "-".
 export async function fetchLatestProgrammingStateMap(
   supabase: SupabaseClient,
   tenantId: string,
   projectIds: string[],
 ): Promise<Map<string, { rawStatus: string; stateToken: string; programmingId: string }>> {
-  const uniqueIds = Array.from(new Set(projectIds.filter(Boolean)));
+  const byProject = await fetchWorkCompletionByProject({ supabase, tenantId, projectIds });
   const result = new Map<string, { rawStatus: string; stateToken: string; programmingId: string }>();
-  if (!uniqueIds.length) return result;
 
-  // Presenca de programacao (nao-cancelada) marca o projeto no mapa -> exibe estado ou "-".
-  // Ausencia total de programacao (projeto fora do mapa) -> "A PROGRAMAR".
-  // rawStatus guarda o ultimo Estado Trabalho preenchido (ordena execution_date/updated_at desc).
-  const { data } = await supabase
-    .from("project_programming")
-    .select("id, project_id, execution_date, work_completion_status, updated_at")
-    .eq("tenant_id", tenantId)
-    .in("project_id", uniqueIds)
-    .neq("status", "CANCELADA")
-    .order("project_id", { ascending: true })
-    .order("execution_date", { ascending: false })
-    .order("updated_at", { ascending: false })
-    .limit(5000)
-    .returns<Array<{ id: string; project_id: string; work_completion_status: string | null }>>();
-
-  for (const row of data ?? []) {
-    const rawStatus = normalizeText(row.work_completion_status);
-    const existing = result.get(row.project_id);
-    if (!existing) {
-      // primeira linha do projeto (a mais recente): registra presenca; estado pode vir vazio.
-      result.set(row.project_id, {
-        rawStatus,
-        stateToken: normalizeWorkCompletionToken(row.work_completion_status),
-        programmingId: row.id,
-      });
-    } else if (!existing.rawStatus && rawStatus) {
-      // ja tinha presenca sem estado; uma linha anterior tem estado preenchido -> usa o ultimo preenchido.
-      result.set(row.project_id, {
-        rawStatus,
-        stateToken: normalizeWorkCompletionToken(row.work_completion_status),
-        programmingId: row.id,
-      });
-    }
+  for (const [projectId, current] of byProject.entries()) {
+    result.set(projectId, {
+      rawStatus: normalizeText(current.rawStatus),
+      stateToken: normalizeWorkCompletionToken(current.rawStatus),
+      programmingId: current.programmingId,
+    });
   }
 
   return result;

@@ -79,3 +79,72 @@ Observacoes de implementacao (pendencias tecnicas)
 
 Atualizacao 2026-07
 - Criacao inicial da tela e do modulo.
+
+Atualizacao 2026-07-29 - Fase 3a do corte: leitura na Programacao Normalizada (migration 344)
+-----------------------------------------------------------------------------------------------
+- O "estado atual da Programacao" desta tela passa a vir de `programming` (modelo
+  normalizado) em vez de `project_programming` (tela `programacao-simples`, congelada
+  em somente leitura desde o commit `7ecd00a`).
+- A leitura deixa de ser query propria e passa pela fachada
+  `@/server/modules/programacao-normalizada` (`fetchWorkCompletionByProject`). Antes
+  do corte a mesma regra estava reescrita em cinco telas com criterios divergentes;
+  agora existe uma vez so. `fetchLatestProgrammingState` e
+  `fetchLatestProgrammingStateMap` continuam existindo com a MESMA assinatura e
+  semantica — mudou o que esta por baixo.
+- As duas semanticas distintas foram preservadas de proposito:
+  * `fetchLatestProgrammingState` (individual) devolve null quando o projeto nunca
+    teve Estado do Trabalho preenchido;
+  * `fetchLatestProgrammingStateMap` (lista) coloca no mapa qualquer projeto com
+    etapa nao-cancelada, mesmo sem estado — a tela usa a AUSENCIA no mapa para exibir
+    "A PROGRAMAR" e a presenca com estado vazio para exibir "-".
+- Regras mantidas 1:1: etapa CANCELADA nao conta, ANTECIPADA conta, "ultimo" = maior
+  `execution_date` com desempate por `updated_at`.
+- Pendencia: a migration 318 tirou 'PENDENCIA' de status e de Estado do Trabalho e
+  transformou na flag `is_pendencia`. A fachada expoe a flag em campo proprio, sem
+  dobrar dentro do status. Nao muda nada aqui, porque pendencia nunca liberou As
+  Built.
+
+FK `programacao_id` repontada (por que junto e nao na Fase 5)
+- O plano separava "trocar leitura" (Fase 3) de "remapear FKs" (Fase 5). Para esta
+  tela isso nao se sustenta: o `programmingId` que a leitura devolve e exatamente o
+  valor gravado em `cronograma_solicitacoes.programacao_id`. Trocar a fonte sem
+  repontar a FK faria todo cadastro novo violar a constraint.
+- A FK era simples, por `id`, para `project_programming` (migration 304). Agora e
+  composta com `tenant_id` para `programming`, seguindo a regra 12 do guia_sql.md.
+- Custo real: 0 linhas para migrar (medido em producao). O Cronograma sai da Fase 5.
+
+CORRECAO OBRIGATORIA: `BENEFICIO_ATINGIDO` entra nos estados que liberam As Built
+- O catalogo tem os DOIS codigos ativos: `PARCIAL_PLANEJADO_BENFICIO_ATINGIDO` (com o
+  typo, legado) e `BENEFICIO_ATINGIDO` (correto, criado pela migration 310). As
+  cargas 315/335 remapearam o typo para o codigo novo ao migrar para `programming`.
+- `ASBUILT_ESTADOS_PERMITIDOS` conhecia apenas `CONCLUIDO` e
+  `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`. Trocar a fonte sem corrigir isso tiraria As
+  Built de 7 projetos em producao, sem nenhuma regra de negocio ter mudado.
+- `BENEFICIO_ATINGIDO` foi adicionado nos DOIS lugares, que precisam andar juntos:
+  `src/server/modules/cronograma-solicitacoes/normalizers.ts` e a RPC
+  `get_cronograma_asbuilt_project_ids` (migration 344).
+
+IMPACTO MEDIDO NA ELEGIBILIDADE DE AS BUILT (producao, 2026-07-29, 141 projetos)
+- 134 projetos: sem mudanca.
+- 6 projetos PASSAM a permitir As Built. Todos porque a tela nova ja avancou o estado
+  para CONCLUIDO e a base legada ficou parada — o merge conservador da migration 335
+  nao sobrescreveu o destino de proposito. O valor novo e o atual; a tela estava
+  bloqueando As Built com dado velho.
+  A051378598, A051696331, A052579602, A051905773, A049563851, 2307202601.
+- 1 projeto DEIXA de permitir: A053714340. NAO e efeito desta entrega — e resultado da
+  carga 315/335. No legado havia duas linhas em 2026-06-18 (uma ADIADA sem estado e
+  uma PROGRAMADA com CONCLUIDO); como o modelo novo tem uma etapa por projeto+data, as
+  duas foram fundidas e o vencedor (por `updated_at` mais recente) foi a ADIADA sem
+  estado. No modelo novo o projeto ficou sem nenhuma etapa ativa: 2026-07-12 CANCELADA,
+  2026-06-18 ADIADA, 2026-05-20 CANCELADA, 2026-04-24 CANCELADA.
+  PENDENTE DE DECISAO DO USUARIO: o dado nao foi corrigido por esta migration de
+  proposito — reescrever um Estado do Trabalho definido pela politica de merge nao e
+  papel de uma migration de leitura. Se o projeto realmente esta concluido, o ajuste e
+  feito na tela nova.
+
+- Arquivos alterados:
+  - `supabase/migrations/344_cronograma_read_normalized_programming.sql` (novo)
+  - `src/server/modules/programacao-normalizada/index.ts` (novo, fachada publica)
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/server/modules/cronograma-solicitacoes/queries.ts`
+  - `src/server/modules/cronograma-solicitacoes/normalizers.ts`

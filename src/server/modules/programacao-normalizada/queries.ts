@@ -112,6 +112,100 @@ function applyStatusChipToStageQuery<Q extends {
   return query;
 }
 
+// =============================================================================
+// Estado do Trabalho por projeto — contrato de leitura consumido por OUTRAS telas
+// =============================================================================
+// Substitui a leitura direta de `project_programming` (tela programacao-simples,
+// congelada em somente leitura). Antes do corte a mesma regra estava reescrita em
+// cinco lugares com critérios divergentes; aqui ela existe uma vez.
+//
+// Regras herdadas do comportamento legado, deliberadamente preservadas:
+// - etapa CANCELADA nao conta. ANTECIPADA CONTA — a query legada excluia apenas
+//   CANCELADA, e mudar isso alteraria numero em tela sem pedido.
+// - "ultimo" = maior execution_date, desempate por updated_at (sem usar etapa).
+// - `rawStatus` e o ultimo Estado do Trabalho PREENCHIDO. Projeto que tem etapa
+//   mas nunca teve estado preenchido entra no resultado com `rawStatus` vazio e
+//   `hasWorkCompletion = false` — presenca e estado sao coisas diferentes, e a
+//   tela de Cronograma depende dessa distincao para diferenciar "-" de
+//   "A PROGRAMAR".
+//
+// `isPendencia` sai como campo PROPRIO e nao e dobrado dentro do status: na
+// migration 318 a pendencia deixou de ser status e Estado do Trabalho e virou flag
+// ortogonal. Quem consome decide se ela importa.
+export type ProgrammingProjectWorkCompletion = {
+  programmingId: string;
+  executionDate: string;
+  rawStatus: string;
+  hasWorkCompletion: boolean;
+  isPendencia: boolean;
+};
+
+type ProjectWorkCompletionRow = {
+  id: string;
+  project_id: string;
+  execution_date: string;
+  work_completion_status: string | null;
+  is_pendencia: boolean | null;
+  updated_at: string;
+};
+
+const PROJECT_WORK_COMPLETION_SELECT = "id, project_id, execution_date, work_completion_status, is_pendencia, updated_at";
+const PROJECT_WORK_COMPLETION_ROW_LIMIT = 5000;
+
+export async function fetchWorkCompletionByProject(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds: string[];
+}): Promise<Map<string, ProgrammingProjectWorkCompletion>> {
+  const result = new Map<string, ProgrammingProjectWorkCompletion>();
+  const uniqueIds = Array.from(new Set(params.projectIds.filter(Boolean)));
+  if (!uniqueIds.length) return result;
+
+  const { data } = await params.supabase
+    .from("programming")
+    .select(PROJECT_WORK_COMPLETION_SELECT)
+    .eq("tenant_id", params.tenantId)
+    .in("project_id", uniqueIds)
+    .neq("status", "CANCELADA")
+    .order("project_id", { ascending: true })
+    .order("execution_date", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(PROJECT_WORK_COMPLETION_ROW_LIMIT)
+    .returns<ProjectWorkCompletionRow[]>();
+
+  for (const row of data ?? []) {
+    const rawStatus = (row.work_completion_status ?? "").trim();
+    const current = result.get(row.project_id);
+
+    // Primeira linha do projeto (a mais recente): registra presenca, com ou sem
+    // estado preenchido.
+    if (!current) {
+      result.set(row.project_id, {
+        programmingId: row.id,
+        executionDate: row.execution_date,
+        rawStatus,
+        hasWorkCompletion: Boolean(rawStatus),
+        isPendencia: Boolean(row.is_pendencia),
+      });
+      continue;
+    }
+
+    // Ja havia presenca sem estado e esta linha (mais antiga) tem estado: passa a
+    // valer o ultimo estado PREENCHIDO, junto com a etapa que o registrou.
+    if (!current.hasWorkCompletion && rawStatus) {
+      result.set(row.project_id, {
+        programmingId: row.id,
+        executionDate: row.execution_date,
+        rawStatus,
+        hasWorkCompletion: true,
+        isPendencia: Boolean(row.is_pendencia),
+      });
+    }
+  }
+
+  return result;
+}
+
 // Lista cross-projeto paginada POR PROJETO (achado 14): o passo 1 pagina os
 // project_id distintos que batem nos filtros (RPC programming_list_project_page,
 // no banco); o passo 2 busca TODAS as etapas (matching) dos projetos da pagina,

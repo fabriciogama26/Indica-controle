@@ -18,9 +18,19 @@ export const PRAZO_DIAS_POR_PRIORIDADE: Record<Prioridade, number | null> = {
 };
 
 // Estados da Programacao que liberam As Built (estado atual do projeto).
+//
+// `BENEFICIO_ATINGIDO` e o MESMO estado de negocio que
+// `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`, com o codigo corrigido: a migration 310
+// criou o codigo novo e as cargas 315/335 remapearam o typo legado
+// (`..._BENFICIO_...`) para ele ao migrar para `programming`. Os dois convivem
+// ativos no catalogo — o legado ainda descreve as linhas de `project_programming`.
+// Sem esta entrada, a troca de fonte do Cronograma para o modelo normalizado
+// tiraria As Built de 7 projetos em producao (medido em 2026-07-29), sem que
+// nenhuma regra de negocio tivesse mudado.
 export const ASBUILT_ESTADOS_PERMITIDOS = new Set<string>([
   "CONCLUIDO",
   "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO",
+  "BENEFICIO_ATINGIDO",
 ]);
 
 export function isTipoSolicitacao(value: unknown): value is TipoSolicitacao {
