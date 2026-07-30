@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { fetchWorkCompletionByProject } from "@/server/modules/programacao-normalizada";
 
 type ProjectRow = {
   id: string;
@@ -35,13 +36,6 @@ type WorkCompletionCatalogRow = {
   code: string;
   label_pt: string | null;
   sort_order: number | null;
-};
-
-type ProgrammingWorkCompletionRow = {
-  project_id: string;
-  work_completion_status: string | null;
-  execution_date: string | null;
-  updated_at: string | null;
 };
 
 type OrderIdRow = {
@@ -1325,41 +1319,35 @@ async function loadLatestWorkCompletionByProject(params: {
   projectIds: string[];
   statusLabels: Map<string, string>;
 }) {
-  const latestByProject = new Map<string, ProgrammingWorkCompletionRow>();
-
-  for (const projectIdChunk of chunk(Array.from(new Set(params.projectIds.filter(Boolean))), FILTER_CHUNK_SIZE)) {
-    const { data, error } = await params.supabase
-      .from("project_programming")
-      .select("project_id, work_completion_status, execution_date, updated_at")
-      .eq("tenant_id", params.tenantId)
-      .in("project_id", projectIdChunk)
-      .not("work_completion_status", "is", null)
-      .order("updated_at", { ascending: false })
-      .limit(2000)
-      .returns<ProgrammingWorkCompletionRow[]>();
-
-    if (error) {
-      throw new Error("Falha ao carregar estado de trabalho dos projetos.");
-    }
-
-    for (const row of data ?? []) {
-      const projectId = normalizeText(row.project_id);
-      if (!projectId || latestByProject.has(projectId)) continue;
-      latestByProject.set(projectId, row);
-    }
-  }
+  // Fonte: `programming` (modelo normalizado), via a fachada da Programacao.
+  //
+  // A leitura anterior divergia das outras quatro telas que calculavam o mesmo
+  // "ultimo Estado do Trabalho por projeto": nao excluia etapa CANCELADA e
+  // ordenava so por `updated_at`, sem considerar `execution_date`. Com isso um
+  // apontamento antigo, editado depois, vencia o mais recente, e etapa cancelada
+  // podia definir o estado do projeto. A fachada aplica o criterio unico
+  // (ignora CANCELADA; ultimo = maior `execution_date`, desempate por
+  // `updated_at`), entao ESTE dashboard muda de numero em alguns projetos — e
+  // passa a concordar com Cronograma, Projetos e os outros dashboards.
+  const byProject = await fetchWorkCompletionByProject({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds: params.projectIds,
+  });
 
   return new Map(
-    Array.from(latestByProject.entries()).map(([projectId, row]) => {
-      const status = normalizeStatusCatalogCode(row.work_completion_status);
-      return [
-        projectId,
-        {
-          status: status || "NAO_INFORMADO",
-          label: status ? params.statusLabels.get(status) ?? status : "Nao informado",
-        },
-      ];
-    }),
+    Array.from(byProject.entries())
+      .filter(([, current]) => current.hasWorkCompletion)
+      .map(([projectId, current]) => {
+        const status = normalizeStatusCatalogCode(current.rawStatus);
+        return [
+          projectId,
+          {
+            status: status || "NAO_INFORMADO",
+            label: status ? params.statusLabels.get(status) ?? status : "Nao informado",
+          },
+        ];
+      }),
   );
 }
 

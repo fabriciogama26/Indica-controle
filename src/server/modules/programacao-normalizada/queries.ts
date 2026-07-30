@@ -206,6 +206,208 @@ export async function fetchWorkCompletionByProject(params: {
   return result;
 }
 
+// Codigo canonico de Estado do Trabalho.
+//
+// O catalogo tem DOIS codigos ativos para o mesmo estado de negocio: o legado
+// `PARCIAL_PLANEJADO_BENFICIO_ATINGIDO` (com typo, que descreve as linhas de
+// `project_programming`) e `BENEFICIO_ATINGIDO`, criado correto pela migration 310
+// e usado por `programming` — as cargas 315/335 remapearam um para o outro.
+// Os dois continuam aparecendo em filtros que listam o catalogo (ex.: Projetos),
+// entao comparar codigo cru faria a opcao "errada" nao retornar nada.
+export function toCanonicalWorkCompletionCode(value: unknown) {
+  const code = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+
+  if (
+    code === "BENEFICIO_ATINGIDO"
+    || code === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
+    || code === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO"
+  ) {
+    return "BENEFICIO_ATINGIDO";
+  }
+
+  return code;
+}
+
+// Codigos que existem em `programming` e batem com o filtro pedido, resolvidos
+// pelo codigo canonico. Retorna [] quando nada bate — o chamador trata como
+// "filtro nao encontra nenhum projeto", nunca como "sem filtro".
+async function resolveMatchingWorkCompletionCodes(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  requestedCode: string;
+}) {
+  const wanted = toCanonicalWorkCompletionCode(params.requestedCode);
+  const { data } = await params.supabase
+    .from("programming_work_completion_catalog")
+    .select("code")
+    .eq("tenant_id", params.tenantId)
+    .returns<Array<{ code: string }>>();
+
+  const codes = (data ?? [])
+    .map((item) => String(item.code ?? "").trim())
+    .filter((code) => code && toCanonicalWorkCompletionCode(code) === wanted);
+
+  // O proprio codigo pedido entra mesmo se nao estiver no catalogo do tenant,
+  // para o filtro nao depender de o catalogo estar completo.
+  if (!codes.includes(params.requestedCode) && params.requestedCode) {
+    codes.push(params.requestedCode);
+  }
+
+  return Array.from(new Set(codes));
+}
+
+// Timeline de Estado do Trabalho por projeto, ate uma data de corte.
+// Consumida pelos dashboards de Medicao e de Carteira Operacional, que antes do
+// corte tinham a mesma query duplicada.
+export type ProgrammingCompletionTimelineRow = {
+  project_id: string;
+  execution_date: string;
+  status: string;
+  work_completion_status: string | null;
+  updated_at: string;
+};
+
+const TIMELINE_CHUNK_SIZE = 200;
+
+export async function fetchWorkCompletionTimelineByProject(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds: string[];
+  endDate: string;
+}): Promise<{ rows: ProgrammingCompletionTimelineRow[]; error: unknown }> {
+  const uniqueIds = Array.from(new Set(params.projectIds.filter(Boolean)));
+  if (!uniqueIds.length) return { rows: [], error: null };
+
+  const rows: ProgrammingCompletionTimelineRow[] = [];
+
+  for (let index = 0; index < uniqueIds.length; index += TIMELINE_CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(index, index + TIMELINE_CHUNK_SIZE);
+    const { data, error } = await params.supabase
+      .from("programming")
+      .select("project_id, execution_date, status, work_completion_status, updated_at")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", chunk)
+      .lte("execution_date", params.endDate)
+      .neq("status", "CANCELADA")
+      .not("work_completion_status", "is", null)
+      .returns<ProgrammingCompletionTimelineRow[]>();
+
+    if (error) return { rows: [], error };
+    rows.push(...(data ?? []));
+  }
+
+  return { rows, error: null };
+}
+
+// Projetos que tem alguma etapa com Estado do Trabalho concluido.
+//
+// No modelo normalizado `work_completion_status` guarda o CODIGO do catalogo e a
+// FK e por codigo (310) — nao existe coluna `work_completion_status_id`. Isso
+// elimina o caminho duplo id/texto e os fallbacks de schema legado que a leitura
+// anterior precisava manter.
+export async function fetchProjectIdsWithCompletedWork(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds?: string[];
+}): Promise<{ projectIds: string[]; error: unknown }> {
+  let query = params.supabase
+    .from("programming")
+    .select("project_id")
+    .eq("tenant_id", params.tenantId)
+    .eq("work_completion_status", "CONCLUIDO");
+
+  if (params.projectIds?.length) {
+    query = query.in("project_id", params.projectIds);
+  }
+
+  const { data, error } = await query.returns<Array<{ project_id: string }>>();
+  if (error) return { projectIds: [], error };
+
+  return {
+    projectIds: Array.from(new Set((data ?? []).map((item) => item.project_id).filter(Boolean))),
+    error: null,
+  };
+}
+
+// Projetos que batem no filtro de Estado do Trabalho e/ou Tipo de SGD da lista de
+// Projetos. Devolve `null` quando nenhum filtro foi pedido — "sem recorte" e
+// diferente de "recorte que nao achou nada" ([]).
+export async function fetchProjectIdsByProgrammingFilter(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  workCompletionStatus: string;
+  sgdTypeId: string | null;
+}): Promise<{ projectIds: string[] | null; error: unknown }> {
+  const hasWorkCompletionFilter = params.workCompletionStatus !== "TODOS";
+  const hasSgdTypeFilter = Boolean(params.sgdTypeId);
+
+  if (!hasWorkCompletionFilter && !hasSgdTypeFilter) {
+    return { projectIds: null, error: null };
+  }
+
+  let query = params.supabase
+    .from("programming")
+    .select("project_id")
+    .eq("tenant_id", params.tenantId);
+
+  if (hasSgdTypeFilter && params.sgdTypeId) {
+    query = query.eq("sgd_type_id", params.sgdTypeId);
+  }
+
+  if (hasWorkCompletionFilter) {
+    if (params.workCompletionStatus === "NAO_INFORMADO") {
+      // Sem Estado do Trabalho E sem pendencia — etapa marcada como pendencia nao
+      // e "nao informada", so guarda a informacao em outra coluna.
+      query = query.is("work_completion_status", null).eq("is_pendencia", false);
+    } else if (toCanonicalWorkCompletionCode(params.workCompletionStatus) === "PENDENCIA") {
+      // PENDENCIA continua ativa no catalogo e por isso e oferecida no filtro, mas
+      // a migration 318 tirou o valor de status E de Estado do Trabalho: virou a
+      // flag ortogonal `is_pendencia`. Comparar pelo codigo devolveria zero
+      // projeto — um "nenhum resultado" falso, que parece boa noticia.
+      query = query.eq("is_pendencia", true);
+    } else {
+      const codes = await resolveMatchingWorkCompletionCodes({
+        supabase: params.supabase,
+        tenantId: params.tenantId,
+        requestedCode: params.workCompletionStatus,
+      });
+      if (!codes.length) return { projectIds: [], error: null };
+      query = query.in("work_completion_status", codes);
+    }
+  }
+
+  const { data, error } = await query.returns<Array<{ project_id: string }>>();
+  if (error) return { projectIds: [], error };
+
+  return {
+    projectIds: Array.from(new Set((data ?? []).map((item) => item.project_id).filter(Boolean))),
+    error: null,
+  };
+}
+
+// Etapas ativas do projeto — usado pela guarda que impede inativar projeto com
+// Programacao em aberto.
+export async function countActiveStagesForProject(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectId: string;
+}): Promise<{ count: number; error: unknown }> {
+  const { count, error } = await params.supabase
+    .from("programming")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", params.tenantId)
+    .eq("project_id", params.projectId)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA", "ADIADA"]);
+
+  if (error) return { count: 0, error };
+  return { count: count ?? 0, error: null };
+}
+
 // Lista cross-projeto paginada POR PROJETO (achado 14): o passo 1 pagina os
 // project_id distintos que batem nos filtros (RPC programming_list_project_page,
 // no banco); o passo 2 busca TODAS as etapas (matching) dos projetos da pagina,

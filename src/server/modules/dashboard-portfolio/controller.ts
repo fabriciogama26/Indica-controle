@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
+import { fetchWorkCompletionTimelineByProject } from "@/server/modules/programacao-normalizada";
 
 const DASHBOARD_PORTFOLIO_PAGE_KEY = "dashboard-carteira-operacional";
 const QUERY_PAGE_SIZE = 1000;
@@ -433,23 +434,19 @@ async function loadCompletionRows(params: {
   projectIds: string[];
   endDate: string;
 }) {
-  const rows: ProgrammingCompletionRow[] = [];
-  for (const projectIdChunk of chunk(params.projectIds, FILTER_CHUNK_SIZE)) {
-    const { data, error } = await params.supabase
-      .from("project_programming")
-      .select("project_id, execution_date, status, work_completion_status, updated_at")
-      .eq("tenant_id", params.tenantId)
-      .in("project_id", projectIdChunk)
-      .lte("execution_date", params.endDate)
-      .neq("status", "CANCELADA")
-      .not("work_completion_status", "is", null)
-      .returns<ProgrammingCompletionRow[]>();
+  // Fonte: `programming` (modelo normalizado), via a fachada da Programacao. A
+  // fachada ja faz o chunk por lote de projetos, entao o loop local saiu junto
+  // com a query duplicada que existia aqui e no Dashboard Medicao.
+  const { rows, error } = await fetchWorkCompletionTimelineByProject({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    projectIds: params.projectIds,
+    endDate: params.endDate,
+  });
 
-    if (error) return { data: [] as ProgrammingCompletionRow[], error };
-    rows.push(...(data ?? []));
-  }
+  if (error) return { data: [] as ProgrammingCompletionRow[], error };
 
-  return { data: rows, error: null };
+  return { data: rows as ProgrammingCompletionRow[], error: null };
 }
 
 function resolveReferenceDate(cycleEnd: string) {
