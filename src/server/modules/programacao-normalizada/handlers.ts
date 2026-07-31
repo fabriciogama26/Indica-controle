@@ -6,9 +6,11 @@ import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorizati
 import {
   addProgrammingTeamViaRpc,
   cancelProgrammingStageViaRpc,
+  cancelProgrammingTeamViaRpc,
   changeCompletedStageWorkStatusViaRpc,
   completeProgrammingStageViaRpc,
   postponeProgrammingStageViaRpc,
+  postponeProgrammingTeamViaRpc,
   reopenProgrammingStageViaRpc,
   removeProgrammingTeamViaRpc,
   correctProgrammingStageDateViaRpc,
@@ -30,8 +32,10 @@ import {
 import type {
   AddTeamPayload,
   CancelStagePayload,
+  CancelTeamPayload,
   CompleteStagePayload,
   PostponeStagePayload,
+  PostponeTeamPayload,
   RemoveTeamPayload,
   ReopenStagePayload,
   ChangeCompletedWorkStatusPayload,
@@ -263,6 +267,100 @@ export async function removeProgrammingTeam(request: NextRequest, payload: Remov
   }
 
   return NextResponse.json({ success: true, programmingTeamId: result.programmingTeamId, updatedAt: result.updatedAt, message: result.message });
+}
+
+export async function cancelProgrammingTeam(request: NextRequest, payload: CancelTeamPayload) {
+  const resolution = await authenticate(request, "Sessao invalida para cancelar participacao de equipe.");
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "cancel");
+  if (authorizationError) return authorizationError;
+
+  const programmingTeamId = normalizeText(payload?.programmingTeamId);
+  const reason = normalizeNullableText(payload?.reason);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+
+  if (!programmingTeamId || !reason) {
+    return NextResponse.json({ message: "Informe a alocacao de equipe e o motivo do cancelamento." }, { status: 400 });
+  }
+
+  if (!expectedUpdatedAt) {
+    return NextResponse.json({ message: "Atualize a etapa antes de cancelar a equipe." }, { status: 409 });
+  }
+
+  const result = await cancelProgrammingTeamViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingTeamId,
+    reason,
+    expectedUpdatedAt,
+    confirmLastTeam: payload?.confirmLastTeam === true,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { message: result.message, reason: result.reason ?? null, currentUpdatedAt: "currentUpdatedAt" in result ? result.currentUpdatedAt ?? null : null },
+      { status: result.status },
+    );
+  }
+
+  return NextResponse.json({ success: true, programmingTeamId: result.programmingTeamId, updatedAt: result.updatedAt, message: result.message });
+}
+
+export async function postponeProgrammingTeam(request: NextRequest, payload: PostponeTeamPayload) {
+  const resolution = await authenticate(request, "Sessao invalida para adiar equipe.");
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
+  if (authorizationError) return authorizationError;
+
+  const programmingTeamId = normalizeText(payload?.programmingTeamId);
+  const teamId = normalizeText(payload?.teamId);
+  const newExecutionDate = normalizeIsoDate(payload?.newExecutionDate);
+  const reason = normalizeNullableText(payload?.reason);
+  const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt);
+
+  if (!programmingTeamId || !teamId || !newExecutionDate || !reason) {
+    return NextResponse.json({ message: "Informe a alocacao de equipe, a nova data e o motivo do adiamento." }, { status: 400 });
+  }
+
+  if (!expectedUpdatedAt) {
+    return NextResponse.json({ message: "Atualize a etapa antes de adiar a equipe." }, { status: 409 });
+  }
+
+  const result = await postponeProgrammingTeamViaRpc({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    actorUserId: resolution.appUser.id,
+    programmingTeamId,
+    teamId,
+    newExecutionDate,
+    reason,
+    expectedUpdatedAt,
+    confirmLastTeam: payload?.confirmLastTeam === true,
+  });
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { message: result.message, reason: result.reason ?? null, currentUpdatedAt: "currentUpdatedAt" in result ? result.currentUpdatedAt ?? null : null },
+      { status: result.status },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    programmingTeamId: result.programmingTeamId,
+    updatedAt: result.updatedAt,
+    newProgrammingTeamId: result.newProgrammingTeamId,
+    newProgrammingId: result.newProgrammingId,
+    newExecutionDate: result.newExecutionDate,
+    message: result.message,
+  });
 }
 
 export async function postponeProgrammingStage(request: NextRequest, payload: PostponeStagePayload) {

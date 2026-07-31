@@ -340,8 +340,8 @@ Atualizacao 2026-07-31
   papel nao-admin do sistema) com qualquer uma das 3 liberada; uma pessoa (ALAN REIS) ja tinha
   acesso a tela `programacao-normalizada` em si mas nao via o checkbox de Pendencia no
   formulario de "Nova etapa" por causa disso.
-- Depois: migration `348_grant_programming_granular_pages_to_user_role.sql` (gerada, pendente
-  de aplicacao) libera o trio para o papel "Usuario" inteiro, em 3 niveis: (1)
+- Depois: migration `348_grant_programming_granular_pages_to_user_role.sql` (aplicada) libera
+  o trio para o papel "Usuario" inteiro, em 3 niveis: (1)
   `app_pages.default_user_access = true` para os 3 page_keys, entao qualquer NOVO usuario
   nao-admin ja nasce com o trio liberado (gatilho `ensure_app_user_default_page_permissions`,
   253); (2) `role_page_permissions` do papel "user" atualizado para consistencia de template

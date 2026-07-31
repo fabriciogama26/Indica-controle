@@ -1,5 +1,5 @@
 export type ProgrammingStageStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA";
-export type ProgrammingTeamStatus = "ATIVA" | "REMOVIDA" | "TRANSFERIDA";
+export type ProgrammingTeamStatus = "ATIVA" | "REMOVIDA" | "TRANSFERIDA" | "CANCELADA" | "EM_ESPERA";
 export type ProgrammingPeriod = "INTEGRAL" | "PARCIAL";
 export type ProgrammingDocumentType = "SGD" | "PI" | "PEP";
 
@@ -73,6 +73,9 @@ export type StageTeam = {
   teamId: string;
   teamName: string;
   status: ProgrammingTeamStatus;
+  participationReason: string | null;
+  statusChangedAt: string | null;
+  movedToId: string | null;
   updatedAt: string;
 };
 
@@ -294,6 +297,8 @@ export type ActionResponse = {
   currentUpdatedAt?: string | null;
   updatedAt?: string;
   newProgrammingId?: string;
+  newProgrammingTeamId?: string;
+  newExecutionDate?: string;
   anticipatedCount?: number;
   restoredCount?: number;
 };
