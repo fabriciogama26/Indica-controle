@@ -62,11 +62,12 @@ type MapProject = {
   latestProgrammingStatus: string;
   latestWorkCompletionStatus: string | null;
   latestWorkCompletionLabel: string;
-  latestTeamName: string;
-  latestForemanName: string;
+  latestTeamNames: string[];
+  latestForemanNames: string[];
   latestStageLabel: string;
-  programmingCount: number;
   stageCount: number;
+  teamCount: number;
+  hasOpenPendencia: boolean;
   reason: string;
   daysSinceLatest: number | null;
   priorityLevel: PriorityLevel;
@@ -106,27 +107,6 @@ type TeamWithoutProgramming = {
   active: boolean;
 };
 
-type TransferEvent = {
-  id: string;
-  changedAt: string;
-  reason: string;
-  teamId: string;
-  teamName: string;
-  sourceProjectId: string;
-  sourceProjectCode: string;
-  sourceServiceCenter: string;
-  sourceProgrammingId: string;
-  sourceDate: string;
-  sourceStage: string;
-  destinationProjectId: string;
-  destinationProjectCode: string;
-  destinationServiceCenter: string;
-  destinationProgrammingId: string;
-  newProgrammingId: string;
-  destinationDate: string;
-  destinationStage: string;
-};
-
 type MapProgrammingResponse = {
   filters?: {
     startDate: string | null;
@@ -152,7 +132,6 @@ type MapProgrammingResponse = {
   priorityProjects?: MapProject[];
   neverProgrammedProjects?: MapProject[];
   teamsWithoutProgramming?: TeamWithoutProgramming[];
-  transferEvents?: TransferEvent[];
   message?: string;
 };
 
@@ -193,25 +172,19 @@ function formatDate(value: string | null | undefined) {
   return `${day}/${month}/${year}`;
 }
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
 function normalizeSearch(value: string) {
   return value
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+// Etapa da Programacao Normalizada pode ter N equipes ativas ao mesmo tempo
+// (diferente do legado, que era 1 equipe por linha) — mostra a lista inteira em
+// vez de esconder as demais.
+function formatNameList(names: string[]) {
+  return names.length ? names.join(", ") : "-";
 }
 
 function formatDaysSince(value: number | null) {
@@ -302,7 +275,6 @@ export function MapProgrammingPageView() {
   const [priorityPage, setPriorityPage] = useState(1);
   const [stageReviewPage, setStageReviewPage] = useState(1);
   const [interruptedCompletedPage, setInterruptedCompletedPage] = useState(1);
-  const [transferPage, setTransferPage] = useState(1);
   const [neverProgrammedPage, setNeverProgrammedPage] = useState(1);
   const [deadlineViewMode, setDeadlineViewMode] = useState<DeadlineViewMode>("15");
   const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
@@ -350,7 +322,6 @@ export function MapProgrammingPageView() {
       setPriorityPage(1);
       setStageReviewPage(1);
       setInterruptedCompletedPage(1);
-      setTransferPage(1);
       setNeverProgrammedPage(1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar Mapa de Programacao.";
@@ -381,10 +352,6 @@ export function MapProgrammingPageView() {
     for (const team of data?.teamsWithoutProgramming ?? []) {
       if (team.serviceCenter) values.add(team.serviceCenter);
     }
-    for (const event of data?.transferEvents ?? []) {
-      if (event.sourceServiceCenter) values.add(event.sourceServiceCenter);
-      if (event.destinationServiceCenter) values.add(event.destinationServiceCenter);
-    }
     return Array.from(values).sort((left, right) => left.localeCompare(right));
   }, [data, statusCards]);
 
@@ -404,8 +371,8 @@ export function MapProgrammingPageView() {
         project.serviceCenter,
         project.serviceType,
         project.city,
-        project.latestTeamName,
-        project.latestForemanName,
+        ...project.latestTeamNames,
+        ...project.latestForemanNames,
         project.latestWorkCompletionLabel,
         project.latestProgrammingStatus,
       ].join(" ")).includes(search);
@@ -429,38 +396,6 @@ export function MapProgrammingPageView() {
     () => filterProjects(data?.neverProgrammedProjects ?? []),
     [data, filterProjects],
   );
-  const filteredTransferEvents = useMemo(() => {
-    const projectSearch = normalizeSearch(activeFilters.projectSearch);
-    const teamSearch = normalizeSearch(activeFilters.teamSearch);
-
-    return (data?.transferEvents ?? []).filter((event) => {
-      if (
-        activeFilters.serviceCenter
-        && event.sourceServiceCenter !== activeFilters.serviceCenter
-        && event.destinationServiceCenter !== activeFilters.serviceCenter
-      ) {
-        return false;
-      }
-
-      if (projectSearch) {
-        const haystack = normalizeSearch([
-          event.sourceProjectCode,
-          event.destinationProjectCode,
-          event.reason,
-          event.sourceDate,
-          event.destinationDate,
-        ].join(" "));
-        if (!haystack.includes(projectSearch)) return false;
-      }
-
-      if (teamSearch) {
-        const haystack = normalizeSearch(`${event.teamName} ${event.teamId}`);
-        if (!haystack.includes(teamSearch)) return false;
-      }
-
-      return true;
-    });
-  }, [activeFilters.projectSearch, activeFilters.serviceCenter, activeFilters.teamSearch, data]);
   const portfolioProjects = useMemo(
     () => statusCards.find((card) => card.key === "PORTFOLIO")?.projects ?? [],
     [statusCards],
@@ -560,7 +495,6 @@ export function MapProgrammingPageView() {
     setPriorityPage(1);
     setStageReviewPage(1);
     setInterruptedCompletedPage(1);
-    setTransferPage(1);
     setNeverProgrammedPage(1);
     setSelectedCardPage(1);
   }, [activeFilters.projectSearch, activeFilters.serviceCenter, activeFilters.teamSearch]);
@@ -696,8 +630,8 @@ export function MapProgrammingPageView() {
         "Encarregado",
         "Estado Trabalho",
         "Status Programacao",
-        "Programacoes",
         "Etapas",
+        "Equipes",
         "Dias desde ultima",
         "Motivo",
         "Revisao de etapas",
@@ -711,12 +645,12 @@ export function MapProgrammingPageView() {
         project.serviceType,
         project.city,
         formatDate(project.latestDate),
-        project.latestTeamName,
-        project.latestForemanName,
+        formatNameList(project.latestTeamNames),
+        formatNameList(project.latestForemanNames),
         project.latestWorkCompletionLabel,
         project.latestProgrammingStatus,
-        project.programmingCount,
         project.stageCount,
+        project.teamCount,
         project.daysSinceLatest,
         project.reason,
         project.stageReviewRequired
@@ -745,43 +679,6 @@ export function MapProgrammingPageView() {
         team.foremanName,
         team.vehiclePlate,
         periodLabel,
-      ]),
-    );
-  }
-
-  function exportTransferEvents() {
-    if (!filteredTransferEvents.length) {
-      setFeedback({ type: "error", message: "Nenhuma transferencia para exportar." });
-      return;
-    }
-
-    exportCsv(
-      `mapa_programacao_transferencias_${today}.csv`,
-      [
-        "Alterado em",
-        "Equipe",
-        "Origem",
-        "Data origem",
-        "Etapa origem",
-        "Destino",
-        "Data destino",
-        "Etapa destino",
-        "Motivo",
-        "Linha origem",
-        "Linha criada",
-      ],
-      filteredTransferEvents.map((event) => [
-        formatDateTime(event.changedAt),
-        event.teamName,
-        event.sourceProjectCode,
-        formatDate(event.sourceDate),
-        event.sourceStage,
-        event.destinationProjectCode,
-        formatDate(event.destinationDate),
-        event.destinationStage,
-        event.reason,
-        event.sourceProgrammingId,
-        event.newProgrammingId,
       ]),
     );
   }
@@ -979,28 +876,6 @@ export function MapProgrammingPageView() {
         />
       </article>
 
-      <article className={styles.card}>
-        <div className={styles.cardHeader}>
-          <div>
-            <h3>Rastreio de transferencias</h3>
-            <span>Linhas marcadas como TRANSFERIDA e a nova linha criada no destino.</span>
-          </div>
-          <button
-            type="button"
-            className={styles.secondaryButton}
-            onClick={() => void runCsvExport(exportTransferEvents)}
-            disabled={isExportingCsv || !filteredTransferEvents.length}
-          >
-            {isExportingCsv ? "Exportando..." : "Exportar CSV"}
-          </button>
-        </div>
-        <TransferTable
-          events={filteredTransferEvents}
-          page={transferPage}
-          onPageChange={setTransferPage}
-        />
-      </article>
-
       <div className={styles.contentGrid}>
         <article className={styles.card}>
           <div className={styles.cardHeader}>
@@ -1120,80 +995,6 @@ export function MapProgrammingPageView() {
   );
 }
 
-function formatStage(value: string) {
-  const numericValue = Number(value);
-  if (Number.isInteger(numericValue) && numericValue > 0) return `${numericValue} etapa`;
-  return value || "-";
-}
-
-function TransferTable({
-  events,
-  page,
-  onPageChange,
-}: {
-  events: TransferEvent[];
-  page: number;
-  onPageChange: (page: number) => void;
-}) {
-  const pageCount = Math.max(1, Math.ceil(events.length / TABLE_PAGE_SIZE));
-  const safePage = Math.min(Math.max(page, 1), pageCount);
-  const pageEvents = events.slice((safePage - 1) * TABLE_PAGE_SIZE, safePage * TABLE_PAGE_SIZE);
-
-  if (!events.length) {
-    return <div className={styles.emptyState}>Nenhuma transferencia encontrada para os filtros atuais.</div>;
-  }
-
-  return (
-    <div className={styles.tableBlock}>
-      <div className={styles.tableWrapper}>
-        <table className={styles.compactTable}>
-          <thead>
-            <tr>
-              <th>Alterado em</th>
-              <th>Equipe</th>
-              <th>Origem</th>
-              <th>Destino</th>
-              <th>Motivo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pageEvents.map((event) => (
-              <tr key={event.id}>
-                <td>{formatDateTime(event.changedAt)}</td>
-                <td><strong>{event.teamName || "-"}</strong></td>
-                <td>
-                  <span className={styles.transferRoute}>
-                    <strong>{event.sourceProjectCode || "-"}</strong>
-                    <small>{formatDate(event.sourceDate)} | {formatStage(event.sourceStage)}</small>
-                  </span>
-                </td>
-                <td>
-                  <span className={styles.transferRoute}>
-                    <strong>{event.destinationProjectCode || "-"}</strong>
-                    <small>{formatDate(event.destinationDate)} | {formatStage(event.destinationStage)}</small>
-                  </span>
-                </td>
-                <td>{event.reason || "-"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className={styles.paginationBar}>
-        <span>{events.length} transferencias | pagina {safePage} de {pageCount}</span>
-        <div className={styles.quickActions}>
-          <button type="button" className={styles.ghostButton} onClick={() => onPageChange(safePage - 1)} disabled={safePage <= 1}>
-            Anterior
-          </button>
-          <button type="button" className={styles.ghostButton} onClick={() => onPageChange(safePage + 1)} disabled={safePage >= pageCount}>
-            Proxima
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ProjectTable({
   projects,
   page,
@@ -1229,8 +1030,8 @@ function ProjectTable({
               <th>Estado Trabalho</th>
               <th>Equipe</th>
               <th>Encarregado</th>
-              <th>Prog.</th>
               <th>Etapas</th>
+              <th>Equipes</th>
               {showStageReviewColumn ? <th>Revisao</th> : null}
               <th>Dias</th>
             </tr>
@@ -1259,10 +1060,10 @@ function ProjectTable({
                 <td>{formatDate(project.latestDate)}</td>
                 <td>{project.latestProgrammingStatus}</td>
                 <td>{project.latestWorkCompletionLabel}</td>
-                <td>{project.latestTeamName}</td>
-                <td>{project.latestForemanName}</td>
-                <td>{project.programmingCount}</td>
+                <td>{formatNameList(project.latestTeamNames)}</td>
+                <td>{formatNameList(project.latestForemanNames)}</td>
                 <td>{project.stageCount}</td>
+                <td>{project.teamCount}</td>
                 {showStageReviewColumn ? (
                   <td>
                     {project.stageReviewRequired
@@ -1305,11 +1106,11 @@ function ProjectMiniCard({ project, expanded = false }: { project: MapProject; e
       </div>
       <div className={styles.projectMetaGrid}>
         <span>Ultima data <strong>{formatDate(project.latestDate)}</strong></span>
-        <span>Equipe <strong>{project.latestTeamName}</strong></span>
-        <span>Encarregado <strong>{project.latestForemanName}</strong></span>
+        <span>Equipe <strong>{formatNameList(project.latestTeamNames)}</strong></span>
+        <span>Encarregado <strong>{formatNameList(project.latestForemanNames)}</strong></span>
         <span>Estado Trabalho <strong>{project.latestWorkCompletionLabel}</strong></span>
-        <span>Programacoes <strong>{project.programmingCount}</strong></span>
         <span>Etapas <strong>{project.stageCount}</strong></span>
+        <span>Equipes <strong>{project.teamCount}</strong></span>
         <span>Ultima etapa <strong>{project.latestStageLabel}</strong></span>
         {project.stageReviewRequired ? (
           <span className={styles.stageReviewMeta}>
@@ -1333,8 +1134,8 @@ function ProjectMiniCard({ project, expanded = false }: { project: MapProject; e
         <p className={styles.reasonText}>{project.reason}</p>
       ) : null}
       <div className={styles.projectActions}>
-        <Link className={styles.tableLink} href="/programacao-simples">Programar</Link>
-        <Link className={styles.tableLink} href="/programacao-simples">Historico</Link>
+        <Link className={styles.tableLink} href="/programacao-normalizada">Programar</Link>
+        <Link className={styles.tableLink} href="/programacao-normalizada">Historico</Link>
         <Link className={styles.tableLink} href="/projetos">Detalhes</Link>
       </div>
     </article>

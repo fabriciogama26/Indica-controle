@@ -595,6 +595,86 @@ export async function fetchProgrammingStageById(params: {
   return data;
 }
 
+// =============================================================================
+// Leitura ampla para o Mapa de Programacao (Corte - Fase 4)
+// =============================================================================
+// O Mapa consolida TODAS as etapas de uma janela ampla (18 meses) por projeto,
+// para calcular cartoes de situacao (concluidas, para reprogramar, pendentes,
+// etc.) — algo que nenhuma outra tela precisa, entao nao reaproveita as queries
+// paginadas acima. Ainda assim passa pela fachada (nunca le a tabela direto),
+// porque Mapa e Programacao Normalizada sao features irmas.
+export type ProgrammingMapTeamRow = {
+  team_id: string;
+  status: string;
+};
+
+export type ProgrammingMapStageRow = {
+  id: string;
+  project_id: string;
+  status: string;
+  execution_date: string | null;
+  etapa_number: number | null;
+  etapa_unica: boolean;
+  etapa_final: boolean;
+  work_completion_status: string | null;
+  is_pendencia: boolean;
+  cancellation_reason: string | null;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+  programming_team: ProgrammingMapTeamRow[] | null;
+};
+
+const MAP_STAGE_SELECT =
+  "id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, programming_team(team_id, status)";
+const MAP_STAGE_ROW_LIMIT = 5000;
+
+export async function fetchProgrammingStagesForMap(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  sinceDate: string;
+}): Promise<ProgrammingMapStageRow[]> {
+  const { data, error } = await params.supabase
+    .from("programming")
+    .select(MAP_STAGE_SELECT)
+    .eq("tenant_id", params.tenantId)
+    .gte("execution_date", params.sinceDate)
+    .limit(MAP_STAGE_ROW_LIMIT)
+    .returns<ProgrammingMapStageRow[]>();
+
+  if (error) {
+    throw new Error(`Falha ao carregar historico geral de Programacao: ${error.message}`);
+  }
+
+  return data ?? [];
+}
+
+// Equipes com pelo menos uma etapa ativa (PROGRAMADA/REPROGRAMADA) no periodo —
+// usado pelo Mapa para achar equipes SEM programacao no periodo escolhido.
+export async function fetchTeamIdsProgrammedInPeriod(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  startDate: string;
+  endDate: string;
+}): Promise<Set<string>> {
+  const { data, error } = await params.supabase
+    .from("programming_team")
+    .select("team_id, programming!inner(execution_date, status, tenant_id)")
+    .eq("tenant_id", params.tenantId)
+    .eq("status", "ATIVA")
+    .eq("programming.tenant_id", params.tenantId)
+    .gte("programming.execution_date", params.startDate)
+    .lte("programming.execution_date", params.endDate)
+    .in("programming.status", ["PROGRAMADA", "REPROGRAMADA"])
+    .returns<Array<{ team_id: string }>>();
+
+  if (error) {
+    throw new Error(`Falha ao carregar programacoes das equipes no periodo: ${error.message}`);
+  }
+
+  return new Set((data ?? []).map((item) => item.team_id).filter(Boolean));
+}
+
 // Historico exibido em modal: limit 50 (guia_backend regra 26).
 export async function fetchProgrammingHistory(params: {
   supabase: SupabaseClient;

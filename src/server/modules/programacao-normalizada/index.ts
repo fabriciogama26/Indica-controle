@@ -31,4 +31,10 @@ export {
 
   // Reconciliacao dos dois codigos de catalogo que significam o mesmo estado.
   toCanonicalWorkCompletionCode,
+
+  // Leitura ampla para o Mapa de Programacao (cartoes de situacao por projeto).
+  fetchProgrammingStagesForMap,
+  type ProgrammingMapStageRow,
+  type ProgrammingMapTeamRow,
+  fetchTeamIdsProgrammedInPeriod,
 } from "./queries";

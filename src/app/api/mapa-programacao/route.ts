@@ -3,6 +3,11 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
+import {
+  fetchProgrammingStagesForMap,
+  fetchTeamIdsProgrammedInPeriod,
+  type ProgrammingMapStageRow,
+} from "@/server/modules/programacao-normalizada";
 
 const MAP_PROGRAMMING_PAGE_KEY = "mapa-programacao";
 const ACTIVE_PROGRAMMING_STATUSES = new Set(["PROGRAMADA", "REPROGRAMADA"]);
@@ -40,21 +45,7 @@ type ProjectRow = {
   is_third_party?: boolean | null;
 };
 
-type ProgrammingRow = {
-  id: string;
-  project_id: string | null;
-  team_id: string | null;
-  status: string | null;
-  execution_date: string | null;
-  etapa_number: number | null;
-  etapa_unica: boolean | null;
-  etapa_final?: boolean | null;
-  work_completion_status: string | null;
-  cancellation_reason: string | null;
-  note: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
+type ProgrammingRow = ProgrammingMapStageRow;
 
 type TeamRow = {
   id: string;
@@ -84,23 +75,6 @@ type ServiceCenterRow = {
 type WorkCompletionCatalogRow = {
   code: string | null;
   label_pt: string | null;
-};
-
-type TeamProgrammingRow = {
-  team_id: string | null;
-};
-
-type TransferHistoryRow = {
-  id: string;
-  programming_id: string | null;
-  related_programming_id: string | null;
-  project_id: string | null;
-  team_id: string | null;
-  from_execution_date: string | null;
-  to_execution_date: string | null;
-  reason: string | null;
-  metadata: Record<string, unknown> | null;
-  created_at: string | null;
 };
 
 function normalizeText(value: unknown) {
@@ -147,10 +121,6 @@ function isEmergencyServiceType(value: unknown) {
   return normalizeToken(value).includes("EMERGENCIAL");
 }
 
-function isPendingWorkStatus(value: unknown) {
-  return normalizeToken(value).includes("PENDEN");
-}
-
 function isPartialPlannedWorkStatus(value: unknown) {
   const token = normalizeToken(value);
   return token.includes("PARCIAL") && token.includes("PLANEJ");
@@ -188,13 +158,6 @@ function compareProgrammingRows(left: ProgrammingRow, right: ProgrammingRow) {
   if (leftCreatedAt !== rightCreatedAt) return leftCreatedAt.localeCompare(rightCreatedAt);
 
   return normalizeText(left.id).localeCompare(normalizeText(right.id));
-}
-
-function resolveStageKey(row: ProgrammingRow) {
-  if (row.etapa_final) return "ETAPA_FINAL";
-  if (row.etapa_unica) return "ETAPA_UNICA";
-  const stageNumber = Number(row.etapa_number ?? 0);
-  return Number.isInteger(stageNumber) && stageNumber > 0 ? `ETAPA_${stageNumber}` : "";
 }
 
 function resolveStageLabel(row: ProgrammingRow | null) {
@@ -285,46 +248,6 @@ function buildTeamLookup(teams: TeamRow[], teamTypeMap: Map<string, string>, peo
   );
 }
 
-function readMetadataText(metadata: Record<string, unknown> | null, key: string) {
-  return normalizeText(metadata?.[key]);
-}
-
-function buildTransferEvents(params: {
-  rows: TransferHistoryRow[];
-  projectMap: Map<string, ProjectRow>;
-  teamMap: Map<string, ReturnType<typeof buildTeamLookup> extends Map<string, infer T> ? T : never>;
-}) {
-  return params.rows.map((row) => {
-    const sourceProjectId = readMetadataText(row.metadata, "sourceProjectId") || normalizeText(row.project_id);
-    const destinationProjectId = readMetadataText(row.metadata, "destinationProjectId");
-    const teamId = readMetadataText(row.metadata, "sourceTeamId") || normalizeText(row.team_id);
-    const sourceProject = sourceProjectId ? params.projectMap.get(sourceProjectId) : null;
-    const destinationProject = destinationProjectId ? params.projectMap.get(destinationProjectId) : null;
-    const team = teamId ? params.teamMap.get(teamId) : null;
-
-    return {
-      id: row.id,
-      changedAt: normalizeText(row.created_at),
-      reason: normalizeText(row.reason),
-      teamId,
-      teamName: team?.name ?? teamId,
-      sourceProjectId,
-      sourceProjectCode: normalizeText(sourceProject?.sob) || sourceProjectId,
-      sourceServiceCenter: normalizeText(sourceProject?.service_center_text),
-      sourceProgrammingId: readMetadataText(row.metadata, "sourceProgrammingId") || normalizeText(row.programming_id),
-      sourceDate: normalizeIsoDate(readMetadataText(row.metadata, "sourceExecutionDate")) ?? normalizeIsoDate(row.from_execution_date) ?? "",
-      sourceStage: readMetadataText(row.metadata, "sourceEtapaNumber"),
-      destinationProjectId,
-      destinationProjectCode: normalizeText(destinationProject?.sob) || destinationProjectId,
-      destinationServiceCenter: normalizeText(destinationProject?.service_center_text),
-      destinationProgrammingId: readMetadataText(row.metadata, "destinationProgrammingId"),
-      newProgrammingId: readMetadataText(row.metadata, "newProgrammingId") || normalizeText(row.related_programming_id),
-      destinationDate: normalizeIsoDate(readMetadataText(row.metadata, "destinationExecutionDate")) ?? normalizeIsoDate(row.to_execution_date) ?? "",
-      destinationStage: readMetadataText(row.metadata, "destinationEtapaNumber"),
-    };
-  });
-}
-
 async function authorizeMapProgrammingRead(context: AuthenticatedAppUserContext) {
   const authorization = await requirePageAction({
     context,
@@ -399,23 +322,6 @@ async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
     .filter((project) => !isEmergencyServiceType(project.service_type_text));
 }
 
-async function fetchProgrammingRows(supabase: SupabaseClient, tenantId: string, windowStart: string) {
-  const { data, error } = await supabase
-    .from("project_programming")
-    .select("id, project_id, team_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, cancellation_reason, note, created_at, updated_at")
-    .eq("tenant_id", tenantId)
-    .not("project_id", "is", null)
-    .gte("execution_date", windowStart)
-    .limit(5000)
-    .returns<ProgrammingRow[]>();
-
-  if (error) {
-    throw new Error("Falha ao carregar historico geral de Programacao.");
-  }
-
-  return data ?? [];
-}
-
 async function fetchWorkCompletionCatalog(supabase: SupabaseClient, tenantId: string) {
   const { data, error } = await supabase
     .from("programming_work_completion_catalog")
@@ -470,45 +376,6 @@ async function fetchTeams(supabase: SupabaseClient, tenantId: string) {
   return buildTeamLookup(teamRows, teamTypeMap, peopleMap, serviceCenterMap);
 }
 
-async function fetchTransferHistoryRows(supabase: SupabaseClient, tenantId: string) {
-  const { data, error } = await supabase
-    .from("project_programming_history")
-    .select("id, programming_id, related_programming_id, project_id, team_id, from_execution_date, to_execution_date, reason, metadata, created_at")
-    .eq("tenant_id", tenantId)
-    .eq("action_type", "TRANSFER_TEAM")
-    .order("created_at", { ascending: false })
-    .limit(100)
-    .returns<TransferHistoryRow[]>();
-
-  if (error) {
-    throw new Error("Falha ao carregar rastreio de transferencias da Programacao.");
-  }
-
-  return data ?? [];
-}
-
-async function fetchProgrammedTeamIds(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  startDate: string;
-  endDate: string;
-}) {
-  const { data, error } = await params.supabase
-    .from("project_programming")
-    .select("team_id")
-    .eq("tenant_id", params.tenantId)
-    .gte("execution_date", params.startDate)
-    .lte("execution_date", params.endDate)
-    .in("status", Array.from(ACTIVE_PROGRAMMING_STATUSES))
-    .returns<TeamProgrammingRow[]>();
-
-  if (error) {
-    throw new Error("Falha ao carregar programacoes das equipes no periodo.");
-  }
-
-  return new Set((data ?? []).map((item) => normalizeText(item.team_id)).filter(Boolean));
-}
-
 export async function GET(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar Mapa de Programacao.",
@@ -540,20 +407,18 @@ export async function GET(request: NextRequest) {
     programmingWindowStartDate.setUTCMonth(programmingWindowStartDate.getUTCMonth() - 18);
     const programmingWindowStart = toIsoDate(programmingWindowStartDate);
 
-    const [projects, programmingRows, workCompletionLabelMap, teamMap, transferHistoryRows] = await Promise.all([
+    const [projects, programmingRows, workCompletionLabelMap, teamMap] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
-      fetchProgrammingRows(resolution.supabase, resolution.appUser.tenant_id, programmingWindowStart),
+      fetchProgrammingStagesForMap({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        sinceDate: programmingWindowStart,
+      }),
       fetchWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
-      fetchTransferHistoryRows(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
     const validProjectMap = new Map(projects.map((project) => [project.id, project]));
-    const transferEvents = buildTransferEvents({
-      rows: transferHistoryRows,
-      projectMap: validProjectMap,
-      teamMap,
-    });
     const programmingByProject = new Map<string, ProgrammingRow[]>();
 
     for (const row of programmingRows) {
@@ -580,8 +445,31 @@ export async function GET(request: NextRequest) {
           ? workCompletionLabelMap.get(workCompletionStatus) ?? workCompletionStatus
           : "Nao informado";
         const latestProgrammingStatus = normalizeToken(latest?.status) || "SEM_PROGRAMACAO";
-        const latestTeam = latest?.team_id ? teamMap.get(latest.team_id) : null;
-        const stageKeys = new Set(projectRows.map(resolveStageKey).filter(Boolean));
+        // Etapa (linha de `programming`) tem N equipes em `programming_team`, nao
+        // mais uma so (achado da auditoria: mostrar uma equipe so escondia as
+        // demais quando a etapa tinha mais de uma equipe ativa).
+        const latestActiveTeamIds = (latest?.programming_team ?? [])
+          .filter((team) => team.status === "ATIVA")
+          .map((team) => normalizeText(team.team_id))
+          .filter(Boolean);
+        const latestTeamNames = Array.from(new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.name ?? teamId)));
+        const latestForemanNames = Array.from(
+          new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.foremanName ?? "Sem encarregado")),
+        );
+        // `programmingCount` (linhas legadas, uma por equipe) e `stageCount`
+        // (chaves distintas de etapa) colapsam no modelo normalizado: uma linha
+        // de `programming` JA E uma etapa. O dado novo e util e a contagem de
+        // equipes distintas que passaram pela Programacao do projeto.
+        const distinctTeamIds = new Set(
+          projectRows.flatMap((row) => (row.programming_team ?? []).map((team) => normalizeText(team.team_id)).filter(Boolean)),
+        );
+        // Pendencia (achado da auditoria): a migration 318 tirou PENDENCIA de
+        // `work_completion_status` e virou a flag `is_pendencia`. "Aberta" segue a
+        // mesma definicao usada no chip da lista de Programacao Normalizada
+        // (queries.ts): flag ligada, etapa ativa e ainda nao concluida.
+        const hasOpenPendencia = projectRows.some(
+          (row) => row.is_pendencia && isActiveProgrammingStatus(row.status) && normalizeToken(row.work_completion_status) !== "CONCLUIDO",
+        );
         const stageReviewIssue = resolveStageReviewIssue(projectRows);
         const stageReviewRequired = Boolean(stageReviewIssue);
         const interruptedCompletedIssue = resolveInterruptedCompletedIssue(projectRows);
@@ -612,11 +500,12 @@ export async function GET(request: NextRequest) {
           latestProgrammingStatus,
           latestWorkCompletionStatus: workCompletionStatus,
           latestWorkCompletionLabel: workCompletionLabel,
-          latestTeamName: latestTeam?.name ?? (latest?.team_id ? latest.team_id : "Sem equipe"),
-          latestForemanName: latestTeam?.foremanName ?? "Sem encarregado",
+          latestTeamNames: latestTeamNames.length ? latestTeamNames : ["Sem equipe"],
+          latestForemanNames: latestForemanNames.length ? latestForemanNames : ["Sem encarregado"],
           latestStageLabel: resolveStageLabel(latest),
-          programmingCount: projectRows.length,
-          stageCount: stageKeys.size,
+          stageCount: projectRows.length,
+          teamCount: distinctTeamIds.size,
+          hasOpenPendencia,
           reason: normalizeText(latest?.cancellation_reason) || normalizeText(latest?.note),
           daysSinceLatest,
           priorityLevel: interruptedCompletedRequired || stageReviewRequired
@@ -664,7 +553,7 @@ export async function GET(request: NextRequest) {
       buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired && !project.stageReviewRequired && !project.interruptedCompletedRequired)),
       buildCard("REVIEW_STAGES", "Revisao de etapas", "Etapa cancelada ou adiada com etapa futura ativa.", consolidatedProjects.filter((project) => project.stageReviewRequired)),
       buildCard("INTERRUPTED_COMPLETED", "Interrompidas concluidas", "Programacao cancelada ou adiada com Estado Trabalho concluido.", consolidatedProjects.filter((project) => project.interruptedCompletedRequired)),
-      buildCard("PENDING", "Pendentes", "Ultimo Estado Trabalho valido com pendencia.", consolidatedProjects.filter((project) => isPendingWorkStatus(project.latestWorkCompletionStatus))),
+      buildCard("PENDING", "Pendentes", "Programacao ativa com pendencia aberta (nao concluida).", consolidatedProjects.filter((project) => project.hasOpenPendencia)),
       buildCard("PARTIAL_PLANNED", "Parcial planejada", "Ultimo Estado Trabalho valido parcial planejado.", consolidatedProjects.filter((project) => isPartialPlannedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("PARTIAL", "Parciais", "Ultimo Estado Trabalho valido parcial.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("BENEFIT_REACHED", "Beneficio atingido", "Beneficio atingido sem conclusao marcada.", consolidatedProjects.filter((project) => !project.completed && isBenefitReachedWorkStatus(project.latestWorkCompletionStatus))),
@@ -675,7 +564,7 @@ export async function GET(request: NextRequest) {
 
     const activeTeams = Array.from(teamMap.values()).filter((team) => team.active);
     const programmedTeamIds = hasTeamPeriod && startDate && endDate
-      ? await fetchProgrammedTeamIds({
+      ? await fetchTeamIdsProgrammedInPeriod({
           supabase: resolution.supabase,
           tenantId: resolution.appUser.tenant_id,
           startDate,
@@ -711,7 +600,6 @@ export async function GET(request: NextRequest) {
       priorityProjects: consolidatedProjects.filter((project) => project.actionRequired && !project.neverProgrammed),
       neverProgrammedProjects: consolidatedProjects.filter((project) => project.neverProgrammed),
       teamsWithoutProgramming,
-      transferEvents,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Falha ao carregar Mapa de Programacao.";
