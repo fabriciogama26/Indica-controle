@@ -122,7 +122,14 @@ function applyStatusChipToStageQuery<Q extends {
 // Regras herdadas do comportamento legado, deliberadamente preservadas:
 // - etapa CANCELADA nao conta. ANTECIPADA CONTA — a query legada excluia apenas
 //   CANCELADA, e mudar isso alteraria numero em tela sem pedido.
-// - "ultimo" = maior execution_date, desempate por updated_at (sem usar etapa).
+// - "ultimo" = maior execution_date, desempate por STATUS ATIVO primeiro
+//   (PROGRAMADA/REPROGRAMADA antes de ADIADA/ANTECIPADA), so depois updated_at.
+//   Antes da migration 346 nao havia desempate por status porque so uma etapa
+//   podia ocupar a mesma execution_date do projeto; a 346 passou a permitir
+//   uma etapa historica (CANCELADA/ADIADA/ANTECIPADA) coexistir com uma etapa
+//   ATIVA na mesma data — sem esse desempate, uma etapa ANTECIPADA/ADIADA
+//   "morta" podia vencer por updated_at e virar o `programmingId` gravado em
+//   `cronograma_solicitacoes.programacao_id` (344) no lugar da etapa viva.
 // - `rawStatus` e o ultimo Estado do Trabalho PREENCHIDO. Projeto que tem etapa
 //   mas nunca teve estado preenchido entra no resultado com `rawStatus` vazio e
 //   `hasWorkCompletion = false` — presenca e estado sao coisas diferentes, e a
@@ -144,12 +151,13 @@ type ProjectWorkCompletionRow = {
   id: string;
   project_id: string;
   execution_date: string;
+  status: string;
   work_completion_status: string | null;
   is_pendencia: boolean | null;
   updated_at: string;
 };
 
-const PROJECT_WORK_COMPLETION_SELECT = "id, project_id, execution_date, work_completion_status, is_pendencia, updated_at";
+const PROJECT_WORK_COMPLETION_SELECT = "id, project_id, execution_date, status, work_completion_status, is_pendencia, updated_at";
 const PROJECT_WORK_COMPLETION_ROW_LIMIT = 5000;
 
 export async function fetchWorkCompletionByProject(params: {
@@ -173,7 +181,23 @@ export async function fetchWorkCompletionByProject(params: {
     .limit(PROJECT_WORK_COMPLETION_ROW_LIMIT)
     .returns<ProjectWorkCompletionRow[]>();
 
-  for (const row of data ?? []) {
+  // Reordena em JS (o query builder do PostgREST nao expressa "status ativo
+  // primeiro" num ORDER BY): mesma execution_date -> PROGRAMADA/REPROGRAMADA
+  // vence ADIADA/ANTECIPADA antes de olhar updated_at. So importa a ordem
+  // relativa DENTRO do mesmo project_id — o Map abaixo trata cada projeto de
+  // forma independente, entao nao precisa reagrupar por projeto aqui.
+  const rows = (data ?? []).slice().sort((left, right) => {
+    const byDate = right.execution_date.localeCompare(left.execution_date);
+    if (byDate !== 0) return byDate;
+
+    const leftActive = left.status === "PROGRAMADA" || left.status === "REPROGRAMADA" ? 0 : 1;
+    const rightActive = right.status === "PROGRAMADA" || right.status === "REPROGRAMADA" ? 0 : 1;
+    if (leftActive !== rightActive) return leftActive - rightActive;
+
+    return right.updated_at.localeCompare(left.updated_at);
+  });
+
+  for (const row of rows) {
     const rawStatus = (row.work_completion_status ?? "").trim();
     const current = result.get(row.project_id);
 
