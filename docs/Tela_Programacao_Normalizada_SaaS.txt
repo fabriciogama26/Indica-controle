@@ -1093,6 +1093,11 @@ Atualizacao 2026-07-29 - Fase 3b do corte: Projetos e os tres dashboards
 - Com isso, dos 7 consumidores mapeados no inicio do corte sobram 2:
   `src/app/api/mapa-programacao/route.ts` (Fase 4) e `src/app/api/medicao/route.ts`
   (Fase 5, junto com Controle APR).
+- ATUALIZACAO 2026-07-31: a Fase 4 (`mapa-programacao/route.ts`) foi entregue —
+  ver `docs/Tela_Mapa_Programacao_SaaS.txt`, secao "IMPLEMENTADO 2026-07-31".
+  Duas funcoes novas na fachada so para esse consumidor:
+  `fetchProgrammingStagesForMap` e `fetchTeamIdsProgrammedInPeriod`. Sobra 1
+  consumidor do legado: `src/app/api/medicao/route.ts` (Fase 5, com Controle APR).
 - Funcoes novas na fachada: `fetchWorkCompletionTimelineByProject`,
   `fetchProjectIdsWithCompletedWork`, `fetchProjectIdsByProgrammingFilter`,
   `countActiveStagesForProject` e `toCanonicalWorkCompletionCode`.

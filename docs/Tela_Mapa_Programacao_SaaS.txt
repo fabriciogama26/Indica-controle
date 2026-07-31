@@ -8,7 +8,6 @@ Visao geral
 - A tela indica obras nunca programadas, obras sem Estado Trabalho, obras pendentes/parciais e obras com ultima programacao cancelada ou adiada.
 - A tela indica equipes ativas sem programacao quando o periodo e informado.
 - A tela exibe o bloco `Prazos das Obras`, consolidado por SOB e data limite.
-- A tela exibe rastreio das transferencias de equipe entre programacoes.
 - Rota: `/mapa-programacao`.
 - Page key: `mapa-programacao`.
 - Acao server-side: `read`.
@@ -72,14 +71,13 @@ Filtros, auto-complete e listagem
   - aberto ao clicar em um card.
   - mostra obras daquela situacao em tabela paginada.
   - ao clicar em uma linha, abre o detalhe da obra em formato de card.
-  - a tabela exibe SOB, ultima data, status, Estado Trabalho, equipe, encarregado, quantidade de programacoes, quantidade de etapas, revisao de etapas e dias desde a ultima programacao.
-  - o detalhe exibe SOB, projeto, ultima data, equipe, encarregado, Estado Trabalho, quantidade de programacoes, quantidade de etapas, ultima etapa, revisao de etapas, dias desde a ultima programacao e motivo/observacao quando existir.
+  - a tabela exibe SOB, ultima data, status, Estado Trabalho, equipe (lista), encarregado (lista), quantidade de etapas, quantidade de equipes distintas, revisao de etapas e dias desde a ultima programacao.
+  - o detalhe exibe SOB, projeto, ultima data, equipe (lista), encarregado (lista), Estado Trabalho, quantidade de etapas, quantidade de equipes distintas, ultima etapa, revisao de etapas, dias desde a ultima programacao e motivo/observacao quando existir.
   - no detalhe aberto pela tabela, o titulo usa `ID: {uuid}` da obra.
 - Secoes:
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
   - Revisao de etapas em tabela propria, destacando obras com etapa cancelada/adiada e etapa ativa posterior.
   - Interrompidas com Estado concluido em tabela propria, destacando divergencia entre status operacional e Estado Trabalho.
-  - Rastreio de transferencias, exibindo equipe, origem, destino, datas, etapas e motivo.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
   - Equipes sem programacao
@@ -88,7 +86,6 @@ Filtros, auto-complete e listagem
   - CSV das obras do card aberto.
   - CSV da tabela dedicada de `Revisao de etapas`.
   - CSV da tabela dedicada de `Interrompidas com Estado concluido`.
-  - CSV do rastreio de transferencias.
   - CSV de equipes sem programacao quando houver periodo.
 - Prazos das Obras:
   - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
@@ -117,14 +114,14 @@ Boas praticas
 - `Revisao de etapas` nao renumera etapas e nao altera dados; apenas sinaliza que as etapas futuras dependem de revisao operacional.
 - Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284.
 - Programacao `ADIADA` ou `CANCELADA` com `Estado Trabalho = CONCLUIDO` e tratada como divergencia legada/importacao administrativa e aparece em `Interrompidas com Estado concluido`.
-- Programacao `TRANSFERIDA` e status interno de linha; nao entra como programacao ativa e nao entra no card `Canceladas/adiadas`.
-- O rastreio de transferencia vem de `project_programming_history` com `action_type = TRANSFER_TEAM` e limite de 100 eventos recentes.
 - Obras com divergencia `ADIADA/CANCELADA + CONCLUIDO` nao entram como concluidas no Mapa ate saneamento.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
 - `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
-- A quantidade de programacoes conta linhas/registros de `project_programming`.
-- A quantidade de etapas conta etapas distintas por `etapa_number`, `etapa_unica` e `etapa_final`.
-- Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` no periodo.
+- A quantidade de etapas conta linhas de `programming` da obra (uma linha = uma etapa no modelo normalizado).
+- A quantidade de equipes conta `team_id` distintos em `programming_team` (qualquer status) entre as etapas da obra.
+- Pendencia aberta (card `Pendentes`) e a flag `is_pendencia = true` numa etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) cujo `work_completion_status` ainda nao e `CONCLUIDO` — mesma definicao do chip "Pendencias abertas" da lista da Programacao Normalizada.
+- Equipe/encarregado da "ultima etapa" mostram TODAS as equipes com `programming_team.status = 'ATIVA'` naquela etapa (lista), nao so uma.
+- Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` no periodo, resolvidos via `programming_team` (status `ATIVA`) cruzado com `programming`.
 - Falhas da tela sao registradas com `useErrorLogger("mapa_programacao")`.
 
 Atalhos
@@ -229,14 +226,14 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - `fetchProjects`
   - Carrega projetos ativos da carteira e remove teste, retirado e emergencial.
-- `fetchProgrammingRows`
-  - Carrega o historico geral de programacao do tenant.
+- `fetchProgrammingStagesForMap` (fachada `@/server/modules/programacao-normalizada`)
+  - Carrega as etapas (`programming`) do tenant desde a janela de 18 meses, com as equipes de cada etapa (`programming_team(team_id, status)`) embutidas.
 - `fetchWorkCompletionCatalog`
   - Resolve label de exibicao do catalogo de Estado Trabalho.
 - `fetchTeams`
   - Carrega equipes ativas e inativas para resolver historico, tipo, encarregado e centro de servico.
-- `fetchProgrammedTeamIds`
-  - Carrega equipes programadas no periodo filtrado.
+- `fetchTeamIdsProgrammedInPeriod` (fachada `@/server/modules/programacao-normalizada`)
+  - Carrega equipes com etapa ativa (`ATIVA` em `programming_team`, `PROGRAMADA`/`REPROGRAMADA` em `programming`) no periodo filtrado.
 - `normalizeToken`
   - Normaliza textos tecnicos para comparar status e Estado Trabalho.
 - `isCompletedWorkStatus`
@@ -261,30 +258,22 @@ Funcoes utilitarias relacionadas
   - Montam os dados do painel de prazos a partir da carteira filtrada.
 - `handleExportDeadlineModalCsv`
   - Exporta os prazos da janela selecionada em CSV.
-- `fetchTransferHistoryRows`
-  - Carrega os 100 eventos mais recentes de transferencia no historico operacional da Programacao.
-- `buildTransferEvents`
-  - Converte metadata `TRANSFER_TEAM` em origem/destino legiveis para a tela.
-- `filteredTransferEvents`
-  - Aplica filtros locais de obra, equipe e centro de servico sobre o rastreio.
-- `TransferTable`
-  - Renderiza a tabela paginada de transferencias.
-- `exportTransferEvents`
-  - Exporta o rastreio de transferencias em CSV.
+- `formatNameList`
+  - Junta a lista de nomes de equipe/encarregado da ultima etapa para exibicao em tabela/card/CSV (`Equipe A, Equipe B`).
 - `ProgrammingDeadlinePanel` e `ProgrammingDeadlineModal`
   - Componentes reaproveitados da Programacao Simples para renderizar o painel e o modal de prazos no Mapa.
 
 Servicos e integracoes externas
 - Supabase Postgres via client server-side autenticado.
-- Tabelas/views consultadas:
+- Tabelas/views consultadas (pela fachada `@/server/modules/programacao-normalizada`, nunca direto):
   - `project_with_labels`
-  - `project_programming`
+  - `programming`
+  - `programming_team`
   - `programming_work_completion_catalog`
   - `teams`
   - `team_types`
   - `people`
   - `service_centers`
-  - `project_programming_history`
 
 Ajuda contextual
 - Use os cards de Estado Trabalho para acompanhar obras cujo ultimo Estado Trabalho valido ainda nao concluiu a execucao.
@@ -391,3 +380,69 @@ ORDEM (importante)
   bug, nao limpeza). Depois de um ciclo com os detectores em zero, remover em
   entrega propria de limpeza — remocao com evidencia de que nao e usado, como pede
   o `guias/guia_backend.md`.
+
+IMPLEMENTADO 2026-07-31 - Fase 4 do corte: Mapa lendo Programacao Normalizada
+-------------------------------------------------------------------------------
+- Fonte trocada de `project_programming`/`project_programming_history` para
+  `programming`/`programming_team`, pela fachada
+  `@/server/modules/programacao-normalizada` (nunca lendo a tabela direto —
+  mesmo padrao da Fase 3a/3b). Funcoes novas na fachada:
+  `fetchProgrammingStagesForMap` (etapas do tenant desde a janela de 18 meses,
+  com `programming_team(team_id, status)` embutido) e
+  `fetchTeamIdsProgrammedInPeriod` (equipes com etapa ativa no periodo, via
+  `programming_team!inner(programming)`).
+- `Revisao de etapas` e `Interrompidas com Estado concluido` foram MANTIDOS
+  nesta entrega, conforme a secao "Ordem" acima — apenas passaram a ler a nova
+  fonte. `resolveStageReviewIssue`/`resolveInterruptedCompletedIssue` nao
+  mudaram de logica (nao dependiam de `team_id`). Ficam como alarme ate um
+  ciclo com os dois cartoes em zero.
+- `Rastreio de transferencias` foi REMOVIDO (card, tabela `TransferTable`,
+  export CSV, `filteredTransferEvents`, `.transferRoute` no CSS e as funcoes de
+  leitura). Isto NAO estava na secao "O que fica" original desta entrega — a
+  revisao de 2026-07-29 (ver acima) ja tinha movido o bloco para a lista de
+  remocao, com o mesmo motivo do `TASKS.md` (Corte Fase 4 da Programacao
+  Normalizada): a RPC de transferir equipe nao foi construida no modelo novo
+  e o bloco nunca exibiu uma linha (0 `TRANSFERIDA` legado, 0 no normalizado,
+  0 eventos `TRANSFER_TEAM` em 2594 linhas de historico migradas pela 343).
+  `programming_history` (310) tambem nao tem `project_id`/`team_id`/datas como
+  colunas proprias — so `metadata` —, entao mesmo mantido o bloco ficaria vazio
+  indefinidamente. Diferente de `Revisao de etapas`/`Interrompidas`, este bloco
+  nunca teve dado (nem legado nem novo), entao nao precisa do ciclo de
+  observacao antes de remover.
+- Bug corrigido — card `Pendentes`: usava `isPendingWorkStatus` (substring
+  `PENDEN` em `work_completion_status`), que a migration 318 esvaziou ao mover
+  pendencia para a flag `is_pendencia`. Passa a usar `hasOpenPendencia` (etapa
+  com `is_pendencia = true`, status ativo `PROGRAMADA`/`REPROGRAMADA` e
+  `work_completion_status` diferente de `CONCLUIDO`) — mesma definicao do chip
+  "Pendencias abertas" da lista da Programacao Normalizada.
+- Bug corrigido — equipe/encarregado da ultima etapa: `latestTeamName`/
+  `latestForemanName` (string unica) viraram `latestTeamNames`/
+  `latestForemanNames` (lista), lendo `programming_team` filtrado por
+  `status = 'ATIVA'` da etapa mais recente. Etapa com mais de uma equipe ativa
+  deixa de esconder as demais.
+- `programmingCount` removido: no modelo normalizado uma linha de `programming`
+  JA E uma etapa, entao `programmingCount` e `stageCount` seriam sempre iguais.
+  `stageCount` passa a ser a contagem de linhas de `programming` da obra; o dado
+  novo com valor de verdade e `teamCount` (`COUNT(DISTINCT team_id)` em
+  `programming_team`, qualquer status, entre as etapas da obra).
+  `resolveStageKey` (usado so para o antigo `stageCount`) foi removido.
+- Links `Programar`/`Historico` do detalhe da obra passam de `/programacao-simples`
+  para `/programacao-normalizada` (a tela legada esta congelada em somente
+  leitura desde o commit `7ecd00a`; direcionar para ela apontaria o usuario para
+  o lugar errado).
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/queries.ts` (novas
+    `fetchProgrammingStagesForMap`/`fetchTeamIdsProgrammedInPeriod`)
+  - `src/server/modules/programacao-normalizada/index.ts` (exports novos)
+  - `src/app/api/mapa-programacao/route.ts`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
+    (`.transferRoute` removida)
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; 45 warnings
+  legados, nenhum nos arquivos tocados). `npm run build` bloqueado pelo mesmo
+  problema pre-existente e nao relacionado ja registrado em outras entregas
+  deste repositorio: a pasta local `Backup/` (gitignored, fora do controle de
+  versao) contem Edge Functions Deno que o typecheck do `next build` tenta
+  compilar e falham por `Cannot find name 'Deno'` — nao ha erro nos arquivos
+  do app. Sem teste manual em navegador (tabelas de producao nao acessadas
+  nesta sessao).
