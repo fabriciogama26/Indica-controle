@@ -1372,6 +1372,7 @@ export function StockTransfersPageView() {
         entryType: normalizedEntryType,
         isTransformer: true,
         serialTrackingType: selectedMaterial.serialTrackingType,
+        allowPendingSerialIdentification: selectedMaterial.allowPendingSerialIdentification,
       });
 
       if (!sourceAvailability.ok) {

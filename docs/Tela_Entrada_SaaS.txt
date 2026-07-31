@@ -751,9 +751,14 @@ Comportamento antes/depois
 Mapa de Codigo
 - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
   - `canIdentifyPendingSerialOnExit`: reconhece `Saida` de material sem LP com pendencia permitida.
+  - `handleAddFormItem`: repassa `allowPendingSerialIdentification` para a pre-validacao da unidade antes de adicionar o item.
   - `ensureSourceStockAvailability`: para `Saida` de `CHAVE`/`RELIGADOR` pendente, valida saldo agregado em vez de exigir autocomplete de unidade identificada.
 - `supabase/migrations/345_identify_pending_serial_in_stock_exit.sql`
   - `save_stock_transfer_record`: identifica pendencia de `CHAVE`/`RELIGADOR` no centro `DE` antes da gravacao e preserva rollback atomico.
+
+Correcao 2026-07
+- Antes: no cadastro manual, a pre-validacao executada ao clicar em adicionar item nao recebia `allowPendingSerialIdentification`; por isso a tela tratava `CHAVE`/`RELIGADOR` como unidade obrigatoriamente existente e bloqueava o serial novo antes do submit.
+- Depois: a pre-validacao recebe a flag do material selecionado e cai na validacao de saldo agregado para `Saida` com serial pendente, deixando a RPC consumir a pendencia na gravacao.
 
 Atualizacao 2026-07 - CMD para RELIGADOR
 ----------------------------------------
