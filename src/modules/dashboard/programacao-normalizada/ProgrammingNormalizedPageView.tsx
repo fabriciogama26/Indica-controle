@@ -8,7 +8,16 @@ import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatWorksheetDateColumn } from "@/lib/utils/xlsx";
 
-import { AddTeamModal, CancelModal, DetailsModal, HistoryModal, PostponeModal } from "./components";
+import {
+  AddTeamModal,
+  CancelModal,
+  CancelTeamModal,
+  DetailsModal,
+  HistoryModal,
+  LastActiveTeamModal,
+  PostponeModal,
+  PostponeTeamModal,
+} from "./components";
 import { STAGE_LIST_PAGE_SIZE, createDefaultListFilters } from "./constants";
 import { buildEnelCsvContent, buildEnelNovoWorkbookData, buildProgrammingCsvContent } from "./exports";
 import { fetchProgrammingPlan, fetchProgrammingStageDetails, fetchProgrammingStageList } from "./api";
@@ -18,7 +27,7 @@ import styles from "./ProgrammingNormalizedPageView.module.css";
 import { ProjectPlanView } from "./ProjectPlanView";
 import { buildReasonText } from "./validators";
 import { toIsoDate } from "./utils";
-import type { FeedbackState, ProgrammingStage, StageListItem } from "./types";
+import type { FeedbackState, ProgrammingStage, StageListItem, StageTeam } from "./types";
 
 export function ProgrammingNormalizedPageView() {
   const { session } = useAuth();
@@ -40,6 +49,25 @@ export function ProgrammingNormalizedPageView() {
   const [cancelTarget, setCancelTarget] = useState<StageListItem | null>(null);
   const [cancelReasonCode, setCancelReasonCode] = useState("");
   const [cancelReasonNotes, setCancelReasonNotes] = useState("");
+
+  const [cancelTeamTarget, setCancelTeamTarget] = useState<{ team: StageTeam; stage: StageListItem } | null>(null);
+  const [cancelTeamReasonCode, setCancelTeamReasonCode] = useState("");
+  const [cancelTeamReasonNotes, setCancelTeamReasonNotes] = useState("");
+
+  const [postponeTeamTarget, setPostponeTeamTarget] = useState<{ team: StageTeam; stage: StageListItem } | null>(null);
+  const [postponeTeamDate, setPostponeTeamDate] = useState("");
+  const [postponeTeamReasonCode, setPostponeTeamReasonCode] = useState("");
+  const [postponeTeamReasonNotes, setPostponeTeamReasonNotes] = useState("");
+
+  // Cancelar/adiar a ULTIMA equipe ativa de uma etapa abre este prompt em vez
+  // de gravar direto (reason LAST_ACTIVE_TEAM das RPCs 349).
+  const [lastActiveTeamPrompt, setLastActiveTeamPrompt] = useState<{
+    kind: "cancel" | "postpone";
+    team: StageTeam;
+    stage: StageListItem;
+    reason: string;
+    newDate?: string;
+  } | null>(null);
 
   const [addTeamTarget, setAddTeamTarget] = useState<StageListItem | null>(null);
   const [addTeamSelectedId, setAddTeamSelectedId] = useState("");
@@ -236,6 +264,71 @@ export function ProgrammingNormalizedPageView() {
     if (result.ok) setCancelTarget(null);
   }
 
+  function openCancelTeam(team: StageTeam, stage: StageListItem) {
+    setCancelTeamTarget({ team, stage });
+    setCancelTeamReasonCode("");
+    setCancelTeamReasonNotes("");
+  }
+
+  function openPostponeTeam(team: StageTeam, stage: StageListItem) {
+    setPostponeTeamTarget({ team, stage });
+    setPostponeTeamDate("");
+    setPostponeTeamReasonCode("");
+    setPostponeTeamReasonNotes("");
+  }
+
+  async function confirmCancelTeam() {
+    if (!cancelTeamTarget) return;
+    const reasonLabel = buildReasonText(reasonOptions, cancelTeamReasonCode, cancelTeamReasonNotes);
+    if (!reasonLabel) return;
+
+    const { team, stage } = cancelTeamTarget;
+    const result = await actions.cancelTeam(team.id, reasonLabel, team.updatedAt, false);
+    if (result.ok) {
+      setCancelTeamTarget(null);
+      return;
+    }
+    if (result.data?.reason === "LAST_ACTIVE_TEAM") {
+      setLastActiveTeamPrompt({ kind: "cancel", team, stage, reason: reasonLabel });
+      setCancelTeamTarget(null);
+    }
+  }
+
+  async function confirmPostponeTeam() {
+    if (!postponeTeamTarget || !postponeTeamDate) return;
+    const reasonLabel = buildReasonText(reasonOptions, postponeTeamReasonCode, postponeTeamReasonNotes);
+    if (!reasonLabel) return;
+
+    const { team, stage } = postponeTeamTarget;
+    const result = await actions.postponeTeam(team.id, team.teamId, postponeTeamDate, reasonLabel, team.updatedAt, false);
+    if (result.ok) {
+      setPostponeTeamTarget(null);
+      return;
+    }
+    if (result.data?.reason === "LAST_ACTIVE_TEAM") {
+      setLastActiveTeamPrompt({ kind: "postpone", team, stage, reason: reasonLabel, newDate: postponeTeamDate });
+      setPostponeTeamTarget(null);
+    }
+  }
+
+  async function confirmKeepStageWithoutTeam() {
+    if (!lastActiveTeamPrompt) return;
+    const { kind, team, reason, newDate } = lastActiveTeamPrompt;
+    const result =
+      kind === "cancel"
+        ? await actions.cancelTeam(team.id, reason, team.updatedAt, true)
+        : await actions.postponeTeam(team.id, team.teamId, newDate ?? "", reason, team.updatedAt, true);
+    if (result.ok) setLastActiveTeamPrompt(null);
+  }
+
+  function cancelWholeStageFromLastTeamPrompt() {
+    if (!lastActiveTeamPrompt) return;
+    setCancelTarget(lastActiveTeamPrompt.stage);
+    setCancelReasonCode("");
+    setCancelReasonNotes("");
+    setLastActiveTeamPrompt(null);
+  }
+
   async function confirmAddTeam() {
     if (!addTeamTarget || !addTeamSelectedId) return;
     const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId);
@@ -332,6 +425,8 @@ export function ProgrammingNormalizedPageView() {
         onDetails={openDetails}
         onReopen={handleReopen}
         onRemoveTeam={handleRemoveTeam}
+        onCancelTeam={openCancelTeam}
+        onPostponeTeam={openPostponeTeam}
         onChangeWorkCompletionStatus={(stage, value) => void actions.changeWorkCompletionStatus(stage, value)}
         canComplete={canComplete}
         isExportingCsv={isExportingCsv}
@@ -382,6 +477,43 @@ export function ProgrammingNormalizedPageView() {
         onConfirm={confirmCancel}
         onReasonCodeChange={setCancelReasonCode}
         onReasonNotesChange={setCancelReasonNotes}
+      />
+
+      <CancelTeamModal
+        isOpen={Boolean(cancelTeamTarget)}
+        teamName={cancelTeamTarget?.team.teamName ?? ""}
+        reasonCode={cancelTeamReasonCode}
+        reasonNotes={cancelTeamReasonNotes}
+        reasonOptions={reasonOptions}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setCancelTeamTarget(null)}
+        onConfirm={confirmCancelTeam}
+        onReasonCodeChange={setCancelTeamReasonCode}
+        onReasonNotesChange={setCancelTeamReasonNotes}
+      />
+
+      <PostponeTeamModal
+        isOpen={Boolean(postponeTeamTarget)}
+        teamName={postponeTeamTarget?.team.teamName ?? ""}
+        newDate={postponeTeamDate}
+        reasonCode={postponeTeamReasonCode}
+        reasonNotes={postponeTeamReasonNotes}
+        reasonOptions={reasonOptions}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setPostponeTeamTarget(null)}
+        onConfirm={confirmPostponeTeam}
+        onNewDateChange={setPostponeTeamDate}
+        onReasonCodeChange={setPostponeTeamReasonCode}
+        onReasonNotesChange={setPostponeTeamReasonNotes}
+      />
+
+      <LastActiveTeamModal
+        isOpen={Boolean(lastActiveTeamPrompt)}
+        teamName={lastActiveTeamPrompt?.team.teamName ?? ""}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setLastActiveTeamPrompt(null)}
+        onCancelWholeStage={cancelWholeStageFromLastTeamPrompt}
+        onKeepWithoutTeam={() => void confirmKeepStageWithoutTeam()}
       />
 
       <AddTeamModal

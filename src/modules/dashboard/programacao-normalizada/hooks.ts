@@ -7,6 +7,7 @@ import { hasPageAccess, isAdminRole } from "@/lib/auth/authorization";
 import {
   addProgrammingTeam,
   cancelProgrammingStage,
+  cancelProgrammingTeam,
   changeCompletedStageWorkStatus,
   completeProgrammingStage,
   correctProgrammingStageDate,
@@ -16,6 +17,7 @@ import {
   fetchProgrammingStageHistory,
   fetchProgrammingStageList,
   postponeProgrammingStage,
+  postponeProgrammingTeam,
   removeProgrammingTeam,
   reopenProgrammingStage,
   saveProgrammingStage,
@@ -273,14 +275,19 @@ export function useProgrammingStageActions(params: {
     operation: string,
     context: Record<string, unknown>,
     call: () => Promise<{ ok: boolean; status: number; data: T }>,
+    options?: { silentReasons?: string[] },
   ) {
     setIsSubmitting(true);
     setFeedback(null);
     try {
       const { ok, data } = await call();
       if (!ok) {
-        setFeedback({ type: "error", message: data.message ?? "Falha ao processar a operacao." });
-        await onError(data.message ?? "Falha ao processar a operacao.", undefined, { operation, ...context, reason: data.reason ?? null });
+        // Reasons "silenciosos" (ex.: LAST_ACTIVE_TEAM) nao viram toast de erro —
+        // o chamador decide o que fazer (normalmente abrir um modal de confirmacao).
+        if (!options?.silentReasons?.includes(data.reason ?? "")) {
+          setFeedback({ type: "error", message: data.message ?? "Falha ao processar a operacao." });
+          await onError(data.message ?? "Falha ao processar a operacao.", undefined, { operation, ...context, reason: data.reason ?? null });
+        }
         return { ok: false as const, data };
       }
 
@@ -312,6 +319,36 @@ export function useProgrammingStageActions(params: {
     if (!accessToken) return { ok: false as const, data: null };
     return runAction<ActionResponse>("remove_team", { programmingTeamId }, () =>
       removeProgrammingTeam({ accessToken, programmingTeamId, expectedUpdatedAt }),
+    );
+  }
+
+  // LAST_ACTIVE_TEAM nao vira toast: o front mostra o modal de confirmacao
+  // (cancelar a etapa inteira / manter sem equipe / voltar) e so entao
+  // rechama com confirmLastTeam=true.
+  async function cancelTeam(programmingTeamId: string, reason: string, expectedUpdatedAt: string, confirmLastTeam = false) {
+    if (!accessToken) return { ok: false as const, data: null };
+    return runAction<ActionResponse>(
+      "cancel_team",
+      { programmingTeamId },
+      () => cancelProgrammingTeam({ accessToken, programmingTeamId, reason, expectedUpdatedAt, confirmLastTeam }),
+      { silentReasons: ["LAST_ACTIVE_TEAM"] },
+    );
+  }
+
+  async function postponeTeam(
+    programmingTeamId: string,
+    teamId: string,
+    newExecutionDate: string,
+    reason: string,
+    expectedUpdatedAt: string,
+    confirmLastTeam = false,
+  ) {
+    if (!accessToken) return { ok: false as const, data: null };
+    return runAction<ActionResponse>(
+      "postpone_team",
+      { programmingTeamId, newExecutionDate },
+      () => postponeProgrammingTeam({ accessToken, programmingTeamId, teamId, newExecutionDate, reason, expectedUpdatedAt, confirmLastTeam }),
+      { silentReasons: ["LAST_ACTIVE_TEAM"] },
     );
   }
 
@@ -399,5 +436,21 @@ export function useProgrammingStageActions(params: {
     return setWorkCompletionStatus(stage.id, nextValue, stage.updatedAt);
   }
 
-  return { isSubmitting, saveStage, addTeam, removeTeam, postpone, togglePendencia, correctDate, cancel, complete, reopen, setWorkCompletionStatus, changeCompletedWorkStatus, changeWorkCompletionStatus };
+  return {
+    isSubmitting,
+    saveStage,
+    addTeam,
+    removeTeam,
+    cancelTeam,
+    postponeTeam,
+    postpone,
+    togglePendencia,
+    correctDate,
+    cancel,
+    complete,
+    reopen,
+    setWorkCompletionStatus,
+    changeCompletedWorkStatus,
+    changeWorkCompletionStatus,
+  };
 }

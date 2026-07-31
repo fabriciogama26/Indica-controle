@@ -13,11 +13,13 @@ import {
   addProgrammingTeam,
   authorizeProgrammingNormalizadaAction,
   cancelProgrammingStage,
+  cancelProgrammingTeam,
   changeCompletedStageWorkStatus,
   completeProgrammingStage,
   correctProgrammingStageDate,
   getProgrammingHistoryResponse,
   postponeProgrammingStage,
+  postponeProgrammingTeam,
   reopenProgrammingStage,
   removeProgrammingTeam,
   saveProgrammingStage,
@@ -197,6 +199,9 @@ function mapStageRowToDto(
       teamId: team.team_id,
       teamName: teamMap.get(team.team_id)?.name ?? team.team_id,
       status: team.status,
+      participationReason: normalizeText(team.participation_reason) || null,
+      statusChangedAt: team.status_changed_at,
+      movedToId: team.moved_to_id,
       updatedAt: team.updated_at,
     })),
     activities: (stage.programming_activity ?? []).map((activity) => ({
@@ -324,6 +329,8 @@ export async function PATCH(request: NextRequest) {
   const action = normalizeText(payload?.action).toUpperCase();
 
   if (action === "REMOVE_TEAM") return removeProgrammingTeam(request, payload ?? {});
+  if (action === "CANCEL_TEAM") return cancelProgrammingTeam(request, payload ?? {});
+  if (action === "POSTPONE_TEAM") return postponeProgrammingTeam(request, payload ?? {});
   if (action === "POSTPONE") return postponeProgrammingStage(request, payload ?? {});
   if (action === "CANCEL") return cancelProgrammingStage(request, payload ?? {});
   if (action === "COMPLETE") return completeProgrammingStage(request, payload ?? {});

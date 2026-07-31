@@ -190,6 +190,54 @@ export async function removeProgrammingTeam(params: { accessToken: string; progr
   return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
 }
 
+export async function cancelProgrammingTeam(params: {
+  accessToken: string;
+  programmingTeamId: string;
+  reason: string;
+  expectedUpdatedAt: string;
+  confirmLastTeam?: boolean;
+}) {
+  const response = await fetch("/api/programacao-normalizada", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(params.accessToken) },
+    body: JSON.stringify({
+      action: "CANCEL_TEAM",
+      programmingTeamId: params.programmingTeamId,
+      reason: params.reason,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+      confirmLastTeam: params.confirmLastTeam ?? false,
+    }),
+  });
+
+  return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
+}
+
+export async function postponeProgrammingTeam(params: {
+  accessToken: string;
+  programmingTeamId: string;
+  teamId: string;
+  newExecutionDate: string;
+  reason: string;
+  expectedUpdatedAt: string;
+  confirmLastTeam?: boolean;
+}) {
+  const response = await fetch("/api/programacao-normalizada", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders(params.accessToken) },
+    body: JSON.stringify({
+      action: "POSTPONE_TEAM",
+      programmingTeamId: params.programmingTeamId,
+      teamId: params.teamId,
+      newExecutionDate: params.newExecutionDate,
+      reason: params.reason,
+      expectedUpdatedAt: params.expectedUpdatedAt,
+      confirmLastTeam: params.confirmLastTeam ?? false,
+    }),
+  });
+
+  return { status: response.status, ok: response.ok, data: await readJson<ActionResponse>(response) };
+}
+
 // newExecutionDate null = "deixar em espera" (ADIADA sem data); com data = remarcar.
 export async function postponeProgrammingStage(params: {
   accessToken: string;

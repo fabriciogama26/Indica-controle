@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
@@ -510,6 +511,203 @@ export function CancelModal(props: {
             disabled={isSubmitting || !isReasonSelectionValid(reasonOptions, reasonCode, reasonNotes)}
           >
             Confirmar cancelamento
+          </button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+// Menu por chip de equipe: substitui o "x" solto por 3 acoes. Remover continua
+// sem motivo (correcao de cadastro); Cancelar participacao/Adiar equipe abrem
+// modal proprio (pedem motivo, e podem esbarrar na guarda de ultima equipe
+// ativa — ver LastActiveTeamModal). Estado do menu (aberto/fechado) e local,
+// autocontido — nao precisa subir pro estado do pai.
+export function TeamChipMenu(props: {
+  teamName: string;
+  disabled: boolean;
+  onRemove: () => void;
+  onCancelParticipation: () => void;
+  onPostpone: () => void;
+}) {
+  const { teamName, disabled, onRemove, onCancelParticipation, onPostpone } = props;
+  const [isOpen, setIsOpen] = useState(false);
+
+  if (disabled) return null;
+
+  return (
+    <span className={styles.teamChipMenu}>
+      <button
+        type="button"
+        className={styles.teamChipMenuTrigger}
+        aria-label={`Acoes de ${teamName}`}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        &#8942;
+      </button>
+      {isOpen ? (
+        <div className={styles.teamChipMenuPanel} onMouseLeave={() => setIsOpen(false)}>
+          <button type="button" onClick={() => { setIsOpen(false); onRemove(); }}>
+            Remover
+          </button>
+          <button type="button" onClick={() => { setIsOpen(false); onCancelParticipation(); }}>
+            Cancelar participacao...
+          </button>
+          <button type="button" onClick={() => { setIsOpen(false); onPostpone(); }}>
+            Adiar equipe...
+          </button>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+export function CancelTeamModal(props: {
+  isOpen: boolean;
+  teamName: string;
+  reasonCode: string;
+  reasonNotes: string;
+  reasonOptions: ReasonOptionItem[];
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onReasonCodeChange: (value: string) => void;
+  onReasonNotesChange: (value: string) => void;
+}) {
+  const { isOpen, teamName, reasonCode, reasonNotes, reasonOptions, isSubmitting, onClose, onConfirm, onReasonCodeChange, onReasonNotesChange } = props;
+  if (!isOpen) return null;
+
+  const selectedReason = reasonOptions.find((item) => item.code === reasonCode);
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <h4>Cancelar participacao — {teamName}</h4>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>Fechar</button>
+        </header>
+        <div className={styles.modalBody}>
+          <label className={styles.field}>
+            <span>Motivo</span>
+            <select value={reasonCode} onChange={(event) => onReasonCodeChange(event.target.value)} disabled={isSubmitting}>
+              <option value="">Selecionar motivo...</option>
+              {reasonOptions.map((item) => (
+                <option key={item.code} value={item.code}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          {selectedReason?.requiresNotes ? (
+            <label className={styles.field}>
+              <span>Observacao</span>
+              <textarea value={reasonNotes} onChange={(event) => onReasonNotesChange(event.target.value)} disabled={isSubmitting} />
+            </label>
+          ) : null}
+          <button
+            type="button"
+            className={styles.buttonDanger}
+            onClick={onConfirm}
+            disabled={isSubmitting || !isReasonSelectionValid(reasonOptions, reasonCode, reasonNotes)}
+          >
+            Confirmar cancelamento
+          </button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+export function PostponeTeamModal(props: {
+  isOpen: boolean;
+  teamName: string;
+  newDate: string;
+  reasonCode: string;
+  reasonNotes: string;
+  reasonOptions: ReasonOptionItem[];
+  isSubmitting: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onNewDateChange: (value: string) => void;
+  onReasonCodeChange: (value: string) => void;
+  onReasonNotesChange: (value: string) => void;
+}) {
+  const {
+    isOpen, teamName, newDate, reasonCode, reasonNotes, reasonOptions, isSubmitting,
+    onClose, onConfirm, onNewDateChange, onReasonCodeChange, onReasonNotesChange,
+  } = props;
+  if (!isOpen) return null;
+
+  const selectedReason = reasonOptions.find((item) => item.code === reasonCode);
+  const canConfirm = Boolean(newDate) && isReasonSelectionValid(reasonOptions, reasonCode, reasonNotes);
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <h4>Adiar equipe — {teamName}</h4>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>Fechar</button>
+        </header>
+        <div className={styles.modalBody}>
+          <label className={styles.field}>
+            <span>Nova data</span>
+            <input type="date" value={newDate} onChange={(event) => onNewDateChange(event.target.value)} disabled={isSubmitting} />
+          </label>
+          <label className={styles.field}>
+            <span>Motivo</span>
+            <select value={reasonCode} onChange={(event) => onReasonCodeChange(event.target.value)} disabled={isSubmitting}>
+              <option value="">Selecionar motivo...</option>
+              {reasonOptions.map((item) => (
+                <option key={item.code} value={item.code}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          {selectedReason?.requiresNotes ? (
+            <label className={styles.field}>
+              <span>Observacao</span>
+              <textarea value={reasonNotes} onChange={(event) => onReasonNotesChange(event.target.value)} disabled={isSubmitting} />
+            </label>
+          ) : null}
+          <p className={styles.emptyHint}>
+            Se ja existir etapa ativa do projeto na nova data, a equipe entra nela; senao, uma etapa nova e criada com o mesmo cadastro desta.
+          </p>
+          <button type="button" className={styles.buttonPrimary} onClick={onConfirm} disabled={isSubmitting || !canConfirm}>
+            Confirmar adiamento
+          </button>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+// Cancelar/adiar a ULTIMA equipe ativa esvaziaria a etapa silenciosamente — a
+// RPC recusa (reason LAST_ACTIVE_TEAM) ate o usuario decidir aqui.
+export function LastActiveTeamModal(props: {
+  isOpen: boolean;
+  teamName: string;
+  isSubmitting: boolean;
+  onClose: () => void;
+  onCancelWholeStage: () => void;
+  onKeepWithoutTeam: () => void;
+}) {
+  const { isOpen, teamName, isSubmitting, onClose, onCancelWholeStage, onKeepWithoutTeam } = props;
+  if (!isOpen) return null;
+
+  return (
+    <div className={styles.modalOverlay} onClick={onClose}>
+      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+        <header className={styles.modalHeader}>
+          <h4>Ultima equipe ativa da etapa</h4>
+          <button type="button" className={styles.modalCloseButton} onClick={onClose} disabled={isSubmitting}>Fechar</button>
+        </header>
+        <div className={styles.modalBody}>
+          <p>{teamName} e a unica equipe ativa desta etapa. O que voce quer fazer?</p>
+          <button type="button" className={styles.buttonDanger} onClick={onCancelWholeStage} disabled={isSubmitting}>
+            Cancelar a etapa inteira
+          </button>
+          <button type="button" className={styles.buttonPrimary} onClick={onKeepWithoutTeam} disabled={isSubmitting}>
+            Manter a etapa sem equipe
+          </button>
+          <button type="button" className={styles.buttonSecondary} onClick={onClose} disabled={isSubmitting}>
+            Voltar
           </button>
         </div>
       </article>

@@ -27,6 +27,8 @@ const RPC_OPERATION_LABEL: Record<string, string> = {
   set_project_programming_work_completion_status: "alterar o Estado do trabalho",
   change_completed_stage_work_status: "alterar o Estado do trabalho",
   correct_project_programming_stage_date: "corrigir a data da etapa",
+  cancel_project_programming_team: "cancelar a participacao da equipe",
+  postpone_project_programming_team: "adiar a equipe",
 };
 
 // Erros de banco que tem traducao util para quem esta na tela. O resto vira
@@ -300,6 +302,96 @@ export async function postponeProgrammingStageViaRpc(params: {
     programmingId: result.programming_id,
     updatedAt: normalizeText(result.updated_at),
     message: result.message ?? "Etapa adiada com sucesso.",
+  };
+}
+
+// Cancela so a participacao de UMA equipe (etapa continua ativa). Distinto de
+// remover (correcao de cadastro) — grava motivo/quem/quando. p_confirm_last_team
+// so vira true quando o front ja avisou o usuario que e a ultima equipe ativa
+// da etapa e ele confirmou manter a etapa sem equipe.
+export async function cancelProgrammingTeamViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingTeamId: string;
+  reason: string;
+  expectedUpdatedAt?: string | null;
+  confirmLastTeam?: boolean;
+}) {
+  const rpcName = "cancel_project_programming_team";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_team_id: params.programmingTeamId,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+    p_confirm_last_team: params.confirmLastTeam ?? false,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) return missingRpcResult(rpcName);
+    return failedRpcResult(rpcName, error.message);
+  }
+
+  const result = (data ?? {}) as ProgrammingRpcResult;
+  if (result.success !== true) return failedResultFromPayload(result);
+
+  return {
+    ok: true as const,
+    programmingTeamId: result.programming_team_id ?? params.programmingTeamId,
+    updatedAt: normalizeText(result.updated_at),
+    message: result.message ?? "Participacao da equipe cancelada com sucesso.",
+  };
+}
+
+// Adia so UMA equipe: transferencia atomica pra etapa de destino (reusa a
+// ativa da nova data ou cria uma nova herdando o cadastro da etapa de
+// origem). p_confirm_last_team mesmo contrato do cancelamento acima.
+export async function postponeProgrammingTeamViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  programmingTeamId: string;
+  teamId: string;
+  newExecutionDate: string;
+  reason: string;
+  expectedUpdatedAt?: string | null;
+  confirmLastTeam?: boolean;
+}) {
+  const rpcName = "postpone_project_programming_team";
+  const { data, error } = await params.supabase.rpc(rpcName, {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_programming_team_id: params.programmingTeamId,
+    p_new_execution_date: params.newExecutionDate,
+    p_reason: params.reason,
+    p_expected_updated_at: params.expectedUpdatedAt ?? null,
+    p_confirm_last_team: params.confirmLastTeam ?? false,
+  });
+
+  if (error) {
+    if (isMissingRpcFunctionError(error.message, rpcName)) return missingRpcResult(rpcName);
+    return failedRpcResult(rpcName, error.message);
+  }
+
+  const result = (data ?? {}) as ProgrammingRpcResult;
+  if (result.success !== true) {
+    return failedResultWithScheduleDetail(result, {
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      teamIds: [params.teamId],
+      executionDate: params.newExecutionDate,
+    });
+  }
+
+  return {
+    ok: true as const,
+    programmingTeamId: result.programming_team_id ?? params.programmingTeamId,
+    updatedAt: normalizeText(result.updated_at),
+    newProgrammingTeamId: result.new_programming_team_id ?? null,
+    newProgrammingId: result.new_programming_id ?? null,
+    newExecutionDate: result.new_execution_date ?? params.newExecutionDate,
+    message: result.message ?? "Equipe adiada com sucesso.",
   };
 }
 

@@ -692,6 +692,58 @@
   background: #fdecea;
 }
 
+.teamChipMenu {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.teamChip .teamChipMenuTrigger {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #17347a;
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.teamChip .teamChipMenuTrigger:hover {
+  background: #eef2fb;
+}
+
+.teamChipMenuPanel {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 30;
+  background: #fff;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(15, 32, 74, 0.14);
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  overflow: hidden;
+}
+
+.teamChipMenuPanel button {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  color: #1b294c;
+  cursor: pointer;
+}
+
+.teamChipMenuPanel button:hover {
+  background: rgba(23, 52, 122, 0.06);
+}
+
 /* Plano do projeto */
 .planHeader {
   display: flex;

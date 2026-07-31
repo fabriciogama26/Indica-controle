@@ -256,8 +256,10 @@ Boas praticas
 
 Cancelamento e saldo
 ---------------------
-- `Cancelar`/`Adiar` agem sempre no nivel da etapa (grupo); nao ha operacao "individual de
-  equipe" nesta entrega (equivalente a mover equipe entre etapas fica fora do escopo).
+- `Cancelar`/`Adiar` (sem sufixo "equipe") agem sempre no nivel da etapa (grupo), afetando
+  todas as equipes alocadas. Participacao individual por equipe: ver secao "Participacao por
+  equipe (Fase 2)" abaixo (`349_programming_team_cancel_and_postpone.sql`, GERADA, pendente
+  de aplicacao).
 - `Adiar` (migration 318) atua IN-PLACE na propria etapa (nao cria mais linha nova) com duas
   rotas: "Nova data" -> execution_date=nova, status `REPROGRAMADA`; "Deixar em espera" ->
   execution_date=NULL, status `ADIADA` (etapa sem data, fora da numeracao). Dar data depois a
@@ -294,8 +296,8 @@ Cancelamento e saldo
     As Built): `distinct on (project_id) order by execution_date desc, updated_at desc`
     podia escolher uma etapa ANTECIPADA historica (que CONTA de proposito, decisao 305/344)
     em vez de uma etapa ATIVA nova que reusou a mesma data, com o desempate por
-    `updated_at`. Corrigido em `347_asbuilt_eligibility_prefer_active_stage.sql` (gerada,
-    NAO aplicada): mesmo corpo, com status ATIVO (PROGRAMADA/REPROGRAMADA) vencendo
+    `updated_at`. Corrigido em `347_asbuilt_eligibility_prefer_active_stage.sql` (aplicada):
+    mesmo corpo, com status ATIVO (PROGRAMADA/REPROGRAMADA) vencendo
     qualquer outro na mesma data antes de olhar `updated_at`; ANTECIPADA so conta quando
     nao ha etapa ativa competindo na mesma data.
   - `fetchWorkCompletionByProject` (`src/server/modules/programacao-normalizada/
@@ -320,6 +322,41 @@ Cancelamento e saldo
     deixa o indice pegar colisao via `unique_violation` (SQLSTATE, nao nome do indice);
     comportamento ficou MELHOR pos-346 (so bloqueia colisao com etapa ATIVA de verdade,
     nao mais com historico).
+
+Participacao por equipe (Fase 2, migration 349, GERADA — pendente de aplicacao)
+---------------------------------------------------------------------------
+- Ate aqui `Cancelar`/`Adiar` so agiam na etapa inteira; a unica acao por equipe era
+  `Remover` (`REMOVIDA` — correcao de cadastro, sem motivo, sem historico de porque). Nao
+  existia caminho para "essa equipe especifica estava programada e foi cancelada" nem "essa
+  equipe especifica vai pra outro dia" sem mexer nas demais equipes da mesma etapa.
+- Dois status novos em `programming_team`: `CANCELADA` (participacao cancelada, com motivo/
+  quem/quando — `participation_reason`/`status_changed_at`/`status_changed_by`) e
+  `EM_ESPERA` (reservado pro CHECK, nenhuma RPC escreve ainda). `TRANSFERIDA` (existia no
+  enum desde a 310, nunca usado) passa a ser escrito pelo Adiar equipe.
+- `cancel_project_programming_team`: marca so aquela alocacao como `CANCELADA`. A ETAPA
+  continua `PROGRAMADA` — cancelar a etapa inteira continua sendo uma acao separada
+  (`Cancelar` de sempre).
+- `postpone_project_programming_team`: transferencia ATOMICA — acha a etapa ATIVA do
+  projeto na nova data (indice parcial da 346 garante no maximo uma) ou cria uma nova
+  HERDANDO o cadastro da etapa de origem (servico/periodo/horario/SGD/etc — decisao do
+  usuario, mesmo padrao que `postpone_project_programming_stage` ja usa pra REPROGRAMADA),
+  inclui a equipe la, marca a alocacao de origem como `TRANSFERIDA` com `moved_to_id`
+  apontando pra nova linha (simetrico a `added_from_id`, que aponta pra tras).
+- Guarda de ULTIMA equipe ativa: cancelar/adiar a UNICA equipe `ATIVA` restante da etapa
+  esvaziaria ela silenciosamente. As duas RPCs recebem `p_confirm_last_team` (default
+  false); se for a ultima e a flag vier false, devolvem `reason=LAST_ACTIVE_TEAM` sem
+  gravar nada. O front mostra `LastActiveTeamModal` (Cancelar a etapa inteira / Manter a
+  etapa sem equipe / Voltar) e so rechama com a flag true se o usuario confirmar manter.
+- UI: cada chip de equipe (`listComponents.tsx`, tabela "Programacoes") ganhou um menu "⋮"
+  (`TeamChipMenu`, em `components.tsx`) com as 3 acoes — Remover (sem motivo, como antes),
+  Cancelar participacao... e Adiar equipe... (as duas ultimas abrem modal pedindo motivo,
+  mesmo catalogo de `reasonOptions` usado por Cancelar/Adiar de etapa).
+- ESCOPO DESTA ENTREGA: so a tabela "Programacoes". `StageCard`/`ProjectPlanView.tsx` (a
+  tela "Abrir plano") ainda usa o "x" antigo (so Remover) — os modais ja sao compartilhados
+  via `components.tsx`, falta so a fiacao de estado equivalente no `ProjectPlanView.tsx`.
+  Tambem nao mudou: hoje só equipes `ATIVA` aparecem como chip (CANCELADA/TRANSFERIDA nao
+  ficam visiveis na lista) — fica pra Fase 3, que precisa dessa visibilidade de qualquer
+  jeito pra exportar ENEL NOVO por participacao.
 - `Concluir` marca Estado Trabalho `CONCLUIDO` e antecipa (por `execution_date` posterior,
   nao por numero) todas as etapas ativas nao-pendencia seguintes; `Reabrir` reverte. Concluir
   uma etapa is_pendencia e PERMITIDO mesmo com o projeto ja concluido, nao antecipa nada e a

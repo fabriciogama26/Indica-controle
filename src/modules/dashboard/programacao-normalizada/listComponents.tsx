@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 
+import { TeamChipMenu } from "./components";
 import {
   DATE_RANGE_SHORTCUTS,
   LIST_SEARCH_DEBOUNCE_MS,
@@ -24,7 +25,7 @@ import {
   isActiveStageStatus,
   isPendenciaPrimary,
 } from "./utils";
-import type { StageListFilters, StageListItem, TeamItem, WorkCompletionCatalogItem } from "./types";
+import type { StageListFilters, StageListItem, StageTeam, TeamItem, WorkCompletionCatalogItem } from "./types";
 
 type ProjectListGroup = {
   projectId: string;
@@ -485,6 +486,8 @@ export function StageListTable(props: {
   onDetails: (stage: StageListItem) => void;
   onReopen: (stage: StageListItem) => void;
   onRemoveTeam: (programmingTeamId: string) => void;
+  onCancelTeam: (team: StageTeam, stage: StageListItem) => void;
+  onPostponeTeam: (team: StageTeam, stage: StageListItem) => void;
   onChangeWorkCompletionStatus: (stage: StageListItem, value: string | null) => void;
   // Permissao granular programacao-concluir (migration 328).
   canComplete: boolean;
@@ -512,6 +515,8 @@ export function StageListTable(props: {
     onDetails,
     onReopen,
     onRemoveTeam,
+    onCancelTeam,
+    onPostponeTeam,
     onChangeWorkCompletionStatus,
     canComplete,
     isExportingCsv,
@@ -745,11 +750,13 @@ export function StageListTable(props: {
                               {stage.startTime || stage.endTime ? (
                                 <small className={styles.teamChipTime}>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
                               ) : null}
-                              {isActive && !isCompleted ? (
-                                <button type="button" aria-label={`Remover ${team.teamName}`} onClick={() => onRemoveTeam(team.id)}>
-                                  &times;
-                                </button>
-                              ) : null}
+                              <TeamChipMenu
+                                teamName={team.teamName}
+                                disabled={!isActive || isCompleted}
+                                onRemove={() => onRemoveTeam(team.id)}
+                                onCancelParticipation={() => onCancelTeam(team, stage)}
+                                onPostpone={() => onPostponeTeam(team, stage)}
+                              />
                             </span>
                           ))
                         ) : (

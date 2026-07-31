@@ -1,5 +1,5 @@
 export type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA" | "ANTECIPADA";
-export type ProgrammingTeamStatus = "ATIVA" | "REMOVIDA" | "TRANSFERIDA";
+export type ProgrammingTeamStatus = "ATIVA" | "REMOVIDA" | "TRANSFERIDA" | "CANCELADA" | "EM_ESPERA";
 export type ProgrammingPeriod = "INTEGRAL" | "PARCIAL";
 export type ProgrammingDocumentType = "SGD" | "PI" | "PEP";
 
@@ -94,6 +94,9 @@ export type ProgrammingTeamRow = {
   team_id: string;
   status: ProgrammingTeamStatus;
   added_from_id: string | null;
+  moved_to_id: string | null;
+  participation_reason: string | null;
+  status_changed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -258,6 +261,22 @@ export type RemoveTeamPayload = {
   expectedUpdatedAt?: string;
 };
 
+export type CancelTeamPayload = {
+  programmingTeamId?: string;
+  reason?: string;
+  expectedUpdatedAt?: string;
+  confirmLastTeam?: boolean;
+};
+
+export type PostponeTeamPayload = {
+  programmingTeamId?: string;
+  teamId?: string;
+  newExecutionDate?: string;
+  reason?: string;
+  expectedUpdatedAt?: string;
+  confirmLastTeam?: boolean;
+};
+
 export type PostponeStagePayload = {
   programmingId?: string;
   // Ausente/null = "deixar em espera" (ADIADA sem data); com data = remarcar (REPROGRAMADA).
@@ -321,6 +340,8 @@ export type ProgrammingRpcResult = {
   programming_id?: string;
   new_programming_id?: string;
   programming_team_id?: string;
+  new_programming_team_id?: string;
+  new_execution_date?: string;
   updated_at?: string;
   anticipated_count?: number;
   restored_count?: number;
