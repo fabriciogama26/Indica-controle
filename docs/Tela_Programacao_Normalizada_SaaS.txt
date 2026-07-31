@@ -258,8 +258,7 @@ Cancelamento e saldo
 ---------------------
 - `Cancelar`/`Adiar` (sem sufixo "equipe") agem sempre no nivel da etapa (grupo), afetando
   todas as equipes alocadas. Participacao individual por equipe: ver secao "Participacao por
-  equipe (Fase 2)" abaixo (`349_programming_team_cancel_and_postpone.sql`, GERADA, pendente
-  de aplicacao).
+  equipe (Fase 2)" abaixo (`349_programming_team_cancel_and_postpone.sql`, APLICADA).
 - `Adiar` (migration 318) atua IN-PLACE na propria etapa (nao cria mais linha nova) com duas
   rotas: "Nova data" -> execution_date=nova, status `REPROGRAMADA`; "Deixar em espera" ->
   execution_date=NULL, status `ADIADA` (etapa sem data, fora da numeracao). Dar data depois a
@@ -323,7 +322,7 @@ Cancelamento e saldo
     comportamento ficou MELHOR pos-346 (so bloqueia colisao com etapa ATIVA de verdade,
     nao mais com historico).
 
-Participacao por equipe (Fase 2, migration 349, GERADA — pendente de aplicacao)
+Participacao por equipe (Fase 2, migration 349, APLICADA)
 ---------------------------------------------------------------------------
 - Ate aqui `Cancelar`/`Adiar` so agiam na etapa inteira; a unica acao por equipe era
   `Remover` (`REMOVIDA` — correcao de cadastro, sem motivo, sem historico de porque). Nao

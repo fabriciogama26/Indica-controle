@@ -14,7 +14,7 @@ Arquitetura
 - View: `src/modules/dashboard/controle-apr/AprControlPageView.tsx`
 - Estilo: `src/modules/dashboard/controle-apr/AprControlPageView.module.css`
 - API: `src/app/api/controle-apr/route.ts`
-- Banco/RLS/RPC/permissao: `supabase/migrations/226_create_apr_control_module.sql`
+- Banco/RLS/RPC/permissao: `supabase/migrations/226_create_apr_control_module.sql`, `supabase/migrations/350_apr_control_match_normalized_programming.sql` (match com a Programacao Normalizada)
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -29,8 +29,8 @@ Cadastro
 - Data futura e bloqueada no frontend, API e RPC; a RPC usa `America/Sao_Paulo`.
 - Equipe exibe `Codigo/Nome - Encarregado` e aceita somente equipe ativa do tenant.
 - O encarregado e exibido em campo somente leitura.
-- A Programacao e vinculada automaticamente por `tenant + Projeto + Equipe + Data do servico`.
-- Programacao cancelada nao e vinculada.
+- A Programacao e vinculada automaticamente por `tenant + Projeto + Equipe + Data do servico`, lendo o modelo normalizado (`programming`/`programming_team`, desde a migration 350) em vez da tela `programacao-simples` congelada.
+- Programacao cancelada nao e vinculada; se a etapa da mesma data que estiver ATIVA (`PROGRAMADA`/`REPROGRAMADA`) e a etapa historica (`ADIADA`/`ANTECIPADA`) concorrerem, a ativa vence.
 - APR cancelada nao pode ser editada.
 - A edicao usa `expectedUpdatedAt`.
 - Editar uma APR conferida ou divergente devolve a situacao para `ATIVO`.
@@ -125,3 +125,56 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: exportacao usava botao local sem o modal padrao.
 - Depois: exportacao usa `CsvExportButton`, herdando `ExportProgressModal`.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-31 - Fase 5a do corte: match lendo Programacao Normalizada
+-------------------------------------------------------------------------------
+- `project_apr_controls.programming_id` deixa de apontar para `project_programming`
+  (tela `programacao-simples`, congelada em somente leitura) e passa a apontar
+  para `programming` (migration 350). A FK ja nascia composta por tenant desde a
+  226; so trocou a tabela referenciada.
+- `save_project_apr_control` reescrita: o match, antes uma unica condicao direta
+  em `project_programming` (`project_id + team_id + execution_date`), passa a ser
+  `programming` (projeto+data, `status <> CANCELADA`) com `exists` em
+  `programming_team` confirmando a equipe pedida `ATIVA` naquela etapa — porque no
+  modelo normalizado uma etapa pode ter N equipes (tabela filha), diferente do
+  legado (uma linha por equipe). Desempate igual ao usado no Cronograma (migration
+  347): status `ATIVO` (`PROGRAMADA`/`REPROGRAMADA`) vence, depois `updated_at
+  desc` — adianta o cenario da migration 346 (etapa historica podendo conviver com
+  uma ativa na mesma data), que ainda nao ocorre nos dados de APR mas passaria a
+  valer a partir desta migration.
+- `src/app/api/controle-apr/route.ts` NAO mudou: a rota sempre foi somente
+  leitura sobre as colunas ja gravadas (`programming_id`,
+  `programming_status_snapshot`) — quem fazia o match era so a RPC.
+  `set_project_apr_control_status` tambem nao muda (nunca tocava
+  `project_programming`).
+- Medido em producao antes de aplicar (`scripts/audit-apr-programming-match-readonly.mjs`,
+  novo, somente leitura): 172 APRs, 66 com `programming_id` preenchido (106 nunca
+  vinculadas, fora do escopo), 0 orfaos em `programming_legacy_map`. Remap simples
+  via o mapa concorda com o recalculo do novo match em 65/66 casos (98,5%); o
+  unico caso divergente e uma etapa cancelada DEPOIS do vinculo original, onde o
+  remap simples preserva corretamente o valor historico (a etapa cancelada que a
+  APR de fato referenciava) e o recalculo nao acharia substituta — por isso a
+  migration faz remap simples via mapa, nao recalculo. 0 casos de colisao de data
+  nos dados existentes (o desempate novo nao muda nenhum vinculo hoje) e 0 etapas
+  com mais de uma APR ativa vinculada (a falta de indice de unicidade, diferente
+  de Medicao, nao esta causando duplicidade real).
+- Fica pendente (Fase 5b, escopo maior — 2 RPCs de Medicao, uma com 4 patches
+  dinamicos sobre o corpo da migration 127, mais a leitura em
+  `loadProgrammingMatchMap` de `src/app/api/medicao/route.ts`): ver TASKS.md.
+- `project_measurement_order_items.programming_activity_id` (tabela
+  `project_programming_activities`, sem cobertura em `programming_legacy_map`)
+  NAO faz parte do Controle APR — decisao fica para a entrega de Medicao.
+- Validado com `npx tsc --noEmit`, `npm run lint` (0 erros; 45 warnings legados,
+  nenhum no script novo) e `npm run db:security-check` (sem apontamento na 350;
+  achado preexistente na 338 fora do escopo). `npm run db:lint`/`db:migration-list`
+  bloqueados pelo 403 conhecido do token de login (mesma limitacao ja registrada em
+  outras entregas deste modulo). Migration 350 pendente de aplicacao no Supabase.
+- Arquivos: `supabase/migrations/350_apr_control_match_normalized_programming.sql`,
+  `supabase/migrations/README.txt`, `scripts/audit-apr-programming-match-readonly.mjs`
+  (novo), `docs/Controle_APR.txt`.
+- CORRECAO durante o teste do usuario: a primeira versao da migration rodava o
+  UPDATE de remap antes de trocar a FK, violando a propria constraint (ainda
+  apontando pra `project_programming`) ao gravar um id de `programming` —
+  ordem corrigida para DROP da constraint antiga -> UPDATE -> ADD da constraint
+  nova. Ver TASKS.md para o detalhe (a 344/Cronograma tem a mesma ordem
+  latente, sem sintoma so porque a remessa dela e 0 linhas hoje).

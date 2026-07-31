@@ -967,3 +967,8 @@ Observacao
 - Mantem `TRAFO` exigindo unidade previamente registrada com `Serial + LP` e mantem `EXIT` sem serial bloqueado pelas validacoes existentes.
 - Executa identificacao + gravacao da movimentacao no mesmo bloco transacional; se a gravacao falhar, a pendencia consumida e a unidade temporariamente criada em `trafo_instances` sao revertidas.
 - Endurece os grants das assinaturas publicas de `save_stock_transfer_record`, revogando `anon`/`authenticated` e mantendo EXECUTE apenas para `service_role`, pois o backend chama a RPC via client admin.
+
+350_apr_control_match_normalized_programming.sql
+- Fase 5a do corte: reponta `project_apr_controls.programming_id` de `project_programming` para `programming`, remapeando os valores existentes via `programming_legacy_map` (66 de 172 APRs tinham vinculo; 0 orfaos, medido por `scripts/audit-apr-programming-match-readonly.mjs`); FK ja nascia composta por tenant na 226, so troca a tabela referenciada.
+- Reescreve `save_project_apr_control` para casar `programming` (projeto+data, `status <> CANCELADA`) com `programming_team` (equipe pedida `ATIVA` na etapa), desempate "status ativo vence" antes de `updated_at desc` (mesmo padrao da migration 347, adiantando o gap que ela documentou para este modulo). Grant continua restrito a `service_role`.
+- `set_project_apr_control_status` nao muda (nunca tocava `project_programming`). Medicao (2 RPCs, uma com patches dinamicos) fica para entrega propria — ver TASKS.md.
