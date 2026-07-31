@@ -19,6 +19,7 @@ type ProjectOption = {
   id: string;
   code: string;
   serviceCenter: string;
+  hasMeasurement?: boolean;
 };
 
 type TeamOption = {
@@ -295,6 +296,27 @@ function formatCsvPhone(value: string | null | undefined) {
 function formatOptional(value: string | null | undefined) {
   const normalized = normalizeText(value);
   return normalized || "-";
+}
+
+function renderProjectCodes(composition: CompositionItem) {
+  const projectItems = composition.projects ?? [];
+  if (!projectItems.length) {
+    return formatOptional(composition.projectCode);
+  }
+
+  return (
+    <div className={styles.projectBadgeList}>
+      {projectItems.map((project) => (
+        <span
+          key={project.id}
+          className={`${styles.projectBadge} ${project.hasMeasurement ? styles.projectBadgeMeasured : ""}`}
+          title={project.hasMeasurement ? "Medicao ja registrada para este Projeto + Equipe + Data" : "Sem medicao registrada para este Projeto + Equipe + Data"}
+        >
+          {formatOptional(project.code)}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function getCompositionForemanPhone(composition: CompositionItem) {
@@ -1267,7 +1289,7 @@ export function TeamCompositionPageView() {
               {compositions.length ? compositions.map((composition) => (
                 <tr key={composition.id}>
                   <td>{formatDate(composition.compositionDate)}</td>
-                  <td>{formatOptional(composition.projectCode)}</td>
+                  <td>{renderProjectCodes(composition)}</td>
                   <td>{composition.teamName}</td>
                   <td>{workStatusLabel(composition.workStatus)}</td>
                   <td>{composition.sector}</td>

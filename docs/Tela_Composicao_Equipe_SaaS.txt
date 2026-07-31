@@ -504,3 +504,28 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: botoes `Exportar lista (CSV)` e `Detalhes (CSV)` usavam botoes locais.
 - Depois: ambos usam `CsvExportButton`; apenas um modal compartilhado fica ativo por exportacao.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-07-31 - Indicador de medicao por projeto
+----------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `GET /api/composicao-equipe`
+  - `loadMeasurementContextKeys`
+  - `mapComposition`
+  - `renderProjectCodes`
+  - `MEASUREMENT_CONTEXT_PAGE_SIZE`
+- Comportamento antes/depois:
+  - Antes: a lista exibia os projetos da composicao somente como texto agregado, sem indicar se ja existia medicao.
+  - Depois: a API marca cada projeto da composicao quando existe ordem de Medicao ativa e nao cancelada para o mesmo `Tenant + Projeto + Equipe + Data`.
+  - Depois: a coluna `Projetos` renderiza cada SOB em um chip; quando o contexto ja tem medicao, o chip recebe borda verde.
+  - Depois: em composicoes com mais de um projeto, somente o projeto medido fica destacado; os demais permanecem sem destaque.
+- Impacto multi-tenant:
+  - A consulta de medicao usa `tenant_id = appUser.tenant_id` e cruza apenas os projetos, equipes e datas da pagina atual.
+  - Nao houve alteracao de schema, RLS, policies, RPC ou permissoes.
+- Lacuna tecnica:
+  - `TeamCompositionPageView.tsx` ja estava acima do limite recomendado pelo guia de frontend e terminou com 1422 linhas. A modularizacao futura deve extrair a lista, modais e painel diario para componentes/hooks do proprio modulo.
