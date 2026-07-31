@@ -53,8 +53,19 @@ Cadastro
 --------
 - Selecionar/buscar projeto (SOB) mostra o plano de etapas existente ou o formulario de
   primeiras etapas, se o projeto ainda nao tem plano.
-- Campo obrigatorio por etapa: `executionDate` (uma etapa por projeto+data — bloqueado por
-  `UNIQUE (tenant_id, project_id, execution_date)` no banco).
+- Campo obrigatorio por etapa: `executionDate` (uma etapa ATIVA por projeto+data —
+  `programming_active_project_date_key`, indice unico PARCIAL so para `status in
+  ('PROGRAMADA','REPROGRAMADA')`, migration 346. Ate a 346, o indice de mesmo nome
+  (`programming_tenant_project_date_key`, criado como indice PARCIAL pela 318 — so
+  filtrava `execution_date is not null`, sem checar status; ANTES da 318 era uma table
+  constraint incondicional, 310) bloqueava a data mesmo com a etapa CANCELADA/ADIADA/
+  ANTECIPADA, nunca mais podendo ser reaproveitada. Detalhe: `save_project_programming_
+  stage`/`postpone_project_programming_stage`
+  capturam `unique_violation` por SQLSTATE, entao continuam funcionando sem alteracao
+  apos a 346 — so a mensagem de erro ("Ja existe uma etapa para este projeto nesta
+  data") ficou tecnicamente imprecisa, deveria dizer "etapa ATIVA"; ajuste fica para a
+  Fase 1b, junto da revisao de consumidores que tratam projeto+data como identidade
+  absoluta — ver `Cancelamento e saldo` abaixo).
 - Campos de cadastro por etapa (herdados da ultima etapa ao abrir "Nova etapa", com
   override manual antes de salvar): periodo, hora inicio/termino, desligamento
   inicio/fim, alimentador, Ponto Eletrico (campo `campoEletrico` internamente — label
@@ -257,7 +268,30 @@ Cancelamento e saldo
   e gerenciada pelo plano do projeto (ProjectPlanView).
 - `Cancelar` marca a etapa como `CANCELADA`, limpa Estado Trabalho e libera a agenda das
   equipes (o filtro de conflito considera apenas etapas `PROGRAMADA`/`REPROGRAMADA`). Aceita
-  tambem etapa em espera (`ADIADA`).
+  tambem etapa em espera (`ADIADA`). `execution_date` e MANTIDA de proposito (filtro de
+  periodo, exportacao, auditoria, chip CANCELADAS — 337) — ate a migration 346 isso
+  bloqueava a data para sempre (indice unico incondicional); a 346 trocou para indice
+  parcial (so etapas ATIVAS contam), entao Cancelar/Adiar-em-espera/Antecipar liberam a
+  data para reuso sem precisar apagar o historico.
+- Reutilizacao de data (Fase 1 do plano de correcao, migration 346, investigado com dado
+  real de producao nesta rodada): a causa do bloqueio era UMA SO — o indice
+  `programming_tenant_project_date_key` (table constraint incondicional na 310; a 318 ja
+  tinha dropado essa constraint e recriado o mesmo nome como indice PARCIAL, so filtrando
+  `execution_date is not null`, sem checar status — mesmo efeito pratico) nao filtrava por
+  status, entao qualquer linha com `execution_date` preenchida (CANCELADA, ADIADA migrada
+  da tabela legada `project_programming`, ou futura ANTECIPADA) ocupava a chave para
+  sempre. NAO havia bug de front/cache/RPC no adiamento — `postpone_project_programming_
+  stage` (337/326) ja atualiza a propria linha corretamente nas duas rotas. Confirmado em
+  producao antes da 346: 91 CANCELADA + 20+ ADIADA (migradas; migration 338 documenta 87
+  CANCELADA + 66 ADIADA sem snapshot em 2026-07-28) bloqueando data real, incluindo 2
+  linhas do projeto A044811036 (2026-07-18 e 2026-07-29). A 346 troca o indice por
+  `programming_active_project_date_key` (`status in ('PROGRAMADA','REPROGRAMADA')`).
+  ESCOPO PENDENTE (Fase 1b, fora da 346 por decisao explicita): apos a 346, `projeto+data`
+  deixa de ser identidade unica absoluta — pode haver 1 linha historica (CANCELADA/
+  ADIADA/ANTECIPADA) + 1 linha ATIVA na mesma data. Qualquer consumidor que hoje resolve
+  etapa por `projeto+data` com `.single()`/`limit(1)` sem preferir status ativo (cadastro
+  manual, importacao/upsert, APR, medicao, cronograma, mapeamentos legados) precisa ser
+  revisado antes de confiar nessa combinacao como chave unica — ainda nao revisado.
 - `Concluir` marca Estado Trabalho `CONCLUIDO` e antecipa (por `execution_date` posterior,
   nao por numero) todas as etapas ativas nao-pendencia seguintes; `Reabrir` reverte. Concluir
   uma etapa is_pendencia e PERMITIDO mesmo com o projeto ja concluido, nao antecipa nada e a
