@@ -60,6 +60,13 @@ type CompositionProjectRow = {
   sort_order: number;
 };
 
+type MeasurementContextRow = {
+  id: string;
+  project_id: string;
+  team_id: string;
+  execution_date: string;
+};
+
 type TeamRow = {
   id: string;
   name: string;
@@ -146,6 +153,8 @@ type SaveTeamCompositionRpcResult = {
   composition_id?: string;
   updated_at?: string;
 };
+
+const MEASUREMENT_CONTEXT_PAGE_SIZE = 1000;
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -306,6 +315,10 @@ function buildUserMap(users: AppUserRow[]) {
   return new Map(users.map((user) => [user.id, user]));
 }
 
+function buildMeasurementContextKey(projectId: string, teamId: string, executionDate: string) {
+  return `${projectId}|${teamId}|${executionDate}`;
+}
+
 function normalizeCompositionProjects(row: CompositionRow, projects: CompositionProjectRow[]) {
   if (projects.length) {
     const orderedProjects = [...projects].sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0));
@@ -330,17 +343,22 @@ function mapComposition(
   members: MemberRow[],
   userMap: Map<string, AppUserRow>,
   projects: CompositionProjectRow[] = [],
+  measuredContextKeys: Set<string> = new Set(),
 ) {
   const compositionProjects = normalizeCompositionProjects(row, projects);
+  const projectsWithMeasurement = compositionProjects.map((project) => ({
+    ...project,
+    hasMeasurement: measuredContextKeys.has(buildMeasurementContextKey(project.id, row.team_id, row.composition_date)),
+  }));
   return {
     id: row.id,
     compositionDate: row.composition_date,
-    projectId: compositionProjects[0]?.id ?? row.project_id,
-    projectIds: compositionProjects.map((project) => project.id),
-    projects: compositionProjects,
+    projectId: projectsWithMeasurement[0]?.id ?? row.project_id,
+    projectIds: projectsWithMeasurement.map((project) => project.id),
+    projects: projectsWithMeasurement,
     teamId: row.team_id,
-    projectCode: compositionProjects.map((project) => project.code).filter(Boolean).join(", ") || (row.project_code_snapshot ?? ""),
-    projectServiceCenter: compositionProjects.map((project) => project.serviceCenter).filter(Boolean).join(", ") || (row.project_service_center_snapshot ?? ""),
+    projectCode: projectsWithMeasurement.map((project) => project.code).filter(Boolean).join(", ") || (row.project_code_snapshot ?? ""),
+    projectServiceCenter: projectsWithMeasurement.map((project) => project.serviceCenter).filter(Boolean).join(", ") || (row.project_service_center_snapshot ?? ""),
     teamName: row.team_name_snapshot,
     vehiclePlate: row.vehicle_plate_snapshot ?? "",
     foremanName: row.foreman_name_snapshot ?? "",
@@ -559,6 +577,74 @@ async function loadCompositionProjects(supabase: SupabaseClient, tenantId: strin
   }
 
   return data ?? [];
+}
+
+async function loadMeasurementContextKeys(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  compositions: CompositionRow[];
+  projectsByComposition: Map<string, CompositionProjectRow[]>;
+}) {
+  const targetKeys = new Set<string>();
+  const projectIds = new Set<string>();
+  const teamIds = new Set<string>();
+  const executionDates = new Set<string>();
+
+  for (const composition of params.compositions) {
+    const projects = normalizeCompositionProjects(composition, params.projectsByComposition.get(composition.id) ?? []);
+    for (const project of projects) {
+      if (!project.id || !composition.team_id || !composition.composition_date) {
+        continue;
+      }
+      targetKeys.add(buildMeasurementContextKey(project.id, composition.team_id, composition.composition_date));
+      projectIds.add(project.id);
+      teamIds.add(composition.team_id);
+      executionDates.add(composition.composition_date);
+    }
+  }
+
+  if (!targetKeys.size) {
+    return { data: new Set<string>(), error: null };
+  }
+
+  const sortedDates = Array.from(executionDates).sort();
+  const foundKeys = new Set<string>();
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await params.supabase
+      .from("project_measurement_orders")
+      .select("id, project_id, team_id, execution_date")
+      .eq("tenant_id", params.tenantId)
+      .eq("is_active", true)
+      .neq("status", "CANCELADA")
+      .in("project_id", Array.from(projectIds))
+      .in("team_id", Array.from(teamIds))
+      .gte("execution_date", sortedDates[0])
+      .lte("execution_date", sortedDates[sortedDates.length - 1])
+      .order("execution_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + MEASUREMENT_CONTEXT_PAGE_SIZE - 1)
+      .returns<MeasurementContextRow[]>();
+
+    if (error) {
+      return { data: null, error };
+    }
+
+    for (const item of data ?? []) {
+      const key = buildMeasurementContextKey(item.project_id, item.team_id, item.execution_date);
+      if (targetKeys.has(key)) {
+        foundKeys.add(key);
+      }
+    }
+
+    if ((data ?? []).length < MEASUREMENT_CONTEXT_PAGE_SIZE) {
+      break;
+    }
+    from += MEASUREMENT_CONTEXT_PAGE_SIZE;
+  }
+
+  return { data: foundKeys, error: null };
 }
 
 async function insertHistory(params: {
@@ -805,23 +891,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao listar composicoes de equipe." }, { status: 500 });
     }
 
-    const compositionIds = (data ?? []).map((item) => item.id);
-    const members = await loadCompositionMembers(supabase, appUser.tenant_id, compositionIds);
+    const compositions = data ?? [];
+    const compositionIds = compositions.map((item) => item.id);
+    const userIds = Array.from(
+      new Set(compositions.flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))),
+    );
+    const [members, compositionProjects, usersResult] = await Promise.all([
+      loadCompositionMembers(supabase, appUser.tenant_id, compositionIds),
+      loadCompositionProjects(supabase, appUser.tenant_id, compositionIds),
+      userIds.length
+        ? supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
+        : Promise.resolve({ data: [] as AppUserRow[], error: null }),
+    ]);
+
     if (!members) {
       return NextResponse.json({ message: "Falha ao carregar integrantes das composicoes." }, { status: 500 });
     }
-    const compositionProjects = await loadCompositionProjects(supabase, appUser.tenant_id, compositionIds);
     if (!compositionProjects) {
       return NextResponse.json({ message: "Falha ao carregar projetos das composicoes." }, { status: 500 });
     }
 
-    const userIds = Array.from(
-      new Set((data ?? []).flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))),
-    );
-    const { data: users } = userIds.length
-      ? await supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
-      : { data: [] as AppUserRow[] };
-    const userMap = buildUserMap(users ?? []);
+    if (usersResult.error) {
+      return NextResponse.json({ message: "Falha ao carregar usuarios das composicoes." }, { status: 500 });
+    }
+
+    const userMap = buildUserMap(usersResult.data ?? []);
     const memberMap = new Map<string, MemberRow[]>();
     for (const member of members) {
       memberMap.set(member.composition_id, [...(memberMap.get(member.composition_id) ?? []), member]);
@@ -831,9 +925,26 @@ export async function GET(request: NextRequest) {
       projectMap.set(project.composition_id, [...(projectMap.get(project.composition_id) ?? []), project]);
     }
 
+    const measurementContextResult = await loadMeasurementContextKeys({
+      supabase,
+      tenantId: appUser.tenant_id,
+      compositions,
+      projectsByComposition: projectMap,
+    });
+
+    if (measurementContextResult.error || !measurementContextResult.data) {
+      return NextResponse.json({ message: "Falha ao carregar indicadores de medicao das composicoes." }, { status: 500 });
+    }
+
     return NextResponse.json({
-      compositions: (data ?? []).map((composition) => (
-        mapComposition(composition, memberMap.get(composition.id) ?? [], userMap, projectMap.get(composition.id) ?? [])
+      compositions: compositions.map((composition) => (
+        mapComposition(
+          composition,
+          memberMap.get(composition.id) ?? [],
+          userMap,
+          projectMap.get(composition.id) ?? [],
+          measurementContextResult.data,
+        )
       )),
       pagination: {
         page,
