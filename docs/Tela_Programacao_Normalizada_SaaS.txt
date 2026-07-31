@@ -1196,6 +1196,21 @@ Atualizacao 2026-07-29 - Fase 3b do corte: Projetos e os tres dashboards
   Duas funcoes novas na fachada so para esse consumidor:
   `fetchProgrammingStagesForMap` e `fetchTeamIdsProgrammedInPeriod`. Sobra 1
   consumidor do legado: `src/app/api/medicao/route.ts` (Fase 5, com Controle APR).
+- ATUALIZACAO 2026-07-31 (mesmo dia): CORTE FECHADO. Fase 5a (Controle APR,
+  migration 350) e Fase 5b (Medicao, migration 351) entregues — ver
+  `docs/Controle_APR.txt` e `docs/Tela_Medicao_SaaS.txt`. Diferente de
+  Projetos/Dashboards/Mapa (que usam a fachada `programacao-normalizada`),
+  APR e Medicao tem toda a logica de match dentro de RPCs SQL
+  (`save_project_apr_control`, `save_project_measurement_order`,
+  `save_project_measurement_order_batch_partial`), entao nao ganharam funcoes
+  novas na fachada TS — so `loadProgrammingMatchMap` (leitura, Medicao) foi
+  trocada em `src/app/api/medicao/route.ts`. `project_programming` fica
+  congelada como arquivo historico permanente: nenhuma tela em producao le ou
+  escreve nela como fonte viva a partir desta entrega. Unica excecao
+  documentada e deliberada: `project_measurement_order_items.programming_activity_id`
+  continua apontando para `project_programming_activities` para sempre (sem
+  de/para no `programming_legacy_map`, nunca lida de volta, tabela permanente
+  — ver `docs/Tela_Medicao_SaaS.txt`).
 - Funcoes novas na fachada: `fetchWorkCompletionTimelineByProject`,
   `fetchProjectIdsWithCompletedWork`, `fetchProjectIdsByProgrammingFilter`,
   `countActiveStagesForProject` e `toCanonicalWorkCompletionCode`.

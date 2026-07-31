@@ -101,14 +101,21 @@ type ProgrammingMatchRow = {
   updated_at: string;
 };
 
+// `programming_history` (310) nao tem `project_id`/`from_execution_date`/
+// `to_execution_date` como colunas proprias (diferente do legado
+// `project_programming_history`) — so `programming_id` + `changes` (jsonb). A
+// data/projeto do evento e sempre resolvida via `programmingProjectDateMap`
+// (pelo `programming_id`), nunca por coluna propria da linha de historico.
 type ProgrammingWorkCompletionHistoryRow = {
   id: string;
   programming_id: string;
-  project_id: string | null;
-  from_execution_date: string | null;
-  to_execution_date: string | null;
   changes: Record<string, unknown> | null;
   created_at: string;
+};
+
+type ProgrammingTeamMatchRow = {
+  team_id: string;
+  status: string;
 };
 
 type MeasurementOrderActivityFilterRow = {
@@ -612,17 +619,10 @@ function resolveProgrammingHistoryProjectDateKey(
   row: ProgrammingWorkCompletionHistoryRow,
   programmingProjectDateMap: Map<string, string>,
 ) {
-  const projectId = normalizeUuid(row.project_id);
-  if (!projectId) {
-    return null;
-  }
-
-  const historyExecutionDate = normalizeIsoDate(row.to_execution_date)
-    ?? normalizeIsoDate(row.from_execution_date);
-  if (historyExecutionDate) {
-    return buildProgrammingProjectDateKey(projectId, historyExecutionDate);
-  }
-
+  // `programming_history` nunca carrega data propria (ver tipo acima) — a
+  // chave projeto+data e sempre a ATUAL da etapa (janela consultada). Se a
+  // etapa nao esta na janela, `get` devolve undefined e a linha e descartada
+  // pelo chamador — mesmo efeito pratico do fallback que o legado tinha.
   return programmingProjectDateMap.get(row.programming_id) ?? null;
 }
 
@@ -669,21 +669,37 @@ async function loadProgrammingMatchMap(params: {
   const startDate = executionDates[0];
   const endDate = executionDates[executionDates.length - 1];
 
-  const [preferred, canceledProgrammingRows, projectCompletionRows, projectCompletionHistoryRows] = await Promise.all([
-    fetchPagedSupabaseRows<ProgrammingMatchRow>((from, to) =>
+  const [programmingStages, canceledProgrammingRows, projectCompletionRows, projectCompletionHistoryRows] = await Promise.all([
+    fetchPagedSupabaseRows<{
+      id: string;
+      project_id: string;
+      execution_date: string;
+      status: string;
+      work_completion_status: string | null;
+      updated_at: string;
+      programming_team: ProgrammingTeamMatchRow[] | null;
+    }>((from, to) =>
       params.supabase
-        .from("project_programming")
-        .select("id, project_id, team_id, execution_date, status, work_completion_status, updated_at")
+        .from("programming")
+        .select("id, project_id, execution_date, status, work_completion_status, updated_at, programming_team(team_id, status)")
         .eq("tenant_id", params.tenantId)
         .in("project_id", projectIds)
         .gte("execution_date", startDate)
         .lte("execution_date", endDate)
         .range(from, to)
-        .returns<ProgrammingMatchRow[]>(),
+        .returns<Array<{
+          id: string;
+          project_id: string;
+          execution_date: string;
+          status: string;
+          work_completion_status: string | null;
+          updated_at: string;
+          programming_team: ProgrammingTeamMatchRow[] | null;
+        }>>(),
     ),
     fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "id">>((from, to) =>
       params.supabase
-        .from("project_programming")
+        .from("programming")
         .select("id")
         .eq("tenant_id", params.tenantId)
         .in("project_id", projectIds)
@@ -693,7 +709,7 @@ async function loadProgrammingMatchMap(params: {
     ),
     fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>((from, to) =>
       params.supabase
-        .from("project_programming")
+        .from("programming")
         .select("project_id, execution_date, work_completion_status, updated_at")
         .eq("tenant_id", params.tenantId)
         .in("project_id", projectIds)
@@ -703,12 +719,16 @@ async function loadProgrammingMatchMap(params: {
         .range(from, to)
         .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
     ),
+    // `programming_history` (310) nao tem `project_id` proprio — o filtro por
+    // projeto usa o embed `programming!inner` (mesmo padrao ja usado no Mapa de
+    // Programacao), sem precisar de 2 idas ao banco em sequencia.
     fetchPagedSupabaseRows<ProgrammingWorkCompletionHistoryRow>((from, to) =>
       params.supabase
-        .from("project_programming_history")
-        .select("id, programming_id, project_id, from_execution_date, to_execution_date, changes, created_at")
+        .from("programming_history")
+        .select("id, programming_id, changes, created_at, programming!inner(project_id, tenant_id)")
         .eq("tenant_id", params.tenantId)
-        .in("project_id", projectIds)
+        .eq("programming.tenant_id", params.tenantId)
+        .in("programming.project_id", projectIds)
         .contains("changes", { workCompletionStatus: {} })
         .order("created_at", { ascending: false })
         .range(from, to)
@@ -716,23 +736,45 @@ async function loadProgrammingMatchMap(params: {
     ),
   ]);
 
-  const fallback = preferred.error
-    ? await fetchPagedSupabaseRows<Omit<ProgrammingMatchRow, "work_completion_status">>((from, to) =>
-        params.supabase
-          .from("project_programming")
-          .select("id, project_id, team_id, execution_date, status, updated_at")
-          .eq("tenant_id", params.tenantId)
-          .in("project_id", projectIds)
-          .gte("execution_date", startDate)
-          .lte("execution_date", endDate)
-          .range(from, to)
-          .returns<Array<Omit<ProgrammingMatchRow, "work_completion_status">>>(),
-      )
-    : null;
+  // Modelo normalizado: 1 linha de `programming` = 1 etapa, com N equipes em
+  // `programming_team` (filha) — diferente do legado (1 linha por equipe).
+  // "Match exato" (achar por projeto+equipe+data) precisa de 1 linha sintetica
+  // por equipe ATIVA da etapa, reaproveitando o MESMO formato `ProgrammingMatchRow`
+  // e a mesma logica de agrupamento/prioridade que ja existia (nao muda).
+  const data: ProgrammingMatchRow[] = [];
+  for (const stage of programmingStages.data ?? []) {
+    const activeTeamIds = (stage.programming_team ?? [])
+      .filter((team) => team.status === "ATIVA")
+      .map((team) => team.team_id);
 
-  const data = preferred.error
-    ? (fallback?.data ?? []).map((item) => ({ ...item, work_completion_status: null }))
-    : preferred.data;
+    if (!activeTeamIds.length) {
+      // Etapa sem equipe ativa: ainda entra no "match por projeto+data" (usa
+      // team_id vazio, que nunca bate numa chave exata de pedido — so serve
+      // pro groupedByProjectDate abaixo).
+      data.push({
+        id: stage.id,
+        project_id: stage.project_id,
+        team_id: "",
+        execution_date: stage.execution_date,
+        status: stage.status,
+        work_completion_status: stage.work_completion_status,
+        updated_at: stage.updated_at,
+      });
+      continue;
+    }
+
+    for (const teamId of activeTeamIds) {
+      data.push({
+        id: stage.id,
+        project_id: stage.project_id,
+        team_id: teamId,
+        execution_date: stage.execution_date,
+        status: stage.status,
+        work_completion_status: stage.work_completion_status,
+        updated_at: stage.updated_at,
+      });
+    }
+  }
 
   const programmingProjectDateMap = new Map<string, string>();
   const programmingStatusMap = new Map<string, string>();
