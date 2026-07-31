@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { createPortal } from "react-dom";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 
@@ -532,21 +533,77 @@ export function TeamChipMenu(props: {
 }) {
   const { teamName, disabled, onRemove, onCancelParticipation, onPostpone } = props;
   const [isOpen, setIsOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  const updateMenuPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const gap = 4;
+    const margin = 8;
+    const panelWidth = panelRef.current?.offsetWidth ?? 190;
+    const panelHeight = panelRef.current?.offsetHeight ?? 116;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const belowTop = rect.bottom + gap;
+    const aboveTop = rect.top - panelHeight - gap;
+    const fitsBelow = belowTop + panelHeight <= viewportHeight - margin;
+    const top = fitsBelow ? belowTop : Math.max(margin, aboveTop);
+    const maxLeft = Math.max(margin, viewportWidth - panelWidth - margin);
+    const left = Math.min(Math.max(margin, rect.right - panelWidth), maxLeft);
+
+    setMenuPosition({ top, left });
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
+  }, [isOpen, updateMenuPosition]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (triggerRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setIsOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
 
   if (disabled) return null;
 
-  return (
-    <span className={styles.teamChipMenu}>
-      <button
-        type="button"
-        className={styles.teamChipMenuTrigger}
-        aria-label={`Acoes de ${teamName}`}
-        onClick={() => setIsOpen((current) => !current)}
-      >
-        &#8942;
-      </button>
-      {isOpen ? (
-        <div className={styles.teamChipMenuPanel} onMouseLeave={() => setIsOpen(false)}>
+  const menuPanel = isOpen && typeof document !== "undefined"
+    ? createPortal(
+        <div
+          ref={panelRef}
+          className={styles.teamChipMenuPanel}
+          style={{ top: menuPosition.top, left: menuPosition.left }}
+          onMouseLeave={() => setIsOpen(false)}
+        >
           <button type="button" onClick={() => { setIsOpen(false); onRemove(); }}>
             Remover
           </button>
@@ -556,8 +613,23 @@ export function TeamChipMenu(props: {
           <button type="button" onClick={() => { setIsOpen(false); onPostpone(); }}>
             Adiar equipe...
           </button>
-        </div>
-      ) : null}
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <span className={styles.teamChipMenu}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={styles.teamChipMenuTrigger}
+        aria-label={`Acoes de ${teamName}`}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        &#8942;
+      </button>
+      {menuPanel}
     </span>
   );
 }
