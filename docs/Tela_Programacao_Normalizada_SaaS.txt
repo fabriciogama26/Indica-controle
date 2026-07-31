@@ -273,8 +273,8 @@ Cancelamento e saldo
   bloqueava a data para sempre (indice unico incondicional); a 346 trocou para indice
   parcial (so etapas ATIVAS contam), entao Cancelar/Adiar-em-espera/Antecipar liberam a
   data para reuso sem precisar apagar o historico.
-- Reutilizacao de data (Fase 1 do plano de correcao, migration 346, investigado com dado
-  real de producao nesta rodada): a causa do bloqueio era UMA SO — o indice
+- Reutilizacao de data (Fase 1 do plano de correcao, migration 346, APLICADA — investigado
+  com dado real de producao): a causa do bloqueio era UMA SO — o indice
   `programming_tenant_project_date_key` (table constraint incondicional na 310; a 318 ja
   tinha dropado essa constraint e recriado o mesmo nome como indice PARCIAL, so filtrando
   `execution_date is not null`, sem checar status — mesmo efeito pratico) nao filtrava por
@@ -284,14 +284,42 @@ Cancelamento e saldo
   stage` (337/326) ja atualiza a propria linha corretamente nas duas rotas. Confirmado em
   producao antes da 346: 91 CANCELADA + 20+ ADIADA (migradas; migration 338 documenta 87
   CANCELADA + 66 ADIADA sem snapshot em 2026-07-28) bloqueando data real, incluindo 2
-  linhas do projeto A044811036 (2026-07-18 e 2026-07-29). A 346 troca o indice por
+  linhas do projeto A044811036 (2026-07-18 e 2026-07-29). A 346 trocou o indice por
   `programming_active_project_date_key` (`status in ('PROGRAMADA','REPROGRAMADA')`).
-  ESCOPO PENDENTE (Fase 1b, fora da 346 por decisao explicita): apos a 346, `projeto+data`
-  deixa de ser identidade unica absoluta — pode haver 1 linha historica (CANCELADA/
-  ADIADA/ANTECIPADA) + 1 linha ATIVA na mesma data. Qualquer consumidor que hoje resolve
-  etapa por `projeto+data` com `.single()`/`limit(1)` sem preferir status ativo (cadastro
-  manual, importacao/upsert, APR, medicao, cronograma, mapeamentos legados) precisa ser
-  revisado antes de confiar nessa combinacao como chave unica — ainda nao revisado.
+- Reutilizacao de data — Fase 1b (revisao de consumidores, pos-346): apos a 346,
+  `projeto+data` deixou de ser identidade unica absoluta — pode haver 1 linha historica
+  (CANCELADA/ADIADA/ANTECIPADA) + 1 linha ATIVA na mesma data. Mapeados todos os
+  consumidores que resolviam etapa por `projeto+data`:
+  - `get_cronograma_asbuilt_project_ids` (RPC, migration 344, gate de elegibilidade de
+    As Built): `distinct on (project_id) order by execution_date desc, updated_at desc`
+    podia escolher uma etapa ANTECIPADA historica (que CONTA de proposito, decisao 305/344)
+    em vez de uma etapa ATIVA nova que reusou a mesma data, com o desempate por
+    `updated_at`. Corrigido em `347_asbuilt_eligibility_prefer_active_stage.sql` (gerada,
+    NAO aplicada): mesmo corpo, com status ATIVO (PROGRAMADA/REPROGRAMADA) vencendo
+    qualquer outro na mesma data antes de olhar `updated_at`; ANTECIPADA so conta quando
+    nao ha etapa ativa competindo na mesma data.
+  - `fetchWorkCompletionByProject` (`src/server/modules/programacao-normalizada/
+    queries.ts`): mesmo problema no lado Node, alimenta `cronograma_solicitacoes.
+    programacao_id` (FK viva desde a 344) e o dashboard Faturamento. Corrigido: select
+    passou a trazer `status`; resultado reordenado em JS (PostgREST nao expressa CASE em
+    ORDER BY) com o mesmo desempate — execution_date desc -> status ativo primeiro ->
+    updated_at desc.
+  - `fetchWorkCompletionTimelineByProject` (Medicao/Carteira Operacional): revisada,
+    SEGURA sem mudanca — e timeline (array, nao resolucao de uma linha so) e ADIADA nunca
+    carrega `work_completion_status` preenchido (postpone sempre zera), entao se
+    autoexclui do resultado.
+  - Controle APR (`project_apr_controls.programming_id`, 226) e Medicao
+    (`project_measurement_orders.programming_id`, 112): confirmados FORA de risco hoje —
+    ainda referenciam a tabela LEGADA `project_programming`, nao foram cortados para
+    `programming` (diferente do Cronograma, cortado na 344). Quando a Fase 5 desses dois
+    modulos acontecer (mesmo padrao da 344), a resolucao "ultima etapa por projeto" tem
+    que nascer com o desempate por status ativo, para nao reabrir este mesmo gap.
+  - Importacao/upsert em massa para `programming`: nao existe ainda (Excel continua
+    melhoria futura, spec original) — nada a revisar hoje.
+  - Cadastro manual (`save_project_programming_stage`): ja correto sem mudanca — insere e
+    deixa o indice pegar colisao via `unique_violation` (SQLSTATE, nao nome do indice);
+    comportamento ficou MELHOR pos-346 (so bloqueia colisao com etapa ATIVA de verdade,
+    nao mais com historico).
 - `Concluir` marca Estado Trabalho `CONCLUIDO` e antecipa (por `execution_date` posterior,
   nao por numero) todas as etapas ativas nao-pendencia seguintes; `Reabrir` reverte. Concluir
   uma etapa is_pendencia e PERMITIDO mesmo com o projeto ja concluido, nao antecipa nada e a
