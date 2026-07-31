@@ -288,7 +288,7 @@ Atualizacao 2026-06-30 (Paginacao real no banco)
   - Depois: quando nenhum filtro em memoria esta ativo, a rota usa `count:"exact"` + `.range(startIndex, endIndex)` no Supabase, retornando apenas os registros da pagina solicitada. Os dados auxiliares (programacoes, usuarios, composicoes) tambem sao buscados somente para os IDs da pagina.
   - O caminho legado (fetchPagedSupabaseRows) continua inalterado e e acionado quando activityId, programmingMatch PROGRAMADA/NAO_PROGRAMADA, workCompletionStatus ativo ou completionAlert SIM/NAO estiverem presentes.
 - Filtros DB-safe (sempre enviados ao banco no caminho simples): startDate, endDate, projectId, teamId, status, serviceTypeId (via subquery), measurementKind, noProductionReasonId.
-- Filtros que exigem caminho em memoria: activityId (cross-join com order_items), programmingMatch PROGRAMADA/NAO_PROGRAMADA (requer loadProgrammingMatchMap + project_programming), workCompletionStatus (requer o mesmo mapa), completionAlert SIM/NAO (requer programmingCompletionStatusChangedAfterMeasurement).
+- Filtros que exigem caminho em memoria: activityId (cross-join com order_items), programmingMatch PROGRAMADA/NAO_PROGRAMADA (requer loadProgrammingMatchMap + `programming`/`programming_team`, desde a migration 351 — antes lia `project_programming`), workCompletionStatus (requer o mesmo mapa), completionAlert SIM/NAO (requer programmingCompletionStatusChangedAfterMeasurement).
 - Limitacao conhecida: quando filteredByProjectType remove ordens de projetos de teste, o `total` do DB pode ser ligeiramente maior que o total filtrado. Aceito como discrepancia minima em producao.
 - Impacto multi-tenant:
   - `tenant_id` continua filtrado em todas as queries do caminho simples.
@@ -1223,3 +1223,87 @@ Atualizacao 2026-07-09 - Observacao no CSV e detalhe da ordem
 - Impacto multi-tenant:
   - Sem alteracao de schema, RLS ou permissoes.
   - Todas as leituras continuam filtradas pelo `tenant_id` do usuario autenticado.
+
+Atualizacao 2026-07-31 - Fase 5b do corte: match e leitura lendo Programacao Normalizada
+------------------------------------------------------------------------------------------
+- Fecha o corte "programacao simples -> normalizada": depois desta entrega
+  nenhuma tela em producao le ou escreve `project_programming` como fonte
+  viva (ela permanece so como arquivo historico, junto com
+  `project_programming_activities`).
+- Banco (`supabase/migrations/351_medicao_match_normalized_programming.sql`):
+  - `project_measurement_orders.programming_id` reponta de `project_programming`
+    para `programming` (FK `pmo_programming_tenant_fk`, ja composta por tenant
+    desde a 231 — so trocou a tabela referenciada). Valores existentes
+    remapeados via `programming_legacy_map` (342), NAO recalculados — medido
+    que o recalculo perderia vinculo em ordens cuja etapa foi reprogramada/
+    adiada/cancelada para outra data DEPOIS da medicao ter sido criada.
+  - `save_project_measurement_order` (corpo vivo reconstruido via
+    `pg_get_functiondef` + `replace()` + `execute`, MESMA tecnica ja usada 4x
+    neste modulo pelas migrations 194/202/204/214, porque o texto-fonte
+    integro nao existe em nenhum arquivo unico do repo) e
+    `save_project_measurement_order_batch_partial` passam a casar
+    `programming` (projeto+data) com `programming_team` (equipe ATIVA na
+    etapa) em vez de uma linha unica `project_programming` (projeto+equipe+data
+    na mesma linha). Nova validacao: se a equipe pedida nao esta ATIVA na
+    etapa vinculada, devolve `PROGRAMMING_NOT_FOUND` com mensagem especifica.
+  - Prioridade de desempate preservada (unica coisa que Medicao faz diferente
+    de APR/Cronograma, de proposito): PROGRAMADA(0) > REPROGRAMADA(1) >
+    ADIADA(2) > CANCELADA(3) > outro(4) — CANCELADA continua elegivel em
+    ultimo caso.
+  - `project_measurement_order_items.programming_activity_id` continua
+    apontando para a tabela legada `project_programming_activities` (decisao
+    explicita, nao omissao: nao ha de/para de atividade no
+    `programming_legacy_map`, a coluna e nullable/`on delete set null` e nunca
+    e lida de volta em nenhuma query — so gravada do payload e devolvida como
+    rastro. `project_programming*` sao arquivos permanentes, entao a FK nunca
+    fica orfa).
+  - Medido em producao ANTES de aplicar (`scripts/audit-medicao-programming-match-readonly.mjs`,
+    novo, somente leitura): 717 ordens, 181 com `programming_id` (536 nunca
+    vinculadas), 0 orfaos no mapa. Remap simples concorda com o recalculo em
+    167/181 (92,3%); 0 divergencias reais (nenhum caso aponta pra etapa
+    errada); os 14 casos sem recalculo sao exatamente o cenario de
+    reprogramacao/adiamento/cancelamento posterior descrito acima. A nova
+    validacao de equipe ATIVA so afetaria 1 das 181 ordens (0,6%) se ela fosse
+    reeditada — nao bloqueia o backfill.
+- Codigo (`src/app/api/medicao/route.ts`): `loadProgrammingMatchMap` (leitura,
+  so afeta exibicao/filtro — nunca gate de criacao/edicao, nunca afeta
+  faturamento) reescrita para ler `programming`/`programming_team`/
+  `programming_history`:
+  - A query principal passa a buscar etapas (`programming`) com
+    `programming_team(team_id, status)` embutido, e o codigo expande cada
+    etapa em 1 linha sintetica por equipe ATIVA (mesmo formato
+    `ProgrammingMatchRow` de sempre — `selectBestProgrammingMatch`/
+    `buildProgrammingMatchKey`/`buildProgrammingProjectDateKey` NAO mudaram).
+    Etapa sem equipe ativa ainda entra no match por projeto+data (so nao bate
+    em nenhum match exato por equipe).
+  - O fallback de schema legado (`preferred`/`fallback` com e sem
+    `work_completion_status`) foi removido: `programming` sempre tem essa
+    coluna desde a migration 310, o fallback so existia para
+    `project_programming` em ambiente desatualizado.
+  - `programming_history` (310) nao tem `project_id`/`from_execution_date`/
+    `to_execution_date` como colunas proprias — o filtro por projeto usa embed
+    `programming!inner(project_id, tenant_id)` (mesmo padrao ja usado no Mapa
+    de Programacao) e a data do evento e sempre resolvida pela etapa ATUAL
+    (`programmingProjectDateMap`), nunca por coluna propria da linha de
+    historico — `resolveProgrammingHistoryProjectDateKey` simplificada de
+    acordo (o legado tinha um caminho alternativo por data historica que so
+    existia porque a tabela legada guardava `from_execution_date`/
+    `to_execution_date`).
+  - `changes.workCompletionStatus` continua no mesmo formato `{from, to}` no
+    modelo normalizado (confirmado em `set_project_programming_work_completion_status`,
+    migration 314, que grava via `append_programming_history_record`) — o
+    filtro `.contains("changes", { workCompletionStatus: {} })` funciona sem
+    mudanca.
+- Validado com `npx tsc --noEmit`, `npm run lint` (0 erros; 45 warnings
+  legados, nenhum no arquivo tocado), `npm run build` e `npm run db:security-check`
+  (sem apontamento na 351; achado preexistente da 338 fora do escopo). `npm run
+  db:lint`/`db:migration-list` bloqueados pelo 403 conhecido do token de
+  login. Migration 351 pendente de aplicacao no Supabase. Sem teste manual em
+  navegador.
+- Arquivos:
+  - `supabase/migrations/351_medicao_match_normalized_programming.sql`
+  - `supabase/migrations/README.txt`
+  - `scripts/audit-medicao-programming-match-readonly.mjs` (novo)
+  - `src/app/api/medicao/route.ts`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
