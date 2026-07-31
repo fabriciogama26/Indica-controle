@@ -1273,3 +1273,24 @@ IMPACTO MEDIDO EM PRODUCAO (2026-07-29)
   - `src/app/api/dash-operacional-faturamento/route.ts`
   - `src/server/modules/dashboard-measurement/controller.ts`
   - `src/server/modules/dashboard-portfolio/controller.ts`
+
+Atualizacao 2026-07-31 - Menu de acoes da equipe fora do bloco
+- Problema:
+  - Na lista expandida de Programacoes, o menu de tres pontos do chip da equipe
+    podia ficar cortado pelo limite visual da tabela/bloco, pois o painel era
+    renderizado dentro da propria linha.
+- Mudanca:
+  - `TeamChipMenu` passou a renderizar o painel via portal no `document.body`.
+  - A posicao e calculada a partir do botao acionador com `position: fixed`,
+    evitando depender do `overflow` da tabela.
+  - O menu reposiciona em scroll/resize, fecha ao clicar fora ou pressionar
+    Escape e abre acima quando nao ha espaco abaixo.
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-normalizada/components.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`
+- Como validar:
+  - Abrir `/programacao-normalizada`, expandir um projeto na lista e clicar nos
+    tres pontos de uma equipe perto do limite inferior do bloco.
+  - Confirmar que as opcoes `Remover`, `Cancelar participacao...` e
+    `Adiar equipe...` aparecem completas, sem corte.
+  - Repetir com rolagem da pagina e em viewport estreito.
