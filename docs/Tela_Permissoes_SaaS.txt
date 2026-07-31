@@ -329,3 +329,31 @@ Atualizacao 2026-07-29
 - Reforco do checklist: permissao granular POR OPERACAO tambem entra no `permissionCatalog`.
   Nao entra em `ROUTE_PAGE_KEYS`/`menuSections`/`titleMap` de `authorization.ts`/`AppShell`,
   porque nao e rota navegavel.
+
+Atualizacao 2026-07-31
+----------------------
+- Antes: as 3 permissoes granulares da Programacao Normalizada (`programacao-concluir`,
+  `programacao-pendencia`, `programacao-corrigir-data`, migration 328) continuavam com
+  `default_user_access = false` mesmo depois de entrarem no `permissionCatalog` (atualizacao
+  2026-07-29) — concediveis pela tela de Permissoes, mas ninguem tinha concedido de fato.
+  Auditoria pedida pelo usuario confirmou 0 das 17 pessoas ativas do papel "Usuario" (unico
+  papel nao-admin do sistema) com qualquer uma das 3 liberada; uma pessoa (ALAN REIS) ja tinha
+  acesso a tela `programacao-normalizada` em si mas nao via o checkbox de Pendencia no
+  formulario de "Nova etapa" por causa disso.
+- Depois: migration `348_grant_programming_granular_pages_to_user_role.sql` (gerada, pendente
+  de aplicacao) libera o trio para o papel "Usuario" inteiro, em 3 niveis: (1)
+  `app_pages.default_user_access = true` para os 3 page_keys, entao qualquer NOVO usuario
+  nao-admin ja nasce com o trio liberado (gatilho `ensure_app_user_default_page_permissions`,
+  253); (2) `role_page_permissions` do papel "user" atualizado para consistencia de template
+  (nao e lido em runtime — a sessao usa so `app_user_page_permissions`, ver
+  `session-access/route.ts`); (3) as 17 pessoas atuais do papel "Usuario" recebem as 7 colunas
+  de acao (`can_access`/`can_create`/`can_update`/`can_cancel`/`can_reverse`/`can_import`/
+  `can_export`) = true para os 3 page_keys, mesmo padrao de `save_user_permissions` (253) —
+  "o toggle da UI habilita/desabilita todas as acoes simultaneamente". Registro em
+  `app_user_permission_history` (`change_type = 'PAGE_ACCESS_CHANGED'`, `created_by = null`
+  para marcar mudanca via migration) para nao deixar buraco na auditoria.
+- Observacao de arquitetura: `app_roles` e `app_pages` sao tabelas GLOBAIS (sem `tenant_id`) —
+  so existe UM papel "Usuario" no sistema inteiro, compartilhado entre tenants. Confirmado que
+  so o tenant "INDICA SERVICO - ANGRA" tem pessoas ativas com esse papel hoje (o tenant "TESTE"
+  tem zero); o UPDATE de `app_user_page_permissions` fica naturalmente escopado por tenant via
+  o `user_id` de cada linha, sem precisar de filtro explicito.
