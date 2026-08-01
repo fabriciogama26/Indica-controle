@@ -7,6 +7,7 @@ import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { isSerialTrackedMaterial, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { HISTORY_EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
@@ -173,6 +174,9 @@ export function TeamStockOperationsPageView() {
   const logError = useErrorLogger("operacoes_equipe");
   const exportCooldown = useExportCooldown();
   const submitLockRef = useRef(false);
+  const createOperationIdempotency = useIdempotencyKey();
+  const reversalIdempotency = useIdempotencyKey();
+  const importIdempotency = useIdempotencyKey();
   const canReverseTeamOperation = useMemo(() => {
     const normalizedRole = String(session?.user.role ?? "").trim().toUpperCase();
     return normalizedRole === "ADMIN" || normalizedRole === "MASTER" || normalizedRole === "USER";
@@ -1096,6 +1100,7 @@ export function TeamStockOperationsPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
+          "Idempotency-Key": createOperationIdempotency.getKey(),
         },
         body: JSON.stringify({
           operationKind: form.operationKind,
@@ -1114,6 +1119,9 @@ export function TeamStockOperationsPageView() {
         }),
       });
 
+      // Reset assim que uma resposta definitiva chega (sucesso ou erro de negocio) — a chave so
+      // e reaproveitada quando o fetch em si falha (catch abaixo), sem resposta do servidor.
+      createOperationIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as { transferId?: string; message?: string };
       if (!response.ok) {
         showError(data.message ?? "Falha ao salvar operacao de equipe.");
@@ -1350,6 +1358,7 @@ export function TeamStockOperationsPageView() {
 
   function closeReversalModal() {
     if (isReversing) return;
+    reversalIdempotency.reset();
     setReversalModalItem(null);
     setReversalBatchItems([]);
     setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
@@ -1394,6 +1403,7 @@ export function TeamStockOperationsPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
+          "Idempotency-Key": reversalIdempotency.getKey(),
         },
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
@@ -1405,6 +1415,7 @@ export function TeamStockOperationsPageView() {
         }),
       });
 
+      reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
         transferId?: string;
@@ -1496,6 +1507,7 @@ export function TeamStockOperationsPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
+          "Idempotency-Key": reversalIdempotency.getKey(),
         },
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
@@ -1506,6 +1518,7 @@ export function TeamStockOperationsPageView() {
         }),
       });
 
+      reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as TeamOperationBatchReversalResponse;
       if (!response.ok) {
         setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar o lote da operacao." });
@@ -1768,10 +1781,12 @@ export function TeamStockOperationsPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
+          "Idempotency-Key": importIdempotency.getKey(),
         },
         body: JSON.stringify({ entries }),
       });
 
+      importIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as ImportResponse;
       const serverIssues: MassImportIssue[] = data.validationIssues?.length
         ? data.validationIssues

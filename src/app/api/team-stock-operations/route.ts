@@ -3,6 +3,7 @@ import type { SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 
 import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { parsePagination } from "@/lib/server/apiHelpers";
 import {
@@ -1122,6 +1123,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const preAuth = await resolveAuthenticatedAppUser(request);
+  const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+  const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
+
+  return withIdempotency(request, tenantId, actorUserId, "/api/team-stock-operations:CREATE", () => handleCreateTeamOperation(request));
+}
+
+async function handleCreateTeamOperation(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
       invalidSessionMessage: "Sessao invalida para salvar operacao de equipe.",

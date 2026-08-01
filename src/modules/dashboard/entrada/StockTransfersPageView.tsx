@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./StockTransfersPageView.module.css";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
@@ -579,6 +580,9 @@ export function StockTransfersPageView() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const submitLockRef = useRef(false);
+  const createTransferIdempotency = useIdempotencyKey();
+  const reversalIdempotency = useIdempotencyKey();
+  const importIdempotency = useIdempotencyKey();
   const canReverseStockMovement = useMemo(() => {
     const normalizedRole = String(session?.user.role ?? "").trim().toUpperCase();
     return normalizedRole === "ADMIN" || normalizedRole === "MASTER" || normalizedRole === "USER";
@@ -1750,6 +1754,7 @@ export function StockTransfersPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
+          "Idempotency-Key": createTransferIdempotency.getKey(),
         },
         body: JSON.stringify({
           movementType: form.movementType,
@@ -1772,6 +1777,7 @@ export function StockTransfersPageView() {
         }),
       });
 
+      createTransferIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
         showError(data.message ?? "Falha ao salvar movimentacao de estoque.");
@@ -2049,6 +2055,7 @@ export function StockTransfersPageView() {
 
   function closeReversalModal() {
     if (isReversing) return;
+    reversalIdempotency.reset();
     setReversalModalItem(null);
     setReversalBatchItems([]);
     setReversalReasonCode(reversalReasons[0]?.code ?? "");
@@ -2097,6 +2104,7 @@ export function StockTransfersPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
+          "Idempotency-Key": reversalIdempotency.getKey(),
         },
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
@@ -2108,6 +2116,7 @@ export function StockTransfersPageView() {
         }),
       });
 
+      reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
         transferId?: string;
@@ -2203,6 +2212,7 @@ export function StockTransfersPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
+          "Idempotency-Key": reversalIdempotency.getKey(),
         },
         body: JSON.stringify({
           transferId: reversalModalItem.transferId,
@@ -2213,6 +2223,7 @@ export function StockTransfersPageView() {
         }),
       });
 
+      reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as StockTransferBatchReversalResponse;
       if (!response.ok) {
         setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar o lote da movimentacao." });
@@ -2480,10 +2491,12 @@ export function StockTransfersPageView() {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.accessToken}`,
+          "Idempotency-Key": importIdempotency.getKey(),
         },
         body: JSON.stringify({ entries: mappedEntries }),
       });
 
+      importIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as ImportResponse;
       const apiIssues: MassImportIssue[] = (data.results ?? [])
         .filter((result) => !result.success)

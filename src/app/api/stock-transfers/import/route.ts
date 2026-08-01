@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { withIdempotency } from "@/lib/server/idempotency";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -109,6 +110,14 @@ function normalizeBoolean(value: unknown) {
 }
 
 export async function POST(request: NextRequest) {
+  const preAuth = await resolveAuthenticatedAppUser(request);
+  const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+  const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
+
+  return withIdempotency(request, tenantId, actorUserId, "/api/stock-transfers/import:IMPORT", () => handleImport(request));
+}
+
+async function handleImport(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
       invalidSessionMessage: "Sessao invalida para importar movimentacoes em massa.",

@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import styles from "./SolicitationPageView.module.css";
 import type { RequisitionDetail, RequisitionFormItem, RequisitionListResponse, RequisitionListRow, RequisitionMeta } from "./types";
 
@@ -59,6 +60,7 @@ export function SolicitationPageView() {
     () => (token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : undefined),
     [token],
   );
+  const cancelIdempotency = useIdempotencyKey();
 
   const loadMeta = useCallback(async () => {
     if (!token) return;
@@ -224,9 +226,10 @@ export function SolicitationPageView() {
       try {
         const response = await fetch("/api/stock-requisitions/cancel", {
           method: "POST",
-          headers: authHeaders,
+          headers: { ...authHeaders, "Idempotency-Key": cancelIdempotency.getKey() },
           body: JSON.stringify({ requestId, page: "solicitacao" }),
         });
+        cancelIdempotency.reset();
         const data = (await response.json().catch(() => ({}))) as { message?: string };
         if (!response.ok) {
           setFeedback({ type: "error", message: data.message ?? "Falha ao cancelar o pedido." });
@@ -237,7 +240,7 @@ export function SolicitationPageView() {
         setFeedback({ type: "error", message: "Falha ao cancelar o pedido." });
       }
     },
-    [authHeaders, loadList],
+    [authHeaders, cancelIdempotency, loadList],
   );
 
   const fetchDetail = useCallback(

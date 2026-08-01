@@ -1,0 +1,304 @@
+AUDITORIA — CONCORRENCIA, IDEMPOTENCIA, REALTIME E FILA
+Sistema: Indica-controle (SaaS multi-tenant)
+Data: 2026-07-31
+Origem: analise do texto colado pelo usuario (boas praticas de lost update,
+versionamento otimista, lock, RPC transacional, idempotencia, Realtime e
+fila) confrontado com o codigo real do repositorio.
+
+Metodo: leitura direta de src/lib/server/concurrency.ts, idempotency.ts,
+grep em src/app/api (84 rotas) e nas 361 migrations de supabase/migrations,
+sem assumir como verdadeiro nada do texto original que nao foi confirmado
+no codigo.
+
+--------------------------------------------------------------------------
+1. RESUMO EXECUTIVO
+--------------------------------------------------------------------------
+
+O texto colado descreve boas praticas geralmente corretas, mas parte do
+diagnostico implicito nele ("seu sistema provavelmente nao tem isso") NAO
+bate com o estado atual do Indica-controle. O sistema ja implementa boa
+parte do que o texto recomenda, usando um mecanismo equivalente ao
+"version bigint" (comparacao por "expected_updated_at" dentro de RPC com
+lock), e ja usa SELECT ... FOR UPDATE de forma extensa. As lacunas reais
+sao mais especificas do que o texto sugere: idempotencia construida mas
+quase nao usada, Realtime e Fila inexistentes (zero uso), e imports
+grandes rodando de forma sincrona dentro do request (risco de timeout na
+Vercel, exatamente o cenario que o texto descreve para fila).
+
+--------------------------------------------------------------------------
+2. LOST UPDATE / VERSIONAMENTO OTIMISTA
+--------------------------------------------------------------------------
+
+Afirmacao do texto: adicionar coluna "version bigint" e comparar
+"version = p_expected_version" no UPDATE, devolvendo 409 se nao achar
+linha.
+
+Estado real encontrado:
+- Nao existe coluna "version" em nenhuma tabela (grep por
+  "add column version" nas migrations: 0 resultado).
+- Existe um mecanismo equivalente, baseado em "updated_at" em vez de um
+  contador: src/lib/server/concurrency.ts
+  (hasUpdatedAtConflict + buildConcurrencyConflictResponse -> HTTP 409).
+- O padrao "expected_updated_at" comparado dentro da propria RPC (com
+  SELECT ... FOR UPDATE antes da comparacao) aparece em 118 arquivos de
+  migration e o parametro "expectedUpdatedAt" e enviado pelo frontend em
+  20 rotas de API, cobrindo exatamente as telas que o texto cita como
+  prioritarias:
+
+  | Tela do texto          | Cobertura real (expectedUpdatedAt)          |
+  |-------------------------|---------------------------------------------|
+  | Programacao              | SIM — src/app/api/programacao/route.ts      |
+  | Medicao                  | SIM — src/app/api/medicao/route.ts          |
+  | Projetos                 | SIM — src/app/api/projects/route.ts         |
+  | Faturamento               | SIM — src/app/api/faturamento/route.ts      |
+  | AS Built                  | SIM — src/app/api/medicao-asbuilt/route.ts  |
+  | Controle APR               | SIM — src/app/api/controle-apr/route.ts     |
+  | Cronograma de solicitacoes | SIM — cronograma-solicitacoes/route.ts e /cancel |
+  | Composicao de equipe       | SIM — composicao-equipe/route.ts            |
+  | Entrada de material        | Nao se aplica (ver secao 3 — sao operacoes  |
+  |                             | de saldo, tratadas por atualizacao atomica, |
+  |                             | nao por edicao de registro completo)        |
+  | Requisicao de material      | Nao se aplica pelo mesmo motivo acima       |
+
+Conclusao: o risco de "lost update" descrito no texto (B abre a tela,
+so muda a descricao, mas reenvia o objeto inteiro e sobrescreve o valor
+que A tinha salvado) JA tem defesa em produto nas telas de maior risco de
+negocio. Nao e necessario criar coluna "version" — trocar o mecanismo
+atual por uma nova coluna seria reescrever algo que ja funciona, sem
+ganho comprovado (contraria a diretriz de nao propor abstracao sem
+necessidade).
+
+Gap real encontrado (nao mencionado assim no texto, mas e a lacuna
+concreta): nem toda rota de escrita usa esse mecanismo. Rotas simples de
+cadastro (people, materials, job-titles, teams, activities,
+app-users/[userId]/permissions) usam o mesmo helper — o que esta correto,
+porque sao registros editados por poucas pessoas e risco de colisao e
+baixo. As rotas de maior volume de edicao concorrente ja identificadas
+(programacao, medicao, faturamento, asbuilt) estao cobertas. Nao ha
+evidencia de tela critica descoberta.
+
+--------------------------------------------------------------------------
+3. BLOQUEIO DE LINHA (SELECT ... FOR UPDATE) E OPERACOES ATOMICAS
+--------------------------------------------------------------------------
+
+Afirmacao do texto: usar RPC com SELECT ... FOR UPDATE para estoque,
+saldo, sequenciamento e recursos compartilhados; nunca calcular saldo no
+frontend.
+
+Estado real encontrado:
+- "for update" aparece de forma genuina (nao falso-positivo) em 153
+  arquivos de migration, confirmado por amostragem em:
+  - 153_fix_programming_eq_catalog_for_update_lock.sql (lock em
+    project_programming antes de alterar catalogo eletrico)
+  - 295_create_stock_requisition_rpcs.sql (lock em
+    stock_requisition_requests em 4 pontos: claim, fulfill, cancel, etc.)
+- Isso cobre exatamente os cenarios de disputa que o texto lista:
+  atendimento de requisicao, programacao de equipe em recurso
+  compartilhado, saldo de estoque.
+- Nao foi possivel confirmar nesta rodada, sem ler cada RPC de estoque
+  linha a linha, se 100% das baixas de saldo usam a forma atomica
+  "quantidade = quantidade - p_quantidade ... where quantidade >=
+  p_quantidade" em vez de calcular no frontend. O grep direcionado para
+  esse padrao especifico nao encontrou ocorrencia textual identica, o que
+  pode significar nome de coluna diferente (ex.: "saldo", "qtd") e nao
+  necessariamente ausencia da pratica. Fica como verificacao pendente,
+  nao como risco confirmado.
+
+Conclusao: a pratica de lock pessimista via FOR UPDATE dentro de RPC ja e
+o padrao dominante do sistema, nao uma lacuna. O item "3" da ordem de
+prioridade sugerida no texto original ("adicionar versionamento
+otimista") e o "5" ("corrigir estoque e saldos para operacoes atomicas")
+estao, em grande parte, ja implementados — precisam de auditoria pontual,
+nao de implementacao do zero.
+
+--------------------------------------------------------------------------
+4. RPC TRANSACIONAL PARA OPERACOES MULTI-TABELA
+--------------------------------------------------------------------------
+
+Confirmado pelo volume de RPCs: 361 arquivos de migration, a maioria
+criando ou alterando "create or replace function ... security definer",
+com padrao recorrente de opera-tudo-numa-transacao (ex.: fulfill de
+requisicao faz baixa de estoque + movimentacao + atualizacao de status
+dentro da mesma function). Nao foi encontrado padrao de "5 chamadas
+separadas do frontend" para operacoes criticas nas rotas inspecionadas
+(stock-requisitions, team-stock-operations, programacao). Este ponto do
+texto ja e seguido pela arquitetura vigente.
+
+--------------------------------------------------------------------------
+5. IDEMPOTENCIA — GAP REAL CONFIRMADO
+--------------------------------------------------------------------------
+
+Estado real encontrado:
+- Existe infraestrutura completa: tabela "idempotency_requests"
+  (migration 252_create_idempotency_requests.sql) e wrapper generico
+  src/lib/server/idempotency.ts (withIdempotency), com TTL de 24h,
+  chave unica (tenant_id, idempotency_key, endpoint).
+- Uso real: encontrado em APENAS 1 rota de 84
+  (src/app/api/programacao/route.ts). Nenhuma rota de estoque
+  (stock-requisitions, team-stock-operations, stock-transfers) usa o
+  wrapper, apesar de serem exatamente as operacoes que o texto cita como
+  risco de duplo clique/retry (baixa de estoque, atendimento de
+  requisicao, importacao).
+
+Este e o gap mais concreto e de menor custo para corrigir encontrado
+nesta auditoria: a peca ja existe, falta aplicar nas rotas certas.
+
+--------------------------------------------------------------------------
+6. RESTRICOES UNIQUE
+--------------------------------------------------------------------------
+
+104 ocorrencias de "unique (...tenant_id...)" distribuidas em 52
+migrations, cobrindo desde 001_create_core_tables.sql ate
+342_create_programming_legacy_map.sql. Uso do padrao "unique por tenant"
+esta consolidado no projeto, nao e uma pratica a introduzir.
+
+--------------------------------------------------------------------------
+7. REALTIME — NAO EXISTE NO SISTEMA HOJE
+--------------------------------------------------------------------------
+
+grep por "postgres_changes", ".channel(", "supabase.channel" em todo
+src/: ZERO ocorrencias.
+
+O texto descreve Realtime como algo que "eu usaria" — no Indica-controle
+ele nao esta implementado em nenhuma tela. Atualizacao de lista/dashboard
+hoje depende de refetch manual (acao do usuario) ou revalidacao de
+Server Action/React Query, nao de subscription.
+
+Isto NAO e um risco de integridade (o texto e explicito: quem garante
+integridade e o Postgres/RLS/lock, nao o Realtime) — e uma lacuna de UX
+("Fulano nao ve que outra pessoa mudou o status sem atualizar a pagina").
+Nao ha evidencia no codigo de reclamacao ou bug gerado por isso. Entra
+como "quando houver evidencia", nao como prioridade.
+
+--------------------------------------------------------------------------
+8. FILA (SUPABASE QUEUES / PGMQ) — NAO EXISTE, E HA RISCO REAL SEM ELA
+--------------------------------------------------------------------------
+
+grep por "pgmq", "supabase...queue", "Queues" em todo o repositorio:
+nenhuma implementacao encontrada (unica ocorrencia e um doc de arquivo,
+_archive/docs/estrutura_saas_multitenant.md, mencao textual, nao codigo).
+
+Rotas de import identificadas, todas sincronas dentro do proprio request
+HTTP, sem "maxDuration" configurado em nenhum arquivo do projeto (grep
+"maxDuration" em src/: 0 resultado, ou seja, roda no timeout padrao da
+Vercel):
+
+  - src/app/api/team-stock-operations/import/route.ts (676 linhas)
+  - src/app/api/projects/activity-forecast/import/route.ts (412 linhas)
+  - src/app/api/stock-transfers/import/route.ts (371 linhas)
+
+Isso bate exatamente com o alerta do texto: "importar planilha grande"
+deveria ir para fila, e "nao dispare trabalho critico sem await depois
+de responder" / funcoes da Vercel sao distribuidas e sem estado
+persistente entre requests. Nenhum padrao de fila-em-memoria
+("const fila = []", "new Set()" como lock) foi encontrado nas rotas de
+import (checado especificamente) — o unico uso de "new Set" no backend e
+para filtrar centros bloqueados em memoria dentro de uma unica
+requisicao (stock-balance/meta, trafo-positions/meta), o que e uso
+local seguro, nao um lock distribuido falso.
+
+Risco real: planilha grande o suficiente pode estourar o timeout da
+function antes de terminar de processar, sem fila para retomar/reportar
+progresso. Nao ha evidencia de que isso ja tenha ocorrido em producao
+(fica registrado como risco, nao como incidente confirmado).
+
+--------------------------------------------------------------------------
+9. AUDITORIA / HISTORICO
+--------------------------------------------------------------------------
+
+O padrao "correcao por estorno, nao apagando historico" e "tabela de
+historico" ja e amplamente usado — migrations dedicadas confirmam:
+101_create_project_programming_history.sql,
+241_create_team_supervisor_history.sql,
+290_warehouse_map_config_history_snapshot.sql,
+324_stage_update_history_changes.sql, entre outras. O modulo de estorno
+(reversalRules.ts, stock-transfers/reversal, team-stock-operations/
+reversal) confirma que correcoes de estoque sao feitas por estorno, nao
+por edicao direta — exatamente como o texto recomenda. Nao foi
+verificado nesta rodada se every RPC grava created_by/updated_by de forma
+consistente (verificacao adicional necessaria, fora do escopo desta
+passada).
+
+--------------------------------------------------------------------------
+10. SEGURANCA MULTI-TENANT / RLS (CHECAGEM RAPIDA, NAO AUDITORIA COMPLETA)
+--------------------------------------------------------------------------
+
+- "enable row level security": 71 arquivos de migration contem o
+  comando. Nao foi feita, nesta rodada, verificacao tabela-a-tabela de
+  que toda tabela de negocio tem RLS habilitada e políticas para as 4
+  operacoes (isso exige auditoria dedicada, fora do escopo deste texto).
+- grep por "NEXT_PUBLIC" combinado com "SERVICE_ROLE" em src/: 0
+  ocorrencia — nenhum indicio de service_role exposta ao navegador.
+- x-tenant-id ja e tratado como o texto recomenda: contexto solicitado,
+  validado contra app_user_tenants antes de virar tenant ativo
+  (src/lib/server/appUsersAdmin.ts), nunca prova de autorizacao.
+
+Recomendacao: se RLS completa for prioridade, tratar como tarefa propria
+("Auditar todas as RLS por tenant" — item 1 da ordem de prioridade do
+texto original), com leitura de cada migration de RLS, nao inferida por
+amostragem.
+
+--------------------------------------------------------------------------
+11. CONEXAO COM BANCO NA VERCEL
+--------------------------------------------------------------------------
+
+O projeto usa exclusivamente @supabase/supabase-js (Data API) — nao
+foram encontradas dependencias Prisma, Drizzle ou driver Postgres direto
+no package.json. Isso confirma o cenario "mais seguro" descrito no
+texto: gerenciamento de conexao fica abstraido pela Data API, sem
+necessidade de configurar Supavisor/transaction mode manualmente.
+
+--------------------------------------------------------------------------
+12. TABELA-RESUMO: TEXTO ORIGINAL x ESTADO REAL
+--------------------------------------------------------------------------
+
+| Recomendacao do texto                          | Estado no Indica-controle          |
+|-------------------------------------------------|-------------------------------------|
+| Coluna "version" + 409 em conflito               | JA EXISTE (via updated_at + RPC)     |
+| SELECT ... FOR UPDATE em recursos compartilhados | JA EXISTE, uso extenso (153 arqs)    |
+| RPC transacional multi-tabela                    | JA EXISTE, padrao dominante           |
+| Idempotency key                                  | INFRA EXISTE, USO QUASE NULO (1/84)  |
+| UNIQUE por tenant                                | JA EXISTE, consolidado                |
+| Atualizacao atomica de saldo (sem calcular no FE)| PROVAVEL, nao 100% confirmado         |
+| Realtime                                         | NAO EXISTE (zero uso)                 |
+| Fila (Supabase Queues/pgmq)                      | NAO EXISTE — imports sincronos, risco de timeout |
+| Auditoria/historico/estorno                      | JA EXISTE, padrao consolidado          |
+| RLS habilitada                                   | AMPLA (71 migrations), nao auditada 100% nesta rodada |
+| service_role fora do frontend                    | CONFIRMADO, sem exposicao encontrada  |
+
+--------------------------------------------------------------------------
+13. ORDEM DE PRIORIDADE AJUSTADA (baseada em evidencia, nao na hipotese
+    generica do texto original)
+--------------------------------------------------------------------------
+
+1. Aplicar "withIdempotency" nas rotas de estoque de maior risco de
+   duplo clique/retry: stock-requisitions (claim, fulfill, cancel),
+   team-stock-operations, stock-transfers. Custo baixo (wrapper ja
+   existe), risco baixo, resolve o gap mais concreto desta auditoria.
+2. Confirmar (leitura linha a linha das RPCs de estoque) se toda baixa
+   de saldo e atomica no banco, nunca calculada no frontend — ponto 3
+   desta auditoria ficou como "provavel, nao confirmado".
+3. Decidir se os imports grandes (team-stock-operations, activity-
+   forecast, stock-transfers) precisam de fila — ou, alternativa de
+   menor custo, medir o tamanho maximo de planilha aceito hoje e
+   confirmar que fica dentro do timeout da function antes de decidir se
+   vale investir em fila (nao instalar fila sem evidencia de estouro
+   real, conforme diretriz de nao adicionar complexidade sem necessidade
+   comprovada).
+4. RLS: auditoria dedicada tabela-a-tabela, separada desta tarefa.
+5. Realtime: no "quando houver evidencia" — nao ha reclamacao de UX
+   registrada que justifique agora.
+
+--------------------------------------------------------------------------
+14. LIMITACOES DESTA AUDITORIA
+--------------------------------------------------------------------------
+
+- Nao foi lida linha a linha cada uma das 361 migrations nem cada uma
+  das 84 rotas de API — a analise usou leitura direta dos arquivos
+  centrais (concurrency.ts, idempotency.ts, appUsersAdmin.ts,
+  pageAuthorization.ts) e busca por padrao (grep) nos demais, com
+  amostragem para validar que os padroes encontrados sao genuinos (nao
+  falso-positivo de texto).
+- RLS tabela-a-tabela e a confirmacao de "toda baixa de saldo e atomica"
+  precisam de passada dedicada se o usuario quiser fechar 100% de
+  certeza nesses dois pontos.
