@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
 import { reverseTeamStockOperationViaRpc } from "@/lib/server/teamStockOperations";
@@ -45,7 +46,10 @@ type FullReversalRow = {
   reversal_stock_transfer_id: string;
 };
 
-async function resolveReversalContext(request: NextRequest, action: "read" | "reverse") {
+async function resolveReversalContext(
+  request: NextRequest,
+  action: "read" | "reverse",
+): Promise<{ error: NextResponse<{ message: string; reason?: string }> } | { resolution: AuthenticatedAppUserContext }> {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para estornar operacao de equipe.",
     inactiveMessage: "Usuario inativo.",
@@ -233,6 +237,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const preAuth = await resolveAuthenticatedAppUser(request);
+  const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+  const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
+
+  return withIdempotency(request, tenantId, actorUserId, "/api/team-stock-operations/reversal:REVERSE", () => handleReversal(request));
+}
+
+async function handleReversal(request: NextRequest): Promise<Response> {
   try {
     const context = await resolveReversalContext(request, "reverse");
     if ("error" in context) {

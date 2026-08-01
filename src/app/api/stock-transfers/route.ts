@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { parsePositiveInteger } from "@/lib/server/apiHelpers";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
@@ -1224,6 +1225,14 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const preAuth = await resolveAuthenticatedAppUser(request);
+  const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+  const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
+
+  return withIdempotency(request, tenantId, actorUserId, "/api/stock-transfers:CREATE", () => handleCreateStockTransfer(request));
+}
+
+async function handleCreateStockTransfer(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
       invalidSessionMessage: "Sessao invalida para salvar movimentacao de estoque.",

@@ -1,0 +1,104 @@
+RESUMO EXECUTIVO
+Hoje não existe proxy.ts nem middleware.ts no repositório — a proteção de rota e a resolução de sessão acontecem 100% no cliente (AppShell.tsx) e em cada Route Handler (resolveAuthenticatedAppUser). O motivo estrutural é que a autenticação é Bearer token em localStorage (não cookie de sessão via @supabase/ssr), então o caso de uso mais comum de Proxy no Next.js — renovar sessão via cookie antes da renderização — não se aplica ao modelo atual sem uma migração maior de auth. Existem, porém, dois usos leves de Proxy que compensam sem mexer no modelo de auth: security headers estáticos (hoje zero headers configurados, em lugar nenhum) e request ID para observabilidade (hoje inexistente). Nenhum dos dois exige Proxy com lógica pesada — o primeiro nem precisa de Proxy (resolve em next.config.ts).
+
+VERSÕES CONFIRMADAS
+Item	Versão
+Node	v22.19.0
+Next.js	16.1.6
+React	19.2.3
+TypeScript	5.9.3
+@supabase/supabase-js	2.98.0
+@supabase/ssr	não instalado
+Convenção de Proxy no Next 16	proxy.ts (função proxy), runtime Node.js fixo (não configurável), middleware.ts é ignorado silenciosamente no build — fonte: Next.js docs / changelog v16
+ARQUITETURA ATUAL
+Sem proxy.ts/middleware.ts em nenhum lugar do repo (src/proxy.ts, proxy.ts, src/middleware.ts, middleware.ts — nenhum existe).
+Login real: POST /functions/v1/auth-login-web (Supabase Edge Function) → access_token/refresh_token. Já tem rate limit no banco (rate_limit_check_and_hit, supabase/migrations/011_create_rate_limit.sql, usado em supabase/functions/auth-login-web/index.ts:87).
+Persistência de sessão: localStorage["INDICA.saas.auth"], gerenciada por auth.service.ts e exposta via AuthContext.tsx. Não é cookie.
+Toda chamada a /api/** envia Authorization: Bearer <token> + x-tenant-id, resolvido em appUsersAdmin.ts: resolveAuthenticatedAppUser já tem client Supabase admin singleton e cache de auth por token+tenant (TTL 45s) — chamado em 78 dos 84 route.ts do projeto.
+Autorização por página/ação: pageAuthorization.ts (requirePageAction), sem cache, com fallback admin → permissão de usuário → permissão de role.
+Proteção de rota no front: só em AppShell.tsx:434-470 (Client Component) — useEffect que faz router.replace("/login") se !isAuthenticated ou !canAccessRoute. Roda depois do JS carregar no navegador.
+next.config.ts: vazio, sem headers(), sem redirects(), sem rewrites(). vercel.json: só framework: nextjs, sem headers.
+RISCOS CRÍTICOS
+Nenhum risco crítico de segurança ligado a Proxy foi encontrado. Especificamente: a ausência de proteção de rota client-side não expõe dados, porque toda página client precisa buscar dados via /api/**, e cada rota já exige resolveAuthenticatedAppUser + requirePageAction no servidor (RLS como última barreira). O gate no AppShell é UX (evita "flash" de layout), não é a barreira de segurança — a barreira real já está no backend, como manda a seção de restrições deste procedimento.
+
+Um ponto a registrar, não crítico hoje mas vale nota: src/app/api/auth/local-login/route.ts compara login/senha em texto puro contra env vars (LOCAL_AUTH_USERNAME/LOCAL_AUTH_PASSWORD), sem rate limit e sem comparação de tempo constante. É rota de desenvolvimento (só funciona se essas env vars estiverem setadas) e não é o fluxo de produção (que usa a Edge Function com rate limit). Não é vulnerabilidade ativa comprovada — é FAZER AGORA apenas se essas env vars existirem em produção (confirmar no Vercel antes de agir; não vou supor).
+
+MELHORIAS QUE COMPENSAM AGORA
+Nenhuma envolvendo Proxy é urgente — nenhum vazamento multi-tenant, segredo exposto ou RLS ausente foi encontrado no escopo desta análise (auth/tenant/proxy). Ver seção "não compensa agora" para por que Proxy amplo não entra aqui.
+
+MELHORIAS PARA O PRÓXIMO CICLO
+1. Security headers estáticos — via next.config.ts, não via Proxy
+Problema: nenhum header de segurança (CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, Strict-Transport-Security) está configurado em nenhuma camada.
+Evidência: next.config.ts sem headers(); vercel.json sem headers.
+Impacto: clickjacking, sem HSTS, sem política de referrer — risco baixo/médio, mas custo de correção é mínimo.
+Opções: (a) headers() em next.config.ts — estático, cacheável, sem custo de runtime; (b) Proxy — só se algum header precisar variar por request (ex.: CSP com nonce por request).
+Opção recomendada: (a). Não há evidência de necessidade de nonce dinâmico hoje — Proxy aqui seria camada sem necessidade comprovada (contraria a matriz da seção 87-111 do procedimento).
+Custo: ~1-2h. Risco: baixo (pode quebrar embed em iframe se algum uso legítimo existir — confirmar antes). Validação: npm run build + inspecionar headers de resposta em produção/preview. Rollback: reverter next.config.ts.
+
+2. Request ID para observabilidade — Proxy leve é o lugar certo
+Problema: nenhuma rota gera/propaga request ID; logs não têm correlação entre request → auth → operação.
+Evidência: grep por requestId/x-request-id/crypto.randomUUID só encontra IDs de domínio (ex.: stock_requisition.id), nenhuma infra de tracing; [verificacao/crc/auth.md:83] já lista observabilidade insuficiente como pendência.
+Impacto: dificulta debugar erro em produção reportado pelo usuário (qual request, qual tenant, qual duração).
+Opções: Proxy gerando x-request-id (usa crypto.randomUUID(), header only, sem DB) e passando adiante via request.headers/response; alternativa sem Proxy seria gerar dentro de cada route handler (mas isso reintroduz duplicação nos 78 arquivos).
+Opção recomendada: Proxy com matcher restrito a /api/:path* — exatamente o tipo de lógica leve permitida pelas restrições deste procedimento (header, sem query, sem service role).
+Custo: ~2-3h incluindo ajuste de log estruturado em apiHelpers.ts/routes. Risco: baixo. Validação: conferir header presente em resposta de /api/* e no log correspondente. Rollback: remover proxy.ts.
+
+3. Duplicação de auth boilerplate em 78 rotas — não é Proxy, é DAL/wrapper
+Problema: resolveAuthenticatedAppUser + tratamento de erro ("error" in resolution) se repete em 78 arquivos de rota.
+Evidência: grep resolveAuthenticatedAppUser em src/app/api → 78 arquivos.
+Impacto: manutenção — qualquer ajuste no contrato de erro precisa tocar 78 arquivos.
+Por que não é Proxy: as restrições deste procedimento proíbem explicitamente resolução de tenant/permissão e chamada de banco dentro do Proxy — isso teria que continuar em Route Handler/DAL.
+Opção recomendada: um wrapper withAuthenticatedRoute(handler) na camada de Route Handler (não Proxy) que centraliza a chamada + resposta de erro padrão. Fica para avaliação separada de arquitetura backend, fora do escopo "Proxy" pedido aqui.
+Prioridade: próximo ciclo, mas como item de guia_backend.md, não deste tema.
+
+MELHORIAS QUE NÃO COMPENSAM AGORA
+Proxy para renovação de sessão / redirect de usuário não autenticado (o uso clássico de Proxy no Next.js): não compensa agora porque o modelo de auth é Bearer token em localStorage, não cookie — Proxy roda no servidor a cada request e não tem acesso a localStorage. Fazer isso funcionar exigiria migrar login/sessão para cookies via @supabase/ssr (pacote nem instalado), reescrever AuthContext/auth.service.ts, e todo o fluxo de Authorization: Bearer nos 78+ fetches client-side. Isso é reescrita de arquitetura de auth, não "adicionar um Proxy" — só entra em "quando houver evidência" (ex.: se um dia migrar para SSR real com Server Components buscando dado autenticado direto no servidor).
+Rate limiting no Proxy para /api/auth/*: o login de produção já tem rate limit no banco via Edge Function. Duplicar em Proxy sem evidência de abuso é complexidade sem problema real.
+Redirect de rotas antigas via Proxy: não há evidência de rotas legadas quebradas — authorization.ts já mapeia prefixo → pageKey sem indício de URLs mortas exigindo redirect.
+Verificação de permissão/tenant dentro do Proxy: proibido pelas restrições deste procedimento (autorização definitiva nunca no Proxy) e desnecessário — já está corretamente em resolveAuthenticatedAppUser/requirePageAction/RLS.
+ANÁLISE DO PROXY
+Situação: Proxy não existe. Isso não é uma lacuna de segurança — é consequência direta do modelo de auth (Bearer/localStorage) escolhido para este SaaS, que faz o backend (Route Handler) ser a única fronteira real de qualquer forma, com ou sem Proxy.
+
+Onde compensaria, com o modelo atual (sem mudar auth):
+
+Uso	Compensa?	Por quê
+Renovar sessão via cookie	Não se aplica	Não há cookie de sessão hoje
+Redirect de não autenticado	Não se aplica	Proxy não lê localStorage
+Redirect de rota antiga	Não	Sem evidência de rota morta
+Rewrite	Não	Sem evidência de necessidade
+Security headers dinâmicos	Não	Estático basta — usar next.config.ts
+Request ID / correlação de log	Sim	Leve, sem DB, resolve lacuna real de observabilidade
+Bloqueio otimista de rota (/permissoes etc.)	Parcial/QUANDO HOUVER EVIDÊNCIA	Só otimista — exigiria decodificar o token sem consultar banco (JWT claims), o que já seria mais lógica que "leve"; hoje o bloqueio real já ocorre no backend
+Se no futuro migrar para cookies (@supabase/ssr): Proxy passaria a valer a pena para renovar access_token/refresh_token antes da renderização (padrão oficial Supabase + Next.js). Isso é uma decisão de arquitetura de auth maior, não uma tarefa de Proxy isolada — precisaria de plano próprio (Fase 1 de um projeto separado), não incluído aqui por falta de evidência de necessidade (nenhuma reclamação de UX de sessão, nenhuma dor reportada).
+
+Matcher, se/quando o item 2 (request ID) for implementado: matcher: ["/api/:path*"] — constante, restrito, sem tocar páginas (evita custo de Proxy rodando em toda navegação de página, que hoje não precisa de nada server-side).
+
+ANÁLISE DE AUTENTICAÇÃO E AUTORIZAÇÃO
+Separação de camadas já está correta e é a mais relevante para a pergunta sobre Proxy: Route Handler (resolveAuthenticatedAppUser → requirePageAction) → RLS — sem Proxy no meio. Isso está de acordo com a restrição deste procedimento ("Proxy nunca é a defesa final"). O único ponto fraco é de UX (flash de layout no client antes do redirect), não de autorização.
+
+ANÁLISE MULTI-TENANT E RLS
+Fora do escopo desta tarefa (não pedida pelo usuário) — não foi feita auditoria de RLS ou de vazamento entre tenants nesta rodada. x-tenant-id já é tratado corretamente como contexto solicitado, não prova de autorização (validado contra app_user_tenants em resolveAuthenticatedAppUser).
+
+ANÁLISE DE DESEMPENHO
+Fora do escopo direto de Proxy — só registrando o que já é conhecido (ver memória project_performance_issues.md de auditoria anterior): requirePageAction faz 1-2 queries sem cache a cada request em rota autorizada (diferente do cache de auth que já existe). Não é tema de Proxy — Proxy não deve fazer essa consulta.
+
+PLANO POR FASES
+Fase 0: nenhuma correção crítica identificada nesta análise.
+Fase 1 (Proxy leve, se autorizado):
+Criar src/proxy.ts só com x-request-id (matcher /api/:path*).
+Adicionar headers() em next.config.ts (CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, HSTS) — sem Proxy.
+Fase 2 (dívida técnica, fora do tema Proxy): wrapper withAuthenticatedRoute para reduzir duplicação nas 78 rotas.
+Fase 3/4: não há evidência de necessidade agora.
+ARQUIVOS ENVOLVIDOS
+next.config.ts, src/proxy.ts (novo), src/lib/server/apiHelpers.ts (log com requestId), vercel.json (se decidir declarar headers lá em vez de next.config.ts).
+
+TESTES
+Manual (sem suíte automatizada, conforme guias/guia_validacao.md): confirmar headers de resposta em /api/* e em página; confirmar x-request-id único por request e presente no log; confirmar que build/preview não quebra iframe/embed legítimo após CSP.
+
+ROLLBACK
+Reverter next.config.ts (headers) e remover src/proxy.ts — nenhuma migration, nenhuma mudança de dado, reversível em um commit.
+
+REFERÊNCIAS OFICIAIS CONSULTADAS
+Next.js 16 blog post
+Upgrading: Version 16 — Next.js docs
+Resumindo a resposta direta à pergunta: hoje, Proxy só vale a pena para headers de segurança estáticos (que na verdade nem precisam de Proxy, resolvem em next.config.ts) e para request ID/observabilidade (esse sim, Proxy leve genuíno). Não vale a pena para autenticação/redirect/tenant enquanto a sessão continuar em localStorage — isso exigiria migrar o modelo de auth para cookies primeiro, o que é um projeto à parte, sem evidência de necessidade hoje.

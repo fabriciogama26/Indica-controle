@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
+import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import styles from "./FulfillmentPageView.module.css";
 import type {
@@ -51,6 +52,9 @@ export function FulfillmentPageView() {
     () => (token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : undefined),
     [token],
   );
+  const claimIdempotency = useIdempotencyKey();
+  const cancelIdempotency = useIdempotencyKey();
+  const fulfillIdempotency = useIdempotencyKey();
 
   const loadReasons = useCallback(async () => {
     if (!token) return;
@@ -124,9 +128,10 @@ export function FulfillmentPageView() {
       try {
         const response = await fetch("/api/stock-requisitions/claim", {
           method: "POST",
-          headers: authHeaders,
+          headers: { ...authHeaders, "Idempotency-Key": claimIdempotency.getKey() },
           body: JSON.stringify({ requestId }),
         });
+        claimIdempotency.reset();
         const data = (await response.json().catch(() => ({}))) as { message?: string };
         if (!response.ok) {
           setFeedback({ type: "error", message: data.message ?? "Falha ao assumir o pedido." });
@@ -139,7 +144,7 @@ export function FulfillmentPageView() {
         setIsBusy(false);
       }
     },
-    [authHeaders, loadDetail, loadList],
+    [authHeaders, claimIdempotency, loadDetail, loadList],
   );
 
   const handleRelease = useCallback(async () => {
@@ -160,9 +165,10 @@ export function FulfillmentPageView() {
     try {
       const response = await fetch("/api/stock-requisitions/cancel", {
         method: "POST",
-        headers: authHeaders,
+        headers: { ...authHeaders, "Idempotency-Key": cancelIdempotency.getKey() },
         body: JSON.stringify({ requestId: detail.request.id, page: "atendimento" }),
       });
+      cancelIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) {
         setFeedback({ type: "error", message: data.message ?? "Falha ao cancelar." });
@@ -173,7 +179,7 @@ export function FulfillmentPageView() {
     } finally {
       setIsBusy(false);
     }
-  }, [authHeaders, detail, loadList]);
+  }, [authHeaders, cancelIdempotency, detail, loadList]);
 
   const setDecision = useCallback((itemId: string, patch: Partial<ItemDecision>) => {
     setDecisions((current) => ({ ...current, [itemId]: { ...(current[itemId] ?? EMPTY_DECISION), ...patch } }));
@@ -263,9 +269,10 @@ export function FulfillmentPageView() {
       });
       const response = await fetch("/api/stock-requisitions/fulfill", {
         method: "POST",
-        headers: authHeaders,
+        headers: { ...authHeaders, "Idempotency-Key": fulfillIdempotency.getKey() },
         body: JSON.stringify({ requestId: detail.request.id, decisions: payloadDecisions }),
       });
+      fulfillIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as { message?: string; resultado?: string };
       if (!response.ok) {
         setFeedback({ type: "error", message: data.message ?? "Falha ao atender a requisicao." });
@@ -277,7 +284,7 @@ export function FulfillmentPageView() {
     } finally {
       setIsBusy(false);
     }
-  }, [allDecided, authHeaders, decisions, detail, loadList]);
+  }, [allDecided, authHeaders, decisions, detail, fulfillIdempotency, loadList]);
 
   return (
     <div className={styles.page}>

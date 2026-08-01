@@ -1,13 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { claimStockRequisitionViaRpc, releaseStockRequisitionClaimViaRpc } from "@/lib/server/stockRequisitions";
 
 const ATENDIMENTO_PAGE = "requisicao-atendimento";
 
-// POST: assume o pedido (claim). Concorrencia por EM_ATENDIMENTO + expiracao.
+// POST: assume o pedido (claim). Concorrencia por EM_ATENDIMENTO + expiracao + Idempotency-Key.
 export async function POST(request: NextRequest) {
+  // Auth e cacheada (TTL 45s) — este pre-check so resolve tenant/ator para escopar a chave de idempotencia.
+  const preAuth = await resolveAuthenticatedAppUser(request);
+  const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+  const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
+
+  return withIdempotency(request, tenantId, actorUserId, "/api/stock-requisitions/claim:CLAIM", () => handleClaim(request));
+}
+
+async function handleClaim(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
       invalidSessionMessage: "Sessao invalida para assumir o pedido.",

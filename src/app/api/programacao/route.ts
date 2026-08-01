@@ -527,10 +527,12 @@ export async function POST(request: NextRequest) {
       inactiveMessage: "Usuario inativo.",
     });
     const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+    const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
 
     return withIdempotency(
       request,
       tenantId,
+      actorUserId,
       "/api/programacao:BATCH_CREATE",
       () => saveProgrammingBatch(clonedRequest),
     );

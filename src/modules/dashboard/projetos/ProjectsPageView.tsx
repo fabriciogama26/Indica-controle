@@ -4,6 +4,7 @@
 import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
@@ -821,6 +822,7 @@ export function ProjectsPageView() {
   const [isDownloadingActivityForecastTemplate, setIsDownloadingActivityForecastTemplate] = useState(false);
   const [isActivityForecastImportModalOpen, setIsActivityForecastImportModalOpen] = useState(false);
   const [activityForecastImportFile, setActivityForecastImportFile] = useState<File | null>(null);
+  const activityForecastImportIdempotency = useIdempotencyKey();
   const [activityForecastImportErrorReport, setActivityForecastImportErrorReport] =
     useState<ProjectForecastImportErrorReport | null>(null);
   const [isImportingActivityForecast, setIsImportingActivityForecast] = useState(false);
@@ -2090,10 +2092,12 @@ export function ProjectsPageView() {
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
+          "Idempotency-Key": activityForecastImportIdempotency.getKey(),
         },
         body: payload,
       });
 
+      activityForecastImportIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as ProjectForecastImportResponse;
       if (isImportResponseFailure(response, data)) {
         const report = buildImportErrorReport(data, "atividades_previstas_import_erros");

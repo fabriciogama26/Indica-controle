@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { cancelStockRequisitionViaRpc } from "@/lib/server/stockRequisitions";
 
@@ -9,6 +10,14 @@ const ATENDIMENTO_PAGE = "requisicao-atendimento";
 
 // Cancelamento permitido ao solicitante (tela de solicitacao) e ao almoxarife (tela de atendimento).
 export async function POST(request: NextRequest) {
+  const preAuth = await resolveAuthenticatedAppUser(request);
+  const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+  const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
+
+  return withIdempotency(request, tenantId, actorUserId, "/api/stock-requisitions/cancel:CANCEL", () => handleCancel(request));
+}
+
+async function handleCancel(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
       invalidSessionMessage: "Sessao invalida para cancelar o pedido.",
