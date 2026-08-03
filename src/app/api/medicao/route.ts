@@ -68,6 +68,11 @@ type MeasurementOrderItemRow = {
   updated_at: string;
 };
 
+type ServiceActivityIddRow = {
+  id: string;
+  code_idd: string | null;
+};
+
 type MeasurementHistoryRow = {
   id: string;
   action_type: string;
@@ -954,6 +959,30 @@ async function fetchProjectIsTestMap(params: {
   return new Map((fallback.data ?? []).map((item) => [item.id, false]));
 }
 
+async function fetchServiceActivityIddMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  activityIds: string[];
+}) {
+  const uniqueActivityIds = Array.from(new Set(params.activityIds.filter(Boolean)));
+  if (!uniqueActivityIds.length) {
+    return new Map<string, string>();
+  }
+
+  const { data, error } = await params.supabase
+    .from("service_activities")
+    .select("id, code_idd")
+    .eq("tenant_id", params.tenantId)
+    .in("id", uniqueActivityIds)
+    .returns<ServiceActivityIddRow[]>();
+
+  if (error) {
+    return new Map<string, string>();
+  }
+
+  return new Map((data ?? []).map((item) => [item.id, normalizeText(item.code_idd)]));
+}
+
 async function fetchProjectServiceCenterMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -1263,12 +1292,20 @@ async function fetchMeasurementOrderDetail(params: {
     }),
   ]);
 
-  const normalizedItems = (itemsResult.data ?? []).map((item) => ({
+  const itemRows = itemsResult.data ?? [];
+  const serviceActivityIddMap = await fetchServiceActivityIddMap({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    activityIds: itemRows.map((item) => item.service_activity_id),
+  });
+
+  const normalizedItems = itemRows.map((item) => ({
     id: item.id,
     activityId: item.service_activity_id,
     programmingActivityId: item.programming_activity_id,
     projectActivityForecastId: item.project_activity_forecast_id,
     code: normalizeText(item.activity_code),
+    codeIdd: serviceActivityIddMap.get(item.service_activity_id) ?? "",
     description: normalizeText(item.activity_description),
     unit: normalizeText(item.activity_unit),
     quantity: Number(item.quantity ?? 0),

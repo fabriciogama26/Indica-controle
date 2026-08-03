@@ -38,6 +38,7 @@ type OrderItem = {
 
 type OrderDetailItem = {
   code: string;
+  codeIdd: string;
   description: string;
   unit: string;
   quantity: number;
@@ -305,6 +306,7 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
     const summary = orderMap.get(detail.id);
     const detailItems = detail.items.length ? detail.items : [{
       code: "",
+      codeIdd: "",
       description: detail.minimumBillingAmount > 0 ? "Garantia de faturamento minimo" : "",
       unit: detail.minimumBillingAmount > 0 ? detail.minimumBillingUnitValueGroup : "",
       quantity: detail.minimumBillingAmount > 0 ? 1 : 0,
@@ -334,6 +336,7 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
         executionStatusLabel(detail, labelMap),
         detail.status,
         item.code || "-",
+        item.codeIdd || "-",
         item.description || "-",
         item.unit || "-",
         item.voicePoint ? item.voicePoint.toLocaleString("pt-BR") : "0",
@@ -363,6 +366,7 @@ async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelM
       "Status execucao",
       "Status ordem",
       "Codigo atividade",
+      "Codigo IDD",
       "Descricao atividade",
       "Unidade",
       "Pontos",

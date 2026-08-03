@@ -203,6 +203,7 @@ type OrderDetailItem = {
   programmingActivityId: string | null;
   projectActivityForecastId: string | null;
   code: string;
+  codeIdd: string;
   description: string;
   unit: string;
   quantity: number;
@@ -3405,11 +3406,12 @@ export function MeasurementPageView() {
 
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
-                  <thead><tr><th>Codigo</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>MVA</th><th>Horas</th><th>Quantidade</th><th>Taxa</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
+                  <thead><tr><th>Codigo</th><th>Codigo IDD</th><th>Descricao</th><th>Unidade</th><th>Pontos</th><th>MVA</th><th>Horas</th><th>Quantidade</th><th>Taxa</th><th>Valor unitario</th><th>Total</th><th>Observacao</th></tr></thead>
                   <tbody>
                     {detailOrder.items.length ? detailOrder.items.map((item) => (
                       <tr key={item.id}>
                         <td>{item.code}</td>
+                        <td>{item.codeIdd || "-"}</td>
                         <td>{item.description}</td>
                         <td>{item.unit}</td>
                         <td>{item.voicePoint.toLocaleString("pt-BR")}</td>
@@ -3421,7 +3423,7 @@ export function MeasurementPageView() {
                         <td>{formatCurrency(item.totalValue)}</td>
                         <td>{item.observation || "-"}</td>
                       </tr>
-                    )) : <tr><td colSpan={11} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
+                    )) : <tr><td colSpan={12} className={styles.emptyRow}>Nenhum item encontrado.</td></tr>}
                   </tbody>
                 </table>
               </div>
