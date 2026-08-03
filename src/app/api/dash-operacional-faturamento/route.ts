@@ -2388,7 +2388,10 @@ export async function GET(request: NextRequest) {
     }
     return NextResponse.json(payload);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Falha ao carregar Dash operacional e faturamento.";
-    return NextResponse.json({ message }, { status: 500 });
+    // Nao repassar `error.message` para a tela: erro de runtime (ex.: TypeError)
+    // virava texto do banner de erro do dashboard, escondendo a causa real e
+    // expondo interno. O detalhe fica no log do servidor.
+    console.error("[dash-operacional-faturamento] load error", error);
+    return NextResponse.json({ message: "Falha ao carregar Dash operacional e faturamento." }, { status: 500 });
   }
 }

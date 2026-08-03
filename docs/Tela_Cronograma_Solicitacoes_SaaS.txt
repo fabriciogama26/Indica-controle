@@ -148,3 +148,18 @@ IMPACTO MEDIDO NA ELEGIBILIDADE DE AS BUILT (producao, 2026-07-29, 141 projetos)
   - `src/server/modules/programacao-normalizada/queries.ts`
   - `src/server/modules/cronograma-solicitacoes/queries.ts`
   - `src/server/modules/cronograma-solicitacoes/normalizers.ts`
+
+Atualizacao 2026-08-03 - `executionDate` agora e anulavel na fachada
+- `fetchLatestProgrammingState` passou a devolver `executionDate: string | null`.
+  A coluna `programming.execution_date` e anulavel desde a migration 318 (etapa
+  "em espera" = ADIADA sem data) e o tipo antigo (`string`) escondia isso —
+  a fachada estourava `Cannot read properties of null (reading 'localeCompare')`
+  ao ordenar as etapas do projeto. Correcao e criterio de ordenacao em
+  `docs/Tela_Programacao_Normalizada_SaaS.txt`, secao "Atualizacao 2026-08-03".
+- Comportamento da tela NAO muda: nenhum handler consome `executionDate` (usam
+  `stateToken` e `programmingId`). O que muda e que projeto com etapa em espera
+  deixa de derrubar a listagem e a verificacao de As Built.
+- Regra de "ultimo" complementada: etapa SEM data nunca vence etapa COM data.
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/server/modules/cronograma-solicitacoes/queries.ts`

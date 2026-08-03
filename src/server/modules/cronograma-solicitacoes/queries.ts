@@ -65,7 +65,7 @@ export async function fetchLatestProgrammingState(
   supabase: SupabaseClient,
   tenantId: string,
   projectId: string,
-): Promise<{ programmingId: string; executionDate: string; rawStatus: string; stateToken: string } | null> {
+): Promise<{ programmingId: string; executionDate: string | null; rawStatus: string; stateToken: string } | null> {
   const byProject = await fetchWorkCompletionByProject({ supabase, tenantId, projectIds: [projectId] });
   const current = byProject.get(projectId);
   if (!current || !current.hasWorkCompletion) return null;
