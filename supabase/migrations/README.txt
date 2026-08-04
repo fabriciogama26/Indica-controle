@@ -978,3 +978,8 @@ Observacao
 - Fase 5b do corte (fecha o corte): reponta `project_measurement_orders.programming_id` de `project_programming` para `programming`, mesma ordem corrigida da 350 (drop constraint -> UPDATE remap via `programming_legacy_map` -> add constraint). 181 de 717 ordens tinham vinculo; 0 orfaos (medido por `scripts/audit-medicao-programming-match-readonly.mjs`).
 - Reescreve as DUAS RPCs de escrita (`save_project_measurement_order`, `save_project_measurement_order_batch_partial`) por PATCH DINAMICO (`pg_get_functiondef`+`replace()`+`execute`, mesma tecnica das migrations 194/202/204/214) trocando so os trechos de match para `programming`+`programming_team` (equipe ATIVA), com normalizacao CRLF->LF do corpo vivo antes do replace e guarda que aborta se o texto esperado nao for encontrado. Desempate preservado identico ao legado (PROGRAMADA>REPROGRAMADA>ADIADA>CANCELADA>outro — unica coisa que Medicao faz diferente de APR/Cronograma, de proposito).
 - `project_measurement_order_items.programming_activity_id` continua apontando para a tabela legada `project_programming_activities` (decisao explicita — sem par no `programming_legacy_map`, nullable, nunca lida de volta, tabela legada permanente).
+
+353_sync_service_activities_code_idd.sql
+- Sincroniza no versionamento a coluna `public.service_activities.code_idd`, criada diretamente no banco sem migration correspondente (divergencia migrations x banco, tratada conforme CLAUDE.md secao 12).
+- `add column if not exists code_idd text` — no-op no ambiente onde a coluna ja existe; nao ha backfill nem alteracao de RLS, constraint ou grant.
+- Consumida em leitura pelo detalhe da ordem de Medicao (modal `Detalhes da Ordem` e `Detalhamento (CSV)`), sempre filtrada por `tenant_id`.

@@ -163,7 +163,7 @@ Filtros, auto-complete e listagem
   - Atualizado em
   - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
   - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela, incluindo `Centro de Servicos` do projeto.
-  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade` e `Centro de Servicos` do projeto.
+  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`, `Codigo IDD` e `Centro de Servicos` do projeto.
   - Botao `Exportar pontuacao` para baixar CSV com `Tipo`, `Nome`, `Data`, `Projeto`, `Pontos`, `Valor (R$)`, `Status` e `Compensatorio`.
   - As colunas monetarias dos CSVs de Medicao exportam valores numericos sem prefixo `R$`, mantendo a unidade no cabecalho para permitir soma no Excel.
   - A `Pontuacao` nao fica visivel na lista; e calculada para exportacao por `sum(Pontos da atividade x Quantidade)`.
@@ -185,6 +185,7 @@ Filtros, auto-complete e listagem
   - Exibe `Composicao equipe = Sim/Nao` conforme a existencia de composicao ativa para o mesmo `tenant + Projeto + Equipe + Data execucao`.
   - Exibe `Taxa manual` no cabecalho e tambem a coluna `Taxa` por item na grade.
   - Usa `manual_rate` e `total_value` persistidos no item para conferencia visual e exportacao detalhada.
+  - Exibe a coluna `Codigo IDD` por item, lida de `service_activities.code_idd` pelo `service_activity_id` do item (nao ha snapshot em `project_measurement_order_items`, portanto o valor sempre reflete o cadastro atual da atividade). Sem valor cadastrado, a coluna mostra `-`.
 
 Boas praticas
 -------------
@@ -1307,3 +1308,28 @@ Atualizacao 2026-07-31 - Fase 5b do corte: match e leitura lendo Programacao Nor
   - `src/app/api/medicao/route.ts`
   - `docs/Tela_Medicao_SaaS.txt`
   - `TASKS.md`
+
+Atualizacao 2026-08-03 - Coluna Codigo IDD no detalhe e no CSV de detalhamento
+--------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/353_sync_service_activities_code_idd.sql` (novo)
+  - `src/app/api/medicao/route.ts`
+  - `src/app/api/medicao/export/route.ts`
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `docs/Tela_Medicao_SaaS.txt`
+- Funcoes/hooks/constantes tocadas:
+  - Tipo `ServiceActivityIddRow` (novo) e funcao `fetchServiceActivityIddMap` (nova) em `src/app/api/medicao/route.ts`
+  - Funcao `fetchMeasurementOrderDetail` (campo `codeIdd` por item)
+  - Tipo `OrderDetailItem` da exportacao server-side e funcao `buildDetailsCsv`
+  - Tipo `OrderDetailItem` da view e tabela de itens do modal `Detalhes da Ordem`
+- Comportamento antes/depois:
+  - Antes: o modal `Detalhes da Ordem` e o `Detalhamento (CSV)` exibiam apenas `Codigo` (`activity_code` do snapshot do item).
+  - Depois: ambos exibem tambem `Codigo IDD`, lido de `service_activities.code_idd` pelo `service_activity_id` do item, com `-` quando nao cadastrado.
+  - A leitura do `code_idd` e feita em consulta propria, tolerante a erro: se a consulta falhar, o detalhe da ordem continua carregando com a coluna vazia em vez de quebrar a tela.
+  - A coluna nao e snapshot: reflete sempre o cadastro atual da atividade, diferente de `activity_code`/`activity_description`/`activity_unit`, que sao congelados no item.
+- Divergencia tratada (CLAUDE.md secao 12):
+  - `service_activities.code_idd` ja existia no banco, mas nao havia migration correspondente no repositorio.
+  - A migration 353 apenas sincroniza o versionamento (`add column if not exists`), sendo no-op no ambiente onde a coluna ja existe. Nao ha carga/backfill de dados.
+- Impacto multi-tenant:
+  - Sem alteracao de RLS ou permissoes.
+  - A leitura de `service_activities` e filtrada por `tenant_id` do usuario autenticado e restrita aos `service_activity_id` dos itens da propria ordem.
