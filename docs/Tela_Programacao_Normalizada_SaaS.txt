@@ -1294,3 +1294,47 @@ Atualizacao 2026-07-31 - Menu de acoes da equipe fora do bloco
   - Confirmar que as opcoes `Remover`, `Cancelar participacao...` e
     `Adiar equipe...` aparecem completas, sem corte.
   - Repetir com rolagem da pagina e em viewport estreito.
+
+Atualizacao 2026-08-03 - Etapa em espera quebrava a fachada de Estado do Trabalho
+- Problema:
+  - `fetchWorkCompletionByProject` (fachada, `queries.ts`) tipava
+    `execution_date` como `string` e chamava `.localeCompare` direto no
+    reordenamento em JS. A migration 318 tornou a coluna ANULAVEL (etapa "em
+    espera" = ADIADA sem data), entao bastava UMA etapa em espera no tenant para
+    o comparador estourar `Cannot read properties of null (reading
+    'localeCompare')`.
+  - Atingia todos os consumidores da funcao: Dash Operacional e Faturamento
+    (erro no carregamento inicial da tela, banner vermelho) e Cronograma de
+    Solicitacoes.
+  - `fetchWorkCompletionTimelineByProject` NAO tinha o problema: o
+    `.lte("execution_date", endDate)` ja descarta NULL no Postgres, entao
+    Carteira Operacional e Dash Medicao nunca quebraram.
+- Mudanca:
+  - `ProjectWorkCompletionRow.execution_date` e
+    `ProgrammingProjectWorkCompletion.executionDate` passam a ser
+    `string | null`, refletindo o schema pos-318.
+  - Ordenacao: etapa sem data vai para o FIM do projeto. Ela esta fora da
+    numeracao de etapas (a 318 exige data para reclassificar) e nao pode definir
+    o Estado do Trabalho no lugar de uma etapa com data. Foi preciso inverter
+    explicitamente porque o `order by execution_date desc` do Postgres traz
+    NULLS FIRST — sem isso a etapa em espera seria eleita "a mais recente".
+  - Desempate inalterado: mesma data -> status ativo (PROGRAMADA/REPROGRAMADA)
+    antes de ADIADA/ANTECIPADA -> `updated_at` desc.
+  - `fetchLatestProgrammingState` (Cronograma) propaga `executionDate:
+    string | null`. Nenhum handler consome esse campo (usam `stateToken` e
+    `programmingId`), entao a mudanca de tipo nao altera comportamento de tela.
+  - `GET /api/dash-operacional-faturamento` parou de devolver `error.message`
+    cru no `catch`: agora loga o erro real com `console.error` e responde
+    mensagem de negocio, como as demais rotas do projeto.
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/server/modules/cronograma-solicitacoes/queries.ts`
+  - `src/app/api/dash-operacional-faturamento/route.ts`
+- Como validar:
+  - Ter (ou criar) uma etapa em espera: `/programacao-normalizada` -> plano do
+    projeto -> `Adiar` -> "Deixar em espera".
+  - Abrir `/dash-operacional-faturamento` e confirmar que a tela carrega sem o
+    banner de erro e que a coluna Estado do Trabalho traz o estado da etapa COM
+    data, nao o da etapa em espera.
+  - Abrir `/cronograma-solicitacoes` e confirmar que a coluna de estado e a
+    trava de As Built continuam corretas para o mesmo projeto.

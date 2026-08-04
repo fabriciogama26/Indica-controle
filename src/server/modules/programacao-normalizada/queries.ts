@@ -139,9 +139,13 @@ function applyStatusChipToStageQuery<Q extends {
 // `isPendencia` sai como campo PROPRIO e nao e dobrado dentro do status: na
 // migration 318 a pendencia deixou de ser status e Estado do Trabalho e virou flag
 // ortogonal. Quem consome decide se ela importa.
+//
+// `executionDate` e ANULAVEL: a migration 318 tornou `programming.execution_date`
+// anulavel para a etapa "em espera" (ADIADA sem data). Quem consome precisa
+// tratar o null — nao existe data para uma etapa que ainda nao foi remarcada.
 export type ProgrammingProjectWorkCompletion = {
   programmingId: string;
-  executionDate: string;
+  executionDate: string | null;
   rawStatus: string;
   hasWorkCompletion: boolean;
   isPendencia: boolean;
@@ -150,7 +154,7 @@ export type ProgrammingProjectWorkCompletion = {
 type ProjectWorkCompletionRow = {
   id: string;
   project_id: string;
-  execution_date: string;
+  execution_date: string | null;
   status: string;
   work_completion_status: string | null;
   is_pendencia: boolean | null;
@@ -186,9 +190,21 @@ export async function fetchWorkCompletionByProject(params: {
   // vence ADIADA/ANTECIPADA antes de olhar updated_at. So importa a ordem
   // relativa DENTRO do mesmo project_id — o Map abaixo trata cada projeto de
   // forma independente, entao nao precisa reagrupar por projeto aqui.
+  //
+  // Etapa "em espera" (ADIADA sem data, migration 318) entra com
+  // `execution_date` NULL e vai para o FIM do projeto: ela esta fora da
+  // numeracao de etapas (a 318 exige data para reclassificar) e nao pode
+  // definir o Estado do Trabalho no lugar de uma etapa com data. O ORDER BY do
+  // Postgres traz esses NULLs primeiro (`desc` = NULLS FIRST), por isso a
+  // inversao precisa ser explicita aqui.
   const rows = (data ?? []).slice().sort((left, right) => {
-    const byDate = right.execution_date.localeCompare(left.execution_date);
-    if (byDate !== 0) return byDate;
+    const leftDate = left.execution_date ?? "";
+    const rightDate = right.execution_date ?? "";
+    if (leftDate !== rightDate) {
+      if (!leftDate) return 1;
+      if (!rightDate) return -1;
+      return rightDate.localeCompare(leftDate);
+    }
 
     const leftActive = left.status === "PROGRAMADA" || left.status === "REPROGRAMADA" ? 0 : 1;
     const rightActive = right.status === "PROGRAMADA" || right.status === "REPROGRAMADA" ? 0 : 1;

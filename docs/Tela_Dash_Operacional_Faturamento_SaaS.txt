@@ -547,3 +547,30 @@ IMPACTO MEDIDO EM PRODUCAO (2026-07-29)
   - `src/app/api/dash-operacional-faturamento/route.ts`
   - `src/server/modules/dashboard-measurement/controller.ts`
   - `src/server/modules/dashboard-portfolio/controller.ts`
+
+Atualizacao 2026-08-03 - Tela quebrava com etapa em espera na Programacao
+- Sintoma: ao abrir a tela, banner de erro com o texto cru do JS
+  "Cannot read properties of null (reading 'localeCompare')" e nenhum dado
+  carregado.
+- Causa: a carga inicial (`loadProjectValues` -> `includeProjectValues=true`)
+  passa por `fetchWorkCompletionByProject` da fachada da Programacao
+  Normalizada, que ordenava por `execution_date` sem tratar NULL. A coluna e
+  anulavel desde a migration 318 (etapa "em espera" = ADIADA sem data), entao
+  UMA etapa em espera no tenant derrubava a tela inteira.
+- Correcao: tratamento de NULL na fachada — etapa sem data nunca vence etapa com
+  data ao definir o ultimo Estado do Trabalho do projeto. Detalhes e criterio de
+  ordenacao em `docs/Tela_Programacao_Normalizada_SaaS.txt`, secao
+  "Atualizacao 2026-08-03".
+- O `catch` da rota parou de repassar `error.message` para a tela: erro de
+  runtime agora vai para o log do servidor (`console.error`) e o usuario recebe
+  "Falha ao carregar Dash operacional e faturamento.". Mensagens de negocio que
+  a rota devolve explicitamente (ex.: "Projeto nao encontrado para o tenant
+  atual.") nao mudaram — sao `NextResponse.json`, nao excecao.
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/server/modules/cronograma-solicitacoes/queries.ts`
+  - `src/app/api/dash-operacional-faturamento/route.ts`
+- Como validar:
+  - Deixar uma etapa em espera em `/programacao-normalizada` (`Adiar` ->
+    "Deixar em espera") e abrir `/dash-operacional-faturamento`: a tela carrega
+    e o Estado do Trabalho do projeto vem da etapa COM data.
