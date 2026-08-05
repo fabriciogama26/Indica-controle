@@ -118,6 +118,32 @@ Cancelamento e saldo
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
 
+Atualizacao 2026-08-05 (2) - Refatoracao estrutural do modulo (piloto do padrao)
+----------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-estoque/hooks.ts` (novo)
+  - `src/modules/dashboard/dash-estoque/helpers.ts` (novo)
+  - `src/modules/dashboard/dash-estoque/types.ts` (novo)
+  - `src/modules/dashboard/dash-estoque/components/*.tsx` (11 novos)
+  - `file-size-baseline.json`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - `StockDashboardPageView.tsx` concentrava 1.383 linhas: tipos do payload, formatadores, paleta e faixas da dispersao, 8 componentes visuais, todo o estado da tela, o fetch da API, os memos derivados e as duas exportacoes CSV.
+  - Os controles segmentados de operacao e escala da dispersao estavam duplicados literalmente no cabecalho do card e no do modal ampliado.
+- Depois:
+  - Estrutura do modulo: `components/` (11 componentes), `hooks.ts` (`useStockDashboard`), `helpers.ts` (funcoes puras), `types.ts` (tipos) e `StockDashboardPageView.tsx` como composicao da pagina (210 linhas).
+  - `ScatterViewControls.tsx` passa a ser a fonte unica dos controles segmentados; o markup renderizado continua identico nos dois lugares.
+  - O botao `Exportar CSV` do modal ampliado recebe `canExport` do hook em vez de recalcular o filtro localmente, mantendo uma unica fonte da regra.
+  - REFATORACAO EXCLUSIVAMENTE ESTRUTURAL: nenhuma mudanca de layout, texto, classe CSS, atributo de acessibilidade, regra de calculo, filtro, dado exibido ou chamada de API. O CSS module nao foi tocado.
+  - Equivalencia verificada por comparacao automatizada do arquivo antigo contra o conjunto novo: classes CSS, atributos de acessibilidade, textos e chamadas de helper batem token a token; as unicas divergencias sao a deduplicacao dos controles segmentados (`.segmented` 5 -> 3 ocorrencias escritas, `.segment`/`.segmentActive` 10 -> 6, `<button>` 20 -> 16, `<div>` 81 -> 79) e os imports novos.
+  - Baseline do ratchet: `StockDashboardPageView.tsx` saiu de `file-size-baseline.json` (1.383 -> 210 linhas, abaixo do limite de 1.000); baseline caiu de 31 para 30 entradas.
+- Impacto multi-tenant:
+  - Nenhum; o modulo e read-only e a chamada a `GET /api/dash-estoque` nao mudou.
+- Lacuna de validacao:
+  - A comparacao visual interativa (clique em filtros, modais e graficos com sessao autenticada) NAO foi executada pelo agente - o ambiente nao permite subir o servidor de desenvolvimento. Validado por `npm run lint`, `npm run lint:size`, `npx tsc --noEmit`, `npm run build` e pela comparacao estrutural automatizada.
+
 Atualizacao 2026-08-05 - Filtro por UMB na Dispersao de materiais
 -------------------------------------------------------------------
 - Arquivos alterados:
@@ -143,9 +169,9 @@ Atualizacao 2026-08-05 - Filtro por UMB na Dispersao de materiais
   - Nenhum; a mudanca altera apenas a regra de corte e a apresentacao do payload ja autenticado e filtrado por `tenant_id` em `GET /api/dash-estoque`.
   - O filtro por UMB e client-side sobre dados ja carregados do recorte atual, sem nova chamada a API.
 - Divida tecnica registrada (CLAUDE.md secao 5 - limite de 1.000 linhas por `PageView`):
-  - `StockDashboardPageView.tsx` ja estava acima do limite antes desta tarefa (1.235 linhas) e passou a 1.291 linhas, sem plano de modularizacao registrado ate agora.
-  - Plano proposto (nao executado nesta tarefa, exige tarefa propria): criar `src/modules/dashboard/dash-estoque/components/` e extrair, nesta ordem de menor risco, `BarList`, `EvolutionChart`, `MaterialModal`, `ScatterUnitStrip` e `ScatterChart` (o maior bloco, ~150 linhas); mover helpers puros (`formatDecimal`, `formatCurrency`, `truncateLabel`, `scaleScatterValue`, `scatterOffset`, `buildScatterQuantityBands`, paleta) para `helpers.ts` do modulo e os tipos de payload para `types.ts`; o `PageView` fica apenas com filtros, estado, carregamento da API e composicao.
-  - Estimativa pos-extracao: `PageView` abaixo de 500 linhas, sem mudanca de comportamento nem de contrato com `GET /api/dash-estoque`.
+  - `StockDashboardPageView.tsx` ja estava acima do limite antes desta tarefa e cresceu com ela.
+  - RESOLVIDA na `Atualizacao 2026-08-05 (2)`: o plano de modularizacao foi executado e o arquivo caiu para 210 linhas.
+  - Observacao de medicao: os numeros de linha citados originalmente nesta secao (1.235 -> 1.291) vieram de `Measure-Object -Line`, que ignora linhas em branco; em linha fisica os valores reais eram 1.327 -> 1.383.
 
 Atualizacao 2026-07-07 - Descricao do material na Dispersao de materiais
 --------------------------------------------------------------------------
@@ -319,7 +345,25 @@ Funcoes principais
 - Caminho: `src/app/api/dash-estoque/route.ts`
   - Responsavel por: autenticar usuario, validar permissao da pagina, carregar centros fisicos, saldos, movimentacoes, itens, operacoes de equipe, projetos e equipes, e devolver agregados para os 6 graficos.
 - Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
-  - Responsavel por: filtros, carregamento da API, cards de resumo, modal de dispersao e renderizacao dos graficos.
+  - Responsavel por: composicao da pagina. Chama `useStockDashboard()` e distribui os dados para os componentes; nao contem estado, fetch, calculo nem formatacao.
+- Caminho: `src/modules/dashboard/dash-estoque/hooks.ts`
+  - Responsavel por: `useStockDashboard()` - estado dos filtros, `loadDashboard()`, memos derivados da dispersao, handlers de interacao e exportacoes CSV.
+- Caminho: `src/modules/dashboard/dash-estoque/helpers.ts`
+  - Responsavel por: formatadores, escalas, paleta e faixas de quantidade da dispersao. Funcoes puras, sem React.
+- Caminho: `src/modules/dashboard/dash-estoque/types.ts`
+  - Responsavel por: tipos do payload de `GET /api/dash-estoque` e tipos de estado compartilhados.
+- Caminho: `src/modules/dashboard/dash-estoque/components/`
+  - `DashboardFilters.tsx` - card de filtros.
+  - `StockSummary.tsx` - cards de resumo e bloco `Estoque` por UMB.
+  - `ScatterChart.tsx` - grafico de dispersao e lista lateral.
+  - `ScatterUnitStrip.tsx` - filtro por UMB.
+  - `ScatterViewControls.tsx` - controles segmentados de operacao e escala, compartilhados pelo card e pelo modal ampliado.
+  - `ScatterExpandedModal.tsx` - modal ampliado da dispersao.
+  - `BarList.tsx` - barras de criticos/zerados e top saldo.
+  - `IdleChart.tsx` - colunas de materiais sem giro.
+  - `AbcChart.tsx` - barra empilhada e tabela da Curva ABC.
+  - `EvolutionChart.tsx` - barras mensais de evolucao.
+  - `MaterialDetailsModal.tsx` - modal de detalhamento de materiais.
 - Caminho: `src/app/(dashboard)/dash-estoque/page.tsx`
   - Responsavel por: expor a rota da tela no App Router.
 - Caminho: `src/components/layout/AppShell.tsx`
