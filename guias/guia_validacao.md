@@ -83,6 +83,7 @@ Obrigatório antes de qualquer PR ou entrega de código. Substitui o protocolo a
 - [ ] Ambiente dev/homolog/prod separados; nenhuma mistura.
 - [ ] Backup e rollback preparados antes de mudança estrutural.
 - [ ] Validação local (`npx tsc --noEmit`, `npm run lint`) executada antes de qualquer deploy.
+- [ ] Ratchet de tamanho de arquivo verde; se o baseline **aumentou** para algum arquivo, o aceite foi explícito (`lint:size:accept`) e está justificado na descrição do PR.
 - [ ] `npm run db:check-link` confirmado antes de `db:migration-list`/`db:lint`/deploy.
 
 ## 4. Fluxo recomendado
@@ -112,7 +113,8 @@ Nunca:
 ## 7. Validação
 
 - `npx tsc --noEmit`
-- `npm run lint`
+- `npm run lint` (ESLint + ratchet de tamanho de arquivo)
+- `npm run lint:size` isolado quando só o tamanho de arquivo estiver em questão; `npm run lint:size:update` quando um arquivo do baseline encolher ou for removido (só reduz); `npm run lint:size:accept -- <caminho>` para aceitar crescimento excepcional, sempre nomeando cada arquivo
 - `npm run build` (mudanças que afetam rota/build)
 - `npm run db:lint` / `npm run db:security-check` (mudanças de schema/RPC)
 
