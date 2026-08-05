@@ -1,0 +1,10 @@
+export { AddTeamModal } from "./AddTeamModal";
+export { CancelModal } from "./CancelModal";
+export { CancelTeamModal } from "./CancelTeamModal";
+export { CorrectDateModal } from "./CorrectDateModal";
+export { DetailsModal } from "./DetailsModal";
+export { HistoryModal } from "./HistoryModal";
+export { LastActiveTeamModal } from "./LastActiveTeamModal";
+export { PendenciaModal } from "./PendenciaModal";
+export { PostponeModal } from "./PostponeModal";
+export { PostponeTeamModal } from "./PostponeTeamModal";
