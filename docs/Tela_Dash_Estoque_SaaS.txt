@@ -43,6 +43,8 @@ Filtros, auto-complete e listagem
     - Botao `Exportar Excel`
     - Botao `Expandir`
     - Cards por UMB da dispersao, alternando quantidade movimentada conforme `Requisicao` ou `Devolucao`
+    - Os cards por UMB funcionam como filtro: clicar em uma UMB restringe grafico, lista lateral e CSV aquela unidade; clicar de novo ou em `Todas as UMB` volta para todas
+    - O ranking de materiais retornado pela API e cortado por UMB (top 25 por operacao + UMB), garantindo representacao de todas as unidades
     - Alternancia de escala entre `Raiz` e `Linear`
     - Lista lateral completa com rolagem para selecionar material
     - Lista lateral exibe `Material`, `UMB`, `Quantidade`, `Operacoes` e `Projetos`
@@ -115,6 +117,35 @@ Cancelamento e saldo
   - `project`
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
+
+Atualizacao 2026-08-05 - Filtro por UMB na Dispersao de materiais
+-------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/dash-estoque/route.ts`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - `buildScatterRows` ordenava todos os materiais por quantidade e aplicava um corte global unico (`slice(0, 80)`), somando as duas operacoes.
+  - Como quantidades de UMB diferentes tem ordens de grandeza distintas (ex.: `M` na casa dos milhoes contra `UN` na casa dos milhares), a UMB dominante ocupava quase todo o ranking e as demais quase nao apareciam no grafico; `Devolucao` tambem ficava com poucos pontos por disputar o mesmo corte com `Requisicao`.
+  - Os cards por UMB acima do grafico eram apenas informativos (`div`), sem acao.
+  - O eixo X misturava materiais de UMB diferentes na mesma escala de quantidade, tornando a comparacao entre pontos pouco significativa.
+- Depois:
+  - `buildScatterRows` aplica o corte por grupo `operacao + UMB` (`DASH_SCATTER_ROWS_PER_UNIT = 25`), com teto de seguranca por operacao (`DASH_SCATTER_ROWS_PER_OPERATION = 200`); cada UMB passa a ter representacao propria no payload.
+  - A UMB de cada ponto e normalizada para `SEM UMB` quando vazia, alinhando com `buildScatterUnitSummary` e permitindo o casamento entre card e filtro.
+  - `ScatterUnitStrip` passa a renderizar botoes (`aria-pressed`) com um card inicial `Todas as UMB`; a selecao alimenta o estado `scatterUnit` do `PageView`.
+  - `ScatterChart`, a lista lateral, o contador de materiais e a exportacao CSV respeitam a UMB selecionada; o nome do arquivo CSV inclui a UMB (`dispersao_materiais_<operacao>_<umb>_<data>.csv`).
+  - Clicar na UMB ja ativa desativa o filtro; trocar de UMB limpa o foco individual de material; novo carregamento da API reseta a selecao de UMB e de material.
+  - Subtitulo do card e cabecalho do modal ampliado exibem a UMB ativa; o estado vazio informa a UMB filtrada.
+  - Novos estilos `.unitPillButton` e `.unitPillActive`; o card informativo `.unitPill` do bloco `Estoque` permanece inalterado.
+- Impacto multi-tenant:
+  - Nenhum; a mudanca altera apenas a regra de corte e a apresentacao do payload ja autenticado e filtrado por `tenant_id` em `GET /api/dash-estoque`.
+  - O filtro por UMB e client-side sobre dados ja carregados do recorte atual, sem nova chamada a API.
+- Divida tecnica registrada (CLAUDE.md secao 5 - limite de 1.000 linhas por `PageView`):
+  - `StockDashboardPageView.tsx` ja estava acima do limite antes desta tarefa (1.235 linhas) e passou a 1.291 linhas, sem plano de modularizacao registrado ate agora.
+  - Plano proposto (nao executado nesta tarefa, exige tarefa propria): criar `src/modules/dashboard/dash-estoque/components/` e extrair, nesta ordem de menor risco, `BarList`, `EvolutionChart`, `MaterialModal`, `ScatterUnitStrip` e `ScatterChart` (o maior bloco, ~150 linhas); mover helpers puros (`formatDecimal`, `formatCurrency`, `truncateLabel`, `scaleScatterValue`, `scatterOffset`, `buildScatterQuantityBands`, paleta) para `helpers.ts` do modulo e os tipos de payload para `types.ts`; o `PageView` fica apenas com filtros, estado, carregamento da API e composicao.
+  - Estimativa pos-extracao: `PageView` abaixo de 500 linhas, sem mudanca de comportamento nem de contrato com `GET /api/dash-estoque`.
 
 Atualizacao 2026-07-07 - Descricao do material na Dispersao de materiais
 --------------------------------------------------------------------------
