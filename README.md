@@ -1,13 +1,13 @@
-# RQM SaaS
+# INDICA SaaS
 
-Frontend web do SaaS para login, shell principal, operacao de estoque e cadastros base integrados ao Supabase, com hospedagem web prevista no Vercel.
+Aplicacao web multi-tenant para operacao, almoxarifado, medicao, faturamento, programacao, cadastros e controle de permissoes integrados ao Supabase.
 
 ---
 
 ## Visao geral
-- Problema resolvido: separar o frontend web do app Android e manter o contexto tecnico do SaaS em uma estrutura propria.
-- Solucao proposta: projeto Next.js publicado no Vercel para servir a interface web, mantendo Auth, banco, RLS e Edge Functions no Supabase.
-- Contexto de uso: painel web multi-tenant para autenticacao, navegacao principal e evolucao dos modulos de Operacao, Almoxarifado, Cadastros e Cadastro Base, incluindo rastreio unitario de materiais por serial, acessado por dominio web publico.
+- Problema resolvido: centralizar em uma interface web os fluxos operacionais de projetos, locacao, programacao, composicao de equipe, APR, medicao, faturamento, estoque e cadastros.
+- Solucao proposta: monolito modular em Next.js, publicado no Vercel, com rotas server-side que validam sessao/permissao e delegam regras criticas para RPCs transacionais no Supabase.
+- Contexto de uso: painel web multi-tenant da INDICA, com RLS no banco, permissoes por pagina/acao e segregacao de dados por `tenant_id`.
 
 ---
 
@@ -26,11 +26,11 @@ Frontend web do SaaS para login, shell principal, operacao de estoque e cadastro
 ---
 
 ## Requisitos
-- Node.js instalado
-- npm disponivel
-- Conta/projeto no Vercel para publicacao do frontend
-- Projeto Supabase configurado para o modo remoto
-- Edge Functions e migrations publicadas quando o ambiente nao estiver em modo local
+- Node.js `>=20.9.0`
+- npm compativel com o `package-lock.json`
+- Projeto Supabase remoto com migrations aplicadas e RLS ativo
+- Supabase CLI configurada quando for necessario validar link, listar migrations, rodar lint de banco ou publicar Edge Functions
+- Conta/projeto no Vercel quando houver publicacao do frontend
 
 ---
 
@@ -52,7 +52,7 @@ npm run dev:turbopack
 ```
 5. Se precisar validar o link remoto do Supabase CLI nesta maquina:
 ```bash
-npm run db:link
+npm run db:check-link
 npm run db:status
 ```
 6. Abrir `http://localhost:3000`.
@@ -65,7 +65,7 @@ npm run db:status
 npm run build
 ```
 2. Publicar o frontend no Vercel como projeto `Next.js` apontando para a raiz deste repositorio.
-3. Configurar no Vercel as mesmas variaveis listadas em `.env.example`, inclusive as variaveis server-side usadas pelas rotas `src/app/api/*`.
+3. Configurar no Vercel as mesmas variaveis obrigatorias listadas em `.env.example`, inclusive as variaveis server-side usadas pelas rotas `src/app/api/*`.
 4. Definir `PASSWORD_REDIRECT_URL` com o dominio publico do frontend:
 ```bash
 https://SEU-DOMINIO/recuperar-senha
@@ -80,22 +80,19 @@ vercel --prod
 ---
 
 ## Variaveis de ambiente
-- Frontend publico / browser:
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - `NEXT_PUBLIC_AUTH_MODE`
-  - `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`
-- Rotas server-side do Next no Vercel:
-  - `SUPABASE_URL`
-  - `SUPABASE_SERVICE_ROLE_KEY`
-  - `PASSWORD_REDIRECT_URL`
-  - `AUTH_RECOVER_DEBUG`
-- Modo local:
-  - `LOCAL_AUTH_USERNAME`
-  - `LOCAL_AUTH_PASSWORD`
-  - `LOCAL_USER_ID`
-  - `LOCAL_ROLE`
-  - `LOCAL_TENANT_ID`
+- `NEXT_PUBLIC_SUPABASE_URL`: URL publica do projeto Supabase usada pelo browser.
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`: chave anonima publica do Supabase.
+- `NEXT_PUBLIC_AUTH_MODE`: modo de autenticacao (`remote` para Supabase; modo local apenas para desenvolvimento controlado).
+- `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES`: tempo de inatividade antes de encerrar a sessao no frontend.
+- `SUPABASE_URL`: URL do Supabase usada por rotas server-side.
+- `SUPABASE_SERVICE_ROLE_KEY`: chave server-side usada somente no backend/rotas Next e em operacoes autorizadas.
+- `PASSWORD_REDIRECT_URL`: URL publica da rota `/recuperar-senha`.
+- `AUTH_RECOVER_DEBUG`: flag de diagnostico da recuperacao de senha.
+- `LOCAL_AUTH_USERNAME`: login do modo local.
+- `LOCAL_AUTH_PASSWORD`: senha do modo local.
+- `LOCAL_USER_ID`: identificador do usuario local.
+- `LOCAL_ROLE`: perfil do usuario local.
+- `LOCAL_TENANT_ID`: tenant usado no modo local.
 - Observacao tecnica:
   - `PASSWORD_REDIRECT_URL` deve apontar para a rota publica `/recuperar-senha` do dominio publicado no Vercel.
   - Os mesmos segredos usados pelas Edge Functions continuam sendo configurados no Supabase, nao no Vercel.
@@ -104,13 +101,20 @@ vercel --prod
 
 ## Estrutura de pastas
 - `src/app`: rotas, grupos de rota e layouts do App Router.
-- `src/modules`: implementacao visual e composicao das telas.
+- `src/app/api`: Route Handlers server-side que resolvem sessao, tenant, permissao e delegam regra de negocio.
+- `src/modules`: implementacao visual, hooks, tipos, helpers e fachadas das telas do dashboard.
 - `src/components`: shell e componentes visuais.
 - `src/context`: estado de autenticacao.
-- `src/lib`: cliente Supabase e React Query.
+- `src/hooks`: hooks compartilhados de autenticacao, paginacao, exportacao, idempotencia e log de erro.
+- `src/lib`: cliente Supabase, React Query, autorizacao, helpers server-side e utilitarios.
+- `src/server/modules`: modulos server-side compartilhados por rotas maiores.
 - `src/services`: integracoes do frontend.
-- `docs`: handoff e documentacao funcional do SaaS.
-- `vercel.json`: declaracao minima do deploy web no Vercel.
+- `supabase`: migrations, Edge Functions, SQL avulso e documentacao das functions.
+- `docs`: handoff, documentos de tela, auditorias e planejamento.
+- `guias`: regras obrigatorias de engenharia, validacao, SQL, Supabase, frontend, backend, documentacao e git.
+- `scripts`: scripts locais de validacao, ratchet de tamanho e checks Supabase.
+- `.github/workflows`: CI de lint, ratchet de tamanho e typecheck.
+- `vercel.json`: configuracao minima do deploy web no Vercel.
 
 ---
 
@@ -128,11 +132,17 @@ vercel --prod
   - `(dashboard)/dash-estoque/page.tsx`: rota do Dashboard Estoque com indicadores de saldo, bloco de estoque por UMB, giro, curva ABC, dispersao de materiais com cards por UMB para Requisicao/Devolucao, exportacao Excel (CSV) da tabela da dispersao e evolucao mensal por eventos operacionais unicos.
   - `(dashboard)/dash-operacional-faturamento/page.tsx`: rota do Dash operacional e faturamento com comparativo por projeto entre Medicao, Medicao Asbuilt e Faturamento, filtros obrigatorios por Centro de servico e Projeto, filtro por codigo de atividade, status ativa/inativa, divergencias, ausencias, grafico operacional com filtro proprio, select `Servicos considerados ate` preenchido pelas datas cadastradas de Medicao Asbuilt, regra incremental por faixa entre o corte anterior + 1 dia e o corte selecionado, barra segmentada por corte quando `Todos` esta selecionado, tickets medios por projetos e servicos para Medicao e Asbuilt, detalhamento em modal das faixas de Asbuilt por `Servicos considerados ate`, icone de olho nos cards operacionais com abas `Medicao`, `M. As built`, `As Built` e `Faturado` por categoria, filtros de corte e Taxa dentro do modal operacional, cards globais por categoria instalada/retirada e categorias `PODA`/`ARRASTO` comparando quantidade e valor de Medicao, M. As built, ASBUILT e Faturado, tabela clicavel de valor/projetos/medicoes do grafico, tabela de categorias cobradas e exportacao CSV.
   - `(dashboard)/projetos/page.tsx`: rota da tela de Projetos com cadastro, filtros (incluindo `Estado Trabalho` e `Tipo SGD`), marcadores de obra de teste e retirada da carteira, listagem, materiais previstos e atividades previstas por projeto.
+  - `(dashboard)/cronograma-solicitacoes/page.tsx`: rota do Cronograma de Solicitacoes para solicitacoes tecnicas de Inspecao, As Built e Locacao, com prazos, verificacao e cancelamento.
   - `(dashboard)/locacao/page.tsx`: rota da tela de Locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, 4 blocos operacionais, validacao obrigatoria na aba principal, controle de concorrencia por `updated_at` e atividades previstas/materiais previstos com regras finais centralizadas em RPC.
   - `(dashboard)/programacao/page.tsx`: rota legada desativada; mantida no codigo apenas para redirecionar automaticamente para `/programacao-simples`.
-  - `(dashboard)/programacao-simples/page.tsx`: rota da nova tela de Programacao no padrao de cadastro, com selecao de multiplas equipes, ETAPA obrigatoria (numerica, `ETAPA UNICA` ou `ETAPA FINAL`), campos estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros (incluindo `Estado Trabalho` e `Tipo SGD`), acoes de linha (`Detalhes`, `Edicao`, `Historico`, `Copiar para datas`, `Adicionar equipe`), submit em lote, edicao com troca de equipe (selecao unica + aviso visual), inclusao de equipe em programacao ativa existente, regra `ANTECIPADO` para etapas posteriores a uma etapa concluida e exportacao `ENEL-EXCEL`.
+  - `(dashboard)/programacao-simples/page.tsx`: rota legada de Programacao, congelada em somente leitura para pesquisa, filtros, detalhes, historico e extracoes.
+  - `(dashboard)/programacao-normalizada/page.tsx`: rota ativa de Programacao no modelo normalizado, com etapas por projeto, equipes associadas, documentos, status de execucao, acoes granulares, historico e extracoes.
+  - `(dashboard)/programacao-visualizacao/page.tsx`: rota read-only de visualizacao da Programacao com lista filtrada e calendario semanal.
+  - `(dashboard)/mapa-programacao/page.tsx`: rota do Mapa de Programacao para carteira nunca programada e equipes sem programacao.
   - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com `cadastro + filtros + lista` paginada, filtros por Tipo de Servico do projeto e Atividade medida, modos `Com producao` e `Sem producao`, persistencia transacional em banco, cadastro independente da programacao, match automatico por `Projeto + Equipe + Data`, pre-preenchimento de cabecalho vindo da Composicao de Equipe, sugestao automatica de taxa pela ultima medicao do projeto inclusive em `Sem producao`, `Status execucao` baseado no ultimo `Estado Trabalho` do projeto, indicador de composicao da equipe na data na lista/detalhes e cards de Garantia de faturamento minimo e valor descontando a garantia.
+  - `(dashboard)/apuracao-fator-minimo/page.tsx`: rota de simulacao e consulta de fator minimo por equipe, data e codigo de servico.
   - `(dashboard)/medicao-asbuilt/page.tsx`: rota da tela Medicao Asbuilt com cadastro manual e em massa permitido somente para projetos ativos, lista, historico, status e exportacao CSV.
+  - `(dashboard)/faturamento/page.tsx`: rota de Faturamento para controle de atividades pagas por projeto e aprovacao.
   - `(dashboard)/meta/page.tsx`: rota da tela Meta para cadastrar valor diario por tipo de equipe, calcular meta diaria por quantidade manual de equipes medida, editar dias uteis dos ciclos 21 a 20 existentes nas medicoes Com producao, salvar dias padrao segunda a sexta, recalcular `Média Dias trabalhados` do ciclo no backend ao salvar e listar cadastros salvos com atualizacao, exportacao CSV, detalhes, historico e edicao.
   - `(dashboard)/materiais/page.tsx`: rota da tela de Materiais com cadastro, filtros por Codigo, Descricao, UMB, Tipo e Status, e listagem, incluindo `Tipo` por select (`NOVO`/`SUCATA`), rastreio por serial, `Preco` opcional e limites de estoque minimo/maximo.
   - `(dashboard)/atividades/page.tsx`: rota da tela de Atividades com cadastro, filtros (incluindo `Status: Ativo/Inativo` e categorias em ordem alfabetica), listagem paginada e acoes de detalhe/historico/status.
@@ -144,12 +154,16 @@ vercel --prod
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por um ou mais projetos/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, filtros por periodo/projeto/equipe/situacao, acao `Fazer medicao`, detalhes, historico e CSV.
   - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
+  - `(dashboard)/requisicao-solicitacao/page.tsx`: rota de Solicitacao de Requisicao para abertura de pedidos de material ao almoxarifado.
+  - `(dashboard)/requisicao-atendimento/page.tsx`: rota de Atendimento de Requisicoes para aceitar, reduzir ou recusar itens solicitados.
   - `(dashboard)/estornos/page.tsx`: rota da tela `Estornos` para consulta read-only dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
+  - `(dashboard)/consumo-projeto/page.tsx`: rota read-only de Consumo por Projeto, comparando materiais previstos, requisitados e devolvidos.
   - `(dashboard)/cadastro-base/page.tsx`: placeholder de Cadastro Base.
   - `(dashboard)/configuracao-mapa-almoxarifado/page.tsx`: rota da Configuracao do Mapa do Almoxarifado para definir grid, prateleiras, pallets, andares e posicoes por centro de estoque, limitada a 15 colunas, 20 linhas, 10 andares e 10 posicoes por andar.
   - `(dashboard)/prioridade/page.tsx`: placeholder de Prioridade.
   - `(dashboard)/centro-servico/page.tsx`: placeholder de Centro de Servico.
   - `(dashboard)/contrato/page.tsx`: placeholder de Contrato.
+  - `(dashboard)/tipo-equipe/page.tsx`: placeholder de Tipo de Equipe.
   - `(dashboard)/imei/page.tsx`: placeholder de Imei.
   - `(dashboard)/tipo-servico/page.tsx`: placeholder de Tipo de Servico.
   - `(dashboard)/nivel-tensao/page.tsx`: placeholder de Nivel de Tensao.
@@ -188,6 +202,12 @@ vercel --prod
   - `api/teams/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de equipes, incluindo a base vinculada por centro de servico, supervisor opcional e a geracao automatica do centro de estoque proprio.
   - `api/teams/meta/route.ts`: carrega bases, tipos, encarregados e supervisores validos para a tela de Equipes.
   - `api/programacao/route.ts`: lista projetos/equipes/programacoes do periodo (ignorando obras de teste), resume a carga semanal por equipe, consome o catalogo proprio de apoio da Programacao com auto-preenchimento a partir da locacao, salva a agenda real da tela de Programacao, suporta cadastro em lote (`action = BATCH_CREATE`) para multiplas equipes via RPC transacional, exige ETAPA numerica ou flag especial (`ETAPA UNICA`/`ETAPA FINAL`), exige motivo na reprogramacao e altera status de programacoes com motivo, historico e controle de concorrencia.
+  - `api/programacao-normalizada/route.ts`: lista, detalha, salva, adia, cancela, reabre, conclui e historiza etapas do modelo normalizado de Programacao.
+  - `api/programacao-normalizada/meta/route.ts`: carrega catalogos de apoio da Programacao Normalizada.
+  - `api/cronograma-solicitacoes/route.ts`: lista e mantem solicitacoes tecnicas por tenant.
+  - `api/cronograma-solicitacoes/meta/route.ts`: carrega catalogos do Cronograma de Solicitacoes.
+  - `api/cronograma-solicitacoes/verify/route.ts`: executa verificacao de solicitacoes.
+  - `api/cronograma-solicitacoes/cancel/route.ts`: cancela solicitacoes com validacao server-side.
   - `api/materials/route.ts`: cadastra, edita, cancela/ativa, lista e consulta historico de materiais por tenant, com filtro por `UMB`, validacao de `Tipo` (`NOVO`/`SUCATA`), suporte a rastreio por serial, `Preco` opcional (default `0.00`), limites de estoque e autorizacao server-side por acao.
   - `api/materials/meta/route.ts`: carrega as UMBs distintas cadastradas nos materiais do tenant e informa a existencia de registros sem UMB para o select de filtro, exigindo permissao `materiais/read`.
   - `api/warehouse-addressing/config/route.ts`: carrega somente centros fisicos de almoxarifado identificados por `stock_centers` sem vinculo em `teams.stock_center_id`; salva layout por RPC transacional com permissao `configuracao-mapa-almoxarifado/update`.
@@ -214,6 +234,17 @@ vercel --prod
   - `api/dashboard-carteira-operacional/route.ts`: exige `dashboard-carteira-operacional/read` e delega ao modulo server-side de carteira para consolidar projetos com atividades previstas, valor previsto por pontos via RPC, medicoes, potencial financeiro, envelhecimento, renovacao, parciais como pendentes e projetos retirados por tenant.
   - `api/dash-estoque/route.ts`: consolida saldos e movimentacoes do Dashboard Estoque por tenant, incluindo resumo por UMB da dispersao para Requisicao/Devolucao e contando eventos operacionais distintos por `operation_event_id`, sem confundir quantidade de itens ou transferencias com quantidade de operacoes.
   - `api/dash-operacional-faturamento/route.ts`: consolida codigos de atividade usados em Medicao, Medicao Asbuilt e Faturamento por projeto, respeitando Centro de servico, status de atividade, divergencias e ausencias, agrega categorias cobradas por `service_activities.type_service`, soma cortes `FECHADA` de Medicao Asbuilt por projeto com filtro opcional `Servicos considerados ate`, calcula a faixa incremental do corte selecionado, devolve as datas cadastradas de corte para o select da tela, aplica filtro de Taxa no detalhamento operacional por categoria, devolve o detalhamento por faixas de corte do Asbuilt, devolve o detalhamento operacional por categoria com `Medicao`, `M. As built`, `As Built` e `Faturado`, soma cards globais paginados de quantidade e valor para Medicao, M. As built, ASBUILT e Faturado em postes, rede, equipamentos, transformadores, cruzetas, estruturas, poda e arrasto, aceita prefixo de categoria para `PODA` e `ARRASTO`, calcula tickets medios por projetos e servicos para Medicao e Asbuilt, monta o grafico operacional de Total medido, Medido (AS BUILT), As Built e Faturado com valor, projetos, medicoes e segmentos por corte quando `Todos` esta selecionado, e devolve projetos por indicador clicado, sempre filtrado pelo tenant autenticado.
+  - `api/faturamento/route.ts`: lista, salva, fecha/cancela e historiza registros de Faturamento por tenant.
+  - `api/faturamento/meta/route.ts`: carrega metadados da tela de Faturamento.
+  - `api/faturamento/activities/catalog/route.ts`: pesquisa atividades para o fluxo de Faturamento.
+  - `api/mapa-programacao/route.ts`: entrega dados do Mapa de Programacao para carteira nunca programada e equipes sem programacao.
+  - `api/consumo-projeto/route.ts`: consolida consumo por projeto a partir de previsto, requisitado e devolvido.
+  - `api/apuracao-fator-minimo/route.ts`: calcula a apuracao de fator minimo por equipe, data e codigo de servico.
+  - `api/stock-requisitions/route.ts`: lista e mantem solicitacoes de requisicao de materiais.
+  - `api/stock-requisitions/meta/route.ts`: carrega metadados do fluxo de Solicitacao de Requisicao.
+  - `api/stock-requisitions/claim/route.ts`: assume atendimento de requisicao.
+  - `api/stock-requisitions/fulfill/route.ts`: atende requisicao com aceite, reducao ou recusa por item.
+  - `api/stock-requisitions/cancel/route.ts`: cancela requisicao com autorizacao e auditoria.
 - `src/modules/auth/login/`
   - `LoginPageView.tsx`: implementacao visual da tela de login.
   - `LoginPageView.module.css`: estilo do login.
@@ -256,27 +287,57 @@ vercel --prod
 - `src/modules/dashboard/locacao/`
   - `LocationPageView.tsx`: tela de locacao com filtro por municipio, busca por SOB, visao previa com filtros/lista de locacoes, modal de detalhes, 4 blocos operacionais, feedback local de salvamento, atividades previstas e materiais previstos.
   - `LocationPageView.module.css`: estilos da tela de locacao.
+- `src/modules/dashboard/cronograma-solicitacoes/`
+  - `CronogramaSolicitacoesPageView.tsx`: tela de solicitacoes tecnicas com filtros, prazos, verificacao, cancelamento e integracao com a programacao normalizada.
+  - `CronogramaSolicitacoesPageView.module.css`: estilos da tela de Cronograma de Solicitacoes.
+  - `api.ts`, `constants.ts`, `types.ts` e `index.ts`: cliente, configuracoes, contratos e fachada publica do modulo.
 - `src/modules/dashboard/programacao/`
   - `ProgrammingPageView.tsx`: implementacao legada da tela antiga de Programacao (desativada no fluxo atual e mantida sem exclusao de codigo).
   - `ProgrammingPageView.module.css`: estilos da tela de programacao.
 - `src/modules/dashboard/programacao-simples/`
-  - `ProgrammingSimplePageView.tsx`: tela da nova Programacao em formato de cadastro, com formulario, multi-selecao de equipes, ETAPA obrigatoria (numerica, `ETAPA UNICA` ou `ETAPA FINAL`), quantidades estruturais (`POSTE`, `ESTRUTURA`, `TRAFO`, `REDE`), filtros (incluindo `Estado Trabalho` e `Tipo SGD`), lista com `Detalhes`/`Edicao`/`Historico`/`Copiar para datas`, edicao com troca de equipe (selecao unica + aviso visual), exportacao CSV, exportacao `ENEL-EXCEL` e calendario semanal de visualizacao exibindo o encarregado por equipe.
-  - `ProgrammingSimplePageView.module.css`: estilos da nova tela de Programacao.
+  - `ProgrammingSimplePageView.tsx`: tela legada de Programacao, mantida em somente leitura para filtros, lista, detalhes, historico e extracoes.
+  - `ProgrammingSimplePageView.module.css`: estilos da tela legada de Programacao.
+  - `api.ts`, `components.tsx`, `constants.ts`, `exports.ts`, `hooks.ts`, `types.ts`, `utils.ts`, `validators.ts` e `index.ts`: suporte local do modulo legado.
+- `src/modules/dashboard/programacao-normalizada/`
+  - `ProgrammingNormalizedPageView.tsx`: tela ativa de Programacao Normalizada com filtros, etapas, equipes, documentos, status operacional, acoes granulares e exportacoes.
+  - `ProjectPlanView.tsx`: visao do plano do projeto no modelo normalizado.
+  - `listComponents.tsx`, `components.tsx` e `components/modals/*`: componentes locais da lista, cards e modais operacionais.
+  - `api.ts`, `constants.ts`, `exports.ts`, `hooks.ts`, `types.ts`, `utils.ts`, `validators.ts` e `index.ts`: cliente, regras locais, exportacoes, estado, contratos, helpers, validadores e fachada publica.
+- `src/modules/dashboard/mapa-programacao/`
+  - `MapProgrammingPageView.tsx`: tela de mapa da programacao para carteira nunca programada e equipes sem programacao.
+  - `MapProgrammingPageView.module.css`: estilos da tela.
+  - `index.ts`: fachada publica do modulo.
 - `src/modules/dashboard/medicao/`
   - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, pre-preenchimento do cabecalho via Composicao de Equipe, lista paginada, filtros por Tipo de Servico e Atividade, modos `Com producao` e `Sem producao`, motivo estruturado por tenant, inclusao de atividades da medicao, taxa unica por ordem com coluna `Taxa aplicada` na edicao, sugestao automatica da taxa ao selecionar projeto (ultima medicao do projeto) tambem em `Sem producao`, cadastro em massa CSV com suporte aos dois tipos, detalhe por item com `taxa` visivel, importacao reforcada por match exato/univoco do codigo da atividade, bloqueio de atividade duplicada na mesma ordem com validacao tambem na RPC, status de execucao baseado no ultimo `Estado Trabalho` do projeto, coluna de composicao da equipe na data e resumo filtrado da garantia minima com valor liquido descontado.
   - `MeasurementPageView.module.css`: estilos da tela de medicao.
 - `src/modules/dashboard/controle-apr/`
   - `AprControlPageView.tsx`: cadastro, filtros, lista, validacao, divergencia, cancelamento e extracao `.xlsx` do Controle de APR.
   - `AprControlPageView.module.css`: estilos da tela no padrao visual da Medicao.
+- `src/modules/dashboard/composicao-equipe/`
+  - `TeamCompositionPageView.tsx`: composicao diaria de equipes por data, projeto, integrantes, presenca, historico, exportacao e atalho para Medicao.
+  - `TeamCompositionPageView.module.css`: estilos da tela de Composicao de Equipe.
 - `src/modules/dashboard/medicao-asbuilt/`
   - `AsbuiltMeasurementPageView.tsx`: tela Medicao Asbuilt com cortes versionados por `Projeto + Servicos considerados ate`, cadastro manual/em massa, filtros, lista, detalhe, historico, status e bloqueio de projeto inativo.
   - `AsbuiltMeasurementPageView.module.css`: estilos da tela Medicao Asbuilt.
+- `src/modules/dashboard/faturamento/`
+  - `BillingPageView.tsx`: tela de Faturamento com cadastro, lista, historico, status e atividades por projeto.
+  - `BillingPageView.module.css`: estilos da tela de Faturamento.
+  - `constants.ts`, `types.ts`, `utils.ts` e `index.ts`: configuracoes, contratos, helpers e fachada publica.
+- `src/modules/dashboard/apuracao-fator-minimo/`
+  - `MinimumFactorAnalysisPageView.tsx`: simulacao/consulta de fator minimo por equipe, data e codigo de servico.
+  - `MinimumFactorAnalysisPageView.module.css`: estilos da tela.
+  - `index.ts`: fachada publica do modulo.
 - `src/modules/dashboard/meta/`
   - `MetaPageView.tsx`: tela de cadastro de metas da Medicao por tipo de equipe, equipes ativas como referencia, equipes medida manuais, meta diaria calculada, dias uteis por ciclo, dias padrao segunda a sexta, `Média Dias trabalhados` por medicoes Com producao recalculada no carregamento e novamente ao salvar, meta ciclo padrao, meta ciclo trabalhado, registro de erros e lista operacional com atualizacao, exportacao CSV, detalhes, historico e edicao.
   - `MetaPageView.module.css`: estilos da tela Meta.
+- `src/modules/dashboard/pessoas/`
+  - `PeoplePageView.tsx`: tela de Pessoas com cadastro manual/em massa, filtros, listagem, historico, exportacao e troca de status.
+  - `PeoplePageView.module.css`: estilos da tela de Pessoas.
 - `src/modules/dashboard/equipes/`
   - `TeamsPageView.tsx`: tela de equipes com cadastro, filtros, listagem, base por centro de servico, supervisor opcional, centro de estoque proprio automatico, historico e cancelamento/ativacao.
   - `TeamsPageView.module.css`: estilos da tela de equipes.
+- `src/modules/dashboard/cargo/`
+  - `JobTitlesPageView.tsx`: tela de Cargo com cadastro, filtros, listagem, historico, tipos/niveis e troca de status.
 - `src/modules/dashboard/materiais/`
   - `MaterialsPageView.tsx`: tela de materiais com cadastro, filtros incluindo `UMB`, listagem, historico e cancelamento/ativacao.
   - `MaterialsPageView.module.css`: estilos da tela de materiais.
@@ -287,11 +348,27 @@ vercel --prod
   - `types.ts`: contratos do frontend para formulario, filtros, listagem, historico e importacao das operacoes de equipe.
   - `constants.ts`: configuracoes de pagina, labels de historico e template CSV da tela `Operacoes de Equipe`.
   - `utils.ts`: formatadores, parser CSV e geracao de relatorio de erros do cadastro em massa.
-- `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, tipo automatico conforme cadastro do material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno individual ou em lote por requisicao, historico e exibicao do encarregado snapshot por operacao.
+  - `TeamStockOperationsPageView.tsx`: tela de `Operacoes de Equipe` com `Requisicao`/`Devolucao`/`Retorno de campo`, selecao de centro proprio principal, equipe ativa, projeto, sub-bloco visual proprio para lista manual de materiais antes do submit, tipo automatico conforme cadastro do material, regras de TRAFO, cadastro em massa atomico com modal/CSV de erros, estorno individual ou em lote por requisicao, historico e exibicao do encarregado snapshot por operacao.
   - `TeamStockOperationsPageView.module.css`: estilo local da tela, reaproveitando o mesmo visual operacional da movimentacao de estoque.
+- `src/modules/dashboard/requisicao-solicitacao/`
+  - `SolicitationPageView.tsx`: tela de abertura e acompanhamento de solicitacoes de requisicao de materiais.
+  - `SolicitationPageView.module.css`: estilos da tela.
+  - `types.ts`: contratos do modulo.
+- `src/modules/dashboard/requisicao-atendimento/`
+  - `FulfillmentPageView.tsx`: tela de atendimento de requisicoes para aceitar, reduzir ou recusar itens.
+  - `FulfillmentPageView.module.css`: estilos da tela.
+  - `types.ts`: contratos do modulo.
 - `src/modules/dashboard/estornos/`
   - `ReversalsPageView.tsx`: tela read-only de Estornos com filtros, cards de resumo, lista paginada, detalhes e exportacao CSV dos estornos ja executados em Movimentacao de Estoque e Operacoes de Equipe.
   - `ReversalsPageView.module.css`: estilos da tela Estornos.
+- `src/modules/dashboard/consumo-projeto/`
+  - `ProjectConsumptionPageView.tsx`: tela read-only de consumo por projeto, comparando materiais previstos, requisitados e devolvidos.
+  - `ProjectConsumptionPageView.module.css`: estilos da tela.
+- `src/modules/dashboard/enderecamento-almoxarifado/`
+  - `WarehouseAddressingMapPageView.tsx`: tela do Mapa do Almoxarifado para consulta e atribuicao/remocao de endereco fisico.
+  - `WarehouseMapConfigPageView.tsx`: tela de configuracao do layout fisico do almoxarifado.
+  - `WarehouseAddressing.module.css`: estilos compartilhados das telas de enderecamento.
+  - `api.ts`, `constants.ts`, `types.ts`, `utils.ts` e `index.ts`: cliente, limites, contratos, helpers e fachada publica do modulo.
 - `src/modules/dashboard/estoque/`
   - `constants.ts`: paginacao, exportacao e filtros iniciais da tela de Estoque Atual, incluindo `includeHistoricalZeros: false` como padrao.
   - `types.ts`: contratos do frontend para filtros, itens e respostas do modulo.
@@ -320,12 +397,19 @@ vercel --prod
   - `AppShell.tsx`: sidebar, topbar e protecao client-side.
   - `AppShell.module.css`: estilos do shell.
 - `src/components/ui/`
+  - `ActionIcon.tsx`: botao/iconografia padronizada para acoes de tela.
+  - `CsvExportButton.tsx` e `CsvExportButton.module.css`: botao compartilhado de exportacao CSV.
+  - `ExportProgressModal.tsx` e `ExportProgressModal.module.css`: modal compartilhado de progresso de exportacao.
   - `ModulePlaceholder.tsx`: componente de pagina em construcao.
   - `ModulePlaceholder.module.css`: estilos do placeholder.
+  - `Pagination.tsx` e `Pagination.module.css`: componente compartilhado de paginacao.
 - `src/context/`
   - `AuthContext.tsx`: hidrata e gerencia a sessao.
 - `src/hooks/`
   - `useAuth.ts`: acesso ao contexto de autenticacao.
+  - `usePagination.ts`: estado reutilizavel de paginacao.
+  - `useExportCooldown.ts`: cooldown para exportacoes.
+  - `useIdempotencyKey.ts`: chave idempotente para submits criticos com retry seguro.
   - `useErrorLogger.ts`: hook client-side para registrar falhas de tela na Edge Function `log_error`.
 - `src/lib/react-query/`
   - `provider.tsx`: provider do React Query.
@@ -335,21 +419,47 @@ vercel --prod
   - `authorization.ts`: helper de role, fallback de telas por perfil e bloqueio/liberacao de rotas conforme `pageAccess`.
 - `src/lib/server/`
   - `appUsersAdmin.ts`: resolve sessao autenticada, usuario e tenant ativo nas rotas server-side.
+  - `apiHelpers.ts`: helpers de resposta e autenticacao usados por Route Handlers.
   - `concurrency.ts`: normaliza `expectedUpdatedAt` e padroniza respostas `409` para conflitos de concorrencia.
+  - `idempotency.ts`: controle server-side de idempotencia por tenant, usuario, rota e hash do payload.
   - `locationPlanning.ts`: consolida bootstrap, leitura, apoio de execucao, riscos, wrappers das RPCs e historico tecnico da locacao.
+  - `materialCatalog.ts`: consultas server-side do catalogo de materiais.
+  - `pageAuthorization.ts`: autorizacao server-side por pagina e acao.
   - `projectForecastXlsx.ts`: parse e template XLSX de materiais previstos do projeto.
+  - `stockRequisitions.ts`, `stockTransfers.ts` e `teamStockOperations.ts`: helpers server-side dos fluxos de estoque e requisicoes.
 - `src/server/modules/team-performance/`
   - `contracts.ts`: contratos neutros de ordens, equipes e resultados de desempenho usados pelos dashboards.
   - `calculations.ts`: calculos puros de producao, metas, encarregados e supervisores por ciclo ou semana, sem acesso direto ao Supabase.
   - `index.ts`: fachada publica do modulo server-side.
 - `src/server/modules/dashboard-measurement/`
-  - `controller.ts`: controller compartilhado de leitura com autorização por `page_key`.
+  - `controller.ts`: controller compartilhado de leitura com autorizacao por `page_key`.
   - `index.ts`: fachada publica usada pelos endpoints Dashboard Medicao e Dashboard Equipes.
+- `src/server/modules/dashboard-portfolio/`
+  - `controller.ts`: consolidacao server-side da Carteira Operacional.
+  - `index.ts`: fachada publica do modulo.
+- `src/server/modules/programacao/`
+  - `handlers.ts`, `queries.ts`, `rpc.ts`, `catalogs.ts`, `normalizers.ts`, `selects.ts` e `types.ts`: backend da Programacao legada/simples, hoje congelada para escrita.
+- `src/server/modules/programacao-normalizada/`
+  - `handlers.ts`, `queries.ts`, `rpc.ts`, `catalogs.ts`, `normalizers.ts`, `scheduleConflict.ts`, `addTeamPrecheck.ts`, `selects.ts`, `types.ts` e `index.ts`: backend da Programacao Normalizada.
+- `src/server/modules/cronograma-solicitacoes/`
+  - `handlers.ts`, `queries.ts`, `normalizers.ts`, `authorization.ts` e `types.ts`: backend do Cronograma de Solicitacoes.
+- `src/server/modules/warehouse-addressing/`
+  - `handlers.ts` e `types.ts`: backend compartilhado do Mapa do Almoxarifado e da Configuracao do mapa.
 - `src/services/auth/`
   - `auth.service.ts`: login remoto/local e logout.
-- `supabase/edge_functions/`
+- `supabase/functions/`
   - `auth-login-web/index.ts`: login remoto por `login_name`.
   - `auth-recover/index.ts`: recuperacao de senha por `login_name`.
+  - `logout/index.ts`: registro de logout/auditoria de sessao.
+  - `log_error/index.ts`: registro centralizado de erros do frontend.
+  - `login_matricula/index.ts`: login legado por matricula.
+  - `verify_admin_pin/index.ts`: validacao de PIN administrativo.
+  - `sync_run/index.ts`: registro de execucoes de sincronizacao.
+  - `submit_material_request/index.ts`: envio de solicitacao de material.
+  - `get_materials/index.ts`: leitura auxiliar de materiais.
+  - `get_inventory_balance/index.ts`: leitura auxiliar de saldo de estoque.
+  - `get_project_material_balance/index.ts`: leitura auxiliar de saldo por projeto/material.
+  - `get_responsaveis/index.ts`: leitura auxiliar de responsaveis.
   - `get_project_forecast_template/index.ts`: modelo XLSX de materiais previstos por projeto.
   - `import_project_forecast/index.ts`: importacao em massa de materiais previstos por projeto.
   - `get_project_activity_forecast_template/index.ts`: modelo XLSX de atividades previstas por projeto.
@@ -376,14 +486,32 @@ vercel --prod
   - `Tela_Atividades_SaaS.txt`: tela de atividades com cadastro, filtros e listagem.
   - `Tela_Equipes_SaaS.txt`: tela de equipes com base, tipo, encarregado, supervisor, historico e troca de status.
   - `Tela_Dashboard_Equipes_SaaS.txt`: contrato funcional e etapas da separacao dos indicadores por MK/equipe.
+  - `Tela_Dashboard_Medicao_SaaS.txt`: documentacao do Dashboard Medicao.
+  - `Tela_Dashboard_Carteira_Operacional_SaaS.txt`: documentacao da Carteira Operacional.
+  - `Tela_Dash_Estoque_SaaS.txt`: documentacao do Dashboard Estoque.
+  - `Tela_Dash_Operacional_Faturamento_SaaS.txt`: documentacao do dashboard operacional e faturamento.
   - `Tela_Locacao_SaaS.txt`: tela de locacao com bootstrap por projeto, 4 blocos operacionais, materiais previstos e atividades previstas.
   - `Tela_Programacao_SaaS.txt`: tela de programacao com timeline operacional, backlog pendente, resumo semanal via RPC, catalogo proprio de apoio integrado com a locacao, validacao por RPC, adiamento/cancelamento persistente e modal de programacao.
   - `Tela_Programacao_Simples_SaaS.txt`: tela de cadastro simples de Programacao com submit em lote para multiplas equipes.
+  - `Tela_Programacao_Normalizada_SaaS.txt`: documentacao da Programacao Normalizada.
+  - `Tela_Visualizacao_Programacao_SaaS.txt`: documentacao da visualizacao semanal da Programacao.
+  - `Tela_Mapa_Programacao_SaaS.txt`: documentacao do Mapa de Programacao.
+  - `Tela_Cronograma_Solicitacoes_SaaS.txt`: documentacao do Cronograma de Solicitacoes.
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
+  - `Tela_Medicao_Asbuilt_SaaS.txt`: documentacao da Medicao Asbuilt.
+  - `Tela_Faturamento_SaaS.txt`: documentacao da tela de Faturamento.
+  - `Tela_Apuracao_Fator_Minimo_SaaS.txt`: documentacao da apuracao de fator minimo.
   - `Controle_APR.txt`: documentacao da tela Controle de APR, regras de duplicidade, conferencia, filtros, seguranca multi-tenant e mapa de codigo.
   - `Tela_Estoque_SaaS.txt`: documentacao da tela de Estoque Atual com filtros, lista paginada, historico com correcao de saldo, exportacao CSV e atualizacao 2026-06-30 de performance (paginacao real no banco e historico zerado opt-in).
+  - `Tela_Saida_SaaS.txt`: documentacao de Operacoes de Equipe.
+  - `Tela_Requisicao_Solicitacao_SaaS.txt`: documentacao da Solicitacao de Requisicao.
+  - `Tela_Requisicao_Atendimento_SaaS.txt`: documentacao do Atendimento de Requisicoes.
+  - `Tela_Consumo_Projeto_SaaS.txt`: documentacao de Consumo por Projeto.
+  - `Tela_Enderecamento_Almoxarifado_SaaS.txt`: documentacao do mapa e configuracao de enderecamento do almoxarifado.
   - `Tela_Posicao_Trafo_SaaS.txt`: documentacao da tela de Rastreio de SERIAL com consulta em `trafo_instances`, atalho de movimentacao e fluxo `RET`.
   - `Tela_Cargo_SaaS.txt`: tela de cargos com cadastro, filtros, historico, status e manutencao de tipos/niveis.
+  - `Tela_Pessoas_SaaS.txt`: documentacao da tela de Pessoas.
+  - `Tela_Tipo_Equipe_SaaS.txt`: documentacao da tela de Tipo de Equipe.
   - `Tela_Cadastro_Base_SaaS.txt`: placeholders das telas de cadastro base por dominio.
   - `Tela_Padrao_Cadastros_SaaS.txt`: referencia obrigatoria de padrao visual/comportamental para telas de cadastro.
   - `Tela_Permissoes_SaaS.txt`: base da futura tela de permissao por pagina.
@@ -789,7 +917,7 @@ npm run lint:size:accept -- src/modules/dashboard/<tela>/<Arquivo>.tsx
 ---
 
 ## Status do projeto
-- ?? Em desenvolvimento
+- Amarelo: Em desenvolvimento.
 
 ---
 
