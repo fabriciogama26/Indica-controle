@@ -590,6 +590,7 @@ function ScatterChart({
   rows,
   operation,
   scale,
+  unit,
   expanded = false,
   selectedMaterialId = null,
   onSelectPoint,
@@ -597,11 +598,12 @@ function ScatterChart({
   rows: ScatterPoint[];
   operation: ScatterOperation;
   scale: ScatterScale;
+  unit: string;
   expanded?: boolean;
   selectedMaterialId?: string | null;
   onSelectPoint?: (materialId: string | null) => void;
 }) {
-  const filtered = rows.filter((row) => row.operationKind === operation);
+  const filtered = rows.filter((row) => row.operationKind === operation && (!unit || row.unit === unit));
   const selectedPoint = selectedMaterialId
     ? filtered.find((row) => row.materialId === selectedMaterialId) ?? null
     : null;
@@ -637,7 +639,11 @@ function ScatterChart({
           </div>
         ) : null}
         {filtered.length ? (
-          <svg viewBox={viewBox} role="img" aria-label={`Dispersao ${operationLabels[operation]}`}>
+          <svg
+            viewBox={viewBox}
+            role="img"
+            aria-label={`Dispersao ${operationLabels[operation]}${unit ? ` | UMB ${unit}` : ""}`}
+          >
             <line x1={axis.left} y1={axis.bottom} x2={axis.right} y2={axis.bottom} className={styles.axisLine} />
             <line x1={axis.left} y1={axis.top} x2={axis.left} y2={axis.bottom} className={styles.axisLine} />
             <text x={axis.right} y={expanded ? 438 : 300} textAnchor="end" className={styles.axisLabel}>Quantidade</text>
@@ -677,13 +683,19 @@ function ScatterChart({
             })}
           </svg>
         ) : (
-          <div className={styles.emptyChart}>Nenhum ponto para a operacao selecionada.</div>
+          <div className={styles.emptyChart}>
+            {unit
+              ? `Nenhum ponto para ${operationLabels[operation]} na UMB ${unit}.`
+              : "Nenhum ponto para a operacao selecionada."}
+          </div>
         )}
       </div>
 
       <div className={styles.scatterTableWrapper}>
         <div className={styles.scatterTableHeader}>
-          <span>{filtered.length} materiais</span>
+          <span>
+            {filtered.length} materiais{unit ? ` | ${unit}` : ""}
+          </span>
           {selectedPoint ? (
             <button type="button" className={styles.clearFocusButton} onClick={() => onSelectPoint?.(null)}>
               Todos
@@ -735,16 +747,44 @@ function ScatterChart({
   );
 }
 
-function ScatterUnitStrip({ rows }: { rows: ScatterUnitSummary[] }) {
+function ScatterUnitStrip({
+  rows,
+  selectedUnit,
+  onSelectUnit,
+}: {
+  rows: ScatterUnitSummary[];
+  selectedUnit: string;
+  onSelectUnit: (unit: string) => void;
+}) {
   if (!rows.length) return null;
 
+  const pillClassName = (unit: string) =>
+    `${styles.unitPillButton} ${selectedUnit === unit ? styles.unitPillActive : ""}`.trim();
+
   return (
-    <div className={`${styles.unitStrip} ${styles.scatterUnitStrip}`}>
+    <div className={`${styles.unitStrip} ${styles.scatterUnitStrip}`} role="group" aria-label="Filtro por UMB">
+      <button
+        type="button"
+        className={pillClassName("")}
+        aria-pressed={selectedUnit === ""}
+        title="Mostrar todas as unidades de medida"
+        onClick={() => onSelectUnit("")}
+      >
+        <span>Todas as UMB</span>
+        <strong>{rows.length}</strong>
+      </button>
       {rows.map((item) => (
-        <div key={`${item.operationKind}-${item.unit}`} className={styles.unitPill}>
+        <button
+          key={`${item.operationKind}-${item.unit}`}
+          type="button"
+          className={pillClassName(item.unit)}
+          aria-pressed={selectedUnit === item.unit}
+          title={`Filtrar a dispersao pela UMB ${item.unit}`}
+          onClick={() => onSelectUnit(item.unit)}
+        >
           <span>{item.unit}</span>
           <strong>{formatDecimal(item.quantity)}</strong>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -765,6 +805,7 @@ export function StockDashboardPageView() {
   const [criticalQty, setCriticalQty] = useState("5");
   const [scatterOperation, setScatterOperation] = useState<ScatterOperation>("REQUISITION");
   const [scatterScale, setScatterScale] = useState<ScatterScale>("sqrt");
+  const [scatterUnit, setScatterUnit] = useState("");
   const [abcMode, setAbcMode] = useState<AbcMode>("value");
   const [isScatterExpanded, setIsScatterExpanded] = useState(false);
   const [selectedScatterMaterialId, setSelectedScatterMaterialId] = useState<string | null>(null);
@@ -851,8 +892,11 @@ export function StockDashboardPageView() {
   );
 
   const activeScatterRows = useMemo(
-    () => scatter.filter((row) => row.operationKind === scatterOperation),
-    [scatter, scatterOperation],
+    () =>
+      scatter.filter(
+        (row) => row.operationKind === scatterOperation && (!scatterUnit || row.unit === scatterUnit),
+      ),
+    [scatter, scatterOperation, scatterUnit],
   );
 
   const activeScatterUnitSummary = useMemo(
@@ -882,6 +926,11 @@ export function StockDashboardPageView() {
 
   const handleScatterOperationChange = (nextOperation: ScatterOperation) => {
     setScatterOperation(nextOperation);
+    setSelectedScatterMaterialId(null);
+  };
+
+  const handleScatterUnitChange = (nextUnit: string) => {
+    setScatterUnit((current) => (current === nextUnit ? "" : nextUnit));
     setSelectedScatterMaterialId(null);
   };
 
@@ -923,7 +972,11 @@ export function StockDashboardPageView() {
         ]),
       );
 
-      downloadCsvFile(csv, `dispersao_materiais_${scatterOperation.toLowerCase()}_${formatExportDate()}.csv`);
+      const unitPart = scatterUnit ? `${formatFileNamePart(scatterUnit)}_` : "";
+      downloadCsvFile(
+        csv,
+        `dispersao_materiais_${scatterOperation.toLowerCase()}_${unitPart}${formatExportDate()}.csv`,
+      );
     } finally {
       setIsExportingScatter(false);
     }
@@ -981,6 +1034,7 @@ export function StockDashboardPageView() {
 
   useEffect(() => {
     setSelectedScatterMaterialId(null);
+    setScatterUnit("");
   }, [scatter]);
 
   return (
@@ -1096,7 +1150,10 @@ export function StockDashboardPageView() {
         <div className={styles.cardHeader}>
           <div>
             <h2 className={styles.cardTitle}>Dispersao de materiais</h2>
-            <p className={styles.cardSubtitle}>Quantidade movimentada por numero de operacoes.</p>
+            <p className={styles.cardSubtitle}>
+              Quantidade movimentada por numero de operacoes. Selecione a UMB para comparar materiais na mesma unidade.
+              {scatterUnit ? ` | UMB ${scatterUnit}` : ""}
+            </p>
           </div>
           <div className={styles.chartActions}>
             <div className={styles.segmented}>
@@ -1144,11 +1201,16 @@ export function StockDashboardPageView() {
             />
           </div>
         </div>
-        <ScatterUnitStrip rows={activeScatterUnitSummary} />
+        <ScatterUnitStrip
+          rows={activeScatterUnitSummary}
+          selectedUnit={scatterUnit}
+          onSelectUnit={handleScatterUnitChange}
+        />
         <ScatterChart
           rows={scatter}
           operation={scatterOperation}
           scale={scatterScale}
+          unit={scatterUnit}
           selectedMaterialId={selectedScatterMaterialId}
           onSelectPoint={setSelectedScatterMaterialId}
         />
@@ -1247,6 +1309,7 @@ export function StockDashboardPageView() {
                 <h2>Dispersao de materiais</h2>
                 <p>
                   {operationLabels[scatterOperation]} | escala {scatterScale === "sqrt" ? "Raiz" : "Linear"}
+                  {scatterUnit ? ` | UMB ${scatterUnit}` : " | todas as UMB"}
                   {selectedScatterPoint ? ` | foco ${selectedScatterPoint.materialCode}` : ""}
                 </p>
               </div>
@@ -1297,11 +1360,16 @@ export function StockDashboardPageView() {
               </div>
             </div>
             <div className={styles.modalBody}>
-              <ScatterUnitStrip rows={activeScatterUnitSummary} />
+              <ScatterUnitStrip
+                rows={activeScatterUnitSummary}
+                selectedUnit={scatterUnit}
+                onSelectUnit={handleScatterUnitChange}
+              />
               <ScatterChart
                 rows={scatter}
                 operation={scatterOperation}
                 scale={scatterScale}
+                unit={scatterUnit}
                 expanded
                 selectedMaterialId={selectedScatterMaterialId}
                 onSelectPoint={setSelectedScatterMaterialId}

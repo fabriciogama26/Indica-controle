@@ -112,7 +112,8 @@
 }
 
 .metric span,
-.unitPill span {
+.unitPill span,
+.unitPillButton span {
   color: #50658d;
   font-size: 11px;
   font-weight: 900;
@@ -144,10 +145,49 @@
   padding: 8px 12px;
 }
 
-.unitPill strong {
+.unitPill strong,
+.unitPillButton strong {
   color: #12376f;
   font-size: 16px;
   font-weight: 900;
+}
+
+.unitPillButton {
+  min-width: 120px;
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #d8e1ef;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 8px 12px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.unitPillButton:hover {
+  border-color: #1f4ea3;
+  background: #eef4ff;
+}
+
+.unitPillButton:focus-visible {
+  outline: 2px solid #1f4ea3;
+  outline-offset: 2px;
+}
+
+.unitPillActive,
+.unitPillButton.unitPillActive:hover {
+  border-color: #1f4ea3;
+  background: #1f4ea3;
+}
+
+.unitPillActive span,
+.unitPillActive strong {
+  color: #ffffff;
 }
 
 .scatterUnitStrip {

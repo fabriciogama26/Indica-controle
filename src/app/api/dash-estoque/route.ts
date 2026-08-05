@@ -147,6 +147,8 @@ type ScatterUnitSummary = {
 
 const DASH_IN_FILTER_CHUNK_SIZE = 100;
 const DASH_TRANSFERS_MAX_ROWS = 20000;
+const DASH_SCATTER_ROWS_PER_UNIT = 25;
+const DASH_SCATTER_ROWS_PER_OPERATION = 200;
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -824,20 +826,44 @@ function buildScatterRows(movements: MovementAggregate[], balanceByMaterial: Map
     map.set(key, current);
   }
 
-  return Array.from(map.values())
-    .map((row) => ({
-      materialId: row.materialId,
-      materialCode: row.materialCode,
-      description: row.description,
-      unit: row.unit,
-      operationKind: row.operationKind,
-      quantity: row.quantity,
-      operationCount: row.operationIds.size,
-      projectCount: row.projectIds.size,
-      currentBalance: row.currentBalance,
-    }))
-    .sort((left, right) => right.quantity - left.quantity)
-    .slice(0, 80);
+  const rows = Array.from(map.values()).map((row) => ({
+    materialId: row.materialId,
+    materialCode: row.materialCode,
+    description: row.description,
+    unit: row.unit || "SEM UMB",
+    operationKind: row.operationKind,
+    quantity: row.quantity,
+    operationCount: row.operationIds.size,
+    projectCount: row.projectIds.size,
+    currentBalance: row.currentBalance,
+  }));
+
+  // O corte precisa ser por UMB: quantidades em M e UN tem ordens de grandeza
+  // diferentes e um corte global esconderia unidades inteiras do grafico.
+  const byOperationUnit = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const key = `${row.operationKind}:${row.unit}`;
+    const bucket = byOperationUnit.get(key);
+    if (bucket) bucket.push(row);
+    else byOperationUnit.set(key, [row]);
+  }
+
+  const byOperation = new Map<"REQUISITION" | "RETURN", typeof rows>();
+  for (const bucket of byOperationUnit.values()) {
+    const topRows = bucket
+      .sort((left, right) => right.quantity - left.quantity)
+      .slice(0, DASH_SCATTER_ROWS_PER_UNIT);
+    const operationKind = topRows[0].operationKind;
+    const target = byOperation.get(operationKind);
+    if (target) target.push(...topRows);
+    else byOperation.set(operationKind, topRows);
+  }
+
+  return Array.from(byOperation.values()).flatMap((bucket) =>
+    bucket
+      .sort((left, right) => right.quantity - left.quantity)
+      .slice(0, DASH_SCATTER_ROWS_PER_OPERATION),
+  );
 }
 
 function buildScatterUnitSummary(movements: MovementAggregate[]) {
