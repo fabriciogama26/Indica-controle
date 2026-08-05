@@ -133,7 +133,14 @@ Depois da modificação:
 - Toda tela nova/refatorada segue `src/modules/dashboard/<nome-tela>/` (ou subpastas `api/hooks/components/...` para módulos grandes); backend correspondente em `src/server/modules/<dominio>/`. Rota em `src/app/api/<rota>` delega — nunca contém regra de negócio.
 - Feature não importa regra de domínio de feature irmã; comunicação via contrato explícito (`core`, `server/modules`, API/RPC). Toda feature expõe fachada pública (`index.ts`).
 - `shared`/`lib`/`utils`/`services`/`helpers` globais só contêm infraestrutura universal — nunca regra de domínio.
-- `PageView.tsx` até 1.000 linhas; `route.ts`/controller até 1.500 linhas — acima disso exige plano de modularização no TXT da tela (`programacao/route.ts` já está em ~4.500 linhas, CRÍTICO).
+- Limite de tamanho por arquivo em `src/`, com enforcement automático via `npm run lint:size` (`scripts/check-file-size.mjs` + `file-size-baseline.json`), medindo **linhas físicas** (inclusive linhas em branco — o número que o editor mostra):
+  - `route.ts`, `controller.ts` e `handlers.ts`: até 1.500 linhas;
+  - qualquer outro `.ts`/`.tsx` de `src/` (inclusive `PageView.tsx`): até 1.000 linhas.
+  - Arquivo novo acima do teto falha o lint. Arquivo legado que já estava acima entra no baseline com o tamanho daquele momento e só pode encolher; quando encolhe, o baseline desce junto (`npm run lint:size:update`), e quando volta ao limite sai do baseline.
+  - Os dois fluxos são separados de propósito: `lint:size:update` **nunca aumenta** um baseline, então rodá-lo depois de várias alterações não pode abençoar em lote um crescimento não intencional. Aumento excepcional só por `npm run lint:size:accept -- <caminho>`, um arquivo por vez, com baseline anterior/tamanho atual/aumento impressos antes da escrita.
+  - Arquivo acima do teto continua exigindo plano de modularização no TXT da tela.
+- Estado inicial do baseline: 31 arquivos acima do respectivo limite. Maior concentração: `src/modules/dashboard/projetos/ProjectsPageView.tsx` (4.063), `src/modules/dashboard/entrada/StockTransfersPageView.tsx` (3.687), `src/modules/dashboard/medicao/MeasurementPageView.tsx` (3.641) e `src/server/modules/programacao/handlers.ts` (2.337).
+- `src/modules/dashboard/programacao-simples/*` está congelada até a remoção — não recebe refatoração nem crescimento; prioridade de refatoração considera apenas módulos ativos.
 - Multi-tenant: toda entidade de negócio carrega `tenant_id`; toda query filtra por tenant no servidor; RLS sempre ativa como última barreira; nenhuma rota confia em `tenant_id` vindo do cliente.
 - Detalhe completo por domínio: `guias/guia_backend.md`, `guias/guia_sql.md`, `guias/guia_supabase.md`, `guias/guia_frontend.md`.
 
@@ -171,7 +178,10 @@ Nenhum servidor MCP configurado no momento (sem `.mcp.json` no repositório e se
 
 Comandos reais do projeto (`package.json`):
 - `npx tsc --noEmit` — typecheck.
-- `npm run lint` — ESLint.
+- `npm run lint` — ESLint + ratchet de tamanho de arquivo (roda `lint:eslint` e `lint:size`).
+- `npm run lint:size` — só o ratchet de tamanho (`scripts/check-file-size.mjs`); falha com exit code 1.
+- `npm run lint:size:update` — **só reduz** o baseline (arquivo encolheu, foi removido ou voltou ao limite). Recusa e não escreve nada se houver crescimento pendente.
+- `npm run lint:size:accept -- <caminho>` — única forma de aumentar um baseline; exige o caminho de cada arquivo, não existe aceite em lote. O diff do baseline é a evidência; a justificativa vai na descrição do PR.
 - `npm run build` — build de produção, para mudanças que afetam rota/build.
 - `npm run db:check-link` — confirma o projeto Supabase linkado antes de qualquer comando abaixo.
 - `npm run db:migration-list` / `npm run db:lint` — só depois do link confirmado.

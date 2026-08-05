@@ -1,0 +1,40 @@
+# A existencia deste workflow NAO bloqueia merge por si so. Para bloquear, o check
+# `verify` precisa ser marcado como obrigatorio na branch protection da `main`
+# (Settings > Branches > Branch protection rules > Require status checks to pass).
+name: CI
+
+# push so na main + pull_request: em branch de PR os dois gatilhos disparariam
+# o mesmo job duas vezes.
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      # lint:eslint e lint:size rodam separados de proposito: `npm run lint` executa os
+      # dois, mas em passos distintos o CI mostra qual deles falhou sem abrir o log.
+      - name: ESLint
+        run: npm run lint:eslint
+
+      - name: Tamanho de arquivo (ratchet)
+        run: npm run lint:size
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+# `npm run build` nao entra aqui: o build de producao le variaveis de ambiente do
+# Supabase (`.env`) que nao estao configuradas como secrets neste repositorio. Para
+# incluir o build, cadastrar os secrets e adicionar o passo com `env:` explicito.

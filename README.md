@@ -517,8 +517,18 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 - Validacoes atuais:
 ```bash
 npm run lint
+npx tsc --noEmit
 npm run build
 ```
+- `npm run lint` executa ESLint (`npm run lint:eslint`) e o ratchet de tamanho de arquivo (`npm run lint:size`).
+- O ratchet compara cada `.ts`/`.tsx` de `src/` contra os limites da secao 5 do `CLAUDE.md` (1.500 linhas para `route.ts`/`controller.ts`/`handlers.ts`, 1.000 para os demais) e contra `file-size-baseline.json`, que registra os arquivos legados que ja estavam acima do limite. Falha com exit code 1.
+- Quando um arquivo do baseline encolhe, e removido ou volta a respeitar o limite, rodar `npm run lint:size:update`. Esse comando **so reduz** o baseline: se houver crescimento pendente ele recusa e nao escreve nada.
+- Para aceitar um crescimento excepcional, usar o fluxo explicito, nomeando cada arquivo (nao existe aceite em lote):
+```bash
+npm run lint:size:accept -- src/modules/dashboard/<tela>/<Arquivo>.tsx
+```
+- As mesmas validacoes rodam no CI (`.github/workflows/ci.yml`), sem o `npm run build`, que depende de variaveis de ambiente do Supabase nao cadastradas como secrets.
+- O workflow por si so NAO bloqueia merge: para isso o check `verify` precisa ser marcado como obrigatorio na branch protection da `main`, nas configuracoes do repositorio no GitHub.
 
 ---
 
