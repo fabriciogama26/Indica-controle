@@ -141,8 +141,11 @@ Atualizacao 2026-08-05 (2) - Refatoracao estrutural do modulo (piloto do padrao)
   - Baseline do ratchet: `StockDashboardPageView.tsx` saiu de `file-size-baseline.json` (1.383 -> 210 linhas, abaixo do limite de 1.000); baseline caiu de 31 para 30 entradas.
 - Impacto multi-tenant:
   - Nenhum; o modulo e read-only e a chamada a `GET /api/dash-estoque` nao mudou.
-- Lacuna de validacao:
-  - A comparacao visual interativa (clique em filtros, modais e graficos com sessao autenticada) NAO foi executada pelo agente - o ambiente nao permite subir o servidor de desenvolvimento. Validado por `npm run lint`, `npm run lint:size`, `npx tsc --noEmit`, `npm run build` e pela comparacao estrutural automatizada.
+- Validacao:
+  - Automatizada: `npm run lint`, `npm run lint:size`, `npx tsc --noEmit`, `npm run build` e comparacao estrutural token a token contra o arquivo anterior.
+  - A comparacao visual interativa nao pode ser executada pelo agente (o ambiente nao permite subir o servidor de desenvolvimento) e ficou pendente do usuario.
+  - Validacao manual (2026-08-05, registrada pelo usuario): Validacao manual executada em ambiente autenticado. Dash Estoque e modais da Programacao Normalizada verificados sem regressoes funcionais ou visuais identificadas.
+  - Cobre tambem a fachada publica `index.ts` do modulo, entregue logo apos esta refatoracao.
 
 Atualizacao 2026-08-05 - Filtro por UMB na Dispersao de materiais
 -------------------------------------------------------------------

@@ -1338,3 +1338,54 @@ Atualizacao 2026-08-03 - Etapa em espera quebrava a fachada de Estado do Trabalh
     data, nao o da etapa em espera.
   - Abrir `/cronograma-solicitacoes` e confirmar que a coluna de estado e a
     trava de As Built continuam corretas para o mesmo projeto.
+
+Atualizacao 2026-08-05 - Modais movidos para components/modals (etapa 1 da decomposicao)
+- Problema:
+  - `components.tsx` estava com 1.350 linhas, acima do limite de 1.000 da secao 5
+    do CLAUDE.md, e era o unico arquivo do modulo em `file-size-baseline.json`.
+  - O arquivo misturava tres familias sem eixo comum: 10 modais (~570 linhas), o
+    `StageFormPanel` (395) e os componentes de plano (`StageBadge`, `StageCard`,
+    `TeamChipMenu`).
+- Mudanca:
+  - Os 10 componentes `*Modal` (`PostponeModal`, `PendenciaModal`,
+    `CorrectDateModal`, `CancelModal`, `CancelTeamModal`, `PostponeTeamModal`,
+    `LastActiveTeamModal`, `HistoryModal`, `DetailsModal`, `AddTeamModal`) passam
+    para arquivos proprios em `components/modals/`, com barril em `index.ts`.
+  - MOVIMENTO PURO: corpo byte-identico, com props, markup, classes CSS, textos,
+    atributos de acessibilidade e comentarios preservados. `ModalShell` e
+    `ReasonFields` NAO foram criados - sao abstracoes, nao recorte, e poderiam
+    alterar DOM, foco, fechamento, acessibilidade ou tratamento de observacao.
+  - Unica alteracao nos consumidores: a origem do import, em
+    `ProgrammingNormalizedPageView.tsx` e `ProjectPlanView.tsx`.
+  - NAO foram tocados: estado dos modais nas duas telas, fluxo `LAST_ACTIVE_TEAM`,
+    permissoes granulares (`canPendencia`/`canComplete`/`canCorrectDate`),
+    `StageFormPanel`, `listComponents.tsx` e o backend.
+  - `components.tsx` cai para 770 linhas e sai do baseline do ratchet (30 -> 29).
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-normalizada/components.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/modals/` (11 novos)
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProjectPlanView.tsx`
+  - `file-size-baseline.json`
+- Escopo adiado:
+  - As etapas 2 a 7 do plano de decomposicao (`components/list/`,
+    `components/stage/`, quebra do `StageFormPanel` e do `StageListTable`,
+    `useProgrammingExports`, `useReasonModal`) ficam ADIADAS ate a cadencia de
+    alteracoes do modulo cair. A tela e recente e recebe cerca de um commit por
+    dia; refatorar sob construcao diaria troca divida barata por conflito de
+    merge. O ratchet ja impede crescimento novo.
+  - O `PageView` (544 linhas) e o `ProjectPlanView` (445) ja estao dentro do
+    limite e nao sao alvo de refatoracao por tamanho.
+- Como validar:
+  - Equivalencia estrutural: comparacao byte a byte de cada bloco contra
+    `git show HEAD:...components.tsx` - 14 componentes antes, 14 depois, nenhum
+    criado ou perdido, zero divergencias.
+  - `npm run lint`, `npm run lint:size`, `npx tsc --noEmit`, `npm run build`.
+  - Manual: exercitar os 10 modais - adiar (data e espera), cancelar,
+    cancelar/adiar equipe, ultima equipe ativa, adicionar equipe, pendencia,
+    corrigir data, historico e detalhes - com atencao aos campos de observacao
+    obrigatoria e ao fechamento pelo overlay e pelo botao Fechar.
+- Validacao manual (2026-08-05, registrada pelo usuario):
+  - Validacao manual executada em ambiente autenticado. Dash Estoque e modais da
+    Programacao Normalizada verificados sem regressoes funcionais ou visuais
+    identificadas.
