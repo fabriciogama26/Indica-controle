@@ -21,7 +21,6 @@
     "src/modules/dashboard/meta/MetaPageView.tsx": 1069,
     "src/modules/dashboard/pessoas/PeoplePageView.tsx": 1950,
     "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1077,
-    "src/modules/dashboard/programacao-normalizada/components.tsx": 1350,
     "src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx": 3029,
     "src/modules/dashboard/programacao-simples/components.tsx": 2351,
     "src/modules/dashboard/programacao-simples/hooks.ts": 1092,

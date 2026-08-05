@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 
+import { StageCard, StageFormPanel } from "./components";
 import {
   CancelModal,
   CorrectDateModal,
@@ -11,9 +12,7 @@ import {
   HistoryModal,
   PendenciaModal,
   PostponeModal,
-  StageCard,
-  StageFormPanel,
-} from "./components";
+} from "./components/modals";
 import { createInitialForm } from "./constants";
 import {
   useActivityCatalogSearch,

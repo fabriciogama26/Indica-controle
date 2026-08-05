@@ -17,7 +17,7 @@ import {
   LastActiveTeamModal,
   PostponeModal,
   PostponeTeamModal,
-} from "./components";
+} from "./components/modals";
 import { STAGE_LIST_PAGE_SIZE, createDefaultListFilters } from "./constants";
 import { buildEnelCsvContent, buildEnelNovoWorkbookData, buildProgrammingCsvContent } from "./exports";
 import { fetchProgrammingPlan, fetchProgrammingStageDetails, fetchProgrammingStageList } from "./api";
