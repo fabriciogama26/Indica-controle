@@ -17,6 +17,7 @@ import {
   changeCompletedStageWorkStatus,
   completeProgrammingStage,
   correctProgrammingStageDate,
+  getAddTeamPrecheckResponse,
   getProgrammingHistoryResponse,
   postponeProgrammingStage,
   postponeProgrammingTeam,
@@ -261,6 +262,15 @@ export async function GET(request: NextRequest) {
 
   const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "read");
   if (authorizationError) return authorizationError;
+
+  // Pre-checagem do modal "Adicionar equipe": leitura, entao entra no GET. A
+  // permissao especifica ("update") e checada dentro do handler, nao aqui — este
+  // GET tambem serve listagem/detalhe/historico, que sao so "read".
+  const precheckProgrammingId = normalizeText(request.nextUrl.searchParams.get("addTeamCheckProgrammingId"));
+  const precheckTeamId = normalizeText(request.nextUrl.searchParams.get("addTeamCheckTeamId"));
+  if (precheckProgrammingId || precheckTeamId) {
+    return getAddTeamPrecheckResponse(request, precheckProgrammingId, precheckTeamId);
+  }
 
   const historyProgrammingId = normalizeText(request.nextUrl.searchParams.get("historyProgrammingId"));
   if (historyProgrammingId) {

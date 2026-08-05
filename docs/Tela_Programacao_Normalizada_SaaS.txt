@@ -1338,3 +1338,129 @@ Atualizacao 2026-08-03 - Etapa em espera quebrava a fachada de Estado do Trabalh
     data, nao o da etapa em espera.
   - Abrir `/cronograma-solicitacoes` e confirmar que a coluna de estado e a
     trava de As Built continuam corretas para o mesmo projeto.
+
+Atualizacao 2026-08-05 - Modais movidos para components/modals (etapa 1 da decomposicao)
+- Problema:
+  - `components.tsx` estava com 1.350 linhas, acima do limite de 1.000 da secao 5
+    do CLAUDE.md, e era o unico arquivo do modulo em `file-size-baseline.json`.
+  - O arquivo misturava tres familias sem eixo comum: 10 modais (~570 linhas), o
+    `StageFormPanel` (395) e os componentes de plano (`StageBadge`, `StageCard`,
+    `TeamChipMenu`).
+- Mudanca:
+  - Os 10 componentes `*Modal` (`PostponeModal`, `PendenciaModal`,
+    `CorrectDateModal`, `CancelModal`, `CancelTeamModal`, `PostponeTeamModal`,
+    `LastActiveTeamModal`, `HistoryModal`, `DetailsModal`, `AddTeamModal`) passam
+    para arquivos proprios em `components/modals/`, com barril em `index.ts`.
+  - MOVIMENTO PURO: corpo byte-identico, com props, markup, classes CSS, textos,
+    atributos de acessibilidade e comentarios preservados. `ModalShell` e
+    `ReasonFields` NAO foram criados - sao abstracoes, nao recorte, e poderiam
+    alterar DOM, foco, fechamento, acessibilidade ou tratamento de observacao.
+  - Unica alteracao nos consumidores: a origem do import, em
+    `ProgrammingNormalizedPageView.tsx` e `ProjectPlanView.tsx`.
+  - NAO foram tocados: estado dos modais nas duas telas, fluxo `LAST_ACTIVE_TEAM`,
+    permissoes granulares (`canPendencia`/`canComplete`/`canCorrectDate`),
+    `StageFormPanel`, `listComponents.tsx` e o backend.
+  - `components.tsx` cai para 770 linhas e sai do baseline do ratchet (30 -> 29).
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-normalizada/components.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/modals/` (11 novos)
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProjectPlanView.tsx`
+  - `file-size-baseline.json`
+- Escopo adiado:
+  - As etapas 2 a 7 do plano de decomposicao (`components/list/`,
+    `components/stage/`, quebra do `StageFormPanel` e do `StageListTable`,
+    `useProgrammingExports`, `useReasonModal`) ficam ADIADAS ate a cadencia de
+    alteracoes do modulo cair. A tela e recente e recebe cerca de um commit por
+    dia; refatorar sob construcao diaria troca divida barata por conflito de
+    merge. O ratchet ja impede crescimento novo.
+  - O `PageView` (544 linhas) e o `ProjectPlanView` (445) ja estao dentro do
+    limite e nao sao alvo de refatoracao por tamanho.
+- Como validar:
+  - Equivalencia estrutural: comparacao byte a byte de cada bloco contra
+    `git show HEAD:...components.tsx` - 14 componentes antes, 14 depois, nenhum
+    criado ou perdido, zero divergencias.
+  - `npm run lint`, `npm run lint:size`, `npx tsc --noEmit`, `npm run build`.
+  - Manual: exercitar os 10 modais - adiar (data e espera), cancelar,
+    cancelar/adiar equipe, ultima equipe ativa, adicionar equipe, pendencia,
+    corrigir data, historico e detalhes - com atencao aos campos de observacao
+    obrigatoria e ao fechamento pelo overlay e pelo botao Fechar.
+- Validacao manual (2026-08-05, registrada pelo usuario):
+  - Validacao manual executada em ambiente autenticado. Dash Estoque e modais da
+    Programacao Normalizada verificados sem regressoes funcionais ou visuais
+    identificadas.
+
+Atualizacao 2026-08-05 - Adicionar equipe: pre-checagem de agenda no modal (fase 2 parcial)
+--------------------------------------------------------------------------------------------
+- Antes: escolher a equipe gravava direto. O aviso de conflito era REATIVO — vinha como 409
+  `TEAM_TIME_CONFLICT` depois da tentativa. A mensagem ja era detalhada (fase 1, 341), mas
+  so aparecia como erro.
+- Depois: o modal "Adicionar equipe" mostra a janela da etapa (data + hora inicio/fim, leitura)
+  e, assim que uma equipe e escolhida, consulta o backend e diz ANTES de gravar se ela cabe.
+  Bloqueado desabilita o botao `Concluir`; liberado mostra confirmacao verde.
+- HORARIO CONTINUA SENDO DA ETAPA, NAO DA EQUIPE. `programming_team` segue enxuta (identidade
+  + status, migration 310). O modal EXIBE hora inicio/fim para o usuario saber qual intervalo
+  esta sendo checado — nao permite editar. Horario proprio por alocacao de equipe (etapa
+  08:00-17:00 com equipe B so 13:00-17:00) exigiria colunas novas em `programming_team` e
+  alteracao de `programming_team_schedule_conflict`, `..._agenda`, save, adiar e corrigir data.
+  Avaliado e NAO feito nesta entrega.
+- Endpoint: ramo de LEITURA no `GET /api/programacao-normalizada`, parametros
+  `addTeamCheckProgrammingId` + `addTeamCheckTeamId`. Responde SEMPRE 200 —
+  `{ allowed, reason, message, executionDate, startTime, endTime }`. "Nao pode adicionar" e a
+  resposta da consulta, nao um erro dela. Permissao exigida: `update` da tela (mesma da
+  operacao real), checada dentro do handler e nao no topo do GET, que tambem serve
+  listagem/detalhe/historico sob `read`.
+- Ordem dos testes em `addTeamPrecheck.ts` espelha a da RPC `add_project_programming_team`
+  (318) DE PROPOSITO: PROGRAMMING_NOT_FOUND -> STAGE_NOT_ACTIVE ->
+  PROJECT_COMPLETED_REQUIRES_REOPEN -> TEAM_NOT_FOUND -> TEAM_ALREADY_ACTIVE ->
+  TEAM_TIME_CONFLICT. Se as ordens divergirem, o motivo mostrado no modal deixa de ser o
+  motivo real da recusa.
+- "Projeto concluido" NAO e reimplementado em TS: a pre-checagem chama a MESMA funcao
+  `programming_project_has_active_completion` que a RPC usa (SECURITY DEFINER, grant so para
+  `service_role` — o cliente admin do backend).
+- Guarda de paridade: etapa SEM horario nunca conflita, porque
+  `programming_team_schedule_conflict` (317) exige `p_start_time`/`p_end_time` nao nulos. Sem
+  essa guarda a pre-checagem bloquearia onde a RPC libera, ja que
+  `describeTeamScheduleConflict` trata janela desconhecida como "qualquer ocupacao na data
+  conta". O modal avisa "Etapa sem horario definido — nao ha checagem de agenda".
+- TOCTOU aceito e documentado: entre o "pode" do modal e o clique em `Concluir` outra pessoa
+  pode ocupar a agenda. A RPC continua sendo a autoridade (roda os mesmos testes dentro da
+  transacao, com `for update` na etapa) e devolve a mesma mensagem detalhada. A pre-checagem
+  antecipa o aviso, nunca substitui a validacao.
+- Falha da consulta NAO vira bloqueio: estado `unknown` deixa o usuario tentar assim mesmo,
+  com o texto "a validacao final e feita ao concluir". Bloquear por falha de leitura
+  transformaria indisponibilidade de infraestrutura em recusa de negocio.
+- Segundo caminho unificado: o `StageCard` do `ProjectPlanView` adicionava equipe por um
+  `select` inline que gravava no `onChange` — era o unico ponto do modulo que gravava sem
+  aviso previo. Virou botao com icone `addTeam` (igual ao da listagem) que abre o MESMO
+  modal. A area `.addTeamPanel` do card saiu.
+- Correcao de estado junto: abrir e fechar o modal agora zeram a equipe selecionada nos dois
+  PageViews. Sem isso, um id remanescente de outra etapa dispararia a pre-checagem contra a
+  etapa errada e poderia apontar para equipe que nem aparece no select daquela etapa.
+- Correcao de regra junto: o select de equipes disponiveis passou a excluir apenas alocacao
+  com status `ATIVA`. Antes o `PageView` excluia qualquer historico, impedindo readicionar
+  equipe REMOVIDA/TRANSFERIDA — que a unique index `uq_programming_team_active_per_stage`
+  permite. O `StageCard` ja usava a regra correta; agora os dois batem.
+- Fora do escopo (continua da fase 1): sugerir OUTRA equipe livre na janela e definir
+  expediente por equipe/tipo de servico.
+- Como validar:
+  - `npx tsc --noEmit`, `npm run lint`, `npm run lint:size`, `npm run build`.
+  - Manual: (1) etapa ativa com equipe ja alocada em outro SOB no mesmo horario -> escolher
+    essa equipe no modal e conferir o aviso vermelho com SOB, horario ocupado e janelas
+    livres, com `Concluir` desabilitado; (2) equipe livre -> aviso verde e `Concluir`
+    habilitado, gravando normalmente; (3) etapa sem hora inicio/fim -> aviso de "sem
+    checagem de agenda" e adicao liberada; (4) mesma equipe ja ATIVA na etapa -> ela nao
+    aparece no select; (5) abrir o modal em uma etapa, fechar sem confirmar e abrir em outra
+    -> o select volta em branco; (6) mesmo roteiro pelo botao do card dentro do plano do
+    projeto (`ProjectPlanView`), que agora abre o mesmo modal.
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/addTeamPrecheck.ts` (novo)
+  - `src/server/modules/programacao-normalizada/handlers.ts`
+  - `src/app/api/programacao-normalizada/route.ts`
+  - `src/modules/dashboard/programacao-normalizada/api.ts`
+  - `src/modules/dashboard/programacao-normalizada/types.ts`
+  - `src/modules/dashboard/programacao-normalizada/hooks.ts`
+  - `src/modules/dashboard/programacao-normalizada/components.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/modals/AddTeamModal.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProjectPlanView.tsx`

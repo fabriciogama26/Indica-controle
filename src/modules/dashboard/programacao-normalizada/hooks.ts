@@ -9,6 +9,7 @@ import {
   cancelProgrammingStage,
   cancelProgrammingTeam,
   changeCompletedStageWorkStatus,
+  checkAddProgrammingTeam,
   completeProgrammingStage,
   correctProgrammingStageDate,
   fetchActivityCatalog,
@@ -29,6 +30,7 @@ import { HISTORY_PAGE_SIZE, STAGE_LIST_PAGE_SIZE } from "./constants";
 import type {
   ActionResponse,
   ActivityCatalogItem,
+  AddTeamCheckState,
   FeedbackState,
   HistoryItem,
   HistoryModalTarget,
@@ -220,6 +222,59 @@ export function useProgrammingPlan(params: {
   }, [loadPlan]);
 
   return { stages, isLoadingPlan, reloadPlan: loadPlan };
+}
+
+// Pre-checagem do modal "Adicionar equipe": assim que uma equipe e escolhida,
+// consulta o backend e devolve se ela cabe na janela da etapa. E so aviso —
+// a autoridade continua sendo a RPC no submit, que roda os mesmos testes dentro
+// da transacao. Por isso falha de consulta vira "unknown", nunca bloqueio.
+export function useAddTeamPrecheck(params: {
+  accessToken: string | null;
+  programmingId: string | null;
+  teamId: string;
+}) {
+  const { accessToken, programmingId, teamId } = params;
+
+  // A resposta e guardada com a CHAVE que a originou (etapa+equipe). "idle" e
+  // "loading" saem dessa comparacao, nao de um setState — assim o efeito so
+  // escreve estado quando a consulta volta, e uma resposta atrasada da equipe
+  // anterior nunca aparece como resultado da equipe selecionada agora.
+  const [result, setResult] = useState<{ key: string; state: AddTeamCheckState } | null>(null);
+  const currentKey = accessToken && programmingId && teamId ? `${programmingId}:${teamId}` : "";
+
+  useEffect(() => {
+    if (!accessToken || !programmingId || !teamId) return;
+
+    const key = `${programmingId}:${teamId}`;
+    const controller = new AbortController();
+
+    checkAddProgrammingTeam({ accessToken, programmingId, teamId, signal: controller.signal })
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        setResult({
+          key,
+          state: response.allowed
+            ? { status: "allowed", message: response.message ?? "Equipe livre nesta janela." }
+            : { status: "blocked", message: response.message ?? "Esta equipe nao pode ser adicionada a esta etapa." },
+        });
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setResult({
+          key,
+          state: {
+            status: "unknown",
+            message: "Nao foi possivel verificar a agenda agora. Voce pode tentar adicionar — a validacao final e feita ao concluir.",
+          },
+        });
+      });
+
+    return () => controller.abort();
+  }, [accessToken, programmingId, teamId]);
+
+  if (!currentKey) return { status: "idle" } as AddTeamCheckState;
+  if (result?.key !== currentKey) return { status: "loading" } as AddTeamCheckState;
+  return result.state;
 }
 
 export function useHistoryModal(params: { accessToken: string | null; onError: ErrorLogHandler }) {

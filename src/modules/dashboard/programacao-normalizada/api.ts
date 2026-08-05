@@ -1,6 +1,7 @@
 import type {
   ActionResponse,
   ActivityCatalogItem,
+  AddTeamPrecheckResponse,
   HistoryResponse,
   MetaResponse,
   PlanResponse,
@@ -110,6 +111,35 @@ export async function fetchProgrammingStageDetails(params: { accessToken: string
   }
 
   return data.stage ?? null;
+}
+
+// Pre-checagem do modal "Adicionar equipe". Consulta de leitura: "nao pode
+// adicionar" volta como 200 com `allowed: false`, nao como erro HTTP. So falha de
+// verdade (sessao/permissao/rede) rejeita — nesse caso o modal segue permitindo a
+// tentativa, porque a validacao final e da RPC.
+export async function checkAddProgrammingTeam(params: {
+  accessToken: string;
+  programmingId: string;
+  teamId: string;
+  signal?: AbortSignal;
+}) {
+  const query = new URLSearchParams({
+    addTeamCheckProgrammingId: params.programmingId,
+    addTeamCheckTeamId: params.teamId,
+  });
+
+  const response = await fetch(`/api/programacao-normalizada?${query.toString()}`, {
+    cache: "no-store",
+    headers: authHeaders(params.accessToken),
+    signal: params.signal,
+  });
+
+  const data = await readJson<AddTeamPrecheckResponse>(response);
+  if (!response.ok) {
+    throw new Error(data.message ?? "Falha ao verificar a equipe.");
+  }
+
+  return data;
 }
 
 export async function fetchProgrammingStageHistory(params: { accessToken: string; programmingId: string }) {

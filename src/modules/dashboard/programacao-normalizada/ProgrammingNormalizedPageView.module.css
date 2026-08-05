@@ -1005,13 +1005,6 @@
   background: rgba(37, 74, 156, 0.16);
 }
 
-.addTeamPanel {
-  padding: 0.65rem 0.75rem;
-  border-radius: 12px;
-  border: 1px dashed rgba(23, 52, 122, 0.22);
-  background: #ffffff;
-}
-
 .buttonPrimary {
   background: linear-gradient(180deg, #17347a 0%, #2750a3 100%);
   color: #f7fbff;
