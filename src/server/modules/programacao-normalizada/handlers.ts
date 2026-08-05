@@ -18,6 +18,7 @@ import {
   setProgrammingPendenciaFlagViaRpc,
   setProgrammingWorkCompletionStatusViaRpc,
 } from "./rpc";
+import { checkAddTeamFeasibility } from "./addTeamPrecheck";
 import { fetchProgrammingHistory, fetchProgrammingStageById } from "./queries";
 import {
   normalizeIsoDate,
@@ -235,6 +236,33 @@ export async function addProgrammingTeam(request: NextRequest) {
   const stage = await fetchProgrammingStageById({ supabase: resolution.supabase, tenantId: resolution.appUser.tenant_id, programmingId });
 
   return NextResponse.json({ success: true, programmingTeamId: result.programmingTeamId, stage, message: result.message });
+}
+
+// Pre-checagem do modal "Adicionar equipe": responde se a equipe PODE entrar na
+// etapa, antes de gravar. Continua sob a permissao "update" da tela — quem nao
+// pode adicionar equipe tambem nao precisa sondar a agenda das equipes.
+export async function getAddTeamPrecheckResponse(request: NextRequest, programmingId: string, teamId: string) {
+  const resolution = await authenticate(request, "Sessao invalida para verificar equipe.");
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "update");
+  if (authorizationError) return authorizationError;
+
+  if (!programmingId || !teamId) {
+    return NextResponse.json({ message: "Informe a etapa e a equipe a verificar." }, { status: 400 });
+  }
+
+  const result = await checkAddTeamFeasibility({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    programmingId,
+    teamId,
+  });
+
+  // Sempre 200: "nao pode adicionar" e a RESPOSTA da consulta, nao um erro dela.
+  return NextResponse.json(result);
 }
 
 export async function removeProgrammingTeam(request: NextRequest, payload: RemoveTeamPayload) {

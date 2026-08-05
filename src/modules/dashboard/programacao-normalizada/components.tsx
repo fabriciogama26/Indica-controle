@@ -61,7 +61,10 @@ export function StageCard(props: {
   teamOptions: TeamItem[];
   onEdit: () => void;
   onDuplicate: () => void;
-  onAddTeam: (teamId: string) => void;
+  // Abre o modal de adicionar equipe (com pre-checagem de agenda). O card nao
+  // adiciona mais direto pelo select: era o unico caminho que gravava sem aviso
+  // previo, divergindo da listagem.
+  onAddTeam: () => void;
   onRemoveTeam: (programmingTeamId: string, expectedUpdatedAt: string) => void;
   onPostpone: () => void;
   onCancel: () => void;
@@ -130,6 +133,17 @@ export function StageCard(props: {
           </button>
           {isActive && !isCompleted ? (
             <>
+              {availableTeams.length ? (
+                <button
+                  type="button"
+                  className={`${styles.actionButton} ${styles.actionCopy}`}
+                  title="Adicionar equipe"
+                  onClick={onAddTeam}
+                  disabled={isSubmitting}
+                >
+                  <ActionIcon name="addTeam" />
+                </button>
+              ) : null}
               <button type="button" className={`${styles.actionButton} ${styles.actionEdit}`} title="Editar" onClick={onEdit} disabled={isSubmitting}>
                 <ActionIcon name="edit" />
               </button>
@@ -234,26 +248,6 @@ export function StageCard(props: {
         </label>
       ) : null}
 
-      {isActive && !isCompleted && availableTeams.length ? (
-        <div className={`${styles.field} ${styles.addTeamPanel}`}>
-          <label htmlFor={`add-team-${stage.id}`}><span>Adicionar equipe</span></label>
-          <select
-            id={`add-team-${stage.id}`}
-            value=""
-            disabled={isSubmitting}
-            onChange={(event) => {
-              if (event.target.value) onAddTeam(event.target.value);
-            }}
-          >
-            <option value="">Selecionar equipe...</option>
-            {availableTeams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name} — {team.foremanName || "Sem encarregado"}
-              </option>
-            ))}
-          </select>
-        </div>
-      ) : null}
     </article>
   );
 }

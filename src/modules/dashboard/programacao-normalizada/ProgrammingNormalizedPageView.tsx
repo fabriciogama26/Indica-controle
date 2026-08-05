@@ -21,7 +21,14 @@ import {
 import { STAGE_LIST_PAGE_SIZE, createDefaultListFilters } from "./constants";
 import { buildEnelCsvContent, buildEnelNovoWorkbookData, buildProgrammingCsvContent } from "./exports";
 import { fetchProgrammingPlan, fetchProgrammingStageDetails, fetchProgrammingStageList } from "./api";
-import { useHistoryModal, useProgrammingGranularPermissions, useProgrammingMeta, useProgrammingStageActions, useProgrammingStageList } from "./hooks";
+import {
+  useAddTeamPrecheck,
+  useHistoryModal,
+  useProgrammingGranularPermissions,
+  useProgrammingMeta,
+  useProgrammingStageActions,
+  useProgrammingStageList,
+} from "./hooks";
 import { ListFiltersBar, SobEntryBar, StageListTable } from "./listComponents";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { ProjectPlanView } from "./ProjectPlanView";
@@ -85,6 +92,7 @@ export function ProgrammingNormalizedPageView() {
   const { items, total, page, setPage, isLoadingList, listToday, listError, reloadList } = useProgrammingStageList({ accessToken, filters, onError: logError });
   const historyModal = useHistoryModal({ accessToken, onError: logError });
   const actions = useProgrammingStageActions({ accessToken, setFeedback, onSuccess: reloadList, onError: logError });
+  const addTeamCheck = useAddTeamPrecheck({ accessToken, programmingId: addTeamTarget?.id ?? null, teamId: addTeamSelectedId });
 
   const projects = meta?.projects ?? [];
   const teams = meta?.teams ?? [];
@@ -329,13 +337,23 @@ export function ProgrammingNormalizedPageView() {
     setLastActiveTeamPrompt(null);
   }
 
+  // Abrir/fechar SEMPRE zeram a equipe selecionada: um id remanescente de outra
+  // etapa dispararia a pre-checagem contra a etapa errada e ainda poderia apontar
+  // para uma equipe que nem aparece no select desta etapa.
+  function openAddTeamModal(stage: StageListItem) {
+    setAddTeamTarget(stage);
+    setAddTeamSelectedId("");
+  }
+
+  function closeAddTeamModal() {
+    setAddTeamTarget(null);
+    setAddTeamSelectedId("");
+  }
+
   async function confirmAddTeam() {
     if (!addTeamTarget || !addTeamSelectedId) return;
     const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId);
-    if (result.ok) {
-      setAddTeamTarget(null);
-      setAddTeamSelectedId("");
-    }
+    if (result.ok) closeAddTeamModal();
   }
 
   async function openDetails(stage: StageListItem) {
@@ -371,8 +389,11 @@ export function ProgrammingNormalizedPageView() {
     );
   }
 
+  // So alocacao ATIVA ocupa a vaga: a unique index do banco
+  // (uq_programming_team_active_per_stage) permite readicionar uma equipe que foi
+  // REMOVIDA/TRANSFERIDA, entao ela precisa voltar a aparecer no select.
   const addTeamAvailableTeams = addTeamTarget
-    ? teams.filter((team) => !addTeamTarget.teams.some((active) => active.teamId === team.id))
+    ? teams.filter((team) => !addTeamTarget.teams.some((active) => active.teamId === team.id && active.status === "ATIVA"))
     : [];
 
   return (
@@ -408,7 +429,7 @@ export function ProgrammingNormalizedPageView() {
         todayIso={listToday}
         onOpenProject={openProject}
         fetchProjectStages={fetchProjectStages}
-        onAddTeam={(stage) => setAddTeamTarget(stage)}
+        onAddTeam={openAddTeamModal}
         onPostpone={(stage) => {
           setPostponeTarget(stage);
           setPostponeMode("DATE");
@@ -521,7 +542,11 @@ export function ProgrammingNormalizedPageView() {
         availableTeams={addTeamAvailableTeams}
         selectedTeamId={addTeamSelectedId}
         isSubmitting={actions.isSubmitting}
-        onClose={() => setAddTeamTarget(null)}
+        executionDate={addTeamTarget?.executionDate ?? null}
+        startTime={addTeamTarget?.startTime ?? null}
+        endTime={addTeamTarget?.endTime ?? null}
+        check={addTeamCheck}
+        onClose={closeAddTeamModal}
         onConfirm={confirmAddTeam}
         onSelectedTeamIdChange={setAddTeamSelectedId}
       />

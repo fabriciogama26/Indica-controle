@@ -303,4 +303,25 @@ export type ActionResponse = {
   restoredCount?: number;
 };
 
+// Resposta da pre-checagem de "adicionar equipe". `allowed: false` e resultado
+// valido da consulta (HTTP 200), nao erro. `message` ja vem pronta para a tela —
+// no caso de conflito de agenda ela traz com quem conflita e as janelas livres.
+export type AddTeamPrecheckResponse = {
+  allowed?: boolean;
+  reason?: string | null;
+  message?: string;
+  executionDate?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+};
+
+// Estado da checagem dentro do modal. "idle" = nenhuma equipe escolhida ainda;
+// "unknown" = a consulta falhou e o modal deixa tentar assim mesmo (a RPC decide).
+export type AddTeamCheckState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "allowed"; message: string }
+  | { status: "blocked"; message: string }
+  | { status: "unknown"; message: string };
+
 export type FeedbackState = { type: "success" | "error"; message: string } | null;

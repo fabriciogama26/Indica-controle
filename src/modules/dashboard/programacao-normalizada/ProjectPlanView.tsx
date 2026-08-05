@@ -6,6 +6,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 
 import { StageCard, StageFormPanel } from "./components";
 import {
+  AddTeamModal,
   CancelModal,
   CorrectDateModal,
   DetailsModal,
@@ -16,6 +17,7 @@ import {
 import { createInitialForm } from "./constants";
 import {
   useActivityCatalogSearch,
+  useAddTeamPrecheck,
   useHistoryModal,
   useProgrammingGranularPermissions,
   useProgrammingMeta,
@@ -112,17 +114,42 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
   const [detailsTarget, setDetailsTarget] = useState<ProgrammingStage | null>(null);
 
+  const [addTeamTarget, setAddTeamTarget] = useState<ProgrammingStage | null>(null);
+  const [addTeamSelectedId, setAddTeamSelectedId] = useState("");
+
   const { canComplete, canPendencia, canCorrectDate } = useProgrammingGranularPermissions();
   const { meta } = useProgrammingMeta({ accessToken, onError: logError });
   const { stages, reloadPlan } = useProgrammingPlan({ accessToken, projectId, onError: logError });
   const historyModal = useHistoryModal({ accessToken, onError: logError });
   const actions = useProgrammingStageActions({ accessToken, setFeedback, onSuccess: reloadPlan, onError: logError });
   const { activityOptions, isLoadingActivities } = useActivityCatalogSearch({ accessToken, query: form.activitySearch, onError: logError });
+  const addTeamCheck = useAddTeamPrecheck({ accessToken, programmingId: addTeamTarget?.id ?? null, teamId: addTeamSelectedId });
 
   const teams = meta?.teams ?? [];
   const reasonOptions = meta?.reasonOptions ?? [];
   const sortedStages = useMemo(() => sortStagesByDate(stages), [stages]);
   const activeCompletedStage = useMemo(() => findActiveCompletedStage(stages), [stages]);
+  const addTeamAvailableTeams = addTeamTarget
+    ? teams.filter((team) => !addTeamTarget.teams.some((active) => active.teamId === team.id && active.status === "ATIVA"))
+    : [];
+
+  // Abrir/fechar zeram a equipe selecionada: um id remanescente de outra etapa
+  // dispararia a pre-checagem contra a etapa errada.
+  function openAddTeamModal(stage: ProgrammingStage) {
+    setAddTeamTarget(stage);
+    setAddTeamSelectedId("");
+  }
+
+  function closeAddTeamModal() {
+    setAddTeamTarget(null);
+    setAddTeamSelectedId("");
+  }
+
+  async function confirmAddTeam() {
+    if (!addTeamTarget || !addTeamSelectedId) return;
+    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId);
+    if (result.ok) closeAddTeamModal();
+  }
 
   function startEdit(stage: ProgrammingStage) {
     setEditingStageId(stage.id);
@@ -354,7 +381,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
               isSubmitting={actions.isSubmitting}
               onEdit={() => startEdit(stage)}
               onDuplicate={() => duplicateStage(stage)}
-              onAddTeam={(teamId) => actions.addTeam(stage.id, teamId)}
+              onAddTeam={() => openAddTeamModal(stage)}
               onRemoveTeam={(programmingTeamId, expectedUpdatedAt) => actions.removeTeam(programmingTeamId, expectedUpdatedAt)}
               onPostpone={() => openPostponeModal(stage)}
               onCancel={() => openCancelModal(stage)}
@@ -436,6 +463,20 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         onClose={() => historyModal.setHistoryTarget(null)}
         onPreviousPage={historyModal.onPreviousHistoryPage}
         onNextPage={historyModal.onNextHistoryPage}
+      />
+
+      <AddTeamModal
+        isOpen={Boolean(addTeamTarget)}
+        availableTeams={addTeamAvailableTeams}
+        selectedTeamId={addTeamSelectedId}
+        isSubmitting={actions.isSubmitting}
+        executionDate={addTeamTarget?.executionDate ?? null}
+        startTime={addTeamTarget?.startTime ?? null}
+        endTime={addTeamTarget?.endTime ?? null}
+        check={addTeamCheck}
+        onClose={closeAddTeamModal}
+        onConfirm={confirmAddTeam}
+        onSelectedTeamIdChange={setAddTeamSelectedId}
       />
 
       <DetailsModal target={detailsTarget} onClose={() => setDetailsTarget(null)} />
