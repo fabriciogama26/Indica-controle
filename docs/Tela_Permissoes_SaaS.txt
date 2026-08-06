@@ -85,11 +85,15 @@ Boas praticas
 - Manter RPCs `SECURITY DEFINER` sem execucao direta por `PUBLIC`, `anon` ou `authenticated`; o app deve chamar essas funcoes pelo backend com `service_role` e validacao explicita de tenant/usuario.
 - Checklist obrigatorio para toda nova tela:
   - Criar migration versionada com insert em `app_pages`.
-  - Manter `app_pages.default_user_access = false` para que usuarios nao administrativos nascam bloqueados na tela nova.
+  - Manter `app_pages.default_user_access = false` para que usuarios nao administrativos nascam bloqueados na tela nova. Desde a migration 356 isso e garantido pelo trigger `trg_app_pages_force_blocked_by_default` (BEFORE INSERT), que sobrescreve qualquer valor informado no INSERT. Nunca herdar o valor de outra pagina (`coalesce((select default_user_access from app_pages where page_key = '<outra>'), false)`) — foi assim que a 355 liberou a tela nova para todos.
   - Fazer backfill em `app_user_page_permissions` sem sobrescrever configuracoes existentes; admin/master podem nascer liberados, usuarios comuns devem nascer bloqueados.
-  - Incluir a tela no `permissionCatalog` do frontend.
-  - Incluir rota no `AppShell` (`menuSections`) e no `titleMap`.
+  - ATENCAO a ordem dos triggers: `trg_app_pages_default_user_permissions` (AFTER INSERT, migration 253) ja cria a linha de TODOS os usuarios no proprio `insert into app_pages`. Um backfill escrito depois com `on conflict (tenant_id, user_id, page_key) do nothing` e sempre um no-op. Se o backfill precisa mesmo definir valor por usuario, usar `do update`.
+  - Toda validacao pos-execucao (bloco `do $$`) checa os DOIS sentidos: ninguem perdeu acesso que tinha E ninguem ganhou acesso que nao tinha. A 355 so checava o primeiro e passou em silencio.
+  - Incluir a tela no `permissionCatalog` do frontend (`PermissionsPageView.tsx`) — isso apenas a torna concedivel, nao a concede.
+  - NAO incluir a `page_key` em `DEFAULT_USER_PAGE_ACCESS` (`src/lib/auth/authorization.ts`). Essa constante espelha `app_pages.default_user_access = true` e e usada tanto pelo fallback de sessao quanto pela matriz inicial da tela de Permissoes. Incluir ali antes de existir concessao no banco libera a tela para todo usuario nao administrativo sem registro em `app_user_permission_history`.
+  - Incluir rota no `AppShell` (`menuSections`) e no `titleMap`, e a `page_key` em `ROUTE_PAGE_KEYS` (`authorization.ts`). Permissao granular por operacao (sem rota navegavel) entra so no `permissionCatalog`.
   - Validar o save de permissoes para a nova `page_key` sem erro `nao estao cadastradas em app_pages`.
+  - Conferir apos aplicar a migration: contar quantos usuarios ficaram com `can_access = true` na tela nova. O esperado para uma tela nova e apenas admin/master.
 
 Cancelamento e saldo
 --------------------
@@ -357,3 +361,59 @@ Atualizacao 2026-07-31
   so o tenant "INDICA SERVICO - ANGRA" tem pessoas ativas com esse papel hoje (o tenant "TESTE"
   tem zero); o UPDATE de `app_user_page_permissions` fica naturalmente escopado por tenant via
   o `user_id` de cada linha, sem precisar de filtro explicito.
+
+Atualizacao 2026-08
+-------------------
+Incidente: tela nova nascendo LIBERADA para todos os usuarios.
+
+- Sintoma relatado: ao publicar uma tela nova, a permissao aparecia ativa para todo mundo em
+  vez de bloqueada.
+- Diagnostico (consulta somente-leitura em producao, 2026-08-06):
+  `medicao-visualizacao` era a UNICA pagina recente com `default_user_access = true`
+  (as 9 telas cadastradas antes dela — `apuracao-fator-minimo`, `mapa-almoxarifado`,
+  `configuracao-mapa-almoxarifado`, `requisicao-solicitacao`, `requisicao-atendimento`,
+  `saida-requisicao`, `cronograma-solicitacoes`, `programacao-normalizada`,
+  `dashboard-carteira-operacional` — estavam corretamente em `false`). Resultado: 12 de 20
+  usuarios com `can_access = true` em `medicao-visualizacao` contra apenas 3 em `medicao`;
+  10 usuarios nao administrativos (7 ativos) ganharam a tela sem concessao.
+- Causa raiz, em 3 elos:
+  1. `355_add_medicao_visualizacao_page_permissions.sql` cadastrou a pagina herdando
+     `default_user_access` de `medicao` via `coalesce((select ...), false)`. A migration 245
+     tinha feito UPDATE em massa marcando todas as paginas existentes como `true` (exceto
+     `mapa-programacao`), entao `medicao` = true e a tela nova nasceu true.
+  2. O trigger AFTER INSERT `trg_app_pages_default_user_permissions` (253) disparou no proprio
+     `insert into app_pages` e gravou as 7 colunas = true para TODOS os usuarios.
+  3. O backfill "por usuario" da propria 355 (copiar o valor de `medicao` de cada um) vinha
+     depois e terminava em `on conflict do nothing` — as linhas ja existiam, entao foi no-op.
+     A validacao final da 355 so checava "ninguem perdeu acesso", nunca "ninguem ganhou".
+- Agravante no frontend: a lista `defaultPageAccess` existia DUPLICADA em
+  `src/lib/auth/authorization.ts` (`resolveDefaultPageAccess`) e em `PermissionsPageView.tsx`
+  (`createPermissionSet`), com conteudos divergentes entre si e em relacao ao banco. Somando as
+  duas, 7 telas que o banco marca como bloqueadas apareciam como liberadas por padrao:
+  `authorization.ts` tinha `cronograma-solicitacoes`, `apuracao-fator-minimo`,
+  `mapa-almoxarifado`, `requisicao-solicitacao`, `requisicao-atendimento`,
+  `configuracao-mapa-almoxarifado` e `medicao-visualizacao`; `PermissionsPageView.tsx` tinha
+  `mapa-programacao`, `apuracao-fator-minimo`, `mapa-almoxarifado`,
+  `configuracao-mapa-almoxarifado` e `medicao-visualizacao`.
+- Depois (migration `356_force_new_pages_blocked_by_default.sql`):
+  1. Trigger `trg_app_pages_force_blocked_by_default` (BEFORE INSERT em `app_pages`,
+     `SECURITY INVOKER`) forca `default_user_access = false` em todo INSERT. Como BEFORE roda
+     antes de AFTER, o trigger de matriz de permissoes passa a enxergar sempre `false`. Uma
+     tela nova nao tem mais como nascer liberada, qualquer que seja o valor que a migration
+     passe. Liberar continua possivel, mas so como UPDATE explicito posterior + backfill
+     (padrao da 348), visivel no diff.
+  2. `medicao-visualizacao` corrigida para `default_user_access = false`.
+  3. As linhas ja gravadas em `app_user_page_permissions` NAO foram revogadas pela migration:
+     tirar acesso de usuario ativo e decisao de negocio e deve passar pela tela de Permissoes,
+     com `updated_by` real e historico. PENDENCIA EM ABERTO: os 7 usuarios ativos listados no
+     diagnostico continuam com `medicao-visualizacao` liberada.
+- Depois (frontend): as duas listas viraram uma constante unica exportada,
+  `DEFAULT_USER_PAGE_ACCESS` em `src/lib/auth/authorization.ts` (mais `VIEWER_PAGE_ACCESS`),
+  importada por `PermissionsPageView.tsx`. As 7 chaves divergentes foram removidas. Regra
+  escrita no proprio arquivo: so e permitido REMOVER chave cujo `default_user_access` seja
+  `false` no banco; adicionar exige concessao previa por migration explicita.
+- Efeito pratico da mudanca de frontend: nenhum usuario perde acesso. `applyPermissionSnapshot`
+  sobrescreve a matriz inicial com as linhas reais do banco (todos os 20 usuarios tem linha
+  para as 54 paginas), e `resolveDefaultPageAccess` so vale quando `hasCustomPermissions` e
+  falso (login local / usuario sem nenhuma linha). O caminho que realmente mudou e
+  `handleRoleChange`: trocar o papel do usuario nao pre-marca mais as 7 telas bloqueadas.

@@ -102,8 +102,20 @@ Acoes usadas nas Edge Functions:
 
 | Trigger | Tabela | Funcao | Efeito |
 |---|---|---|---|
+| `trg_app_pages_force_blocked_by_default` | `app_pages` BEFORE INSERT | `force_new_app_page_blocked_by_default()` | Forca `default_user_access = false`; tela nova nasce bloqueada mesmo que a migration passe `true` |
 | `trg_app_users_default_page_permissions` | `app_users` AFTER INSERT | `ensure_app_user_default_page_permissions()` | Insere linha para cada tela ativa; todas as 7 colunas = `is_admin` ou `default_user_access` |
 | `trg_app_pages_default_user_permissions` | `app_pages` AFTER INSERT | `ensure_app_page_default_user_permissions()` | Insere linha para cada usuario existente; todas as 7 colunas = `is_admin` ou `default_user_access` |
+
+**Ordem importa.** No `insert into app_pages`, o BEFORE roda antes do AFTER: o trigger de matriz
+sempre enxerga `default_user_access = false`. E o AFTER ja criou a linha de todos os usuarios
+antes de qualquer backfill escrito na mesma migration — backfill com
+`on conflict (tenant_id, user_id, page_key) do nothing` e sempre no-op (incidente da migration
+355, ver `docs/Tela_Permissoes_SaaS.txt`, Atualizacao 2026-08). Usar `do update` quando o
+backfill precisar definir valor por usuario.
+
+Liberar uma tela para usuarios comuns exige passo EXPLICITO e posterior ao INSERT:
+`update app_pages set default_user_access = true ...` + backfill em
+`app_user_page_permissions` (padrao da migration 348).
 
 ---
 
@@ -137,3 +149,6 @@ Acoes usadas nas Edge Functions:
 | 077 | RPC `save_user_permissions` |
 | 245 | Adicionou `default_user_access` em `app_pages`; triggers de default |
 | 253 | Adicionou 6 colunas granulares; backfill; `user_has_page_action()` atualizada; triggers e RPC atualizados |
+| 348 | Padrao de liberacao explicita de tela para o papel `user` (default + role template + backfill das 7 colunas + historico) |
+| 355 | Cadastrou `medicao-visualizacao` herdando `default_user_access` de `medicao` — liberou a tela para todos por engano |
+| 356 | Trigger BEFORE INSERT `force_new_app_page_blocked_by_default()`; corrigiu `medicao-visualizacao` para `false` |

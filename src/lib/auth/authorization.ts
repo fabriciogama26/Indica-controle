@@ -66,54 +66,70 @@ export function isAdminRole(role: string | null | undefined) {
   return normalized === "admin" || normalized === "master";
 }
 
+// Espelho de `app_pages.default_user_access = true`. NAO e a fonte de verdade — o banco e —,
+// mas alimenta o fallback de sessao e a matriz inicial da tela de Permissoes.
+//
+// REGRA: tela NOVA nunca entra aqui. Ela nasce bloqueada (migration 356 forca
+// `default_user_access = false` em todo INSERT de `app_pages`) e so e liberada por concessao
+// explicita na tela de Permissoes. Adicionar a chave aqui antes disso concede a tela a todo
+// usuario nao administrativo sem nenhum registro em `app_user_permission_history`.
+//
+// Alteracao permitida nesta lista: REMOVER chave cujo `default_user_access` no banco seja
+// `false`. Adicionar chave exige que o banco ja tenha `default_user_access = true` para ela,
+// concedido por migration explicita (padrao da migration 348).
+export const DEFAULT_USER_PAGE_ACCESS = [
+  "home",
+  "dash-estoque",
+  "dashboard-medicao",
+  "dashboard-equipes",
+  "dash-operacional-faturamento",
+  "projetos",
+  "locacao",
+  "programacao-simples",
+  "programacao-visualizacao",
+  "composicao-equipe",
+  "controle-apr",
+  "medicao-asbuilt",
+  "medicao",
+  "faturamento",
+  "meta",
+  "estoque",
+  "estoque-equipes",
+  "posicao-trafo",
+  "entrada",
+  "saida",
+  "estornos",
+  "consumo-projeto",
+  "materiais",
+  "pessoas",
+  "cargo",
+  "equipes",
+  "prioridade",
+  "centro-servico",
+  "contrato",
+  "atividades",
+  "tipo-equipe",
+  "imei",
+  "tipo-servico",
+  "nivel-tensao",
+  "porte",
+  "responsavel-distribuidora",
+  "municipio",
+] as const;
+
+export const VIEWER_PAGE_ACCESS = [
+  "home",
+  "dash-estoque",
+  "estoque",
+  "estoque-equipes",
+  "posicao-trafo",
+  "estornos",
+  "consumo-projeto",
+] as const;
+
 export function resolveDefaultPageAccess(role: string | null | undefined) {
   const normalized = normalizeRole(role);
-  const defaultPageAccess = [
-    "home",
-    "dash-estoque",
-    "dashboard-medicao",
-    "dashboard-equipes",
-    "dash-operacional-faturamento",
-    "projetos",
-    "cronograma-solicitacoes",
-    "locacao",
-    "programacao-simples",
-    "programacao-visualizacao",
-    "composicao-equipe",
-    "controle-apr",
-    "apuracao-fator-minimo",
-    "medicao-asbuilt",
-    "medicao",
-    "medicao-visualizacao",
-    "faturamento",
-    "meta",
-    "estoque",
-    "estoque-equipes",
-    "mapa-almoxarifado",
-    "posicao-trafo",
-    "entrada",
-    "saida",
-    "requisicao-solicitacao",
-    "requisicao-atendimento",
-    "estornos",
-    "consumo-projeto",
-    "materiais",
-    "pessoas",
-    "cargo",
-    "equipes",
-    "configuracao-mapa-almoxarifado",
-    "prioridade",
-    "centro-servico",
-    "contrato",
-    "atividades",
-    "tipo-equipe",
-    "imei",
-    "tipo-servico",
-    "nivel-tensao",
-    "porte",
-    "responsavel-distribuidora",
-    "municipio",
-  ];
+  const defaultPageAccess = [...DEFAULT_USER_PAGE_ACCESS];
 
   if (normalized === "master" || normalized === "admin") {
     return [...defaultPageAccess, "dashboard-carteira-operacional"];
@@ -124,7 +140,7 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   }
 
   if (normalized === "viewer") {
-    return ["home", "dash-estoque", "estoque", "estoque-equipes", "posicao-trafo", "estornos", "consumo-projeto"];
+    return [...VIEWER_PAGE_ACCESS];
   }
 
   return defaultPageAccess;
