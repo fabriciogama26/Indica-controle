@@ -38,6 +38,7 @@ const menuSections = [
       { href: "/composicao-equipe", label: "Composicao de Equipe", icon: "users" },
       { href: "/controle-apr", label: "Controle de APR", icon: "calendar" },
       { href: "/medicao", label: "Medicao", icon: "calendar" },
+      { href: "/medicao-visualizacao", label: "Visualizacao Medicao", icon: "calendar" },
       { href: "/apuracao-fator-minimo", label: "Apuracao de Fator Minimo", icon: "calendar" },
       { href: "/medicao-asbuilt", label: "Medicao Asbuilt", icon: "calendar" },
       { href: "/faturamento", label: "Faturamento", icon: "calendar" },
@@ -163,6 +164,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/medicao": {
     title: "Medicao",
     subtitle: "Gestao de medicoes operacionais por projeto e periodo.",
+  },
+  "/medicao-visualizacao": {
+    title: "Visualizacao Medicao",
+    subtitle: "Consulta por filtros e extracao CSV das ordens de medicao.",
   },
   "/apuracao-fator-minimo": {
     title: "Apuracao de Fator Minimo",

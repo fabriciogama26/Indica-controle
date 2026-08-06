@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 
 type NoProductionReasonRow = {
   id: string;
@@ -23,6 +24,18 @@ type ProjectServiceTypeRow = {
   name: string;
 };
 
+type ProjectSourceRow = {
+  id: string;
+  sob: string | null;
+  service_description: string | null;
+  service_type_text: string | null;
+};
+
+type TeamSourceRow = {
+  id: string;
+  name: string | null;
+};
+
 function normalizeReasonKey(value: unknown) {
   return String(value ?? "")
     .trim()
@@ -40,6 +53,64 @@ function dedupeNoProductionReasons(items: NoProductionReasonRow[]) {
     byName.set(key, item);
   }
   return Array.from(byName.values());
+}
+
+const PROJECT_SOURCE_SELECT = "id, sob, service_description, service_type_text";
+
+// Fontes de projeto/equipe para os filtros da tela `medicao-visualizacao`. A tela de
+// cadastro carrega isso de `GET /api/programacao`, que exige permissao da Programacao —
+// dependencia que a tela de consulta nao pode herdar. So entra quando pedido por
+// `?includeSources=1`, para nao aumentar o egress da tela de cadastro.
+async function fetchFilterSources(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+}) {
+  const projectQuery = params.supabase
+    .from("project_with_labels")
+    .select(PROJECT_SOURCE_SELECT)
+    .eq("tenant_id", params.tenantId)
+    .eq("is_active", true)
+    .order("sob", { ascending: true });
+
+  const [projectResult, teamResult] = await Promise.all([
+    projectQuery
+      .eq("is_test", false)
+      .eq("is_third_party", false)
+      .returns<ProjectSourceRow[]>(),
+    params.supabase
+      .from("teams")
+      .select("id, name")
+      .eq("tenant_id", params.tenantId)
+      .eq("ativo", true)
+      .order("name", { ascending: true })
+      .returns<TeamSourceRow[]>(),
+  ]);
+
+  // Mesma tolerancia de `fetchProjects` (server/modules/programacao/catalogs.ts):
+  // bases sem as colunas de obra de teste caem no recorte legado por `is_active`.
+  const projectRows = projectResult.error
+    ? (await params.supabase
+        .from("project_with_labels")
+        .select(PROJECT_SOURCE_SELECT)
+        .eq("tenant_id", params.tenantId)
+        .eq("is_active", true)
+        .order("sob", { ascending: true })
+        .returns<ProjectSourceRow[]>()).data ?? []
+    : projectResult.data ?? [];
+
+  return {
+    projects: projectRows.map((item) => ({
+      id: item.id,
+      code: String(item.sob ?? "").trim(),
+      serviceName: String(item.service_description ?? "").trim()
+        || String(item.service_type_text ?? "").trim()
+        || "Sem descricao",
+    })),
+    teams: (teamResult.error ? [] : teamResult.data ?? []).map((item) => ({
+      id: item.id,
+      name: String(item.name ?? "").trim(),
+    })),
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -91,7 +162,16 @@ export async function GET(request: NextRequest) {
     ? []
     : (workCompletionCatalogResult.data ?? []);
 
+  const includeSources = request.nextUrl.searchParams.get("includeSources") === "1";
+  const sources = includeSources
+    ? await fetchFilterSources({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+      })
+    : null;
+
   return NextResponse.json({
+    ...(sources ? { projects: sources.projects, teams: sources.teams } : {}),
     noProductionReasons: noProductionReasons.map((item) => ({
       id: item.id,
       code: String(item.code ?? "").trim(),

@@ -1,0 +1,169 @@
+Tela: Visualizacao Medicao SaaS
+
+Visao geral
+-----------
+- Tela dedicada para consulta e extracao das ordens de medicao.
+- Objetivo: separar a extracao de CSV do fluxo de cadastro da Medicao.
+- Escopo: filtros + contador de ordens do filtro + dois botoes de exportacao.
+- A tela NAO cadastra, NAO edita, NAO importa em massa e NAO altera status de ordem.
+- A tela NAO exibe a lista de ordens: o usuario filtra, confere a contagem e extrai o CSV.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/medicao-visualizacao/page.tsx`
+- View: `src/modules/dashboard/medicao-visualizacao/MeasurementViewPageView.tsx`
+- Estilo: `src/modules/dashboard/medicao-visualizacao/MeasurementViewPageView.module.css`
+- Tipos: `src/modules/dashboard/medicao-visualizacao/types.ts`
+- Utilitarios de filtro: `src/modules/dashboard/medicao-visualizacao/utils.ts`
+- Fachada publica: `src/modules/dashboard/medicao-visualizacao/index.ts`
+- Autorizacao server-side compartilhada: `src/server/modules/medicao/authorization.ts`
+- APIs consumidas:
+  - `GET /api/medicao/meta?includeSources=1` (projetos, equipes, tipos de servico, motivos de sem producao e catalogo de Estado Trabalho)
+  - `GET /api/medicao` (somente a contagem do filtro, com `pageSize=1`)
+  - `GET /api/medicao/activities/catalog` (autocomplete do filtro de atividade)
+  - `GET /api/medicao/export?type=summary|details` (extracoes)
+- Permissao/menu:
+  - `src/lib/auth/authorization.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Migration:
+  - `supabase/migrations/355_add_medicao_visualizacao_page_permissions.sql`
+
+Cadastro
+--------
+- Nao se aplica nesta tela.
+- O cadastro, a edicao, o cadastro em massa e as acoes de fechar/cancelar/abrir continuam
+  exclusivamente na rota `/medicao`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros (identicos aos da tela de Medicao):
+  - Data inicial (padrao: primeiro dia do mes corrente)
+  - Data final (padrao: ultimo dia do mes corrente)
+  - Projeto (`input + datalist`, casado por codigo exato do projeto)
+  - Equipe
+  - Tipo de Servico
+  - Atividade (autocomplete por codigo/descricao, a partir de 2 caracteres)
+  - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
+  - Tipo (`TODOS`, `Com producao`, `Sem producao`)
+  - Motivo sem producao
+  - Programacao (`TODOS`, `Programada`, `Nao programada`)
+  - Estado Trabalho (catalogo por tenant + `Nao informado`)
+  - Alerta Status execucao (`TODOS`, `Com alerta`, `Sem alerta`)
+- Os filtros so passam a valer depois do botao `Aplicar`; `Limpar` volta ao periodo do mes corrente.
+- Projeto e Atividade digitados sem correspondencia bloqueiam o `Aplicar` com mensagem de erro,
+  mesma regra da tela de Medicao — o casamento de texto usa os mesmos helpers, para que o mesmo
+  texto digitado produza o mesmo filtro nas duas telas.
+- Listagem: nao existe nesta tela.
+- Card `Extracao`:
+  - `Ordens no filtro`: total de ordens que os filtros aplicados alcancam.
+  - `Periodo`: intervalo de datas atualmente aplicado.
+  - Botao `Atualizar`: recarrega catalogos de filtro e a contagem.
+  - Botao `Exportar Excel (CSV)`: uma linha por ordem.
+  - Botao `Detalhamento (CSV)`: uma linha por atividade da ordem.
+  - Os dois botoes de exportacao ficam desabilitados quando `Ordens no filtro` e `0`.
+  - Ao exportar, a tela exibe o modal `Gerando...` e bloqueia os cliques da pagina ate concluir.
+- A tela nao possui o botao `Exportar pontuacao` (permanece exclusivo da tela de Medicao).
+
+Colunas dos CSVs
+----------------
+- `Exportar Excel (CSV)`: Ordem, Projeto, Centro de Servicos, Data execucao, Equipe,
+  Composicao equipe, Encarregado, Tipo da medicao, Motivo sem producao, Programacao,
+  Status execucao, Itens, Valor total (R$), Status, Atualizado em.
+- `Detalhamento (CSV)`: Ordem, Projeto, Centro de Servicos, Data execucao, Equipe, Encarregado,
+  Tipo da medicao, Motivo sem producao, Programacao, Status execucao, Status ordem,
+  Codigo atividade, Codigo IDD, Descricao atividade, Unidade, Pontos, MVA, Horas, Quantidade,
+  Taxa manual, Valor unitario (R$), Total item (R$), Observacao, Atualizado em.
+- Os dois arquivos sao gerados pela mesma rota `GET /api/medicao/export` usada pela tela de
+  Medicao — o conteudo e identico nas duas telas, por construcao.
+
+Permissao
+---------
+- `pageKey` dedicada: `medicao-visualizacao`.
+- `GET /api/medicao/export` aceita `medicao/export` OU `medicao-visualizacao/export`
+  (`authorizeMeasurementReadOrExportAction`). As rotas de gravacao de `/api/medicao`
+  (`POST`, `PUT`, `PATCH`) nao foram tocadas e continuam fora do alcance desta tela.
+- As 7 colunas de acao andam juntas (migration 253): o toggle da tela de Permissoes libera
+  `read` e `export` ao mesmo tempo. Gravar so `can_access` deixaria `can_export = false` e o
+  botao de CSV responderia 403 para usuario nao-admin.
+- Backfill da migration 355: cada usuario recebeu em `medicao-visualizacao` o mesmo valor que
+  ja tinha em `medicao`. A publicacao nao ampliou o alcance de ninguem; liberar a tela para
+  perfis de consulta (que nao tem `medicao`) e feito pelo administrador na tela de Permissoes.
+
+Boas praticas
+-------------
+- Escopo multi-tenant mantido por `pageKey` e por `tenant_id` em todas as leituras.
+- A tela nao grava nada.
+- As fontes de `Projeto` e `Equipe` vem de `GET /api/medicao/meta?includeSources=1`, e nao de
+  `GET /api/programacao` como faz a tela de cadastro. Motivo: `GET /api/programacao` exige
+  permissao da Programacao (`programacao-simples/read` ou `programacao-visualizacao/read`), e
+  a tela de consulta da Medicao nao pode herdar essa dependencia.
+- O parametro `includeSources` e opcional: sem ele a resposta de `/api/medicao/meta` continua
+  identica a de antes, sem egress extra para a tela de cadastro.
+
+Cancelamento e saldo
+--------------------
+- Tela sem acao de cancelamento, fechamento ou reabertura.
+- Nao altera saldo de estoque.
+
+Atalhos
+-------
+- Rota da visualizacao: `/medicao-visualizacao`
+- Rota de cadastro: `/medicao`
+
+Testes
+------
+- Nao existem testes automatizados no projeto.
+- Validacao manual registrada na secao abaixo.
+
+Atualizacao 2026-08-06 - Criacao da tela
+-----------------------------------------
+- Arquivos criados:
+  - `src/app/(dashboard)/medicao-visualizacao/page.tsx`
+  - `src/modules/dashboard/medicao-visualizacao/MeasurementViewPageView.tsx`
+  - `src/modules/dashboard/medicao-visualizacao/MeasurementViewPageView.module.css`
+  - `src/modules/dashboard/medicao-visualizacao/types.ts`
+  - `src/modules/dashboard/medicao-visualizacao/utils.ts`
+  - `src/modules/dashboard/medicao-visualizacao/index.ts`
+  - `src/server/modules/medicao/authorization.ts`
+  - `supabase/migrations/355_add_medicao_visualizacao_page_permissions.sql`
+  - `docs/Tela_Visualizacao_Medicao_SaaS.txt`
+- Arquivos alterados:
+  - `src/app/api/medicao/export/route.ts`
+  - `src/app/api/medicao/meta/route.ts`
+  - `src/lib/auth/authorization.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `README.md`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `MeasurementViewPageView`
+  - `authorizeMeasurementReadOrExportAction`, `MEASUREMENT_PAGE_KEY`, `MEASUREMENT_VISUALIZATION_PAGE_KEY`
+  - `fetchFilterSources` (`/api/medicao/meta`)
+  - `ROUTE_PAGE_KEYS`, `resolveDefaultPageAccess`
+  - `permissionCatalog`, `createPermissionSet`
+  - `menuSections`, `titleMap`
+- Comportamento antes/depois:
+  - Antes: extrair CSV da Medicao exigia acesso a tela de cadastro inteira, com formulario,
+    cadastro em massa e acoes de status visiveis.
+  - Depois: existe uma tela dedicada de consulta e extracao, com permissao propria, sem
+    nenhum caminho de escrita.
+- Decisao registrada: a tela nao exibe lista de ordens, por pedido explicito do usuario. O
+  card `Extracao` mostra a contagem do filtro para que o usuario saiba o que sera extraido
+  antes de gerar o arquivo.
+- Decisao registrada: modulo novo em vez de reusar `MeasurementPageView.tsx` com um `mode`
+  (como foi feito na Visualizacao Programacao). O arquivo da Medicao ja tem 3.641 linhas e
+  esta no baseline de `lint:size`; reusar faria o arquivo crescer e exigiria
+  `npm run lint:size:accept`. Os arquivos novos ficam todos abaixo do teto de 1.000 linhas.
+
+Troubleshooting
+---------------
+- `403` ao clicar em um botao de CSV: o usuario tem `read` mas nao `export`. Verificar o toggle
+  da tela `Visualizacao Medicao` em Permissoes — ele liga as 7 acoes de uma vez.
+- Botoes de CSV desabilitados: `Ordens no filtro` esta em `0`. Rever periodo e filtros.
+- `Projeto invalido no filtro`: o texto digitado nao casa com nenhum codigo de projeto ativo do
+  tenant. Selecionar uma opcao do datalist.
+- Filtro de `Equipe` ou `Projeto` vazio: `GET /api/medicao/meta?includeSources=1` falhou.
+  Conferir a mensagem de erro no topo da tela.

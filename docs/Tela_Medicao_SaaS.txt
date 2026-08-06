@@ -1333,3 +1333,32 @@ Atualizacao 2026-08-03 - Coluna Codigo IDD no detalhe e no CSV de detalhamento
 - Impacto multi-tenant:
   - Sem alteracao de RLS ou permissoes.
   - A leitura de `service_activities` e filtrada por `tenant_id` do usuario autenticado e restrita aos `service_activity_id` dos itens da propria ordem.
+
+Atualizacao 2026-08-06 - Tela dedicada de Visualizacao Medicao
+--------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao-visualizacao/*` (modulo novo)
+  - `src/app/(dashboard)/medicao-visualizacao/page.tsx` (novo)
+  - `src/server/modules/medicao/authorization.ts` (novo)
+  - `src/app/api/medicao/export/route.ts`
+  - `src/app/api/medicao/meta/route.ts`
+  - `supabase/migrations/355_add_medicao_visualizacao_page_permissions.sql` (novo)
+  - `docs/Tela_Visualizacao_Medicao_SaaS.txt` (novo)
+  - `docs/Tela_Medicao_SaaS.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `authorizeMeasurementReadOrExportAction` (nova), `MEASUREMENT_PAGE_KEY`, `MEASUREMENT_VISUALIZATION_PAGE_KEY`
+  - `fetchFilterSources` (nova) em `src/app/api/medicao/meta/route.ts`
+- Comportamento antes/depois:
+  - Antes: `GET /api/medicao/export` exigia `medicao/export`; extrair CSV so era possivel pela
+    tela de cadastro `/medicao`.
+  - Depois: a mesma rota aceita `medicao/export` OU `medicao-visualizacao/export`, e existe a
+    tela `/medicao-visualizacao` com os filtros e os botoes `Exportar Excel (CSV)` e
+    `Detalhamento (CSV)`, sem nenhum caminho de escrita.
+  - `GET /api/medicao/meta` passa a aceitar `?includeSources=1` e devolver `projects` e `teams`
+    do tenant. Sem o parametro a resposta continua identica a de antes, entao a tela de
+    cadastro nao ganhou egress extra.
+- Nao mudou nada na tela `/medicao`: cadastro, edicao, cadastro em massa, `Exportar pontuacao`,
+  lista, consolidacoes e acoes de status seguem iguais.
+- Impacto multi-tenant:
+  - `pageKey` nova `medicao-visualizacao`, sem alteracao de RLS ou policies.
+  - `fetchFilterSources` filtra `project_with_labels` e `teams` por `tenant_id` da sessao.

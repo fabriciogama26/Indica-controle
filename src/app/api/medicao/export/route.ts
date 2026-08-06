@@ -4,7 +4,7 @@ import { buildCsvContent } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { requirePageAction } from "@/lib/server/pageAuthorization";
+import { authorizeMeasurementReadOrExportAction } from "@/server/modules/medicao/authorization";
 import { GET as listMeasurementOrders } from "../route";
 
 type ExportType = "summary" | "details" | "score";
@@ -433,14 +433,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
-  const authorization = await requirePageAction({
-    context: resolution,
-    pageKey: "medicao",
-    action: "export",
-  });
-
-  if (!authorization.allowed) {
-    return NextResponse.json({ message: authorization.error.message }, { status: authorization.error.status });
+  const authorizationError = await authorizeMeasurementReadOrExportAction(resolution, "export");
+  if (authorizationError) {
+    return authorizationError;
   }
 
   const exportType = normalizeExportType(request.nextUrl.searchParams.get("type") ?? request.nextUrl.searchParams.get("kind"));
