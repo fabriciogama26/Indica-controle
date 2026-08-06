@@ -988,3 +988,8 @@ Observacao
 - Cria triggers deferrable em `team_composition_members` e `team_compositions` para impedir que a mesma pessoa com `is_present = true` fique em mais de uma composicao ativa no mesmo `tenant_id + composition_date`.
 - Usa `pg_advisory_xact_lock` por tenant/data/pessoa para evitar corrida entre salvamentos simultaneos, validando o estado final da transacao.
 - Nao bloqueia integrantes ausentes (`is_present = false`), preservando o fluxo `Nao atuou`; nao altera RLS, policies, grants nem cria funcao `SECURITY DEFINER`.
+
+355_add_medicao_visualizacao_page_permissions.sql
+- Registra a tela `medicao-visualizacao` (Visualizacao Medicao: filtros + `Exportar Excel (CSV)` + `Detalhamento (CSV)`, sem cadastro) em `app_pages`, herdando `default_user_access` da pagina `medicao`.
+- Backfill de `app_user_page_permissions` gravando as 7 colunas de acao juntas (modelo da 253 — gravar so `can_access` deixaria `can_export = false` e o botao de CSV responderia 403 para nao-admin). Criterio: cada usuario recebe o mesmo valor que ja tem em `medicao`, entao a publicacao nao amplia o alcance de ninguem; liberar para perfis de consulta e feito depois na tela de Permissoes.
+- Template por papel em `role_page_permissions` copiado de `medicao` (nao lido em runtime, mantido consistente como na 348). Validacao final aborta se algum usuario que exporta `medicao` ficar sem `read`+`export` em `medicao-visualizacao`. Nao altera RLS, policies, grants nem cria funcao `SECURITY DEFINER`.

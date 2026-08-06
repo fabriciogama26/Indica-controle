@@ -140,6 +140,7 @@ vercel --prod
   - `(dashboard)/programacao-visualizacao/page.tsx`: rota read-only de visualizacao da Programacao com lista filtrada e calendario semanal.
   - `(dashboard)/mapa-programacao/page.tsx`: rota do Mapa de Programacao para carteira nunca programada e equipes sem programacao.
   - `(dashboard)/medicao/page.tsx`: rota da tela de Medicao com `cadastro + filtros + lista` paginada, filtros por Tipo de Servico do projeto e Atividade medida, modos `Com producao` e `Sem producao`, persistencia transacional em banco, cadastro independente da programacao, match automatico por `Projeto + Equipe + Data`, pre-preenchimento de cabecalho vindo da Composicao de Equipe, sugestao automatica de taxa pela ultima medicao do projeto inclusive em `Sem producao`, `Status execucao` baseado no ultimo `Estado Trabalho` do projeto, indicador de composicao da equipe na data na lista/detalhes e cards de Garantia de faturamento minimo e valor descontando a garantia.
+  - `(dashboard)/medicao-visualizacao/page.tsx`: rota da tela Visualizacao Medicao, somente consulta: card de filtros identico ao da Medicao, contador de ordens do filtro e os botoes `Exportar Excel (CSV)` e `Detalhamento (CSV)`, sem cadastro, sem lista e sem acoes de status.
   - `(dashboard)/apuracao-fator-minimo/page.tsx`: rota de simulacao e consulta de fator minimo por equipe, data e codigo de servico.
   - `(dashboard)/medicao-asbuilt/page.tsx`: rota da tela Medicao Asbuilt com cadastro manual e em massa permitido somente para projetos ativos, lista, historico, status e exportacao CSV.
   - `(dashboard)/faturamento/page.tsx`: rota de Faturamento para controle de atividades pagas por projeto e aprovacao.
@@ -192,7 +193,8 @@ vercel --prod
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/medicao/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa ordens de medicao, incluindo os modos `Com producao` e `Sem producao`, filtros por Tipo de Servico e Atividade, exclusao de obras de teste das consolidacoes de ordens/valor e cruzamento ativo com a Composicao de Equipe por tenant, projeto principal legado, equipe e data de execucao.
   - `api/controle-apr/route.ts`: carrega projetos/equipes, lista APRs do tenant, salva por RPC, vincula a Programacao do dia, confere, marca divergencia, cancela e fornece os dados para extracao Excel.
-  - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao` e tipos de servico ativos dos projetos por tenant.
+  - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao`, tipos de servico ativos dos projetos e catalogo de Estado Trabalho por tenant; com `?includeSources=1` devolve tambem projetos e equipes ativos para os filtros da tela Visualizacao Medicao.
+  - `api/medicao/export/route.ts`: gera server-side os CSVs `summary`, `details` e `score` da Medicao a partir dos filtros da tela, aceitando a permissao `medicao/export` ou `medicao-visualizacao/export`.
   - `api/medicao/activities/catalog/route.ts`: pesquisa atividades ativas para inclusao manual ou importacao da Medicao.
   - `api/medicao/rate-suggestion/route.ts`: sugere a taxa da nova ordem por `projectId`, priorizando historico da ultima medicao do projeto e retornando fallback para preenchimento manual.
   - `api/medicao-asbuilt/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa Medicao Asbuilt, validando projeto ativo no cadastro manual e no lote.
@@ -310,6 +312,13 @@ vercel --prod
 - `src/modules/dashboard/medicao/`
   - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, pre-preenchimento do cabecalho via Composicao de Equipe, lista paginada, filtros por Tipo de Servico e Atividade, modos `Com producao` e `Sem producao`, motivo estruturado por tenant, inclusao de atividades da medicao, taxa unica por ordem com coluna `Taxa aplicada` na edicao, sugestao automatica da taxa ao selecionar projeto (ultima medicao do projeto) tambem em `Sem producao`, cadastro em massa CSV com suporte aos dois tipos, detalhe por item com `taxa` visivel, importacao reforcada por match exato/univoco do codigo da atividade, bloqueio de atividade duplicada na mesma ordem com validacao tambem na RPC, status de execucao baseado no ultimo `Estado Trabalho` do projeto, coluna de composicao da equipe na data e resumo filtrado da garantia minima com valor liquido descontado.
   - `MeasurementPageView.module.css`: estilos da tela de medicao.
+
+- `src/modules/dashboard/medicao-visualizacao/`
+  - `MeasurementViewPageView.tsx`: tela Visualizacao Medicao, somente leitura, com os 12 filtros da Medicao, contador de ordens alcancadas pelo filtro e os botoes `Exportar Excel (CSV)` e `Detalhamento (CSV)`.
+  - `MeasurementViewPageView.module.css`: estilos da tela Visualizacao Medicao.
+  - `types.ts`: contratos de filtro, catalogos e respostas das APIs consumidas pela tela.
+  - `utils.ts`: helpers de periodo, normalizacao de texto/codigo, casamento de projeto/atividade e montagem da query de filtros.
+  - `index.ts`: fachada publica do modulo.
 - `src/modules/dashboard/controle-apr/`
   - `AprControlPageView.tsx`: cadastro, filtros, lista, validacao, divergencia, cancelamento e extracao `.xlsx` do Controle de APR.
   - `AprControlPageView.module.css`: estilos da tela no padrao visual da Medicao.
@@ -441,6 +450,8 @@ vercel --prod
   - `handlers.ts`, `queries.ts`, `rpc.ts`, `catalogs.ts`, `normalizers.ts`, `selects.ts` e `types.ts`: backend da Programacao legada/simples, hoje congelada para escrita.
 - `src/server/modules/programacao-normalizada/`
   - `handlers.ts`, `queries.ts`, `rpc.ts`, `catalogs.ts`, `normalizers.ts`, `scheduleConflict.ts`, `addTeamPrecheck.ts`, `selects.ts`, `types.ts` e `index.ts`: backend da Programacao Normalizada.
+- `src/server/modules/medicao/`
+  - `authorization.ts`: autorizacao compartilhada de leitura/extracao da Medicao, aceitando a permissao `medicao` ou `medicao-visualizacao`.
 - `src/server/modules/cronograma-solicitacoes/`
   - `handlers.ts`, `queries.ts`, `normalizers.ts`, `authorization.ts` e `types.ts`: backend do Cronograma de Solicitacoes.
 - `src/server/modules/warehouse-addressing/`
