@@ -30,6 +30,8 @@ const renewalCriteriaText = "Parametros: renovacao = projetos novos com producao
 const agingCriteriaText = "Parametros: idade da carteira = quantidade de ciclos com producao por projeto. Sem producao indica projeto com atividade prevista, mas sem medicao produtiva ate o periodo. Ciclos sem producao compara a ultima atuacao com o ciclo selecionado.";
 const goalCoverageCriteriaText = "Parametros: cobertura = potencial restante executavel / meta restante do ciclo. Executavel exclui projetos retirados e concluidos, que nao tem mais escopo operacional pendente. A producao que abate a meta inclui todos, inclusive retirados e concluidos que produziram no ciclo. Verde acima de 120%, amarelo entre 80% e 120%, vermelho abaixo de 80%. Autonomia = potencial restante / meta diaria cadastrada.";
 
+const asbuiltCriteriaText = "Parametros: fator = valor As Built / valor medido nos MESMOS projetos, apurado sobre todo o historico do tenant, sem recorte de ciclo (As Built vem depois da medicao operacional; recortar por ciclo pegaria o numerador incompleto e subestimaria o fator). As Built nao e producao paralela: todo projeto com As Built tambem tem medicao operacional, entao o fator e taxa de realizacao, nao valor a somar. A elegibilidade de As Built vem do Estado do Trabalho concluido, nunca de regional ou tipo de servico, por isso o fator e unico e uniforme e projeto medido sem As Built nao e isento, apenas ainda nao chegou ao marco de conclusao. A projecao aplica ao saldo pendente uma taxa apurada em trabalho ja encerrado.";
+
 const goalCoverageLabels = {
   SAUDAVEL: "Carteira sustenta a meta",
   ATENCAO: "Cobertura em atencao",
@@ -355,6 +357,25 @@ export function DashboardPortfolioPageView() {
             <span>120%</span>
           </div>
         </div>
+        {goalCoverage && goalCoverage.asbuiltFactor > 0 ? (
+          <div className={styles.sensitivityPanel}>
+            <div className={styles.sensitivityHeader}>
+              <span>{`Sensibilidade de realizacao As Built (historico ${formatPortfolioPercent(goalCoverage.asbuiltFactorPercentage)})`}</span>
+              <InfoButton label="Parametros da sensibilidade As Built" text={asbuiltCriteriaText} />
+            </div>
+            <div className={styles.sensitivityValues}>
+              <div><span>Cobertura projetada: </span><strong>{formatPortfolioPercent(goalCoverage.asbuiltCoveragePercentage)}</strong></div>
+              <div><span>Autonomia projetada: </span><strong>{`${formatPortfolioNumber(goalCoverage.asbuiltAutonomyBusinessDays, 1)} dias uteis`}</strong></div>
+              <div><span>Potencial projetado: </span><strong>{formatPortfolioCurrency(goalCoverage.asbuiltRemainingPotential, true)}</strong></div>
+            </div>
+            <div className={styles.sensitivityTrack}>
+              <span style={{ width: clampPercent((goalCoverage.asbuiltCoveragePercentage / 120) * 100) }} />
+            </div>
+            <p className={styles.sensitivityNote}>
+              {`Projecao, nao medicao: assume que o pendente sera reconhecido na mesma proporcao historica. Fator apurado em ${formatPortfolioNumber(goalCoverage.asbuiltSampleProjects)} de ${formatPortfolioNumber(goalCoverage.asbuiltMeasuredProjects)} projetos com medicao. O numero principal acima permanece em moeda de medicao operacional, que e a mesma da meta.`}
+            </p>
+          </div>
+        ) : null}
       </article>
 
       <div className={styles.twoColumnGrid}>

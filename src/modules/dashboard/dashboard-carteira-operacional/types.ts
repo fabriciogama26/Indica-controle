@@ -66,6 +66,13 @@ export type DashboardPortfolioGoalCoverage = {
   autonomyBusinessDays: number;
   depletionDate: string | null;
   depletionDateLabel: string;
+  asbuiltFactor: number;
+  asbuiltFactorPercentage: number;
+  asbuiltRemainingPotential: number;
+  asbuiltCoveragePercentage: number;
+  asbuiltAutonomyBusinessDays: number;
+  asbuiltSampleProjects: number;
+  asbuiltMeasuredProjects: number;
   message: string;
 };
 

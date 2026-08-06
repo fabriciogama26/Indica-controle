@@ -39,6 +39,14 @@
 .scopeNotice { display: flex; gap: 8px; align-items: flex-start; border: 1px solid #f0d48a; border-left-width: 4px; border-radius: 8px; background: #fff9e8; color: #6f5311; padding: 10px 12px; font-size: 12px; font-weight: 700; }
 .coverageWarning { display: flex; gap: 8px; align-items: flex-start; border: 1px solid #f2cf99; border-left-width: 4px; border-radius: 8px; background: #fff8ed; color: #7a5312; padding: 10px 12px; font-size: 12px; font-weight: 700; }
 .coverageBasis { color: #60708f; font-size: 11px; font-weight: 700; }
+.sensitivityPanel { display: flex; flex-direction: column; gap: 8px; border: 1px dashed #b8c9ef; border-radius: 8px; background: #f8fbff; padding: 12px 14px; }
+.sensitivityHeader { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: #002b7f; font-size: 12px; font-weight: 900; }
+.sensitivityValues { display: flex; flex-wrap: wrap; gap: 18px; color: #001f5b; font-size: 12px; font-weight: 800; }
+.sensitivityValues span { color: #42557d; font-weight: 700; }
+.sensitivityValues strong { color: #002b7f; }
+.sensitivityTrack { position: relative; height: 10px; overflow: hidden; border-radius: 999px; background: #e8edf6; }
+.sensitivityTrack span { position: absolute; inset-block: 0; left: 0; border-radius: 999px; background: repeating-linear-gradient(135deg, #7f9fd8 0 6px, #a8bfe6 6px 12px); }
+.sensitivityNote { color: #60708f; font-size: 11px; font-weight: 700; }
 .twoColumnGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .flowList, .barList { display: flex; flex-direction: column; gap: 12px; }
 .flowRow { position: relative; display: grid; grid-template-columns: minmax(150px, 1fr) minmax(160px, 2fr) minmax(92px, auto); align-items: center; gap: 12px; min-height: 48px; color: #001f5b; font-size: 12px; }
