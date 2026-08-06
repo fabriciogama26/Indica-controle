@@ -44,6 +44,17 @@ type MemberRow = {
   sort_order: number;
 };
 
+type CompositionMemberConflictRow = {
+  composition_id: string;
+  person_id: string;
+  person_name_snapshot: string;
+};
+
+type CompositionConflictRow = {
+  id: string;
+  team_name_snapshot: string;
+};
+
 type ProjectRow = {
   id: string;
   sob: string;
@@ -550,6 +561,76 @@ async function loadCompositionMembers(supabase: SupabaseClient, tenantId: string
   return data ?? [];
 }
 
+async function findPresentMemberDateConflict(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  compositionDate: string;
+  members: Array<{ person_id: string; person_name_snapshot: string; is_present: boolean }>;
+  excludeCompositionId: string | null;
+}) {
+  const presentPersonIds = Array.from(new Set(
+    params.members
+      .filter((member) => member.is_present)
+      .map((member) => member.person_id),
+  ));
+
+  if (!presentPersonIds.length) {
+    return { conflict: null as null | { personName: string; teamName: string }, error: null as unknown };
+  }
+
+  let compositionQuery = params.supabase
+    .from("team_compositions")
+    .select("id, team_name_snapshot")
+    .eq("tenant_id", params.tenantId)
+    .eq("composition_date", params.compositionDate)
+    .eq("is_active", true);
+
+  if (params.excludeCompositionId) {
+    compositionQuery = compositionQuery.neq("id", params.excludeCompositionId);
+  }
+
+  const { data: compositionRows, error: compositionError } = await compositionQuery.returns<CompositionConflictRow[]>();
+
+  if (compositionError) {
+    return { conflict: null, error: compositionError };
+  }
+
+  const compositionIds = (compositionRows ?? []).map((item) => item.id);
+  if (!compositionIds.length) {
+    return { conflict: null, error: null };
+  }
+
+  const { data: memberRows, error: memberError } = await params.supabase
+    .from("team_composition_members")
+    .select("composition_id, person_id, person_name_snapshot")
+    .eq("tenant_id", params.tenantId)
+    .eq("is_present", true)
+    .in("composition_id", compositionIds)
+    .in("person_id", presentPersonIds)
+    .limit(1)
+    .returns<CompositionMemberConflictRow[]>();
+
+  if (memberError) {
+    return { conflict: null, error: memberError };
+  }
+
+  const conflictMember = memberRows?.[0];
+  if (!conflictMember) {
+    return { conflict: null, error: null };
+  }
+
+  const conflictComposition = (compositionRows ?? []).find((item) => item.id === conflictMember.composition_id);
+  const inputMember = params.members.find((member) => member.person_id === conflictMember.person_id);
+
+  return {
+    conflict: {
+      personName: normalizeText(inputMember?.person_name_snapshot) || normalizeText(conflictMember.person_name_snapshot) || "Integrante",
+      teamName: normalizeText(conflictComposition?.team_name_snapshot) || "outra equipe",
+    },
+    error: null,
+  };
+}
+
 function isMissingCompositionProjectsTableError(error: unknown) {
   const rawMessage = error && typeof error === "object"
     ? Object.values(error as Record<string, unknown>).map((value) => String(value ?? "")).join(" ")
@@ -1007,6 +1088,10 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
+  if (!compositionDate) {
+    return NextResponse.json({ message: "Campos obrigatorios pendentes: Data." }, { status: 400 });
+  }
+
   if (!teamId || (workStatus === "WORKING" && !projectIds.length)) {
     return NextResponse.json({ message: "Projeto ou equipe invalida para salvar." }, { status: 400 });
   }
@@ -1113,6 +1198,31 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     );
   }
 
+  const presentMemberConflict = await findPresentMemberDateConflict({
+    supabase,
+    tenantId: appUser.tenant_id,
+    compositionDate,
+    members: memberRows,
+    excludeCompositionId: method === "PUT" ? compositionId : null,
+  });
+
+  if (presentMemberConflict.error) {
+    return NextResponse.json(
+      { message: "Falha ao verificar se algum integrante ja esta em outra equipe nesta data." },
+      { status: 500 },
+    );
+  }
+
+  if (presentMemberConflict.conflict) {
+    return NextResponse.json(
+      {
+        message: `${presentMemberConflict.conflict.personName} ja esta na composicao da equipe ${presentMemberConflict.conflict.teamName} nesta data.`,
+        reason: "TEAM_COMPOSITION_MEMBER_DATE_CONFLICT",
+      },
+      { status: 409 },
+    );
+  }
+
   const currentComposition = method === "PUT" && compositionId
     ? await fetchCompositionById(supabase, appUser.tenant_id, compositionId)
     : null;
@@ -1164,6 +1274,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     const rawDetails = normalizeText(rpcError.details);
     const rawHint = normalizeText(rpcError.hint);
     const normalizedError = `${rawMessage} ${rawDetails} ${rawHint}`.toLowerCase();
+    const isMemberDateConflict = normalizedError.includes("team_composition_member_date_conflict");
     const isMissingOrStaleRpc = normalizedError.includes("save_team_composition_record")
       || normalizedError.includes("schema cache")
       || normalizedError.includes("p_yard")
@@ -1171,6 +1282,17 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
       || normalizedError.includes("p_project_ids")
       || rpcError.code === "PGRST202";
     const detail = [rawMessage, rawDetails, rawHint].filter(Boolean).join(" ");
+
+    if (isMemberDateConflict) {
+      return NextResponse.json(
+        {
+          message: rawDetails || "Integrante ja esta em outra composicao ativa nesta data.",
+          reason: "TEAM_COMPOSITION_MEMBER_DATE_CONFLICT",
+        },
+        { status: 409 },
+      );
+    }
+
     const message = isMissingOrStaleRpc
       ? "Falha ao salvar composicao de equipe. Aplique a migration 266_allow_multiple_projects_team_composition.sql e recarregue o cache do Supabase/PostgREST."
       : `Falha ao salvar composicao de equipe.${detail ? ` Detalhe: ${detail}` : ""}`;

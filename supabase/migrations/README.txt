@@ -983,3 +983,8 @@ Observacao
 - Sincroniza no versionamento a coluna `public.service_activities.code_idd`, criada diretamente no banco sem migration correspondente (divergencia migrations x banco, tratada conforme CLAUDE.md secao 12).
 - `add column if not exists code_idd text` — no-op no ambiente onde a coluna ja existe; nao ha backfill nem alteracao de RLS, constraint ou grant.
 - Consumida em leitura pelo detalhe da ordem de Medicao (modal `Detalhes da Ordem` e `Detalhamento (CSV)`), sempre filtrada por `tenant_id`.
+
+354_prevent_present_member_multiple_team_compositions.sql
+- Cria triggers deferrable em `team_composition_members` e `team_compositions` para impedir que a mesma pessoa com `is_present = true` fique em mais de uma composicao ativa no mesmo `tenant_id + composition_date`.
+- Usa `pg_advisory_xact_lock` por tenant/data/pessoa para evitar corrida entre salvamentos simultaneos, validando o estado final da transacao.
+- Nao bloqueia integrantes ausentes (`is_present = false`), preservando o fluxo `Nao atuou`; nao altera RLS, policies, grants nem cria funcao `SECURITY DEFINER`.

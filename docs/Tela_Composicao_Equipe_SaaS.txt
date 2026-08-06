@@ -60,6 +60,7 @@ Cadastro
   - A coluna `Telefone` repete o telefone do encarregado para todos os integrantes.
   - Bloqueia pessoa duplicada na mesma composicao.
   - Bloqueia matricula duplicada na mesma composicao, mesmo se vier de registros diferentes.
+  - Bloqueia integrante com `Presente = Sim` quando a mesma pessoa ja esta em outra composicao ativa na mesma data.
   - Bloqueia composicao com mais de um integrante cuja funcao/cargo contenha `ENCARREGADO`.
   - Permite marcar `Presente = Sim/Nao` por integrante.
   - Quando `Situacao da equipe = Nao atuou`, a tela mantem somente o encarregado vinculado a equipe, marca `Presente = Nao` e bloqueia inclusao, remocao ou alteracao de presenca.
@@ -68,6 +69,7 @@ Cadastro
   - A tela mostra todos os campos obrigatorios pendentes em uma unica mensagem.
   - Campos verificados: Data, ao menos um Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
   - A API e a RPC `save_team_composition_record` repetem as mesmas regras de campos obrigatorios, duplicidade de matricula e limite de um encarregado.
+  - A API faz pre-checagem de integrante presente em outra equipe na mesma data; o banco reforca a mesma regra com trigger deferrable e lock transacional por pessoa/data.
 - Persistencia:
   - Salva snapshots agregados dos projetos na composicao e snapshots individuais por projeto em `team_composition_projects`.
   - Salva snapshots de equipe, Centro de Servico da equipe em `Patio`, placa, encarregado, pessoa, matricula, CPF, telefone do encarregado e funcao.
@@ -529,3 +531,33 @@ Atualizacao 2026-07-31 - Indicador de medicao por projeto
   - Nao houve alteracao de schema, RLS, policies, RPC ou permissoes.
 - Lacuna tecnica:
   - `TeamCompositionPageView.tsx` ja estava acima do limite recomendado pelo guia de frontend e terminou com 1422 linhas. A modularizacao futura deve extrair a lista, modais e painel diario para componentes/hooks do proprio modulo.
+
+Atualizacao 2026-08-06 - Bloqueio de pessoa presente em mais de uma equipe
+---------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `supabase/migrations/354_prevent_present_member_multiple_team_compositions.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/rotas/triggers tocadas:
+  - `saveComposition`
+  - `findPresentMemberDateConflict`
+  - `assert_team_composition_present_member_date_unique`
+  - `enforce_team_composition_present_member_date_unique`
+  - `enforce_team_composition_present_members_after_composition_change`
+  - `trg_team_composition_members_present_date_conflict`
+  - `trg_team_compositions_present_member_date_conflict`
+- Comportamento antes/depois:
+  - Antes: a tela bloqueava pessoa repetida somente dentro da mesma composicao.
+  - Depois: integrante com `Presente = Sim` nao pode ficar em outra composicao ativa do mesmo tenant e da mesma data, mesmo que seja em equipe diferente.
+  - Antes: a API nao avisava que a pessoa ja estava alocada em outra equipe.
+  - Depois: o salvamento retorna 409 `TEAM_COMPOSITION_MEMBER_DATE_CONFLICT` com a pessoa e a equipe conflitante.
+  - Integrantes com `Presente = Nao` nao ocupam a pessoa para essa regra; isso preserva o fluxo `Nao atuou`, que mantem o encarregado ausente.
+- Integridade e concorrencia:
+  - A API faz pre-checagem para retornar erro objetivo antes da RPC.
+  - A migration adiciona triggers `DEFERRABLE INITIALLY DEFERRED`, validando o estado final da transacao.
+  - A checagem usa `pg_advisory_xact_lock` por `tenant + data + pessoa`, evitando corrida entre salvamentos simultaneos.
+- Impacto multi-tenant:
+  - Todas as consultas usam `tenant_id` da sessao ou da propria linha operacional.
+  - A migration nao altera RLS, grants, policies nem cria funcao `SECURITY DEFINER`.
