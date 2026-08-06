@@ -25,10 +25,10 @@ const diagnosticLabels = {
 } as const;
 
 const diagnosticCriteriaText = "Parametros: saudavel quando renovacao >= 20%, exploracao <= 75% e idade media <= 3 ciclos. Atencao quando renovacao fica entre 10% e 19,9%, exploracao entre 75,1% e 85% ou idade media entre 3,1 e 4 ciclos. Risco quando renovacao < 10%, exploracao > 85% ou idade media > 4 ciclos.";
-const flowCriteriaText = "Parametros: Projetos novos sao os trabalhados pela primeira vez no periodo filtrado. Em andamento sao os projetos pendentes. Concluidos usam o ultimo estado de trabalho da programacao ou snapshot da Medicao ate o fim do periodo.";
+const flowCriteriaText = "Parametros: Projetos novos sao os trabalhados pela primeira vez no periodo filtrado. Em andamento sao os projetos pendentes. Concluidos no ciclo conta apenas projetos com estado de trabalho concluido E producao medida dentro do periodo, com o valor produzido no periodo; concluido em ciclo anterior fica fora desta etapa.";
 const renewalCriteriaText = "Parametros: renovacao = projetos novos com producao no periodo / projetos trabalhados com producao no periodo. Novo tem primeira atuacao dentro do periodo; herdado ja tinha atuacao anterior. Ticket medio = valor do ciclo / quantidade de projetos da origem.";
 const agingCriteriaText = "Parametros: idade da carteira = quantidade de ciclos com producao por projeto. Sem producao indica projeto com atividade prevista, mas sem medicao produtiva ate o periodo. Ciclos sem producao compara a ultima atuacao com o ciclo selecionado.";
-const goalCoverageCriteriaText = "Parametros: cobertura = potencial restante da carteira / meta restante do ciclo. Verde acima de 120%, amarelo entre 80% e 120%, vermelho abaixo de 80%. Autonomia = potencial restante / meta diaria cadastrada.";
+const goalCoverageCriteriaText = "Parametros: cobertura = potencial restante executavel / meta restante do ciclo. Executavel exclui projetos retirados e concluidos, que nao tem mais escopo operacional pendente. A producao que abate a meta inclui todos, inclusive retirados e concluidos que produziram no ciclo. Verde acima de 120%, amarelo entre 80% e 120%, vermelho abaixo de 80%. Autonomia = potencial restante / meta diaria cadastrada.";
 
 const goalCoverageLabels = {
   SAUDAVEL: "Carteira sustenta a meta",
@@ -45,7 +45,7 @@ function MetricCard(props: {
   label: string;
   value: string;
   hint?: string;
-  tone?: "blue" | "green" | "orange" | "red";
+  tone?: "blue" | "green" | "orange" | "red" | "neutral";
 }) {
   return (
     <div className={`${styles.metric} ${props.tone ? styles[props.tone] : ""}`}>
@@ -113,6 +113,7 @@ export function DashboardPortfolioPageView() {
   const quantitySummary = dashboard.quantitySummary;
   const financialSummary = dashboard.financialSummary;
   const goalCoverage = dashboard.goalCoverage;
+  const hasCoverageDivergence = goalCoverage?.status === "SAUDAVEL" && dashboard.diagnostic?.status === "RISCO";
   const maxAgeCount = useMemo(() => maxPortfolioValue(dashboard.ageBuckets.map((item) => item.count)), [dashboard.ageBuckets]);
   const maxFlowValue = useMemo(() => maxPortfolioValue(dashboard.flow.map((item) => item.value)), [dashboard.flow]);
   const totalProjectPages = Math.max(1, Math.ceil(dashboard.projectRows.length / PORTFOLIO_PROJECT_PAGE_SIZE));
@@ -258,6 +259,9 @@ export function DashboardPortfolioPageView() {
           <strong>{selectedCycleLabel}</strong>
         </div>
         <p>{dashboard.diagnostic?.message ?? "Carregue a carteira para gerar o diagnostico do ciclo."}</p>
+        {dashboard.diagnostic?.scopeNotice ? (
+          <p className={styles.scopeNotice}>{dashboard.diagnostic.scopeNotice}</p>
+        ) : null}
         {dashboard.diagnostic?.signals.length ? (
           <div className={styles.signalList}>
             {dashboard.diagnostic.signals.map((signal) => <span key={signal}>{signal}</span>)}
@@ -277,11 +281,13 @@ export function DashboardPortfolioPageView() {
           <MetricCard label="Projetos trabalhados" value={formatPortfolioNumber(quantitySummary?.workedProjects ?? 0)} />
           <MetricCard label="Projetos novos" value={formatPortfolioNumber(quantitySummary?.newProjects ?? 0)} tone="green" />
           <MetricCard label="Projetos herdados" value={formatPortfolioNumber(quantitySummary?.inheritedProjects ?? 0)} tone="orange" />
-          <MetricCard label="Projetos concluidos" value={formatPortfolioNumber(quantitySummary?.concludedProjects ?? 0)} tone="green" />
+          <MetricCard label="Projetos concluidos" value={formatPortfolioNumber(quantitySummary?.concludedProjects ?? 0)} tone="green" hint="Inclui concluidos em ciclos anteriores." />
           <MetricCard label="Projetos pendentes" value={formatPortfolioNumber(quantitySummary?.pendingProjects ?? 0)} tone="red" />
-          <MetricCard label="Projetos retirados" value={formatPortfolioNumber(quantitySummary?.withdrawnProjects ?? 0)} tone="orange" />
+          <MetricCard label="Projetos retirados" value={formatPortfolioNumber(quantitySummary?.withdrawnProjects ?? 0)} tone="neutral" hint="Fora da operacao: nao somam potencial." />
+          <MetricCard label="Retirados trabalhados" value={formatPortfolioNumber(quantitySummary?.withdrawnWorkedProjects ?? 0)} tone="neutral" hint="Produziram antes da retirada." />
+          <MetricCard label="Retirados improdutivos" value={formatPortfolioNumber(quantitySummary?.withdrawnIdleProjects ?? 0)} tone="neutral" hint="Sairam sem nenhuma producao." />
           <MetricCard label="Idade media" value={`${formatPortfolioNumber(quantitySummary?.averageAge ?? 0, 1)} ciclos`} />
-          <MetricCard label="Indice de renovacao" value={formatPortfolioPercent(quantitySummary?.renewalRate ?? 0)} tone={(quantitySummary?.renewalRate ?? 0) < 10 ? "red" : (quantitySummary?.renewalRate ?? 0) < 20 ? "orange" : "green"} />
+          <MetricCard label="Indice de renovacao" value={formatPortfolioPercent(quantitySummary?.renewalRate ?? 0)} hint="Meta >= 20%" tone={(quantitySummary?.renewalRate ?? 0) < 10 ? "red" : (quantitySummary?.renewalRate ?? 0) < 20 ? "orange" : "green"} />
         </div>
       </article>
 
@@ -296,11 +302,15 @@ export function DashboardPortfolioPageView() {
           <MetricCard label="Carteira prevista" value={formatPortfolioCurrency(financialSummary?.totalPortfolioValue ?? 0, true)} />
           <MetricCard label="Valor produzido no ciclo" value={formatPortfolioCurrency(financialSummary?.producedInCycle ?? 0, true)} tone="blue" />
           <MetricCard label="Valor acumulado" value={formatPortfolioCurrency(financialSummary?.accumulatedValue ?? 0, true)} />
-          <MetricCard label="Potencial restante" value={formatPortfolioCurrency(financialSummary?.remainingPotential ?? 0, true)} tone="green" />
+          <MetricCard label="Potencial restante" value={formatPortfolioCurrency(financialSummary?.remainingPotential ?? 0, true)} tone="green" hint="Executavel: ativos e pendentes." />
+          <MetricCard label="Restante de concluidos" value={formatPortfolioCurrency(financialSummary?.concludedRemainingPotential ?? 0, true)} tone="neutral" hint="Escopo encerrado: fora da cobertura da meta." />
+          <MetricCard label="Restante de retirados" value={formatPortfolioCurrency(financialSummary?.withdrawnRemainingPotential ?? 0, true)} tone="neutral" hint="Nao executavel: fora da cobertura da meta." />
+          <MetricCard label="Produzido por retirados" value={formatPortfolioCurrency(financialSummary?.withdrawnAccumulatedValue ?? 0, true)} tone="neutral" hint="Producao real: abate a meta do ciclo." />
           <MetricCard label="Indice de exploracao" value={formatPortfolioPercent(financialSummary?.explorationRate ?? 0)} tone={(financialSummary?.explorationRate ?? 0) > 85 ? "red" : (financialSummary?.explorationRate ?? 0) > 75 ? "orange" : "green"} />
+          <MetricCard label="Exploracao dos retirados" value={formatPortfolioPercent(financialSummary?.withdrawnExplorationRate ?? 0)} tone="neutral" hint="Saldo queimado antes da retirada." />
           <MetricCard label="Media projetos novos" value={formatPortfolioCurrency(financialSummary?.averageNewProjectValue ?? 0, true)} />
           <MetricCard label="Media projetos herdados" value={formatPortfolioCurrency(financialSummary?.averageInheritedProjectValue ?? 0, true)} />
-          <MetricCard label="Ticket medio concluidos" value={formatPortfolioCurrency(financialSummary?.completedAverageTicket ?? 0, true)} />
+          <MetricCard label="Ticket medio concluidos no ciclo" value={formatPortfolioCurrency(financialSummary?.completedAverageTicket ?? 0, true)} hint="Somente concluidos com producao no ciclo." />
         </div>
       </article>
 
@@ -312,6 +322,7 @@ export function DashboardPortfolioPageView() {
               <InfoButton label="Parametros da cobertura da meta" text={goalCoverageCriteriaText} />
             </div>
             <p className={styles.cardSubtitle}>Leitura se a carteira atual sustenta a meta restante do ciclo.</p>
+            <p className={styles.coverageBasis}>Base: carteira inteira, independente do filtro Carteira. Potencial conta so o executavel (exclui retirados e concluidos); producao conta todos que produziram no ciclo, inclusive retirados e concluidos.</p>
           </div>
           <span className={goalCoverage?.status === "RISCO" ? styles.statusRisk : goalCoverage?.status === "ATENCAO" ? styles.statusWarning : goalCoverage?.status === "SEM_META" ? styles.statusNeutral : styles.statusHealthy}>
             {goalCoverage ? goalCoverageLabels[goalCoverage.status] : "Sem calculo"}
@@ -325,6 +336,11 @@ export function DashboardPortfolioPageView() {
           <MetricCard label="Esgotamento previsto" value={goalCoverage?.depletionDateLabel ?? "-"} tone={goalCoverage ? goalCoverageTone(goalCoverage.status) : undefined} />
           <MetricCard label="Meta diaria" value={formatPortfolioCurrency(goalCoverage?.dailyGoal ?? 0, true)} />
         </div>
+        {hasCoverageDivergence ? (
+          <p className={styles.coverageWarning}>
+            Meta coberta no curto prazo, porem sem sustentabilidade: o diagnostico da carteira esta em risco por falta de projetos novos.
+          </p>
+        ) : null}
         <div className={styles.coveragePanel}>
           <div className={styles.coverageText}>
             <strong>Cobertura da meta</strong>

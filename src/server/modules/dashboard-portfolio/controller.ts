@@ -232,6 +232,15 @@ function formatDecimalPtBr(value: number, digits = 1) {
   });
 }
 
+function formatCurrencyPtBr(value: number) {
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function buildGoalCoverageMessage(params: {
   status: GoalCoverageStatus;
   coveragePercentage: number;
@@ -527,15 +536,18 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const baseProjects = (projectsResult.data ?? [])
     .filter((project) => project.is_active === true)
     .filter((project) => !project.is_test && !project.is_third_party);
-  const eligibleProjects = baseProjects
-    .filter((project) => {
-      if (portfolioScope === "WITHDRAWN") return project.is_withdrawn === true;
-      if (portfolioScope === "ALL") return true;
-      return project.is_withdrawn !== true;
-    });
   const baseProjectIds = baseProjects.map((project) => project.id);
-  const eligibleProjectIds = eligibleProjects.map((project) => project.id);
-  const eligibleProjectIdSet = new Set(eligibleProjectIds);
+
+  // A base COMPLETA (com retirados) alimenta o pipeline inteiro. Producao medida de
+  // projeto retirado e fato consumado: ela abate a meta do ciclo mesmo quando o
+  // filtro `Carteira` esconde o projeto. O escopo volta a ser recorte de leitura e
+  // so entra depois que as linhas ja estao montadas.
+  function matchesPortfolioScope(isWithdrawn: boolean) {
+    if (portfolioScope === "WITHDRAWN") return isWithdrawn;
+    if (portfolioScope === "ALL") return true;
+    return !isWithdrawn;
+  }
+  const eligibleProjects = baseProjects.filter((project) => matchesPortfolioScope(project.is_withdrawn === true));
 
   const measurementOrdersResult = await loadMeasurementOrders({
     supabase: resolution.supabase,
@@ -547,7 +559,6 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   }
 
   const baseOrders = measurementOrdersResult.data.filter((order) => normalizeIsoDate(order.execution_date));
-  const orders = baseOrders.filter((order) => eligibleProjectIdSet.has(order.project_id));
   const cycles = buildCycles(baseOrders, isAllCycles ? null : selectedCycleStart);
   const latestCycle = cycles[0] ?? buildCurrentCycle();
   const oldestCycle = cycles[cycles.length - 1] ?? latestCycle;
@@ -560,14 +571,14 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const completionRowsResult = await loadCompletionRows({
     supabase: resolution.supabase,
     tenantId,
-    projectIds: eligibleProjectIds,
+    projectIds: baseProjectIds,
     endDate: periodEnd,
   });
   if (completionRowsResult.error) {
     return NextResponse.json({ message: "Falha ao carregar estado de trabalho da carteira." }, { status: 500 });
   }
 
-  const orderIds = orders.filter((order) => order.execution_date <= periodEnd).map((order) => order.id);
+  const orderIds = baseOrders.filter((order) => order.execution_date <= periodEnd).map((order) => order.id);
   const valueResult = await loadMeasurementItemValues({
     supabase: resolution.supabase,
     tenantId,
@@ -587,13 +598,13 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   }
 
   const ordersByProject = new Map<string, MeasurementOrderRow[]>();
-  for (const order of orders.filter((item) => item.execution_date <= periodEnd)) {
+  for (const order of baseOrders.filter((item) => item.execution_date <= periodEnd)) {
     const current = ordersByProject.get(order.project_id) ?? [];
     current.push(order);
     ordersByProject.set(order.project_id, current);
   }
 
-  const allProjectRows: ProjectPortfolioRow[] = eligibleProjects.map((project) => {
+  const allBaseRows: ProjectPortfolioRow[] = baseProjects.map((project) => {
     const projectOrders = (ordersByProject.get(project.id) ?? []).sort((left, right) => left.execution_date.localeCompare(right.execution_date));
     const cycleOrders = projectOrders.filter((order) => order.execution_date >= periodStart && order.execution_date <= periodEnd);
     const firstOrder = projectOrders[0] ?? null;
@@ -653,9 +664,30 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     };
   });
 
-  const filteredProjectRows = allProjectRows
-    .filter((project) => !projectQuery || project.projectCode.toLowerCase().includes(projectQuery))
-    .filter((project) => !serviceCenterIdFilter || project.serviceCenterId === serviceCenterIdFilter)
+  function matchesAnalyticalFilters(project: ProjectPortfolioRow) {
+    if (projectQuery && !project.projectCode.toLowerCase().includes(projectQuery)) return false;
+    if (serviceCenterIdFilter && project.serviceCenterId !== serviceCenterIdFilter) return false;
+    return true;
+  }
+
+  // CAMADA CANONICA: ignora o filtro `Carteira` de proposito, para que a cobertura da
+  // meta devolva o mesmo numero nos tres valores do filtro. Potencial que sustenta a
+  // meta so pode vir de projeto executavel: nem retirado nem concluido tem escopo
+  // operacional pendente. Producao que abate a meta vem de todos, inclusive do retirado
+  // e do concluido que produziram dentro do ciclo.
+  const goalBaseRows = allBaseRows.filter(matchesAnalyticalFilters);
+  const goalProjectIdSet = new Set(goalBaseRows.map((project) => project.projectId));
+  const goalRemainingPotential = goalBaseRows
+    .filter((project) => !project.isWithdrawn && project.status !== "CONCLUIDO")
+    .reduce((sum, project) => sum + project.remainingPotential, 0);
+  const goalProducedInCycle = baseOrders
+    .filter((order) => goalProjectIdSet.has(order.project_id))
+    .filter((order) => order.execution_date >= selectedCycle.cycleStart && order.execution_date <= selectedCycle.cycleEnd)
+    .reduce((sum, order) => sum + (valueResult.values.get(order.id) ?? 0), 0);
+
+  // CAMADA DE RECORTE: daqui para baixo o filtro `Carteira` manda.
+  const filteredProjectRows = goalBaseRows
+    .filter((project) => matchesPortfolioScope(project.isWithdrawn))
     .sort((left, right) => {
       const byRemaining = right.remainingPotential - left.remainingPotential;
       return byRemaining !== 0 ? byRemaining : left.projectCode.localeCompare(right.projectCode, "pt-BR");
@@ -665,17 +697,30 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const newRows = workedRows.filter((project) => project.origin === "NOVO");
   const inheritedRows = workedRows.filter((project) => project.origin === "HERDADO");
   const concludedRows = filteredProjectRows.filter((project) => project.status === "CONCLUIDO");
+  // Concluido no ciclo: so ele descreve o fluxo operacional do periodo. Concluido em
+  // ciclo anterior entra com `valueInCycle` zerado e diluia o ticket medio e o fluxo.
+  const concludedInCycleRows = concludedRows.filter((project) => project.valueInCycle > 0);
   const pendingRows = filteredProjectRows.filter((project) => project.status !== "CONCLUIDO");
+  const activeRows = filteredProjectRows.filter((project) => !project.isWithdrawn);
   const withdrawnRows = filteredProjectRows.filter((project) => project.isWithdrawn);
+  const withdrawnWorkedRows = withdrawnRows.filter((project) => project.accumulatedValue > 0);
+  const withdrawnIdleRows = withdrawnRows.filter((project) => project.accumulatedValue <= 0);
+  // Tres baldes disjuntos que somam o restante do recorte: executavel, concluido e
+  // retirado. Retirado vem primeiro para que projeto retirado E concluido conte uma vez.
+  const executableRows = activeRows.filter((project) => project.status !== "CONCLUIDO");
+  const concludedActiveRows = activeRows.filter((project) => project.status === "CONCLUIDO");
   const totalForecastValue = filteredProjectRows.reduce((sum, project) => sum + project.totalForecastValue, 0);
   const producedInCycle = filteredProjectRows.reduce((sum, project) => sum + project.valueInCycle, 0);
   const accumulatedValue = filteredProjectRows.reduce((sum, project) => sum + project.accumulatedValue, 0);
-  const remainingPotential = filteredProjectRows.reduce((sum, project) => sum + project.remainingPotential, 0);
-  const filteredProjectIdSet = new Set(filteredProjectRows.map((project) => project.projectId));
-  const producedInSelectedCycle = orders
-    .filter((order) => filteredProjectIdSet.has(order.project_id))
-    .filter((order) => order.execution_date >= selectedCycle.cycleStart && order.execution_date <= selectedCycle.cycleEnd)
-    .reduce((sum, order) => sum + (valueResult.values.get(order.id) ?? 0), 0);
+  // Potencial restante nunca soma retirado nem concluido: os dois saem desmembrados.
+  const remainingPotential = executableRows.reduce((sum, project) => sum + project.remainingPotential, 0);
+  const concludedRemainingPotential = concludedActiveRows.reduce((sum, project) => sum + project.remainingPotential, 0);
+  const withdrawnRemainingPotential = withdrawnRows.reduce((sum, project) => sum + project.remainingPotential, 0);
+  const withdrawnAccumulatedValue = withdrawnRows.reduce((sum, project) => sum + project.accumulatedValue, 0);
+  const withdrawnForecastValue = withdrawnRows.reduce((sum, project) => sum + project.totalForecastValue, 0);
+  const withdrawnExplorationRate = withdrawnForecastValue > 0
+    ? (withdrawnAccumulatedValue / withdrawnForecastValue) * 100
+    : 0;
   const averageAge = filteredProjectRows.length > 0
     ? filteredProjectRows.reduce((sum, project) => sum + project.workedCycleCount, 0) / filteredProjectRows.length
     : 0;
@@ -739,8 +784,8 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     supabase: resolution.supabase,
     tenantId,
     cycleStart: selectedCycle.cycleStart,
-    producedValue: producedInSelectedCycle,
-    remainingPotential,
+    producedValue: goalProducedInCycle,
+    remainingPotential: goalRemainingPotential,
     referenceDate,
   });
   if (goalCoverageResult.error) {
@@ -784,6 +829,11 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   ].filter(Boolean);
   const diagnosticStatus = riskSignals.length ? "RISCO" : warningSignals.length ? "ATENCAO" : "SAUDAVEL";
   const diagnosticMessage = riskSignals[0] ?? warningSignals[0] ?? "Carteira com renovacao e potencial dentro dos parametros definidos.";
+  // Aviso de escopo: separa explicitamente o dinheiro do retirado que ja virou producao
+  // (conta na meta) do saldo que nao e executavel (fora da cobertura da meta).
+  const scopeNotice = portfolioScope !== "ACTIVE" && withdrawnRows.length > 0
+    ? `Filtro inclui ${withdrawnRows.length} projeto(s) retirado(s): ${formatCurrencyPtBr(withdrawnAccumulatedValue)} ja produzidos, que contam na meta, e ${formatCurrencyPtBr(withdrawnRemainingPotential)} de restante nao executavel, fora da cobertura da meta.`
+    : null;
 
   const payload = {
     cycles,
@@ -798,6 +848,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       status: diagnosticStatus,
       message: diagnosticMessage,
       signals: [...riskSignals, ...warningSignals],
+      scopeNotice,
     },
     quantitySummary: {
       operationalProjects: filteredProjectRows.length,
@@ -807,6 +858,8 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       concludedProjects: concludedRows.length,
       pendingProjects: pendingRows.length,
       withdrawnProjects: withdrawnRows.length,
+      withdrawnWorkedProjects: withdrawnWorkedRows.length,
+      withdrawnIdleProjects: withdrawnIdleRows.length,
       averageAge,
       renewalRate,
     },
@@ -815,11 +868,15 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       producedInCycle,
       accumulatedValue,
       remainingPotential,
+      concludedRemainingPotential,
+      withdrawnRemainingPotential,
+      withdrawnAccumulatedValue,
+      withdrawnExplorationRate,
       explorationRate,
       averageNewProjectValue: averageEstimated(newRows),
       averageInheritedProjectValue: averageEstimated(inheritedRows),
-      completedAverageTicket: concludedRows.length > 0
-        ? concludedRows.reduce((sum, project) => sum + project.valueInCycle, 0) / concludedRows.length
+      completedAverageTicket: concludedInCycleRows.length > 0
+        ? concludedInCycleRows.reduce((sum, project) => sum + project.valueInCycle, 0) / concludedInCycleRows.length
         : 0,
     },
     goalCoverage,
@@ -835,9 +892,9 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
         value: pendingRows.reduce((sum, project) => sum + project.remainingPotential, 0),
       },
       {
-        stage: "Concluidos",
-        projects: concludedRows.length,
-        value: concludedRows.reduce((sum, project) => sum + project.accumulatedValue, 0),
+        stage: "Concluidos no ciclo",
+        projects: concludedInCycleRows.length,
+        value: concludedInCycleRows.reduce((sum, project) => sum + project.valueInCycle, 0),
       },
     ],
     renewalChart,
