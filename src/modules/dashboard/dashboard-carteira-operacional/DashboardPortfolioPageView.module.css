@@ -34,6 +34,11 @@
 .metric.orange { border-color: #f2cf99; background: #fff8ed; }
 .metric.red { border-color: #f2b7b7; background: #fff5f5; }
 .metric.blue { border-color: #b8c9ef; background: #f4f8ff; }
+.metric.neutral { border-color: #cdd4de; background: #f4f5f7; }
+.metric.neutral strong { color: #5b6474; }
+.scopeNotice { display: flex; gap: 8px; align-items: flex-start; border: 1px solid #f0d48a; border-left-width: 4px; border-radius: 8px; background: #fff9e8; color: #6f5311; padding: 10px 12px; font-size: 12px; font-weight: 700; }
+.coverageWarning { display: flex; gap: 8px; align-items: flex-start; border: 1px solid #f2cf99; border-left-width: 4px; border-radius: 8px; background: #fff8ed; color: #7a5312; padding: 10px 12px; font-size: 12px; font-weight: 700; }
+.coverageBasis { color: #60708f; font-size: 11px; font-weight: 700; }
 .twoColumnGrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .flowList, .barList { display: flex; flex-direction: column; gap: 12px; }
 .flowRow { position: relative; display: grid; grid-template-columns: minmax(150px, 1fr) minmax(160px, 2fr) minmax(92px, auto); align-items: center; gap: 12px; min-height: 48px; color: #001f5b; font-size: 12px; }

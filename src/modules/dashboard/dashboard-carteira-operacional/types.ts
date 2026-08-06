@@ -20,6 +20,7 @@ export type DashboardPortfolioDiagnostic = {
   status: "SAUDAVEL" | "ATENCAO" | "RISCO";
   message: string;
   signals: string[];
+  scopeNotice: string | null;
 };
 
 export type DashboardPortfolioQuantitySummary = {
@@ -30,6 +31,8 @@ export type DashboardPortfolioQuantitySummary = {
   concludedProjects: number;
   pendingProjects: number;
   withdrawnProjects: number;
+  withdrawnWorkedProjects: number;
+  withdrawnIdleProjects: number;
   averageAge: number;
   renewalRate: number;
 };
@@ -39,6 +42,10 @@ export type DashboardPortfolioFinancialSummary = {
   producedInCycle: number;
   accumulatedValue: number;
   remainingPotential: number;
+  concludedRemainingPotential: number;
+  withdrawnRemainingPotential: number;
+  withdrawnAccumulatedValue: number;
+  withdrawnExplorationRate: number;
   explorationRate: number;
   averageNewProjectValue: number;
   averageInheritedProjectValue: number;

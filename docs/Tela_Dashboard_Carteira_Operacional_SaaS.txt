@@ -39,9 +39,15 @@ Filtros, auto-complete e listagem
 - A acao `Ver` abre a lista de atividades previstas do projeto pela rota `/api/projects/activity-forecast`, mantendo o calculo de valor previsto vindo da API.
 
 Indicadores
-- Saude da carteira: projetos trabalhados, novos, herdados, concluidos, pendentes, retirados, idade media e indice de renovacao.
-- Financeiro da carteira: valor produzido no ciclo, valor acumulado, potencial restante, exploracao da carteira, valor medio dos novos, valor medio dos herdados e ticket medio dos concluidos.
+- Saude da carteira: projetos trabalhados, novos, herdados, concluidos, pendentes, retirados, retirados trabalhados, retirados improdutivos, idade media e indice de renovacao.
+- Os tres cards de retirados usam tom neutro/cinza, para deixar explicito que sao projetos fora da operacao.
+- Retirado trabalhado e o que tem valor acumulado maior que zero; retirado improdutivo saiu da carteira sem nenhuma producao medida.
+- O card `Indice de renovacao` exibe a regra da meta no subtexto (`Meta >= 20%`).
+- Financeiro da carteira: valor produzido no ciclo, valor acumulado, potencial restante, restante de concluidos, restante de retirados, produzido por retirados, exploracao da carteira, exploracao dos retirados, valor medio dos novos, valor medio dos herdados e ticket medio dos concluidos no ciclo.
+- O card `Potencial restante` soma somente o executavel (nem retirado nem concluido); os saldos de concluidos e retirados aparecem separados e nunca sao somados ao executavel.
+- `Fluxo da carteira` usa a etapa `Concluidos no ciclo`, com o valor produzido no periodo, e nao o acumulado de vida inteira.
 - Cobertura da meta: meta restante do ciclo, potencial restante, cobertura percentual, autonomia em dias uteis, data prevista de esgotamento e meta diaria cadastrada.
+- Quando a cobertura da meta esta verde e o diagnostico da carteira esta em risco, o bloco exibe aviso de divergencia: meta coberta no curto prazo, sem sustentabilidade por falta de projetos novos.
 - Fluxo da carteira: projetos novos, em andamento e concluidos, com quantidade e valor.
 - Renovacao: compara novos e herdados, incluindo ticket medio.
 - Envelhecimento: agrupa projetos por idade em ciclos e inclui projetos sem producao no ciclo.
@@ -55,12 +61,38 @@ Boas praticas
 - Usar o Dashboard Carteira Operacional para explicar causa de queda/subida da producao, e o Dashboard Equipes para explicar quem produziu.
 - Tratar o valor restante como estimativa gerencial, pois depende da qualidade das atividades previstas e dos pontos/valores unitarios cadastrados.
 
+Duas camadas de calculo
+- A tela separa de proposito o que e CANONICO do que e RECORTE, porque potencial e producao tem regras opostas em relacao a retirada.
+- Camada canonica (bloco `Cobertura da meta`): ignora o filtro `Carteira`. O potencial que sustenta a meta soma somente o EXECUTAVEL, ou seja, projeto que nao esta retirado (`is_withdrawn = false`) e nao esta concluido (`status <> CONCLUIDO`), porque nenhum dos dois tem escopo operacional pendente. A producao que abate a meta soma TODOS os projetos com medicao no ciclo, inclusive retirados e concluidos, porque producao medida e fato consumado.
+- Efeito pratico: a cobertura da meta devolve o mesmo numero nos tres valores do filtro `Carteira`. O filtro deixou de alterar indicador financeiro.
+- Camada de recorte (Saude da carteira, Financeiro da carteira, Fluxo, Renovacao, Envelhecimento e tabela analitica): respeita o filtro `Carteira`, com desmembramento explicito entre ativo e retirado.
+- O filtro `Carteira` e recorte de leitura, nunca regra de calculo da meta.
+
+Tratamento de projeto concluido
+- Projeto concluido nao tem mais escopo operacional pendente. O saldo previsto que sobra nele e sobra contratual/fisica, nao trabalho em curso.
+- Producao do ciclo: CONTA. Projeto concluido que gerou medicao dentro do ciclo abate a meta normalmente.
+- Saldo restante: NAO CONTA no potencial que sustenta a meta, esteja o projeto concluido dentro ou fora do ciclo.
+- O saldo dos concluidos aparece desmembrado no card `Restante de concluidos`, para nenhum valor sumir em silencio.
+- Ressalva aceita: se a conclusao for prematura ou anterior a etapas ainda previstas, o saldo sai do potencial mesmo assim. O erro passa a ser conservador (subestima a cobertura) em vez de otimista.
+- `Fluxo da carteira` e `Ticket medio concluidos no ciclo` contam apenas concluidos COM producao medida no ciclo. Concluido em ciclo anterior entra com valor zero e diluia as duas leituras.
+- O card `Projetos concluidos` da Saude da carteira continua contando todos os concluidos do recorte, inclusive de ciclos anteriores, e diz isso no subtexto. Por isso ele diverge de proposito da contagem da etapa `Concluidos no ciclo`.
+- Os tres baldes de saldo do recorte sao disjuntos e somam o restante total: executavel (`Potencial restante`), concluido (`Restante de concluidos`) e retirado (`Restante de retirados`). Projeto retirado E concluido conta uma vez so, no balde de retirado.
+
+Tratamento de projeto retirado
+- `project.is_withdrawn` e estado atual booleano, sem data de retirada (migration 174 nao criou `withdrawn_at`). O marcador e lido hoje e vale para todos os ciclos.
+- Por isso a tela NAO tenta inferir quando o projeto foi retirado. A separacao usa evidencia de producao, que ja existe por projeto: valor acumulado maior que zero significa que o projeto foi trabalhado antes da retirada.
+- Retirado improdutivo (acumulado igual a zero): nao entra no potencial nem na producao. Ruido limpo da tela.
+- Retirado trabalhado (acumulado maior que zero): a producao entra na meta do ciclo e no historico; o potencial restante dele fica fora, porque nao sera executado.
+- Existe rastro parcial da data em `project_history` (a alteracao de `isWithdrawn` e gravada com `created_at`), mas ele nao cobre carga inicial nem edicao direta no banco, entao nao serve de base de calculo.
+
 Cancelamento e saldo
 - Projetos cancelados/inativos, terceiros ou marcados como teste nao entram na base.
-- Projetos retirados da carteira entram apenas quando o filtro `Carteira` estiver em `Somente retirados` ou `Com retirados`.
+- Projetos retirados da carteira aparecem na tabela e nas contagens apenas quando o filtro `Carteira` estiver em `Somente retirados` ou `Com retirados`, mas a producao medida deles sempre abate a meta do ciclo, em qualquer valor do filtro.
 - Ordens de medicao canceladas nao entram no valor produzido, acumulado ou diagnostico.
 - Estados parciais da programacao (`PARCIAL`, `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e variantes com beneficio atingido) contam como pendentes.
-- Quando o valor acumulado supera o valor previsto calculado, o restante e exibido como zero e a exploracao fica limitada a 100%.
+- Quando o valor acumulado supera o valor previsto calculado, o restante do projeto e exibido como zero.
+- A taxa de exploracao NAO tem limite superior (uncapped), nem por projeto nem no agregado. Valores acima de 100% sao informacao de negocio, nao erro: indicam aditivo, estouro de escopo ou previsao subdimensionada. Capar em 100% esconderia a anomalia da gestao.
+- Consequencia do piso por projeto: como o restante e `max(0, previsto - acumulado)` projeto a projeto, o `Potencial restante` e um numero BRUTO. Ele nao compensa a execucao acima do previsto de outros projetos, entao pode conviver com uma exploracao agregada acima de 100%.
 - A cobertura da meta usa status verde quando a carteira cobre acima de 120% da meta restante, amarelo entre 80% e 120%, e vermelho abaixo de 80%.
 
 Atalhos
@@ -174,3 +206,95 @@ IMPACTO MEDIDO EM PRODUCAO (2026-07-29)
   - `src/app/api/dash-operacional-faturamento/route.ts`
   - `src/server/modules/dashboard-measurement/controller.ts`
   - `src/server/modules/dashboard-portfolio/controller.ts`
+
+
+Atualizacao 2026-08-06 - Retirados e concluidos: potencial fora, producao dentro
+--------------------------------------------------------------------------
+DOIS BUGS ESPELHO, MESMA CAUSA RAIZ
+- O filtro `portfolioScope` governava DOIS conceitos financeiros de momentos
+  temporais opostos: potencial restante (o que ainda PODE ser executado) e valor
+  produzido (o que JA foi executado). Retirado deve sair do primeiro e entrar no
+  segundo, mas os dois seguiam o mesmo filtro.
+- Bug 1 (visivel): em `Com retirados`/`Somente retirados`, o potencial restante dos
+  retirados era somado e passado para a RPC `dashboard_portfolio_goal_coverage`.
+  Resultado observado em producao: cobertura de 429,6% sustentada por ~R$ 4 mi que
+  nunca serao executados. Ilusao de margem financeira.
+- Bug 2 (silencioso, descoberto ao analisar "retirado mas trabalhado antes"): em
+  `Sem retirados` (padrao da tela), a producao ja medida de projeto retirado era
+  excluida de `producedInSelectedCycle`. Como a RPC calcula
+  `remaining_cycle_goal = cycle_goal - produced_value`, producao real que ja tinha
+  abatido a meta sumia da conta. A meta restante ficava superestimada e a tela
+  cobrava da carteira ativa uma meta ja parcialmente cumprida.
+- Corrigir so o Bug 1 trocaria um erro otimista por um erro pessimista. Os dois
+  sairam juntos.
+
+PIPELINE INVERTIDO
+- Antes, os retirados nem chegavam a ser carregados no modo padrao: `orders` ja
+  nascia filtrado pelo escopo, `orderIds` saia de `orders` (entao `valueResult` nao
+  tinha os valores medidos dos retirados) e `allProjectRows` era mapeado sobre
+  `eligibleProjects`. Nao existia linha de retirado para somar.
+- Agora a montagem roda sobre a base completa (`baseProjects`/`baseOrders`) e o
+  `portfolioScope` e aplicado DEPOIS, so sobre o que a tela exibe.
+- `loadCompletionRows` passou a receber `baseProjectIds` em vez de
+  `eligibleProjectIds`, pelo mesmo motivo.
+- Custo: itens de medicao e estado de trabalho passam a cobrir a base completa em vez
+  do recorte. Ambas as leituras ja eram paginadas/chunked e a base e so projetos com
+  atividade prevista, entao o crescimento e o tamanho do conjunto de retirados.
+
+SEM MIGRATION
+- A correcao nao exigiu coluna nova nem alteracao de schema. A separacao entre
+  retirado trabalhado e retirado improdutivo usa `accumulatedValue`, que ja era
+  calculado por projeto.
+
+TERCEIRO VAZAMENTO: CONCLUIDOS (mesma entrega)
+- Achado ao conferir a extracao de 182 projetos: 62 concluidos ainda carregavam
+  ~R$ 727 mil de saldo restante dentro do potencial que sustenta a meta. Pior que o
+  caso dos retirados, porque concluido esta na carteira ATIVA e passava no modo
+  padrao da tela, direto pela camada canonica.
+- Regra fechada: producao do ciclo conta, saldo restante nao conta, esteja o projeto
+  concluido dentro ou fora do ciclo.
+- `Ticket medio concluidos` estava estruturalmente diluido: somava `valueInCycle` de
+  todos os concluidos e dividia por todos eles, mas a maioria concluiu em ciclos
+  anteriores e entra com zero. Passou a considerar so concluidos com producao no ciclo.
+- `Fluxo da carteira` exibia a etapa `Concluidos` com o acumulado de vida inteira ao
+  lado de duas leituras de ciclo. Virou `Concluidos no ciclo`, com o valor do periodo.
+
+DIVERGENCIA GUIA x CODIGO RESOLVIDA (CLAUDE.md secao 12)
+- O TXT afirmava que a exploracao ficava limitada a 100%. O codigo nunca capou, nem
+  por projeto nem no agregado, o que explica os 237,5% observados na tabela e os
+  125,6% do agregado.
+- Decisao: o codigo esta certo e a documentacao estava errada. A taxa segue uncapped
+  porque valor acima de 100% e sinal de aditivo/previsao subdimensionada, e capar
+  esconderia isso. O TXT foi corrigido, o codigo nao mudou.
+
+PENDENCIAS REGISTRADAS (assimetrias pre-existentes, fora do escopo desta entrega)
+- Base do produzido diferente da base da meta: `producedValue` so cobre projetos com
+  atividade prevista cadastrada (RPC `dashboard_portfolio_forecast_values`), enquanto
+  a meta vem de `measurement_cycle_target_items`, que e do tenant inteiro. Producao de
+  projeto sem previsao cadastrada nunca abate a meta, entao a meta restante ja e
+  superestimada por esse caminho, independente de retirados.
+- Filtro Regional contra meta global: a meta e cadastrada por `team_type_id`, sem
+  dimensao de centro de servico. Filtrar uma regional reduz produzido e potencial mas
+  mantem a meta inteira, e a cobertura despenca artificialmente. Sugestao de UX
+  registrada: exibir `N/A` ou aviso no bloco `Cobertura da meta` quando houver filtro
+  regional aplicado.
+- Bloco `Fluxo da carteira`: a etapa `Em andamento` continua somando o potencial
+  restante dos pendentes do recorte, incluindo retirados quando o filtro os inclui.
+  Como fluxo e camada de recorte, ficou inalterado nesta entrega; se o valor de
+  retirado em `Em andamento` incomodar, e um ajuste separado.
+- Envelhecimento da base, medido na extracao de 2026-08-06: 160 dos 182 projetos sem
+  producao no ciclo, com R$ 3,66 mi de restante, e 91 acumulando de 1 a 5 ciclos
+  parados. Esse saldo E executavel (projeto ativo, nao concluido, nao retirado), entao
+  entra corretamente na cobertura. O problema nao e de calculo: a autonomia em dias
+  uteis assume uma execucao que o historico nao sustenta. Pede indicador novo de
+  envelhecimento do saldo, nao exclusao.
+- Carteira prevista subdimensionada: na mesma extracao o acumulado (R$ 10,21 mi)
+  superou o previsto (R$ 8,13 mi) em R$ 2,08 mi. Enquanto a previsao de atividades
+  ficar sistematicamente abaixo do medido, o `Potencial restante` continua sendo uma
+  estimativa gerencial fraca, independente de qualquer correcao de filtro.
+
+- Arquivos alterados:
+  - `src/server/modules/dashboard-portfolio/controller.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/types.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.tsx`
+  - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.module.css`
