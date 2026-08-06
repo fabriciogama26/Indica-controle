@@ -29,6 +29,14 @@ type GoalCoverageRow = {
   status: string | null;
 };
 
+type AsbuiltFactorRow = {
+  asbuilt_value: number | string | null;
+  measured_value: number | string | null;
+  factor: number | string | null;
+  projects_with_asbuilt: number | string | null;
+  projects_measured: number | string | null;
+};
+
 type ProjectRow = {
   id: string;
   sob: string | null;
@@ -361,6 +369,18 @@ async function loadGoalCoverage(params: {
 
   if (error) return { data: null as GoalCoverageRow | null, error };
   const rows = Array.isArray(data) ? data as GoalCoverageRow[] : [];
+  return { data: rows[0] ?? null, error: null };
+}
+
+// Fator historico de realizacao As Built, via contrato explicito (RPC 357). A
+// Carteira nao le as tabelas da Medicao As Built diretamente.
+async function loadAsbuiltFactor(supabase: AuthenticatedAppUserContext["supabase"], tenantId: string) {
+  const { data, error } = await supabase.rpc("dashboard_portfolio_asbuilt_factor", {
+    p_tenant_id: tenantId,
+  });
+
+  if (error) return { data: null as AsbuiltFactorRow | null, error };
+  const rows = Array.isArray(data) ? data as AsbuiltFactorRow[] : [];
   return { data: rows[0] ?? null, error: null };
 }
 
@@ -791,8 +811,39 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   if (goalCoverageResult.error) {
     return NextResponse.json({ message: "Falha ao calcular cobertura da meta pela carteira." }, { status: 500 });
   }
+  const asbuiltFactorResult = await loadAsbuiltFactor(resolution.supabase, tenantId);
+  if (asbuiltFactorResult.error) {
+    return NextResponse.json({ message: "Falha ao calcular o fator de realizacao As Built." }, { status: 500 });
+  }
+
   const goalCoverageRow = goalCoverageResult.data;
   const goalCoverageStatus = normalizeGoalCoverageStatus(goalCoverageRow?.status);
+
+  // BANDA DE SENSIBILIDADE AS BUILT
+  // O numero principal continua em moeda de medicao operacional, porque a meta
+  // (`measurement_cycle_target_items.daily_value`) e cadastrada nessa mesma moeda:
+  // capacidade nominal das equipes pela tabela de precos, antes de glosa de
+  // engenharia e do redesenho do As Built. Trocar a moeda de um lado so quebraria a
+  // comparacao. A banda e projecao, nao medicao: aplica sobre o pendente uma taxa
+  // apurada em trabalho ja encerrado, porque a elegibilidade de As Built e o proprio
+  // encerramento do trabalho (migration 347).
+  const asbuiltRow = asbuiltFactorResult.data;
+  const asbuiltFactor = numberValue(asbuiltRow?.factor);
+  const hasAsbuiltSample = asbuiltFactor > 0;
+  const asbuiltRemainingPotential = hasAsbuiltSample
+    ? numberValue(goalCoverageRow?.remaining_potential) * asbuiltFactor
+    : 0;
+  const asbuiltRemainingCycleGoal = numberValue(goalCoverageRow?.remaining_cycle_goal);
+  const asbuiltDailyGoal = numberValue(goalCoverageRow?.daily_goal);
+  const asbuiltCoveragePercentage = !hasAsbuiltSample || goalCoverageStatus === "SEM_META"
+    ? 0
+    : asbuiltRemainingCycleGoal <= 0
+      ? 100
+      : (asbuiltRemainingPotential / asbuiltRemainingCycleGoal) * 100;
+  const asbuiltAutonomyBusinessDays = hasAsbuiltSample && asbuiltDailyGoal > 0
+    ? asbuiltRemainingPotential / asbuiltDailyGoal
+    : 0;
+
   const goalCoverage = {
     status: goalCoverageStatus,
     cycleStart: goalCoverageRow?.cycle_start ?? selectedCycle.cycleStart,
@@ -807,6 +858,13 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     autonomyBusinessDays: numberValue(goalCoverageRow?.autonomy_business_days),
     depletionDate: goalCoverageRow?.depletion_date ?? null,
     depletionDateLabel: formatDatePtBr(goalCoverageRow?.depletion_date ?? null),
+    asbuiltFactor,
+    asbuiltFactorPercentage: asbuiltFactor * 100,
+    asbuiltRemainingPotential,
+    asbuiltCoveragePercentage,
+    asbuiltAutonomyBusinessDays,
+    asbuiltSampleProjects: Math.trunc(numberValue(asbuiltRow?.projects_with_asbuilt)),
+    asbuiltMeasuredProjects: Math.trunc(numberValue(asbuiltRow?.projects_measured)),
     message: buildGoalCoverageMessage({
       status: goalCoverageStatus,
       coveragePercentage: numberValue(goalCoverageRow?.coverage_percentage),

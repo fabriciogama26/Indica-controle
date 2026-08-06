@@ -48,6 +48,20 @@ Indicadores
 - `Fluxo da carteira` usa a etapa `Concluidos no ciclo`, com o valor produzido no periodo, e nao o acumulado de vida inteira.
 - Cobertura da meta: meta restante do ciclo, potencial restante, cobertura percentual, autonomia em dias uteis, data prevista de esgotamento e meta diaria cadastrada.
 - Quando a cobertura da meta esta verde e o diagnostico da carteira esta em risco, o bloco exibe aviso de divergencia: meta coberta no curto prazo, sem sustentabilidade por falta de projetos novos.
+- Sensibilidade de realizacao As Built: banda secundaria dentro do bloco `Cobertura da meta`, com cobertura projetada, autonomia projetada e potencial projetado, exibida somente quando existe amostra de As Built no tenant.
+
+Sensibilidade de realizacao As Built
+- Moeda do numero principal: a meta (`measurement_cycle_target_items.daily_value`) e cadastrada em moeda de MEDICAO OPERACIONAL, pela tabela de precos do contrato, refletindo capacidade nominal das equipes antes de glosa de engenharia e do redesenho do As Built. Por isso a cobertura e a autonomia principais continuam em medicao operacional: a comparacao e homogenea.
+- A banda e a segunda leitura, nunca substitui o numero principal.
+- Fator: `valor As Built / valor medido nos MESMOS projetos`, pela RPC `dashboard_portfolio_asbuilt_factor` (migration 357).
+- As Built NAO e producao paralela. Todo projeto com As Built tambem tem medicao operacional, entao o trabalho ja foi medido e ja consumiu o potencial. O fator e taxa de realizacao, nunca valor a somar em produzido, acumulado ou potencial.
+- A banda e PROJECAO, nao medicao: aplica ao saldo pendente uma taxa apurada em trabalho ja encerrado. O rotulo na tela diz isso explicitamente, junto com o tamanho da amostra.
+- Elegibilidade de As Built vem do Estado do Trabalho (`get_cronograma_asbuilt_project_ids`, migration 347: `CONCLUIDO`, `BENEFICIO_ATINGIDO` ou `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`), nunca de regional, centro de servico ou tipo de servico. Nao existe projeto isento de As Built no modelo de dados atual.
+- Por isso o fator e unico e uniforme: projeto medido sem As Built nao e isento, e projeto que ainda nao chegou ao marco de conclusao.
+- Simetria com a camada canonica: o potencial que sustenta a meta e o conjunto dos NAO concluidos, que e exatamente o conjunto ainda NAO elegivel a As Built. A banda projeta sobre trabalho nao terminado um fator apurado em trabalho terminado.
+- Sem recorte de ciclo, de proposito: As Built vem depois da medicao operacional, com defasagem, e recortar por ciclo pegaria o numerador incompleto e subestimaria o fator.
+- O indicador `Faturado` NAO e usado como fator. A diferenca entre faturado e As Built e cronograma administrativo de faturamento, nao perda de saldo contratual; usa-la produziria pessimismo falso.
+- Onde a banda mais importa e a autonomia em dias uteis, porque e nela que a gestao decide antecipar a liberacao de frentes novas.
 - Fluxo da carteira: projetos novos, em andamento e concluidos, com quantidade e valor.
 - Renovacao: compara novos e herdados, incluindo ticket medio.
 - Envelhecimento: agrupa projetos por idade em ciclos e inclui projetos sem producao no ciclo.
@@ -130,6 +144,7 @@ Mapa de Codigo
 - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`: catalogo de permissoes.
 - `supabase/migrations/332_register_dashboard_portfolio_page.sql`: cadastro da pagina e permissoes iniciais.
 - `supabase/migrations/334_dashboard_portfolio_goal_coverage_rpc.sql`: calculo de meta restante, cobertura, autonomia e esgotamento previsto.
+- `supabase/migrations/357_dashboard_portfolio_asbuilt_factor_rpc.sql`: fator historico de realizacao As Built e tamanho da amostra, para a banda de sensibilidade.
 
 
 Atualizacao 2026-07-29 - Fase 3b do corte: Projetos e os tres dashboards
@@ -294,6 +309,43 @@ PENDENCIAS REGISTRADAS (assimetrias pre-existentes, fora do escopo desta entrega
   estimativa gerencial fraca, independente de qualquer correcao de filtro.
 
 - Arquivos alterados:
+  - `src/server/modules/dashboard-portfolio/controller.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/types.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.tsx`
+  - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.module.css`
+
+
+Atualizacao 2026-08-06 - Banda de sensibilidade As Built (migration 357)
+--------------------------------------------------------------------------
+HIPOTESE DERRUBADA ANTES DE VIRAR CODIGO
+- A suspeita inicial era que As Built fosse trabalho executado que consome atividade
+  prevista sem nunca aparecer como producao, o que prenderia valor para sempre no
+  potencial restante. Os dados do `Grafico operacional` derrubaram isso: os MESMOS 58
+  projetos aparecem em `Medido com As Built` e em `As Built`. As Built nunca acontece
+  sem medicao operacional, entao o trabalho ja e medido e ja consome o potencial.
+- As Built e remedicao do mesmo escopo com valor reconhecido diferente
+  (R$ 7,82 mi contra R$ 8,76 mi nos mesmos projetos, 89,26%). Nao e vazamento, e taxa
+  de realizacao.
+
+A TRAVA POR CENTRO DE SERVICO NAO EXISTE NO MODELO
+- A proposta inicial previa fator 1,0 para centros de servico onde As Built nao se
+  aplica. A leitura da `get_cronograma_asbuilt_project_ids` (347) mostrou que a
+  elegibilidade e decidida pelo Estado do Trabalho, sem nenhuma dimensao de regional
+  ou tipo de servico. Nao existe projeto isento no modelo.
+- Reinterpretacao dos 16% fora da base: os projetos medidos sem As Built nao sao
+  isentos, sao projetos que ainda nao chegaram ao marco de conclusao. Isso eliminou a
+  necessidade de segmentacao e o fator ficou unico e uniforme.
+
+MOEDA DA META CONFIRMADA COM O USUARIO
+- `measurement_cycle_target_items.daily_value` e cadastrado em moeda de medicao
+  operacional (tabela de precos do contrato, capacidade nominal das equipes), sem
+  impostos, glosa de engenharia ou ajuste de desenho.
+- Por isso o numero principal permanece em medicao operacional e a banda e camada
+  secundaria. Aplicar o desagio so no potencial, com a meta na moeda operacional,
+  quebraria a comparacao em vez de consertar.
+
+- Arquivos alterados:
+  - `supabase/migrations/357_dashboard_portfolio_asbuilt_factor_rpc.sql` (novo)
   - `src/server/modules/dashboard-portfolio/controller.ts`
   - `src/modules/dashboard/dashboard-carteira-operacional/types.ts`
   - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.tsx`
