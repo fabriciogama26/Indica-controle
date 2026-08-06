@@ -86,9 +86,18 @@ Permissao
 - As 7 colunas de acao andam juntas (migration 253): o toggle da tela de Permissoes libera
   `read` e `export` ao mesmo tempo. Gravar so `can_access` deixaria `can_export = false` e o
   botao de CSV responderia 403 para usuario nao-admin.
-- Backfill da migration 355: cada usuario recebeu em `medicao-visualizacao` o mesmo valor que
-  ja tinha em `medicao`. A publicacao nao ampliou o alcance de ninguem; liberar a tela para
-  perfis de consulta (que nao tem `medicao`) e feito pelo administrador na tela de Permissoes.
+- Backfill da migration 355: a INTENCAO era que cada usuario recebesse em
+  `medicao-visualizacao` o mesmo valor que ja tinha em `medicao`. NAO foi o que aconteceu —
+  ver correcao abaixo.
+- Correcao 2026-08-06 (migration 356): a 355 cadastrou a pagina herdando `default_user_access`
+  de `medicao`, que estava em `true` desde a migration 245. Com isso o trigger AFTER INSERT da
+  253 gravou `can_access = true` para TODOS os usuarios no proprio `insert into app_pages`, e
+  o backfill "por usuario" da 355, que vinha depois com `on conflict do nothing`, virou no-op.
+  Medido em 2026-08-06: 12 de 20 usuarios com acesso a `medicao-visualizacao` contra 3 com
+  acesso a `medicao`. A migration 356 corrigiu `default_user_access` para `false` (novos
+  usuarios nascem bloqueados) e criou o trigger BEFORE INSERT que impede o caso se repetir em
+  qualquer tela futura. PENDENTE: os 7 usuarios ativos que ganharam a tela indevidamente
+  continuam com ela liberada — revogar pela tela de Permissoes, com historico.
 
 Boas praticas
 -------------

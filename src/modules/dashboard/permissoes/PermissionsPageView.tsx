@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { DEFAULT_USER_PAGE_ACCESS, VIEWER_PAGE_ACCESS } from "@/lib/auth/authorization";
 import styles from "./PermissionsPageView.module.css";
 
 type PermissionCard = {
@@ -147,68 +148,26 @@ const permissionCatalog = [
   { pageKey: "municipio", label: "Municipio", path: "/municipio", section: "Cadastro Base" },
 ] as const;
 
+// Matriz inicial exibida quando o admin troca o PAPEL do usuario (`handleRoleChange`) — este e
+// o unico caminho em que o resultado nao e sobrescrito pelo snapshot salvo do banco. Por isso a
+// lista usada aqui e a mesma de `resolveDefaultPageAccess`: duas listas separadas divergiram e
+// deixaram telas bloqueadas no banco aparecendo pre-marcadas aqui.
 function createPermissionSet(role: string): PermissionCard[] {
-  const defaultPageAccess = [
-    "home",
-    "dash-estoque",
-    "dashboard-medicao",
-    "dashboard-equipes",
-    "dash-operacional-faturamento",
-    "projetos",
-    "locacao",
-    "programacao-simples",
-    "programacao-visualizacao",
-    "mapa-programacao",
-    "composicao-equipe",
-    "controle-apr",
-    "apuracao-fator-minimo",
-    "medicao-asbuilt",
-    "medicao",
-    "medicao-visualizacao",
-    "faturamento",
-    "meta",
-    "estoque",
-    "estoque-equipes",
-    "mapa-almoxarifado",
-    "posicao-trafo",
-    "entrada",
-    "saida",
-    "estornos",
-    "consumo-projeto",
-    "materiais",
-    "pessoas",
-    "cargo",
-    "equipes",
-    "configuracao-mapa-almoxarifado",
-    "prioridade",
-    "centro-servico",
-    "contrato",
-    "atividades",
-    "tipo-equipe",
-    "imei",
-    "tipo-servico",
-    "nivel-tensao",
-    "porte",
-    "responsavel-distribuidora",
-    "municipio",
-  ];
+  const defaultPageAccess: readonly string[] = DEFAULT_USER_PAGE_ACCESS;
 
   return permissionCatalog.map((item) => {
     if (role === "master" || role === "admin") {
       return { ...item, enabled: true };
     }
 
-    if (role === "supervisor") {
-      return { ...item, enabled: defaultPageAccess.includes(item.pageKey) };
-    }
-
     if (role === "viewer") {
       return {
         ...item,
-        enabled: ["home", "dash-estoque", "estoque", "posicao-trafo", "estornos", "consumo-projeto"].includes(item.pageKey),
+        enabled: (VIEWER_PAGE_ACCESS as readonly string[]).includes(item.pageKey),
       };
     }
 
+    // `supervisor` e `user` compartilham o mesmo default.
     return {
       ...item,
       enabled: defaultPageAccess.includes(item.pageKey),
