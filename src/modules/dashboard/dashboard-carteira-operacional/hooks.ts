@@ -4,7 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
-import { fetchDashboardPortfolio, fetchDashboardPortfolioProjectActivities } from "./api";
+import {
+  fetchDashboardPortfolio,
+  fetchDashboardPortfolioForecastGaps,
+  fetchDashboardPortfolioProjectActivities,
+} from "./api";
 import { EMPTY_DASHBOARD_PORTFOLIO_FILTERS } from "./constants";
 import type {
   DashboardPortfolioAgeBucket,
@@ -13,6 +17,7 @@ import type {
   DashboardPortfolioFilters,
   DashboardPortfolioFinancialSummary,
   DashboardPortfolioFlowRow,
+  DashboardPortfolioForecastGaps,
   DashboardPortfolioGoalCoverage,
   DashboardPortfolioOption,
   DashboardPortfolioProject,
@@ -32,6 +37,7 @@ export function useDashboardPortfolio() {
   const [quantitySummary, setQuantitySummary] = useState<DashboardPortfolioQuantitySummary | null>(null);
   const [financialSummary, setFinancialSummary] = useState<DashboardPortfolioFinancialSummary | null>(null);
   const [goalCoverage, setGoalCoverage] = useState<DashboardPortfolioGoalCoverage | null>(null);
+  const [forecastGaps, setForecastGaps] = useState<DashboardPortfolioForecastGaps | null>(null);
   const [flow, setFlow] = useState<DashboardPortfolioFlowRow[]>([]);
   const [renewalChart, setRenewalChart] = useState<DashboardPortfolioRenewalRow[]>([]);
   const [ageBuckets, setAgeBuckets] = useState<DashboardPortfolioAgeBucket[]>([]);
@@ -57,6 +63,7 @@ export function useDashboardPortfolio() {
       setQuantitySummary(data.quantitySummary ?? null);
       setFinancialSummary(data.financialSummary ?? null);
       setGoalCoverage(data.goalCoverage ?? null);
+      setForecastGaps(data.forecastGaps ?? null);
       setFlow(data.flow ?? []);
       setRenewalChart(data.renewalChart ?? []);
       setAgeBuckets(data.ageBuckets ?? []);
@@ -78,6 +85,27 @@ export function useDashboardPortfolio() {
       setIsLoading(false);
     }
   }, [filters, logError, session?.accessToken]);
+
+  const loadForecastGaps = useCallback(async () => {
+    if (!session?.accessToken) {
+      throw new Error("Sessao invalida para carregar projetos sem atividade prevista.");
+    }
+
+    try {
+      const data = await fetchDashboardPortfolioForecastGaps({
+        accessToken: session.accessToken,
+        cycleStart: filters.cycleStart,
+        serviceCenterId: filters.serviceCenterId,
+      });
+      return data.items ?? [];
+    } catch (error) {
+      await logError("Falha ao carregar projetos sem atividade prevista no Dashboard Carteira Operacional", error, {
+        cycleStart: filters.cycleStart || null,
+        serviceCenterId: filters.serviceCenterId || null,
+      });
+      throw error;
+    }
+  }, [filters.cycleStart, filters.serviceCenterId, logError, session?.accessToken]);
 
   const loadProjectActivities = useCallback(async (projectId: string) => {
     if (!session?.accessToken) {
@@ -118,10 +146,12 @@ export function useDashboardPortfolio() {
     quantitySummary,
     financialSummary,
     goalCoverage,
+    forecastGaps,
     flow,
     renewalChart,
     ageBuckets,
     projectRows,
+    loadForecastGaps,
     loadProjectActivities,
     isLoading,
     errorMessage,

@@ -76,6 +76,38 @@ export type DashboardPortfolioGoalCoverage = {
   message: string;
 };
 
+export type DashboardPortfolioForecastGaps = {
+  projectsOutsideBase: number;
+  projectsWithoutForecast: number;
+  projectsOrphanForecast: number;
+  projectsZeroValue: number;
+  projectsProducingOutside: number;
+  producedTotalOutside: number;
+  producedInCycleOutside: number;
+};
+
+export type DashboardPortfolioForecastGapSituation = "SEM_PREVISAO" | "PREVISAO_ORFA" | "PREVISAO_SEM_VALOR";
+
+export type DashboardPortfolioForecastGapItem = {
+  projectId: string;
+  projectCode: string;
+  serviceCenterId: string | null;
+  serviceCenter: string;
+  situation: DashboardPortfolioForecastGapSituation;
+  isWithdrawn: boolean;
+  producedTotal: number;
+  producedInCycle: number;
+  measurementCount: number;
+  lastExecutionDate: string | null;
+  lastExecutionLabel: string;
+};
+
+export type DashboardPortfolioForecastGapResponse = {
+  message?: string;
+  cycleLabel?: string;
+  items?: DashboardPortfolioForecastGapItem[];
+};
+
 export type DashboardPortfolioFlowRow = {
   stage: string;
   projects: number;
@@ -161,6 +193,7 @@ export type DashboardPortfolioResponse = {
   quantitySummary?: DashboardPortfolioQuantitySummary;
   financialSummary?: DashboardPortfolioFinancialSummary;
   goalCoverage?: DashboardPortfolioGoalCoverage;
+  forecastGaps?: DashboardPortfolioForecastGaps;
   flow?: DashboardPortfolioFlowRow[];
   renewalChart?: DashboardPortfolioRenewalRow[];
   ageBuckets?: DashboardPortfolioAgeBucket[];

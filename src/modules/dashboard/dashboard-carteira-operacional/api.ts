@@ -2,6 +2,7 @@ import { DASHBOARD_PORTFOLIO_ENDPOINT } from "./constants";
 import type {
   DashboardPortfolioActivityForecastResponse,
   DashboardPortfolioFilters,
+  DashboardPortfolioForecastGapResponse,
   DashboardPortfolioResponse,
 } from "./types";
 
@@ -25,6 +26,30 @@ export async function fetchDashboardPortfolio(params: {
 
   if (!response.ok) {
     throw new Error(data.message ?? "Falha ao carregar Dashboard Carteira Operacional.");
+  }
+
+  return data;
+}
+
+export async function fetchDashboardPortfolioForecastGaps(params: {
+  accessToken: string;
+  cycleStart: string;
+  serviceCenterId: string;
+}) {
+  const searchParams = new URLSearchParams();
+  if (params.cycleStart && params.cycleStart !== "ALL") searchParams.set("cycleStart", params.cycleStart);
+  if (params.serviceCenterId) searchParams.set("serviceCenterId", params.serviceCenterId);
+
+  const response = await fetch(`${DASHBOARD_PORTFOLIO_ENDPOINT}/forecast-gaps?${searchParams.toString()}`, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${params.accessToken}`,
+    },
+  });
+  const data = (await response.json().catch(() => ({}))) as DashboardPortfolioForecastGapResponse;
+
+  if (!response.ok) {
+    throw new Error(data.message ?? "Falha ao carregar projetos sem atividade prevista.");
   }
 
   return data;

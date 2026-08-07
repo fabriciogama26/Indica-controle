@@ -1,1 +1,1 @@
-export { handleDashboardPortfolioGet } from "./controller";
+export { handleDashboardPortfolioForecastGapsGet, handleDashboardPortfolioGet } from "./controller";
