@@ -37,6 +37,29 @@ type AsbuiltFactorRow = {
   projects_measured: number | string | null;
 };
 
+type ForecastGapSummaryRow = {
+  projects_outside_base: number | string | null;
+  projects_without_forecast: number | string | null;
+  projects_orphan_forecast: number | string | null;
+  projects_zero_value: number | string | null;
+  projects_producing_outside: number | string | null;
+  produced_total_outside: number | string | null;
+  produced_in_cycle_outside: number | string | null;
+};
+
+type ForecastGapRow = {
+  project_id: string;
+  project_code: string | null;
+  service_center_id: string | null;
+  service_center_text: string | null;
+  situation: string | null;
+  is_withdrawn: boolean | null;
+  produced_total: number | string | null;
+  produced_in_cycle: number | string | null;
+  measurement_count: number | string | null;
+  last_execution_date: string | null;
+};
+
 type ProjectRow = {
   id: string;
   sob: string | null;
@@ -384,6 +407,28 @@ async function loadAsbuiltFactor(supabase: AuthenticatedAppUserContext["supabase
   return { data: rows[0] ?? null, error: null };
 }
 
+// Projetos fora da base da Carteira por falta de atividade prevista (RPC 358).
+// O resumo sobe no payload principal; a lista fica sob demanda no modal, para
+// nao carregar linha nenhuma em quem nunca abrir o cartao.
+async function loadForecastGapSummary(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  cycleStart: string;
+  cycleEnd: string;
+  serviceCenterId: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("dashboard_portfolio_forecast_gap_summary", {
+    p_tenant_id: params.tenantId,
+    p_cycle_start: params.cycleStart,
+    p_cycle_end: params.cycleEnd,
+    p_service_center: params.serviceCenterId,
+  });
+
+  if (error) return { data: null as ForecastGapSummaryRow | null, error };
+  const rows = Array.isArray(data) ? data as ForecastGapSummaryRow[] : [];
+  return { data: rows[0] ?? null, error: null };
+}
+
 async function loadProjects(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -502,6 +547,77 @@ function buildCycles(orders: MeasurementOrderRow[], requestedCycleStart: string 
   }
 
   return Array.from(cycleMap.values()).sort((left, right) => right.cycleStart.localeCompare(left.cycleStart));
+}
+
+function normalizeGapSituation(value: unknown) {
+  const token = normalizeText(value).toUpperCase();
+  if (token === "SEM_PREVISAO" || token === "PREVISAO_ORFA" || token === "PREVISAO_SEM_VALOR") return token;
+  return "SEM_PREVISAO";
+}
+
+export async function handleDashboardPortfolioForecastGapsGet(request: NextRequest) {
+  const resolution = await resolveAuthenticatedAppUser(request, {
+    invalidSessionMessage: "Sessao invalida para carregar projetos sem atividade prevista.",
+    inactiveMessage: "Usuario inativo.",
+  });
+
+  if ("error" in resolution) {
+    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorization = await requirePageAction({
+    context: resolution,
+    pageKey: DASHBOARD_PORTFOLIO_PAGE_KEY,
+    action: "read",
+  });
+  if (!authorization.allowed) {
+    return NextResponse.json(
+      {
+        message: authorization.error.message,
+        code: authorization.error.code,
+        pageKey: authorization.pageKey,
+        action: authorization.action,
+      },
+      { status: authorization.error.status },
+    );
+  }
+
+  const tenantId = resolution.appUser.tenant_id;
+  const requestedCycleStart = normalizeIsoDate(request.nextUrl.searchParams.get("cycleStart"));
+  const cycle = requestedCycleStart ? buildCycleFromDate(requestedCycleStart) : buildCurrentCycle();
+  const serviceCenterIdFilter = normalizeUuid(request.nextUrl.searchParams.get("serviceCenterId"));
+
+  const { data, error } = await resolution.supabase.rpc("dashboard_portfolio_forecast_gaps", {
+    p_tenant_id: tenantId,
+    p_cycle_start: cycle.cycleStart,
+    p_cycle_end: cycle.cycleEnd,
+    p_service_center: serviceCenterIdFilter,
+  });
+
+  if (error) {
+    return NextResponse.json({ message: "Falha ao carregar projetos sem atividade prevista." }, { status: 500 });
+  }
+
+  const rows = ((data ?? []) as ForecastGapRow[])
+    .map((row) => ({
+      projectId: normalizeText(row.project_id),
+      projectCode: normalizeText(row.project_code) || "Projeto sem codigo",
+      serviceCenterId: row.service_center_id ?? null,
+      serviceCenter: normalizeText(row.service_center_text) || "Nao identificado",
+      situation: normalizeGapSituation(row.situation),
+      isWithdrawn: row.is_withdrawn === true,
+      producedTotal: numberValue(row.produced_total),
+      producedInCycle: numberValue(row.produced_in_cycle),
+      measurementCount: Math.trunc(numberValue(row.measurement_count)),
+      lastExecutionDate: normalizeIsoDate(row.last_execution_date),
+      lastExecutionLabel: formatDatePtBr(normalizeIsoDate(row.last_execution_date)),
+    }))
+    .sort((left, right) => {
+      const byProduced = right.producedTotal - left.producedTotal;
+      return byProduced !== 0 ? byProduced : left.projectCode.localeCompare(right.projectCode, "pt-BR");
+    });
+
+  return NextResponse.json({ cycleLabel: cycle.label, items: rows });
 }
 
 export async function handleDashboardPortfolioGet(request: NextRequest) {
@@ -816,6 +932,30 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao calcular o fator de realizacao As Built." }, { status: 500 });
   }
 
+  // O recorte por Regional vale aqui (fatia legitima). O filtro `Carteira` NAO:
+  // projeto sem previsao nao tem potencial, entao retirado ou nao da no mesmo e
+  // aplicar o escopo so criaria um estado a mais para explicar.
+  const forecastGapResult = await loadForecastGapSummary({
+    supabase: resolution.supabase,
+    tenantId,
+    cycleStart: selectedCycle.cycleStart,
+    cycleEnd: selectedCycle.cycleEnd,
+    serviceCenterId: serviceCenterIdFilter,
+  });
+  if (forecastGapResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar projetos sem atividade prevista." }, { status: 500 });
+  }
+  const forecastGapRow = forecastGapResult.data;
+  const forecastGaps = {
+    projectsOutsideBase: Math.trunc(numberValue(forecastGapRow?.projects_outside_base)),
+    projectsWithoutForecast: Math.trunc(numberValue(forecastGapRow?.projects_without_forecast)),
+    projectsOrphanForecast: Math.trunc(numberValue(forecastGapRow?.projects_orphan_forecast)),
+    projectsZeroValue: Math.trunc(numberValue(forecastGapRow?.projects_zero_value)),
+    projectsProducingOutside: Math.trunc(numberValue(forecastGapRow?.projects_producing_outside)),
+    producedTotalOutside: numberValue(forecastGapRow?.produced_total_outside),
+    producedInCycleOutside: numberValue(forecastGapRow?.produced_in_cycle_outside),
+  };
+
   const goalCoverageRow = goalCoverageResult.data;
   const goalCoverageStatus = normalizeGoalCoverageStatus(goalCoverageRow?.status);
 
@@ -938,6 +1078,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
         : 0,
     },
     goalCoverage,
+    forecastGaps,
     flow: [
       {
         stage: "Projetos novos",

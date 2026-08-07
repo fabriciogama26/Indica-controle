@@ -3,7 +3,12 @@
 import { useMemo, useState } from "react";
 
 import { useDashboardPortfolio } from "./hooks";
-import type { DashboardPortfolioActivityForecastItem, DashboardPortfolioProject } from "./types";
+import type {
+  DashboardPortfolioActivityForecastItem,
+  DashboardPortfolioForecastGapItem,
+  DashboardPortfolioForecastGapSituation,
+  DashboardPortfolioProject,
+} from "./types";
 import {
   csvEscapePortfolio,
   downloadPortfolioCsv,
@@ -83,6 +88,14 @@ function InfoButton(props: { label: string; text: string }) {
   );
 }
 
+const forecastGapSituationLabels: Record<DashboardPortfolioForecastGapSituation, string> = {
+  SEM_PREVISAO: "Sem atividade prevista",
+  PREVISAO_ORFA: "Previsao orfa (integridade)",
+  PREVISAO_SEM_VALOR: "Prevista sem valor (na base)",
+};
+
+const forecastGapCriteriaText = "Parametros: a base da tela e fechada em projetos com atividade prevista cadastrada. Sem atividade prevista = projeto ativo, nao teste e nao terceiro, sem nenhuma linha de atividade prevista: falta cadastrar e ele fica fora da tela. Previsao orfa = tem linha, mas nenhuma casa com o catalogo de atividades pelo par (id, tenant): cadastrar de novo nao resolve, a linha continua orfa, e o valor esperado e zero. Prevista sem valor = esta DENTRO da base, mas o valor previsto soma zero, entao aparece como projeto saudavel sem potencial. O que importa e a producao: ela e receita real do ciclo que NAO abate a meta no bloco Cobertura da meta. O recorte por Regional se aplica; o filtro Carteira nao, porque projeto sem previsao nao tem potencial.";
+
 function renderDaysWithoutProduction(project: DashboardPortfolioProject) {
   if (project.daysWithoutProduction === null) return "Sem producao";
   return `${project.daysWithoutProduction} dias`;
@@ -109,6 +122,11 @@ export function DashboardPortfolioPageView() {
   const [activityRows, setActivityRows] = useState<DashboardPortfolioActivityForecastItem[]>([]);
   const [isActivityLoading, setIsActivityLoading] = useState(false);
   const [activityError, setActivityError] = useState("");
+  const [isGapModalOpen, setIsGapModalOpen] = useState(false);
+  const [gapRows, setGapRows] = useState<DashboardPortfolioForecastGapItem[]>([]);
+  const [isGapLoading, setIsGapLoading] = useState(false);
+  const [gapError, setGapError] = useState("");
+  const forecastGaps = dashboard.forecastGaps;
   const selectedCycleLabel = dashboard.filters.cycleStart === "ALL"
     ? "Todos os ciclos"
     : dashboard.cycles.find((cycle) => cycle.cycleStart === dashboard.filters.cycleStart)?.label ?? "Ciclo selecionado";
@@ -176,6 +194,49 @@ export function DashboardPortfolioPageView() {
     ]);
     const csv = `\uFEFF${[header, ...lines].map((line) => line.map(csvEscapePortfolio).join(";")).join("\n")}`;
     downloadPortfolioCsv(csv, `dashboard_carteira_operacional_${toPortfolioIsoDate(new Date())}.csv`);
+  }
+
+  async function openForecastGaps() {
+    setIsGapModalOpen(true);
+    setGapRows([]);
+    setGapError("");
+    setIsGapLoading(true);
+
+    try {
+      const rows = await dashboard.loadForecastGaps();
+      setGapRows(rows);
+    } catch (error) {
+      setGapError(error instanceof Error ? error.message : "Falha ao carregar projetos sem atividade prevista.");
+    } finally {
+      setIsGapLoading(false);
+    }
+  }
+
+  function exportForecastGaps() {
+    if (!gapRows.length) return;
+
+    const header = [
+      "Projeto",
+      "Regional",
+      "Situacao",
+      "Carteira",
+      "Medicoes",
+      "Ultima medicao",
+      "Produzido no ciclo",
+      "Produzido total",
+    ];
+    const lines = gapRows.map((row) => [
+      row.projectCode,
+      row.serviceCenter,
+      forecastGapSituationLabels[row.situation],
+      row.isWithdrawn ? "Retirada" : "Ativa",
+      formatPortfolioNumber(row.measurementCount),
+      row.lastExecutionLabel,
+      formatPortfolioCurrency(row.producedInCycle),
+      formatPortfolioCurrency(row.producedTotal),
+    ]);
+    const csv = `﻿${[header, ...lines].map((line) => line.map(csvEscapePortfolio).join(";")).join("\n")}`;
+    downloadPortfolioCsv(csv, `carteira_projetos_sem_atividade_prevista_${toPortfolioIsoDate(new Date())}.csv`);
   }
 
   async function openActivityForecast(project: DashboardPortfolioProject) {
@@ -249,6 +310,55 @@ export function DashboardPortfolioPageView() {
       <datalist id="dashboard-carteira-projects">
         {dashboard.projects.map((project) => <option key={project.id} value={project.label} />)}
       </datalist>
+
+      <article className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div>
+            <div className={styles.titleWithInfo}>
+              <h2 className={styles.cardTitle}>Fora da base</h2>
+              <InfoButton label="Parametros dos projetos sem atividade prevista" text={forecastGapCriteriaText} />
+            </div>
+            <p className={styles.cardSubtitle}>Projetos ativos que nao entram na carteira por falta de atividade prevista cadastrada.</p>
+          </div>
+        </div>
+        <div className={styles.metricGrid}>
+          <button
+            type="button"
+            className={`${styles.metric} ${styles.neutral} ${styles.metricButton}`}
+            onClick={() => void openForecastGaps()}
+          >
+            <span>Sem atividade prevista</span>
+            <strong>{formatPortfolioNumber(forecastGaps?.projectsOutsideBase ?? 0)}</strong>
+            <small>Clique para ver e extrair a lista.</small>
+          </button>
+          <MetricCard
+            label="Com producao fora da base"
+            value={formatPortfolioNumber(forecastGaps?.projectsProducingOutside ?? 0)}
+            tone={(forecastGaps?.projectsProducingOutside ?? 0) > 0 ? "red" : "neutral"}
+            hint="Produziram, mas nao abatem a meta."
+          />
+          <MetricCard
+            label="Produzido no ciclo fora da meta"
+            value={formatPortfolioCurrency(forecastGaps?.producedInCycleOutside ?? 0, true)}
+            tone={(forecastGaps?.producedInCycleOutside ?? 0) > 0 ? "red" : "neutral"}
+            hint="Receita real do ciclo invisivel na Cobertura."
+          />
+          <MetricCard
+            label="Prevista sem valor (na base)"
+            value={formatPortfolioNumber(forecastGaps?.projectsZeroValue ?? 0)}
+            tone="neutral"
+            hint="Entram na carteira com potencial zero."
+          />
+          {(forecastGaps?.projectsOrphanForecast ?? 0) > 0 ? (
+            <MetricCard
+              label="Previsao orfa"
+              value={formatPortfolioNumber(forecastGaps?.projectsOrphanForecast ?? 0)}
+              tone="red"
+              hint="Falha de integridade: recadastrar nao resolve."
+            />
+          ) : null}
+        </div>
+      </article>
 
       <article className={`${styles.card} ${styles.diagnosticCard}`}>
         <div className={styles.diagnosticHeader}>
@@ -533,6 +643,66 @@ export function DashboardPortfolioPageView() {
           <button type="button" className={styles.secondaryButton} disabled={currentProjectPage >= totalProjectPages} onClick={() => setProjectPage((page) => Math.min(totalProjectPages, page + 1))}>Proxima</button>
         </div>
       </article>
+      {isGapModalOpen ? (
+        <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setIsGapModalOpen(false)}>
+          <div className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="portfolio-gap-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <div>
+                <h2 id="portfolio-gap-title" className={styles.cardTitle}>Projetos sem atividade prevista</h2>
+                <p className={styles.cardSubtitle}>
+                  {`${formatPortfolioNumber(gapRows.length)} projeto(s) - ${formatPortfolioCurrency(gapRows.reduce((total, row) => total + row.producedInCycle, 0))} produzidos no ciclo fora da meta`}
+                </p>
+              </div>
+              <div className={styles.modalActions}>
+                <button type="button" className={styles.primaryButton} disabled={!gapRows.length} onClick={exportForecastGaps}>
+                  Extrair CSV
+                </button>
+                <button type="button" className={styles.secondaryButton} onClick={() => setIsGapModalOpen(false)}>
+                  Fechar
+                </button>
+              </div>
+            </div>
+            {gapError ? <p className={styles.errorMessage}>{gapError}</p> : null}
+            {isGapLoading ? (
+              <p className={styles.emptyState}>Carregando projetos sem atividade prevista...</p>
+            ) : (
+              <div className={styles.tableWrapper}>
+                <table className={`${styles.table} ${styles.activityTable}`}>
+                  <thead>
+                    <tr>
+                      <th>Projeto</th>
+                      <th>Regional</th>
+                      <th>Situacao</th>
+                      <th>Carteira</th>
+                      <th>Medicoes</th>
+                      <th>Ultima medicao</th>
+                      <th>Produzido no ciclo</th>
+                      <th>Produzido total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {gapRows.length ? gapRows.map((row) => (
+                      <tr key={row.projectId}>
+                        <td>{row.projectCode}</td>
+                        <td>{row.serviceCenter}</td>
+                        <td>{forecastGapSituationLabels[row.situation]}</td>
+                        <td>{row.isWithdrawn ? "Retirada" : "Ativa"}</td>
+                        <td>{formatPortfolioNumber(row.measurementCount)}</td>
+                        <td>{row.lastExecutionLabel}</td>
+                        <td>{formatPortfolioCurrency(row.producedInCycle)}</td>
+                        <td>{formatPortfolioCurrency(row.producedTotal)}</td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan={8} className={styles.emptyRow}>Nenhum projeto sem atividade prevista no recorte atual.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {activityProject ? (
         <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setActivityProject(null)}>
           <div className={styles.modalCard} role="dialog" aria-modal="true" aria-labelledby="portfolio-activity-title" onMouseDown={(event) => event.stopPropagation()}>
