@@ -35,6 +35,27 @@ Arquitetura
 - Banco:
   - `supabase/migrations/176_create_project_billing_module.sql`
 
+Banco/Supabase
+--------------
+- Tabelas principais usadas pela tela:
+  - `project_billing_orders`: cabecalho do faturamento; fonte da listagem, filtros, detalhe, status, projeto, tipo, motivo, data de ingresso, observacao e controle de concorrencia por `updated_at`.
+  - `project_billing_order_items`: itens faturados; fonte da quantidade de itens, valor total da lista, detalhe, edicao e CSV detalhado.
+  - `project_billing_order_history`: historico de criacao, edicao e mudancas de status exibido no modal `Historico`.
+- Tabelas auxiliares consultadas:
+  - `project`: catalogo de projetos em `GET /api/faturamento/meta` e validacao/snapshot do SOB nas RPCs.
+  - `service_activities`: catalogo/autocomplete de atividades, snapshots dos itens, pontos, unidade, valor unitario e fallback de `voice_point` no detalhe.
+  - `measurement_no_production_reasons`: motivos ativos de sem producao em `GET /api/faturamento/meta` e validacao/snapshot nas RPCs.
+  - `app_users`: nomes de criador/atualizador e autores do historico.
+  - `app_user_page_permissions` e `role_page_permissions`: permissao server-side da pagina `faturamento`.
+- Escritas:
+  - Cadastro/edicao individual usam RPC `save_project_billing_order`.
+  - Cadastro em massa usa RPC `save_project_billing_order_batch_partial`, que chama a RPC base linha a linha e retorna resultado parcial.
+  - Fechar, reabrir e cancelar usam RPC `set_project_billing_order_status`.
+- Multi-tenant:
+  - Todas as leituras da API filtram por `tenant_id` derivado da sessao.
+  - O frontend nao acessa Supabase direto; usa apenas `/api/faturamento`, `/api/faturamento/meta` e `/api/faturamento/activities/catalog`.
+  - RLS fica ativa nas tabelas do modulo; as RPCs recebem `p_tenant_id` e `p_actor_user_id` resolvidos no Route Handler.
+
 Cadastro
 --------
 - Campos principais:
@@ -207,9 +228,9 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/faturamento/BillingPageView.tsx`
   - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico e status.
 - Caminho: `src/app/api/faturamento/route.ts`
-  - Responsavel por: validacao de payload, permissao server-side da pagina, leitura paginada, detalhe, historico, save via RPC e status via RPC.
+  - Responsavel por: validacao de payload, permissao server-side da pagina, leitura paginada em `project_billing_orders`, agregacao de itens em `project_billing_order_items`, detalhe, historico em `project_billing_order_history`, save via RPC e status via RPC.
 - Caminho: `src/app/api/faturamento/meta/route.ts`
-  - Responsavel por: carregar projetos e motivos de sem producao por tenant.
+  - Responsavel por: carregar `project` e `measurement_no_production_reasons` por tenant.
 - Caminho: `src/app/api/faturamento/activities/catalog/route.ts`
   - Responsavel por: pesquisar atividades em `service_activities`.
 
@@ -266,3 +287,9 @@ Atualizacao 2026-07-10 - Hardening de RPC:
 - Antes: Supabase Advisor apontava EXECUTE por `authenticated` em funcao `SECURITY DEFINER`.
 - Depois: EXECUTE direto fica revogado para `public`, `anon` e `authenticated`; o backend chama com `service_role`.
 - Multi-tenant: mantem validacao de tenant no Route Handler e na RPC; reduz superficie de chamada direta via `/rpc`.
+
+Atualizacao 2026-08-10 - Mapeamento de tabelas Supabase:
+- Arquivo alterado: `docs/Tela_Faturamento_SaaS.txt`.
+- Antes: a doc citava a migration e alguns catalogos, mas nao respondia explicitamente quais tabelas Supabase sustentam a tela.
+- Depois: incluida a secao `Banco/Supabase`, separando tabelas principais (`project_billing_orders`, `project_billing_order_items`, `project_billing_order_history`), tabelas auxiliares, RPCs e preservacao multi-tenant.
+- Multi-tenant: mudanca somente documental; nenhuma alteracao em schema, RLS, permissao, rota ou frontend.
