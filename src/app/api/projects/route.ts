@@ -170,6 +170,7 @@ type ProjectInput = {
 };
 
 type ProjectWorkCompletionStatusFilter = "TODOS" | "NAO_INFORMADO" | string;
+type ProjectPortfolioStatusFilter = "TODOS" | "CANCELADOS" | "RETIRADOS_CARTEIRA" | "TERCEIROS";
 
 type ResolvedProjectLookups = {
   partner: ContractRow;
@@ -284,6 +285,11 @@ function normalizeProjectWorkCompletionStatusFilter(value: unknown): ProjectWork
   return normalized;
 }
 
+function normalizeProjectPortfolioStatusFilter(value: unknown): ProjectPortfolioStatusFilter {
+  const normalized = normalizeText(value).toUpperCase();
+  return ["CANCELADOS", "RETIRADOS_CARTEIRA", "TERCEIROS"].includes(normalized) ? normalized as ProjectPortfolioStatusFilter : "TODOS";
+}
+
 function normalizeUuid(value: unknown) {
   const normalized = normalizeText(value);
   return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
@@ -315,14 +321,6 @@ function parseStructuredDatabaseError(message: string) {
   }
 }
 
-// Projetos com alguma etapa concluida, para o resumo da lista.
-//
-// Fonte: `programming` (modelo normalizado), via a fachada da Programacao. A
-// versao anterior lia `project_programming` por DOIS caminhos — ids do catalogo em
-// `work_completion_status_id` e texto em `work_completion_status` — com deteccao de
-// schema legado sem a coluna de id. No modelo normalizado nao existe coluna de id:
-// `work_completion_status` guarda o CODIGO e a FK e por codigo (migration 310).
-// Os dois caminhos e o fallback sairam junto com a troca de fonte.
 async function fetchCompletedProgrammingProjectIds(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -576,10 +574,8 @@ async function fetchProjectsPageCompat(params: {
   tenantId: string;
   sob: string;
   executionDate: string;
-  priority: string;
-  serviceCenter: string;
-  city: string;
-  canceledOnly: boolean;
+  priority: string; serviceCenter: string; serviceType: string; city: string;
+  portfolioStatus: ProjectPortfolioStatusFilter;
   programmingFilteredProjectIds: string[] | null;
   from: number;
   to: number;
@@ -602,12 +598,13 @@ async function fetchProjectsPageCompat(params: {
     if (params.serviceCenter) {
       query = query.eq("service_center_text", params.serviceCenter);
     }
+    if (params.serviceType) query = query.eq("service_type_text", params.serviceType);
     if (params.city) {
       query = query.eq("city_text", params.city);
     }
-    if (params.canceledOnly) {
-      query = query.eq("is_active", false);
-    }
+    if (params.portfolioStatus === "CANCELADOS") query = query.eq("is_active", false);
+    else if (params.portfolioStatus === "RETIRADOS_CARTEIRA") query = query.eq("is_withdrawn", true);
+    else if (params.portfolioStatus === "TERCEIROS") query = query.eq("is_third_party", true);
     if (params.programmingFilteredProjectIds) {
       query = query.in(
         "id",
@@ -690,10 +687,8 @@ async function fetchProjectsSummaryCompat(params: {
   tenantId: string;
   sob: string;
   executionDate: string;
-  priority: string;
-  serviceCenter: string;
-  city: string;
-  canceledOnly: boolean;
+  priority: string; serviceCenter: string; serviceType: string; city: string;
+  portfolioStatus: ProjectPortfolioStatusFilter;
   programmingFilteredProjectIds: string[] | null;
 }) {
   const projectIds: string[] = [];
@@ -708,8 +703,6 @@ async function fetchProjectsSummaryCompat(params: {
       .select("id, sob")
       .eq("tenant_id", params.tenantId)
       .eq("is_test", false)
-      .eq("is_withdrawn", false)
-      .eq("is_third_party", false)
       .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
 
@@ -725,10 +718,14 @@ async function fetchProjectsSummaryCompat(params: {
     if (params.serviceCenter) {
       projectIdsQuery = projectIdsQuery.eq("service_center_text", params.serviceCenter);
     }
+    if (params.serviceType) projectIdsQuery = projectIdsQuery.eq("service_type_text", params.serviceType);
     if (params.city) {
       projectIdsQuery = projectIdsQuery.eq("city_text", params.city);
     }
-    projectIdsQuery = projectIdsQuery.eq("is_active", params.canceledOnly ? false : true);
+    if (params.portfolioStatus === "CANCELADOS") projectIdsQuery = projectIdsQuery.eq("is_active", false);
+    else if (params.portfolioStatus === "RETIRADOS_CARTEIRA") projectIdsQuery = projectIdsQuery.eq("is_withdrawn", true);
+    else if (params.portfolioStatus === "TERCEIROS") projectIdsQuery = projectIdsQuery.eq("is_third_party", true);
+    else projectIdsQuery = projectIdsQuery.eq("is_active", true).eq("is_withdrawn", false).eq("is_third_party", false);
     if (params.programmingFilteredProjectIds) {
       projectIdsQuery = projectIdsQuery.in(
         "id",
@@ -760,10 +757,12 @@ async function fetchProjectsSummaryCompat(params: {
       if (params.serviceCenter) {
         withTestQuery = withTestQuery.eq("service_center_text", params.serviceCenter);
       }
+      if (params.serviceType) withTestQuery = withTestQuery.eq("service_type_text", params.serviceType);
       if (params.city) {
         withTestQuery = withTestQuery.eq("city_text", params.city);
       }
-      withTestQuery = withTestQuery.eq("is_active", params.canceledOnly ? false : true);
+      if (params.portfolioStatus === "CANCELADOS") withTestQuery = withTestQuery.eq("is_active", false);
+      else if (params.portfolioStatus === "TODOS") withTestQuery = withTestQuery.eq("is_active", true);
       if (params.programmingFilteredProjectIds) {
         withTestQuery = withTestQuery.in(
           "id",
@@ -798,10 +797,12 @@ async function fetchProjectsSummaryCompat(params: {
       if (params.serviceCenter) {
         fallbackQuery = fallbackQuery.eq("service_center_text", params.serviceCenter);
       }
+      if (params.serviceType) fallbackQuery = fallbackQuery.eq("service_type_text", params.serviceType);
       if (params.city) {
         fallbackQuery = fallbackQuery.eq("city_text", params.city);
       }
-      fallbackQuery = fallbackQuery.eq("is_active", params.canceledOnly ? false : true);
+      if (params.portfolioStatus === "CANCELADOS") fallbackQuery = fallbackQuery.eq("is_active", false);
+      else if (params.portfolioStatus === "TODOS") fallbackQuery = fallbackQuery.eq("is_active", true);
       if (params.programmingFilteredProjectIds) {
         fallbackQuery = fallbackQuery.in(
           "id",
@@ -1372,8 +1373,9 @@ export async function GET(request: NextRequest) {
     const executionDate = normalizeText(params.get("executionDate"));
     const priority = normalizeText(params.get("priority"));
     const serviceCenter = normalizeText(params.get("serviceCenter"));
+    const serviceType = normalizeText(params.get("serviceType"));
     const city = normalizeText(params.get("city"));
-    const canceledOnly = normalizeBoolean(params.get("canceledOnly"));
+    const portfolioStatus = normalizeProjectPortfolioStatusFilter(params.get("portfolioStatus") ?? (normalizeBoolean(params.get("canceledOnly")) ? "CANCELADOS" : ""));
     const workCompletionStatus = normalizeProjectWorkCompletionStatusFilter(params.get("workCompletionStatus"));
     const sgdTypeId = normalizeUuid(params.get("sgdTypeId"));
     const { page, pageSize, from, to } = parsePagination(params, { maxPageSize: 100 });
@@ -1393,10 +1395,7 @@ export async function GET(request: NextRequest) {
       tenantId: appUser.tenant_id,
       sob,
       executionDate,
-      priority,
-      serviceCenter,
-      city,
-      canceledOnly,
+      priority, serviceCenter, serviceType, city, portfolioStatus,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
       from,
       to,
@@ -1411,10 +1410,7 @@ export async function GET(request: NextRequest) {
       tenantId: appUser.tenant_id,
       sob,
       executionDate,
-      priority,
-      serviceCenter,
-      city,
-      canceledOnly,
+      priority, serviceCenter, serviceType, city, portfolioStatus,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
     });
 

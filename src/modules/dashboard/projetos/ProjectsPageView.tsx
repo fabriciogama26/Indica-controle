@@ -83,7 +83,8 @@ type FilterState = {
   priority: string;
   serviceCenter: string;
   city: string;
-  canceledOnly: boolean;
+  serviceType: string;
+  portfolioStatus: "TODOS" | "CANCELADOS" | "RETIRADOS_CARTEIRA" | "TERCEIROS";
   workCompletionStatus: "TODOS" | "NAO_INFORMADO" | string;
   sgdTypeId: string;
 };
@@ -308,7 +309,8 @@ const INITIAL_FILTERS: FilterState = {
   priority: "",
   serviceCenter: "",
   city: "",
-  canceledOnly: false,
+  serviceType: "",
+  portfolioStatus: "TODOS",
   workCompletionStatus: "TODOS",
   sgdTypeId: "",
 };
@@ -409,11 +411,14 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   if (filters.serviceCenter) {
     params.set("serviceCenter", filters.serviceCenter);
   }
+  if (filters.serviceType) {
+    params.set("serviceType", filters.serviceType);
+  }
   if (filters.city) {
     params.set("city", filters.city);
   }
-  if (filters.canceledOnly) {
-    params.set("canceledOnly", "true");
+  if (filters.portfolioStatus !== "TODOS") {
+    params.set("portfolioStatus", filters.portfolioStatus);
   }
   if (filters.workCompletionStatus && filters.workCompletionStatus !== "TODOS") {
     params.set("workCompletionStatus", filters.workCompletionStatus);
@@ -2490,12 +2495,12 @@ export function ProjectsPageView() {
             <article className={`${styles.projectSummaryCard} ${styles.projectSummaryTotal}`}>
               <strong>Total de projetos</strong>
               <span>{projectListSummary.totalProjects}</span>
-              <small>Projetos ativos da carteira, sem obras de teste.</small>
+              <small>Projetos conforme filtros, sem obras de teste.</small>
             </article>
             <article className={`${styles.projectSummaryCard} ${styles.projectSummaryCompleted}`}>
               <strong>Concluidas</strong>
               <span>{projectListSummary.completed}</span>
-              <small>Projetos CONCLUIDO na Programacao, sem obras de teste.</small>
+              <small>Projetos CONCLUIDO na Programacao, conforme filtros.</small>
             </article>
           </div>
         </article>
@@ -3070,6 +3075,7 @@ export function ProjectsPageView() {
             </select>
           </label>
 
+          <label className={styles.field}><span>Tipo de Servico</span><select value={filterDraft.serviceType} onChange={(event) => updateFilterField("serviceType", event.target.value)}><option value="">Todos</option>{meta.serviceTypes.map((serviceType) => <option key={serviceType} value={serviceType}>{serviceType}</option>)}</select></label>
           <label className={styles.field}>
             <span>Municipio</span>
             <select value={filterDraft.city} onChange={(event) => updateFilterField("city", event.target.value)}>
@@ -3098,19 +3104,7 @@ export function ProjectsPageView() {
             </select>
           </label>
 
-          <label className={`${styles.field} ${styles.checkboxField}`}>
-            <span>Status Cancelado</span>
-            <div className={styles.checkboxControl}>
-              <input
-                id="projects-filter-canceled-only"
-                type="checkbox"
-                checked={filterDraft.canceledOnly}
-                onChange={(event) => updateFilterField("canceledOnly", event.target.checked)}
-              />
-              <span>Somente cancelados</span>
-            </div>
-          </label>
-
+          <label className={styles.field}><span>Situacao da carteira</span><select value={filterDraft.portfolioStatus} onChange={(event) => updateFilterField("portfolioStatus", event.target.value as FilterState["portfolioStatus"])}><option value="TODOS">Todos</option><option value="CANCELADOS">Cancelados</option><option value="RETIRADOS_CARTEIRA">Retirados da carteira</option><option value="TERCEIROS">Terceiros</option></select></label>
           <label className={styles.field}>
             <span>Tipo SGD</span>
             <select value={filterDraft.sgdTypeId} onChange={(event) => updateFilterField("sgdTypeId", event.target.value)}>
