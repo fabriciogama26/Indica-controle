@@ -449,6 +449,12 @@ function translateMovementTypeValue(value: unknown) {
   return value;
 }
 
+function directMovementLabel(movementType: unknown) {
+  const normalized = String(movementType ?? "").trim().toUpperCase();
+  if (normalized === "EXIT") return "Saida direta";
+  return "Compra direta";
+}
+
 function translateEntryTypeValue(value: unknown) {
   const normalized = String(value ?? "").trim().toUpperCase();
   if (normalized === "NOVO" || normalized === "SUCATA") {
@@ -969,7 +975,7 @@ async function loadTransferList(request: NextRequest) {
     const toStockCenterName = stockCenterMap.get(transfer.to_stock_center_id) ?? "-";
     const directPurchase = Boolean(transfer.direct_purchase);
     const projectCode = directPurchase && !transfer.project_id
-      ? "Compra direta"
+      ? directMovementLabel(transfer.movement_type)
       : projectMap.get(transfer.project_id ?? "") ?? "-";
 
     const reversalFromOriginal = reversalByOriginalMap.get(transfer.id) ?? null;
@@ -1255,7 +1261,8 @@ async function handleCreateStockTransfer(request: NextRequest) {
     const fromStockCenterId = normalizeText(payload.fromStockCenterId);
     const toStockCenterId = normalizeText(payload.toStockCenterId);
     const directPurchase = payload.directPurchase === true;
-    const projectId = directPurchase && movementType === "ENTRY" ? null : normalizeText(payload.projectId);
+    const allowsDirectMovement = movementType === "ENTRY" || movementType === "EXIT";
+    const projectId = directPurchase && allowsDirectMovement ? null : normalizeText(payload.projectId);
     const entryDate = normalizeDateInput(payload.entryDate);
     const entryType = normalizeEntryType(payload.entryType);
     const balanceCorrectionReason = normalizeText(payload.balanceCorrectionReason) || null;
@@ -1263,9 +1270,9 @@ async function handleCreateStockTransfer(request: NextRequest) {
     const items = buildTransferItems(payload);
     const today = toIsoDate(new Date());
 
-    if (directPurchase && movementType !== "ENTRY") {
+    if (directPurchase && !allowsDirectMovement) {
       return NextResponse.json(
-        { message: "Compra direta e permitida somente para operacao Entrada." },
+        { message: "Movimentacao direta e permitida somente para Entrada (Compra direta) e Saida (Saida direta)." },
         { status: 400 },
       );
     }
@@ -1281,7 +1288,7 @@ async function handleCreateStockTransfer(request: NextRequest) {
       return NextResponse.json(
         {
           message:
-            "Campos obrigatorios: movementType, fromStockCenterId, toStockCenterId, projectId, entryDate e entryType. Projeto e opcional somente em Entrada com Compra direta.",
+            "Campos obrigatorios: movementType, fromStockCenterId, toStockCenterId, projectId, entryDate e entryType. Projeto e opcional somente em Entrada com Compra direta ou Saida com Saida direta.",
         },
         { status: 400 },
       );

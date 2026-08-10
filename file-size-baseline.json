@@ -10,7 +10,7 @@
     "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1422,
     "src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx": 2325,
     "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1714,
-    "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3687,
+    "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3697,
     "src/modules/dashboard/equipes/TeamsPageView.tsx": 1637,
     "src/modules/dashboard/faturamento/BillingPageView.tsx": 1241,
     "src/modules/dashboard/locacao/LocationPageView.tsx": 1960,
