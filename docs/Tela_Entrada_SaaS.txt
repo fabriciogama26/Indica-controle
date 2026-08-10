@@ -34,14 +34,14 @@ Cadastro
   - `movement_type` (`ENTRY`, `EXIT`, `TRANSFER`)
   - `from_stock_center_id`
   - `to_stock_center_id`
-  - `project_id` (dispensado somente quando `movement_type = ENTRY` e `direct_purchase = true`)
+  - `project_id` (dispensado somente quando `movement_type` for `ENTRY` ou `EXIT` e `direct_purchase = true`)
   - `entry_date` (campo unico de data da movimentacao)
   - Bloco `Materiais da Movimentacao` com:
     - `material_id` (selecionado por `material_code`)
     - `quantity`
     - `entry_type` (`SUCATA` ou `NOVO`)
 - Campos opcionais:
-  - `direct_purchase` (`Compra direta`, permitido somente para `Entrada`)
+  - `direct_purchase` (`Compra direta` em `Entrada`, `Saida direta` em `Saida`; nao existe em `Transferencia`)
   - `serial_number` (no bloco `Material da Operacao`)
   - `lot_code` (no bloco `Material da Operacao`)
   - `cmd` (checkbox `CMD`, visivel no bloco `Materiais da Movimentacao` somente para material `RELIGADOR`)
@@ -77,14 +77,14 @@ Cadastro
   - Campo `Tipo` e preenchido automaticamente a partir de `materials.tipo` ao selecionar o material (nao editavel no formulario).
   - Material precisa estar ativo no tenant.
   - Projeto precisa estar ativo no tenant quando informado.
-  - `Compra direta` remove a obrigatoriedade de `Projeto` apenas para `Entrada`; `Saida` e `Transferencia` continuam exigindo projeto.
+  - A movimentacao direta (`Compra direta` em `Entrada`, `Saida direta` em `Saida`) remove a obrigatoriedade de `Projeto`; `Transferencia` continua exigindo projeto.
   - Edicao direta de movimentacao e bloqueada por regra de negocio; o caminho funcional e `estorno/cancelamento`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Campo `Projeto` no cadastro manual segue padrao digitavel (`input + datalist`), no mesmo comportamento de `Material (codigo)`.
-- Checkbox `Compra direta` fica abaixo de `Projeto` e aparece somente quando a operacao selecionada e `Entrada`.
-- Quando `Compra direta` esta marcado, o campo `Projeto` fica desabilitado/limpo e o marcador obrigatorio e removido.
+- Checkbox de movimentacao direta fica abaixo de `Projeto` e aparece em `Entrada` (rotulo `Compra direta`) e em `Saida` (rotulo `Saida direta`); nao aparece em `Transferencia`.
+- Quando o checkbox esta marcado, o campo `Projeto` fica desabilitado/limpo e o marcador obrigatorio e removido.
 - Cadastro manual com auto-complete por `material_code` (`input + datalist`).
 - Cadastro manual com auto-complete por `Serial` para material rastreavel em `Saida` e `Transferencia`, carregando apenas unidades registradas em `trafo_instances.current_stock_center_id = Centro DE`.
 - Cadastro manual com auto-complete por `LP` quando o material exige LP (`TRAFO`), filtrando pelas unidades disponiveis no centro `DE`.
@@ -313,7 +313,7 @@ Atualizacao 2026-05
 - Ajuste de catalogo operacional: `GET /api/stock-transfers/meta` passa a carregar materiais ativos em paginas de 1000 registros pelo helper `fetchActiveOperationalMaterials`, evitando que codigos acima do limite padrao do Supabase/PostgREST deixem de aparecer no cadastro manual e no cadastro em massa.
 - O helper aplica fallback para schemas em transicao sem `materials.serial_tracking_type`, preservando a leitura por `is_transformer` quando necessario.
 - Ajuste de UX: o `Salvar operacao` passa a travar imediatamente com `Salvando...`, spinner e `aria-busy` antes das validacoes assincronas de saldo/serial, evitando duplo clique e duplo envio.
-- Ajuste de cadastro: `Entrada` ganhou checkbox `Compra direta`; quando marcado, a movimentacao pode ser salva sem `Projeto`, gravando `stock_transfers.direct_purchase = true` e `project_id = null`. `Saida` e `Transferencia` mantem `Projeto` obrigatorio.
+- Ajuste de cadastro: `Entrada` ganhou checkbox `Compra direta`; quando marcado, a movimentacao pode ser salva sem `Projeto`, gravando `stock_transfers.direct_purchase = true` e `project_id = null`. `Saida` e `Transferencia` mantem `Projeto` obrigatorio (regra da `Saida` revista em 2026-08, ver `Atualizacao 2026-08 - Saida direta`).
 - Migration `193_allow_direct_purchase_stock_entry.sql` adiciona `stock_transfers.direct_purchase`, torna `stock_transfers.project_id` nullable e ajusta a RPC `save_stock_transfer_record` para aceitar compra direta sem projeto, preservando estorno de entradas de compra direta.
 - Ajuste de feedback de saldo: o submit manual de `Saida`/`Transferencia` passa a listar todos os materiais bloqueados por saldo zerado ou insuficiente, com `Material`, `Saldo atual`, `Solicitado` e `Falta`; o helper `saveStockTransferViaRpc` tambem converte `details` da RPC `INSUFFICIENT_STOCK` em mensagem detalhada quando a falha ocorre no banco.
 - Ajuste de finalidade: a tela passa a permitir `Movimentacao normal` ou `Correcao de saldo`. A correcao usa a mesma operacao (`Entrada`, `Saida` ou `Transferencia`), mas grava `stock_transfers.operation_purpose = BALANCE_CORRECTION` e exige `balance_correction_reason`.
@@ -788,3 +788,39 @@ Mapa de Codigo
   - retorna `cmd` da unidade para `Saida`/`Transferencia`.
 - `supabase/migrations/339_add_cmd_to_serial_stock_movements.sql`
   - adiciona persistencia e sincronizacao de `CMD`.
+
+Atualizacao 2026-08 - Saida direta
+-----------------------------------
+- Pedido: ter em `Saida` a mesma condicao que `Entrada` ja tinha com `Compra direta`.
+- Regra: `Saida direta` dispensa `Projeto` e SO isso. Nenhuma outra regra da `Saida` foi afrouxada (saldo na origem `OWN`, Serial/LP, RET, estorno e bloqueio de centro de equipe continuam iguais).
+- `Transferencia` continua exigindo `Projeto`; nao existe transferencia direta.
+- Decisao de modelagem: reaproveitar `stock_transfers.direct_purchase` em vez de criar coluna nova.
+  - A coluna ja e nullable-friendly (`project_id` virou nullable na `193`) e nao existe `CHECK` amarrando a flag a `ENTRY`.
+  - `EXIT` com `project_id = null` e `direct_purchase = true` JA existia em producao: as RPCs de estorno da `216` repassam `p_direct_purchase` do registro original, e o guard da `193` sempre teve escape para `notes ilike 'ESTORNO%'`. Ou seja, o estorno de uma Entrada de compra direta ja gerava exatamente esse registro. A mudanca liberou o caminho manual, nao um estado novo de dados.
+  - Coluna nova (`direct_exit`) exigiria migration de schema, ajuste nas tres RPCs que repassam `p_direct_purchase` e duplicacao da regra em todas as camadas, sem ganho funcional.
+- Rotulo passa a ser contextual por `movement_type`, porque o nome da coluna e de compra:
+  - checkbox do formulario: `Compra direta` em `Entrada`, `Saida direta` em `Saida`;
+  - coluna `Projeto` da lista (quando nao ha projeto): `Compra direta` ou `Saida direta`;
+  - modal `Detalhes`: rotulo do campo acompanha a operacao;
+  - modal `Historico`: rotulo generico `Movimentacao direta`;
+  - exportacao CSV: cabecalho `compra_direta` renomeado para `movimentacao_direta` (valor continua `Sim`/`Nao`; a coluna `projeto` ja identifica qual das duas).
+- Estado do formulario (armadilha coberta): ao trocar a operacao, `directPurchase` so sobrevive quando a operacao destino aceita movimentacao direta, e `Projeto` e limpo sempre que a flag resultante deixa o campo desabilitado. Sem isso, `Entrada` -> `Saida` com a flag marcada deixaria projeto invisivel no estado e enviaria valor que a UI nao mostra.
+- Cadastro em massa por CSV NAO suporta movimentacao direta, nem antes nem agora: `POST /api/stock-transfers/import` continua exigindo `projeto` em toda linha. `Saida direta` e manual-only, igual `Compra direta`.
+- Consequencias operacionais conhecidas:
+  - `Saida direta` nao aparece em `Consumo de Projeto`, porque aquela tela filtra por `project_id`. E o efeito esperado para venda/descarte/devolucao a fornecedor, e e perda de rastreio se a opcao for usada para fugir do preenchimento de projeto.
+  - Saldo nao muda: `stock_center_balances` nao tem dimensao de projeto, entao a baixa na origem `OWN` e identica a de uma saida com projeto.
+  - Serial pendente (`RELIGADOR`/`CHAVE`): `stock_serial_pending_balances` casa por `project_id is not distinct from`, entao `Saida direta` so consome saldo pendente do balde SEM projeto. Unidade que entrou vinculada a um projeto nao se identifica por `Saida direta`.
+  - Estorno de `Saida direta` gera `Entrada` inversa tambem sem projeto, o que e coerente com a movimentacao original.
+- Migration `359_allow_direct_stock_exit.sql`:
+  - republica `save_stock_transfer_record_direct_purchase_v209` por `pg_get_functiondef` + `replace`, no mesmo padrao das `222`/`223`. Reescrever a funcao a partir do texto da `193` teria revertido o fix de tabela temporaria da `222`;
+  - o guard passa de `v_movement_type <> 'ENTRY'` para `v_movement_type not in ('ENTRY', 'EXIT')`, e o motivo `DIRECT_PURCHASE_ENTRY_ONLY` vira `DIRECT_MOVEMENT_ENTRY_OR_EXIT_ONLY`;
+  - bloco de validacao final aborta se o bloqueio novo nao entrou, se o antigo sobreviveu ou se o tratamento de seriais RET se perdeu no replace;
+  - nao altera schema, RLS, policies nem grants; nao cria funcao `SECURITY DEFINER` nova.
+- Arquivos alterados:
+  - `supabase/migrations/359_allow_direct_stock_exit.sql`
+  - `src/app/api/stock-transfers/route.ts`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+- Funcoes tocadas: `directMovementLabel` e `supportsDirectMovement` (novas nas duas camadas), `handleDirectPurchaseChange`, `handleMovementTypeChange`, `validateManualForm`, `handleSubmit` e o `POST /api/stock-transfers`.
+- Comportamento antes/depois:
+  - Antes: o checkbox so existia em `Entrada`; front, API e RPC recusavam a flag em `Saida`, e toda saida exigia projeto.
+  - Depois: `Saida` aceita `Saida direta` e salva sem projeto, com o mesmo comportamento de saldo e de estorno da saida normal.

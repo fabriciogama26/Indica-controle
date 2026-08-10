@@ -248,8 +248,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   toStockCenter: "Centro PARA",
   originalTransferId: "Transferencia original",
   reversalTransferId: "Transferencia de estorno",
-  directPurchase: "Compra direta",
-  direct_purchase: "Compra direta",
+  directPurchase: "Movimentacao direta",
+  direct_purchase: "Movimentacao direta",
   projectId: "Projeto",
   projectCode: "Projeto",
   materialCode: "Material (codigo)",
@@ -427,6 +427,15 @@ function movementTypeLabel(value: string | null | undefined) {
   if (normalized === "EXIT") return "Saida";
   if (normalized === "TRANSFER") return "Transferencia";
   return "-";
+}
+
+function directMovementLabel(value: string | null | undefined) {
+  return normalizeMovementType(value) === "EXIT" ? "Saida direta" : "Compra direta";
+}
+
+function supportsDirectMovement(value: string | null | undefined) {
+  const normalized = normalizeMovementType(value);
+  return normalized === "ENTRY" || normalized === "EXIT";
 }
 
 function movementDateLabel(value: string | null | undefined) {
@@ -684,7 +693,8 @@ export function StockTransfersPageView() {
   const locksQuantityAsUnit = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType)
     && (!selectedMaterialAllowsPendingSerial || hasSerialDraft || requiresLotFields);
   const isTransformerMovementMode = Boolean(transformerMovementMode);
-  const isDirectPurchaseProjectOptional = form.movementType === "ENTRY" && form.directPurchase;
+  const allowsDirectMovement = supportsDirectMovement(form.movementType);
+  const isDirectMovementProjectOptional = allowsDirectMovement && form.directPurchase;
   const formEntryDateLabel = movementDateLabel(form.movementType);
   const fromStockCenterName = centerMap.get(form.fromStockCenterId)?.name ?? "centro DE";
   const matchedSerialOption = useMemo(
@@ -870,7 +880,7 @@ export function StockTransfersPageView() {
         "centro_de",
         "centro_para",
         "projeto",
-        "compra_direta",
+        "movimentacao_direta",
         "finalidade",
         "motivo_correcao",
         "material_codigo",
@@ -1130,7 +1140,7 @@ export function StockTransfersPageView() {
   }
 
   function handleProjectCodeChange(value: string) {
-    if (isDirectPurchaseProjectOptional) {
+    if (isDirectMovementProjectOptional) {
       return;
     }
 
@@ -1147,9 +1157,9 @@ export function StockTransfersPageView() {
   function handleDirectPurchaseChange(checked: boolean) {
     setForm((current) => ({
       ...current,
-      directPurchase: current.movementType === "ENTRY" ? checked : false,
-      projectCode: checked && current.movementType === "ENTRY" ? "" : current.projectCode,
-      projectId: checked && current.movementType === "ENTRY" ? "" : current.projectId,
+      directPurchase: supportsDirectMovement(current.movementType) && checked,
+      projectCode: supportsDirectMovement(current.movementType) && checked ? "" : current.projectCode,
+      projectId: supportsDirectMovement(current.movementType) && checked ? "" : current.projectId,
     }));
   }
 
@@ -1163,9 +1173,9 @@ export function StockTransfersPageView() {
       movementType: value,
       fromStockCenterId: isTransformerMovementMode ? current.fromStockCenterId : "",
       toStockCenterId: "",
-      directPurchase: value === "ENTRY" ? current.directPurchase : false,
-      projectCode: value === "ENTRY" ? current.projectCode : "",
-      projectId: value === "ENTRY" ? current.projectId : "",
+      directPurchase: supportsDirectMovement(value) && current.directPurchase,
+      projectCode: supportsDirectMovement(value) && !current.directPurchase ? current.projectCode : "",
+      projectId: supportsDirectMovement(value) && !current.directPurchase ? current.projectId : "",
       serialNumber: isTransformerMovementMode ? current.serialNumber : "",
       lotCode: isTransformerMovementMode ? current.lotCode : "",
     }));
@@ -1247,12 +1257,12 @@ export function StockTransfersPageView() {
   function validateManualForm() {
     const today = toIsoDate(new Date());
 
-    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || (!form.projectId && !isDirectPurchaseProjectOptional) || !form.entryDate) {
+    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || (!form.projectId && !isDirectMovementProjectOptional) || !form.entryDate) {
       return "Preencha todos os campos obrigatorios do cabecalho.";
     }
 
-    if (form.directPurchase && form.movementType !== "ENTRY") {
-      return "Compra direta e permitida somente para operacao Entrada.";
+    if (form.directPurchase && !allowsDirectMovement) {
+      return "Movimentacao direta e permitida somente para Entrada (Compra direta) e Saida (Saida direta).";
     }
 
     if (form.operationPurpose === "BALANCE_CORRECTION" && !normalizeText(form.balanceCorrectionReason)) {
@@ -1647,13 +1657,13 @@ export function StockTransfersPageView() {
     }
 
     const today = toIsoDate(new Date());
-    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || (!form.projectId && !isDirectPurchaseProjectOptional) || !form.entryDate) {
-      showError("Preencha operacao, centros, projeto e data antes de salvar. Projeto e opcional somente em Entrada com Compra direta.");
+    if (!form.movementType || !form.fromStockCenterId || !form.toStockCenterId || (!form.projectId && !isDirectMovementProjectOptional) || !form.entryDate) {
+      showError("Preencha operacao, centros, projeto e data antes de salvar. Projeto e opcional somente em Entrada com Compra direta ou Saida com Saida direta.");
       return;
     }
 
-    if (form.directPurchase && form.movementType !== "ENTRY") {
-      showError("Compra direta e permitida somente para operacao Entrada.");
+    if (form.directPurchase && !allowsDirectMovement) {
+      showError("Movimentacao direta e permitida somente para Entrada (Compra direta) e Saida (Saida direta).");
       return;
     }
 
@@ -1761,8 +1771,8 @@ export function StockTransfersPageView() {
           operationPurpose: form.operationPurpose,
           fromStockCenterId: form.fromStockCenterId,
           toStockCenterId: form.toStockCenterId,
-          projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
-          directPurchase: isDirectPurchaseProjectOptional,
+          projectId: isDirectMovementProjectOptional ? null : form.projectId,
+          directPurchase: isDirectMovementProjectOptional,
           entryDate: form.entryDate,
           entryType: operationEntryType,
           balanceCorrectionReason: form.operationPurpose === "BALANCE_CORRECTION" ? normalizeText(form.balanceCorrectionReason) : null,
@@ -1788,8 +1798,8 @@ export function StockTransfersPageView() {
           operationPurpose: form.operationPurpose,
           fromStockCenterId: form.fromStockCenterId,
           toStockCenterId: form.toStockCenterId,
-          projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
-          directPurchase: isDirectPurchaseProjectOptional,
+          projectId: isDirectMovementProjectOptional ? null : form.projectId,
+          directPurchase: isDirectMovementProjectOptional,
           itemCount: form.items.length,
         });
         return;
@@ -1810,8 +1820,8 @@ export function StockTransfersPageView() {
         operationPurpose: form.operationPurpose,
         fromStockCenterId: form.fromStockCenterId,
         toStockCenterId: form.toStockCenterId,
-        projectId: isDirectPurchaseProjectOptional ? null : form.projectId,
-        directPurchase: isDirectPurchaseProjectOptional,
+        projectId: isDirectMovementProjectOptional ? null : form.projectId,
+        directPurchase: isDirectMovementProjectOptional,
         itemCount: form.items.length,
       });
     } finally {
@@ -2656,7 +2666,7 @@ export function StockTransfersPageView() {
 
           <div className={styles.field}>
             <span>
-              Projeto {!isDirectPurchaseProjectOptional ? <span className={styles.requiredMark}>*</span> : null}
+              Projeto {!isDirectMovementProjectOptional ? <span className={styles.requiredMark}>*</span> : null}
             </span>
             <input
               type="text"
@@ -2664,14 +2674,14 @@ export function StockTransfersPageView() {
               onChange={(event) => handleProjectCodeChange(event.target.value)}
               list="entrada-projeto-form-list"
               placeholder="Digite o codigo do projeto"
-              disabled={isSubmitting || isLoadingMeta || isDirectPurchaseProjectOptional}
+              disabled={isSubmitting || isLoadingMeta || isDirectMovementProjectOptional}
             />
             <datalist id="entrada-projeto-form-list">
               {projects.map((project) => (
                 <option key={project.id} value={project.projectCode} />
               ))}
             </datalist>
-            {form.movementType === "ENTRY" ? (
+            {allowsDirectMovement ? (
               <label className={styles.checkboxField}>
                 <input
                   type="checkbox"
@@ -2679,7 +2689,7 @@ export function StockTransfersPageView() {
                   onChange={(event) => handleDirectPurchaseChange(event.target.checked)}
                   disabled={isSubmitting || isLoadingMeta}
                 />
-                <span>Compra direta</span>
+                <span>{directMovementLabel(form.movementType)}</span>
               </label>
             ) : null}
           </div>
@@ -3331,7 +3341,7 @@ export function StockTransfersPageView() {
                 <div><strong>Atualizado em:</strong> {formatDateTime(detailItem.updatedAt)}</div>
                 <div><strong>Usuario:</strong> {detailItem.updatedByName}</div>
                 <div><strong>Projeto:</strong> {detailItem.projectCode}</div>
-                <div><strong>Compra direta:</strong> {detailItem.directPurchase ? "Sim" : "Nao"}</div>
+                <div><strong>{directMovementLabel(detailItem.movementType)}:</strong> {detailItem.directPurchase ? "Sim" : "Nao"}</div>
                 <div><strong>Finalidade:</strong> {operationPurposeLabel(detailItem.operationPurpose)}</div>
                 <div><strong>Motivo da correcao:</strong> {detailItem.balanceCorrectionReason ?? "-"}</div>
                 <div><strong>Estornada:</strong> {detailItem.isReversed ? "Sim" : "Nao"}</div>
