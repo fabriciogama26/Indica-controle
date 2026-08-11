@@ -14,7 +14,6 @@
     "src/modules/dashboard/equipes/TeamsPageView.tsx": 1637,
     "src/modules/dashboard/faturamento/BillingPageView.tsx": 1239,
     "src/modules/dashboard/locacao/LocationPageView.tsx": 1960,
-    "src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx": 1143,
     "src/modules/dashboard/materiais/MaterialsPageView.tsx": 1704,
     "src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx": 1248,
     "src/modules/dashboard/medicao/MeasurementPageView.tsx": 3641,
