@@ -17,15 +17,25 @@ type ProjectSituationKey =
   | "PORTFOLIO"
   | "CONCLUDED"
   | "TO_REPROGRAM"
-  | "REVIEW_STAGES"
-  | "INTERRUPTED_COMPLETED"
   | "PENDING"
   | "PARTIAL_PLANNED"
   | "PARTIAL"
   | "BENEFIT_REACHED"
   | "INTERRUPTED"
   | "WITHOUT_STATUS"
-  | "NEVER_PROGRAMMED";
+  | "NEVER_PROGRAMMED"
+  | "WITHDRAWN";
+
+// Escopo por Tipo de Servico. `MANUTENCAO` agrupa emergencial + manutencao e
+// `OBRAS` traz todo o resto; nao existe visao misturando os dois, porque os
+// indicadores de carteira e prazo tem leitura operacional diferente em cada um.
+//
+// A classificacao e por texto do Tipo de Servico, e `project_service_types` e
+// catalogo por tenant, editavel na tela `/tipo-servico` (a migration 031 apenas
+// semeou o que ja existia como texto livre em `project.service_type`). Ou seja:
+// tipo novo cadastrado amanha cai em `OBRAS` por omissao. Parametrizar essa
+// classificacao esta anotado como melhoria futura no doc da tela.
+type ServiceScope = "OBRAS" | "MANUTENCAO";
 
 type PriorityLevel = "NORMAL" | "ATTENTION" | "PRIORITY" | "INCONSISTENCY";
 
@@ -117,8 +127,16 @@ function isCompletedWorkStatus(value: unknown) {
   return token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO");
 }
 
-function isEmergencyServiceType(value: unknown) {
-  return normalizeToken(value).includes("EMERGENCIAL");
+// `MANUTENCAO` casa por substring normalizada, entao pega tanto `EMERGENCIAL`
+// quanto `MANUTENCAO` e suas variacoes (`MANUTENCAO PREVENTIVA`,
+// `OBRA EMERGENCIAL`). Tudo que nao casa aqui e `OBRAS`.
+function isMaintenanceServiceType(value: unknown) {
+  const token = normalizeToken(value);
+  return token.includes("EMERGENCIAL") || token.includes("MANUTENCAO");
+}
+
+function parseServiceScope(value: unknown): ServiceScope {
+  return normalizeToken(value) === "MANUTENCAO" ? "MANUTENCAO" : "OBRAS";
 }
 
 function isPartialPlannedWorkStatus(value: unknown) {
@@ -166,56 +184,6 @@ function resolveStageLabel(row: ProgrammingRow | null) {
   if (row.etapa_unica) return "Etapa unica";
   const stageNumber = Number(row.etapa_number ?? 0);
   return Number.isInteger(stageNumber) && stageNumber > 0 ? `${stageNumber} etapa` : "Sem etapa";
-}
-
-function resolveStageReviewIssue(rows: ProgrammingRow[]) {
-  const activeRowsWithStage = rows
-    .filter((row) => isActiveProgrammingStatus(row.status))
-    .filter((row) => {
-      const stageNumber = Number(row.etapa_number ?? 0);
-      return Number.isInteger(stageNumber) && stageNumber > 0;
-    });
-
-  for (const interruptedRow of rows.filter((row) => isInterruptedStatus(row.status))) {
-    const interruptedStageNumber = Number(interruptedRow.etapa_number ?? 0);
-    if (!Number.isInteger(interruptedStageNumber) || interruptedStageNumber < 1) continue;
-
-    const nextActiveStage = activeRowsWithStage
-      .filter((row) => Number(row.etapa_number ?? 0) > interruptedStageNumber)
-      .sort((left, right) => {
-        const stageDiff = Number(left.etapa_number ?? 0) - Number(right.etapa_number ?? 0);
-        return stageDiff || compareProgrammingRows(left, right);
-      })
-      .at(0);
-
-    if (!nextActiveStage) continue;
-
-    return {
-      interruptedStageLabel: resolveStageLabel(interruptedRow),
-      nextActiveStageLabel: resolveStageLabel(nextActiveStage),
-      interruptedStatus: normalizeToken(interruptedRow.status),
-      interruptedDate: normalizeIsoDate(interruptedRow.execution_date) ?? "",
-    };
-  }
-
-  return null;
-}
-
-function resolveInterruptedCompletedIssue(rows: ProgrammingRow[]) {
-  const interruptedCompleted = rows
-    .filter((row) => isInterruptedStatus(row.status))
-    .filter((row) => isCompletedWorkStatus(row.work_completion_status))
-    .sort(compareProgrammingRows)
-    .at(-1);
-
-  if (!interruptedCompleted) return null;
-
-  return {
-    interruptedStageLabel: resolveStageLabel(interruptedCompleted),
-    interruptedStatus: normalizeToken(interruptedCompleted.status),
-    interruptedWorkCompletionStatus: normalizeToken(interruptedCompleted.work_completion_status),
-    interruptedDate: normalizeIsoDate(interruptedCompleted.execution_date) ?? "",
-  };
 }
 
 function resolvePriorityLevel(params: {
@@ -285,41 +253,30 @@ async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
     "is_third_party",
   ].join(", ");
 
-  const primary = await supabase
+  // Terceiros ficam fora do Mapa inteiro (nem carteira, nem card de apoio).
+  // `is_withdrawn` NAO e cortado aqui: as retiradas viram card proprio e sao
+  // separadas da `Carteira valida` na consolidacao, nunca somadas a ela.
+  // O Tipo de Servico tambem nao e cortado aqui: virou o escopo `serviceScope`.
+  //
+  // Nao existe mais fallback sem as flags: `is_withdrawn` (migration 174) e
+  // `is_third_party` (migration 307) sao `not null` na view `project_with_labels`,
+  // e um fallback que assumia `false` para as duas passaria a reportar zero
+  // retiradas e a incluir terceiros em silencio quando a consulta falhasse.
+  const { data, error } = await supabase
     .from("project_with_labels")
     .select(selectWithFlags)
     .eq("tenant_id", tenantId)
     .eq("is_active", true)
     .eq("is_test", false)
-    .eq("is_withdrawn", false)
     .eq("is_third_party", false)
     .order("sob", { ascending: true })
     .returns<ProjectRow[]>();
 
-  if (!primary.error) {
-    return (primary.data ?? []).filter((project) => !isEmergencyServiceType(project.service_type_text));
-  }
-
-  const fallback = await supabase
-    .from("project_with_labels")
-    .select("id, sob, execution_deadline, service_center_text, service_type_text, city_text, priority_text, is_active")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .order("sob", { ascending: true })
-    .returns<ProjectRow[]>();
-
-  if (fallback.error) {
+  if (error) {
     throw new Error("Falha ao carregar projetos para o Mapa de Programacao.");
   }
 
-  return (fallback.data ?? [])
-    .map((item) => ({
-      ...item,
-      is_test: false,
-      is_withdrawn: false,
-      is_third_party: false,
-    }))
-    .filter((project) => !isEmergencyServiceType(project.service_type_text));
+  return data ?? [];
 }
 
 async function fetchWorkCompletionCatalog(supabase: SupabaseClient, tenantId: string) {
@@ -376,6 +333,118 @@ async function fetchTeams(supabase: SupabaseClient, tenantId: string) {
   return buildTeamLookup(teamRows, teamTypeMap, peopleMap, serviceCenterMap);
 }
 
+type ConsolidationContext = {
+  today: string;
+  programmingByProject: Map<string, ProgrammingRow[]>;
+  workCompletionLabelMap: Map<string, string>;
+  teamMap: ReturnType<typeof buildTeamLookup>;
+};
+
+// Consolida uma obra por linha a partir do historico de Programacao. Roda duas
+// vezes com o mesmo contexto: uma para a carteira e outra para as retiradas, que
+// precisam dos mesmos campos na tabela do card mas nao podem entrar nos
+// indicadores da `Carteira valida`.
+function consolidateProjects(projects: ProjectRow[], context: ConsolidationContext) {
+  const { today, programmingByProject, workCompletionLabelMap, teamMap } = context;
+
+  return projects
+    .map((project) => {
+      const projectRows = (programmingByProject.get(project.id) ?? []).sort(compareProgrammingRows);
+      const latest = projectRows.at(-1) ?? null;
+      const latestDate = normalizeIsoDate(latest?.execution_date) ?? "";
+      const daysSinceLatest = latestDate ? diffInDays(today, latestDate) : null;
+      const latestWorkCompletion = projectRows
+        .filter((row) => normalizeToken(row.work_completion_status))
+        .at(-1) ?? null;
+      const workCompletionStatus = latestWorkCompletion?.work_completion_status
+        ? normalizeToken(latestWorkCompletion.work_completion_status)
+        : null;
+      const workCompletionLabel = workCompletionStatus
+        ? workCompletionLabelMap.get(workCompletionStatus) ?? workCompletionStatus
+        : "Nao informado";
+      const latestProgrammingStatus = normalizeToken(latest?.status) || "SEM_PROGRAMACAO";
+      // Etapa (linha de `programming`) tem N equipes em `programming_team`, nao
+      // mais uma so (achado da auditoria: mostrar uma equipe so escondia as
+      // demais quando a etapa tinha mais de uma equipe ativa).
+      const latestActiveTeamIds = (latest?.programming_team ?? [])
+        .filter((team) => team.status === "ATIVA")
+        .map((team) => normalizeText(team.team_id))
+        .filter(Boolean);
+      const latestTeamNames = Array.from(new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.name ?? teamId)));
+      const latestForemanNames = Array.from(
+        new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.foremanName ?? "Sem encarregado")),
+      );
+      // `programmingCount` (linhas legadas, uma por equipe) e `stageCount`
+      // (chaves distintas de etapa) colapsam no modelo normalizado: uma linha
+      // de `programming` JA E uma etapa. O dado novo e util e a contagem de
+      // equipes distintas que passaram pela Programacao do projeto.
+      const distinctTeamIds = new Set(
+        projectRows.flatMap((row) => (row.programming_team ?? []).map((team) => normalizeText(team.team_id)).filter(Boolean)),
+      );
+      // Pendencia (achado da auditoria): a migration 318 tirou PENDENCIA de
+      // `work_completion_status` e virou a flag `is_pendencia`. "Aberta" segue a
+      // mesma definicao usada no chip da lista de Programacao Normalizada
+      // (queries.ts): flag ligada, etapa ativa e ainda nao concluida.
+      const hasOpenPendencia = projectRows.some(
+        (row) => row.is_pendencia && isActiveProgrammingStatus(row.status) && normalizeToken(row.work_completion_status) !== "CONCLUIDO",
+      );
+      const hasFutureActiveProgramming = projectRows.some((row) => {
+        const executionDate = normalizeIsoDate(row.execution_date);
+        return Boolean(executionDate && executionDate >= today && isActiveProgrammingStatus(row.status));
+      });
+      const completed = isCompletedWorkStatus(workCompletionStatus);
+      const interrupted = latest
+        ? (isInterruptedStatus(latest.status) || isInterruptedStatus(workCompletionStatus)) && !completed
+        : false;
+      const withoutStatus = Boolean(latest && !workCompletionStatus && (!latestDate || (daysSinceLatest !== null && daysSinceLatest > 0)));
+      const actionRequired = !completed && (!hasFutureActiveProgramming || interrupted || withoutStatus);
+
+      return {
+        id: project.id,
+        sob: normalizeText(project.sob) || project.id,
+        projectName: normalizeText(project.service_description) || normalizeText(project.service_type_text) || "Sem descricao",
+        contract: normalizeText(project.partner_text) || "Sem contrato",
+        serviceCenter: normalizeText(project.service_center_text) || "Sem base",
+        priority: normalizeText(project.priority_text) || "Sem prioridade",
+        serviceType: normalizeText(project.service_type_text) || "Sem tipo",
+        city: normalizeText(project.city_text) || "Sem municipio",
+        executionDeadline: normalizeIsoDate(project.execution_deadline) ?? "",
+        isWithdrawn: project.is_withdrawn === true,
+        latestProgrammingId: latest?.id ?? null,
+        latestDate,
+        latestProgrammingStatus,
+        latestWorkCompletionStatus: workCompletionStatus,
+        latestWorkCompletionLabel: workCompletionLabel,
+        latestTeamNames: latestTeamNames.length ? latestTeamNames : ["Sem equipe"],
+        latestForemanNames: latestForemanNames.length ? latestForemanNames : ["Sem encarregado"],
+        latestStageLabel: resolveStageLabel(latest),
+        stageCount: projectRows.length,
+        teamCount: distinctTeamIds.size,
+        hasOpenPendencia,
+        reason: normalizeText(latest?.cancellation_reason) || normalizeText(latest?.note),
+        daysSinceLatest,
+        priorityLevel: latest
+          ? resolvePriorityLevel({ latestDate, daysSinceLatest, workCompletionStatus })
+          : ("ATTENTION" satisfies PriorityLevel),
+        hasFutureActiveProgramming,
+        completed,
+        interrupted,
+        withoutStatus,
+        actionRequired,
+        neverProgrammed: projectRows.length === 0,
+      };
+    })
+    .sort((left, right) => {
+      const leftPriority = left.priorityLevel === "INCONSISTENCY" ? 0 : left.priorityLevel === "PRIORITY" ? 1 : left.priorityLevel === "ATTENTION" ? 2 : 3;
+      const rightPriority = right.priorityLevel === "INCONSISTENCY" ? 0 : right.priorityLevel === "PRIORITY" ? 1 : right.priorityLevel === "ATTENTION" ? 2 : 3;
+      return leftPriority - rightPriority
+        || (right.daysSinceLatest ?? -99999) - (left.daysSinceLatest ?? -99999)
+        || left.sob.localeCompare(right.sob);
+    });
+}
+
+type ConsolidatedProject = ReturnType<typeof consolidateProjects>[number];
+
 export async function GET(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar Mapa de Programacao.",
@@ -392,6 +461,7 @@ export async function GET(request: NextRequest) {
   const today = toIsoDate(new Date());
   const startDate = normalizeIsoDate(request.nextUrl.searchParams.get("startDate"));
   const endDate = normalizeIsoDate(request.nextUrl.searchParams.get("endDate"));
+  const serviceScope = parseServiceScope(request.nextUrl.searchParams.get("serviceScope"));
   const hasTeamPeriod = Boolean(startDate && endDate);
 
   if ((startDate && !endDate) || (!startDate && endDate)) {
@@ -407,7 +477,7 @@ export async function GET(request: NextRequest) {
     programmingWindowStartDate.setUTCMonth(programmingWindowStartDate.getUTCMonth() - 18);
     const programmingWindowStart = toIsoDate(programmingWindowStartDate);
 
-    const [projects, programmingRows, workCompletionLabelMap, teamMap] = await Promise.all([
+    const [allProjects, programmingRows, workCompletionLabelMap, teamMap] = await Promise.all([
       fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingStagesForMap({
         supabase: resolution.supabase,
@@ -418,7 +488,18 @@ export async function GET(request: NextRequest) {
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
     ]);
 
-    const validProjectMap = new Map(projects.map((project) => [project.id, project]));
+    // O escopo por Tipo de Servico vale para a tela inteira: `OBRAS` e o
+    // complemento exato de `MANUTENCAO`, entao nenhuma obra fica sem escopo e
+    // nenhuma aparece nos dois.
+    const scopedProjects = allProjects.filter(
+      (project) => isMaintenanceServiceType(project.service_type_text) === (serviceScope === "MANUTENCAO"),
+    );
+    // `Carteira valida` = escopo atual sem retiradas (terceiros e teste ja
+    // ficaram na consulta). As retiradas seguem para um card separado.
+    const portfolioSource = scopedProjects.filter((project) => project.is_withdrawn !== true);
+    const withdrawnSource = scopedProjects.filter((project) => project.is_withdrawn === true);
+
+    const validProjectMap = new Map(scopedProjects.map((project) => [project.id, project]));
     const programmingByProject = new Map<string, ProgrammingRow[]>();
 
     for (const row of programmingRows) {
@@ -429,117 +510,16 @@ export async function GET(request: NextRequest) {
       programmingByProject.set(projectId, rows);
     }
 
-    const consolidatedProjects = projects
-      .map((project) => {
-        const projectRows = (programmingByProject.get(project.id) ?? []).sort(compareProgrammingRows);
-        const latest = projectRows.at(-1) ?? null;
-        const latestDate = normalizeIsoDate(latest?.execution_date) ?? "";
-        const daysSinceLatest = latestDate ? diffInDays(today, latestDate) : null;
-        const latestWorkCompletion = projectRows
-          .filter((row) => normalizeToken(row.work_completion_status))
-          .at(-1) ?? null;
-        const workCompletionStatus = latestWorkCompletion?.work_completion_status
-          ? normalizeToken(latestWorkCompletion.work_completion_status)
-          : null;
-        const workCompletionLabel = workCompletionStatus
-          ? workCompletionLabelMap.get(workCompletionStatus) ?? workCompletionStatus
-          : "Nao informado";
-        const latestProgrammingStatus = normalizeToken(latest?.status) || "SEM_PROGRAMACAO";
-        // Etapa (linha de `programming`) tem N equipes em `programming_team`, nao
-        // mais uma so (achado da auditoria: mostrar uma equipe so escondia as
-        // demais quando a etapa tinha mais de uma equipe ativa).
-        const latestActiveTeamIds = (latest?.programming_team ?? [])
-          .filter((team) => team.status === "ATIVA")
-          .map((team) => normalizeText(team.team_id))
-          .filter(Boolean);
-        const latestTeamNames = Array.from(new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.name ?? teamId)));
-        const latestForemanNames = Array.from(
-          new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.foremanName ?? "Sem encarregado")),
-        );
-        // `programmingCount` (linhas legadas, uma por equipe) e `stageCount`
-        // (chaves distintas de etapa) colapsam no modelo normalizado: uma linha
-        // de `programming` JA E uma etapa. O dado novo e util e a contagem de
-        // equipes distintas que passaram pela Programacao do projeto.
-        const distinctTeamIds = new Set(
-          projectRows.flatMap((row) => (row.programming_team ?? []).map((team) => normalizeText(team.team_id)).filter(Boolean)),
-        );
-        // Pendencia (achado da auditoria): a migration 318 tirou PENDENCIA de
-        // `work_completion_status` e virou a flag `is_pendencia`. "Aberta" segue a
-        // mesma definicao usada no chip da lista de Programacao Normalizada
-        // (queries.ts): flag ligada, etapa ativa e ainda nao concluida.
-        const hasOpenPendencia = projectRows.some(
-          (row) => row.is_pendencia && isActiveProgrammingStatus(row.status) && normalizeToken(row.work_completion_status) !== "CONCLUIDO",
-        );
-        const stageReviewIssue = resolveStageReviewIssue(projectRows);
-        const stageReviewRequired = Boolean(stageReviewIssue);
-        const interruptedCompletedIssue = resolveInterruptedCompletedIssue(projectRows);
-        const interruptedCompletedRequired = Boolean(interruptedCompletedIssue);
-        const hasFutureActiveProgramming = projectRows.some((row) => {
-          const executionDate = normalizeIsoDate(row.execution_date);
-          return Boolean(executionDate && executionDate >= today && isActiveProgrammingStatus(row.status));
-        });
-        const completed = isCompletedWorkStatus(workCompletionStatus) && !interruptedCompletedRequired;
-        const interrupted = latest
-          ? (isInterruptedStatus(latest.status) || isInterruptedStatus(workCompletionStatus)) && !completed
-          : false;
-        const withoutStatus = Boolean(latest && !workCompletionStatus && (!latestDate || (daysSinceLatest !== null && daysSinceLatest > 0)));
-        const actionRequired = interruptedCompletedRequired || stageReviewRequired || (!completed && (!hasFutureActiveProgramming || interrupted || withoutStatus));
+    const consolidationContext: ConsolidationContext = {
+      today,
+      programmingByProject,
+      workCompletionLabelMap,
+      teamMap,
+    };
+    const consolidatedProjects = consolidateProjects(portfolioSource, consolidationContext);
+    const withdrawnProjects = consolidateProjects(withdrawnSource, consolidationContext);
 
-        return {
-          id: project.id,
-          sob: normalizeText(project.sob) || project.id,
-          projectName: normalizeText(project.service_description) || normalizeText(project.service_type_text) || "Sem descricao",
-          contract: normalizeText(project.partner_text) || "Sem contrato",
-          serviceCenter: normalizeText(project.service_center_text) || "Sem base",
-          priority: normalizeText(project.priority_text) || "Sem prioridade",
-          serviceType: normalizeText(project.service_type_text) || "Sem tipo",
-          city: normalizeText(project.city_text) || "Sem municipio",
-          executionDeadline: normalizeIsoDate(project.execution_deadline) ?? "",
-          latestProgrammingId: latest?.id ?? null,
-          latestDate,
-          latestProgrammingStatus,
-          latestWorkCompletionStatus: workCompletionStatus,
-          latestWorkCompletionLabel: workCompletionLabel,
-          latestTeamNames: latestTeamNames.length ? latestTeamNames : ["Sem equipe"],
-          latestForemanNames: latestForemanNames.length ? latestForemanNames : ["Sem encarregado"],
-          latestStageLabel: resolveStageLabel(latest),
-          stageCount: projectRows.length,
-          teamCount: distinctTeamIds.size,
-          hasOpenPendencia,
-          reason: normalizeText(latest?.cancellation_reason) || normalizeText(latest?.note),
-          daysSinceLatest,
-          priorityLevel: interruptedCompletedRequired || stageReviewRequired
-            ? ("INCONSISTENCY" satisfies PriorityLevel)
-            : latest
-              ? resolvePriorityLevel({ latestDate, daysSinceLatest, workCompletionStatus })
-              : ("ATTENTION" satisfies PriorityLevel),
-          stageReviewRequired,
-          stageReviewStageLabel: stageReviewIssue?.interruptedStageLabel ?? "",
-          stageReviewNextStageLabel: stageReviewIssue?.nextActiveStageLabel ?? "",
-          stageReviewStatus: stageReviewIssue?.interruptedStatus ?? "",
-          stageReviewDate: stageReviewIssue?.interruptedDate ?? "",
-          interruptedCompletedRequired,
-          interruptedCompletedStageLabel: interruptedCompletedIssue?.interruptedStageLabel ?? "",
-          interruptedCompletedStatus: interruptedCompletedIssue?.interruptedStatus ?? "",
-          interruptedCompletedWorkCompletionStatus: interruptedCompletedIssue?.interruptedWorkCompletionStatus ?? "",
-          interruptedCompletedDate: interruptedCompletedIssue?.interruptedDate ?? "",
-          hasFutureActiveProgramming,
-          completed,
-          interrupted,
-          withoutStatus,
-          actionRequired,
-          neverProgrammed: projectRows.length === 0,
-        };
-      })
-      .sort((left, right) => {
-        const leftPriority = left.priorityLevel === "INCONSISTENCY" ? 0 : left.priorityLevel === "PRIORITY" ? 1 : left.priorityLevel === "ATTENTION" ? 2 : 3;
-        const rightPriority = right.priorityLevel === "INCONSISTENCY" ? 0 : right.priorityLevel === "PRIORITY" ? 1 : right.priorityLevel === "ATTENTION" ? 2 : 3;
-        return leftPriority - rightPriority
-          || (right.daysSinceLatest ?? -99999) - (left.daysSinceLatest ?? -99999)
-          || left.sob.localeCompare(right.sob);
-      });
-
-    const buildCard = (key: ProjectSituationKey, title: string, description: string, projectsForCard: typeof consolidatedProjects) => ({
+    const buildCard = (key: ProjectSituationKey, title: string, description: string, projectsForCard: ConsolidatedProject[]) => ({
       key,
       title,
       description,
@@ -548,11 +528,16 @@ export async function GET(request: NextRequest) {
     });
 
     const statusCards = [
-      buildCard("PORTFOLIO", "Carteira valida", "Obras ativas sem teste, retiradas ou emergenciais.", consolidatedProjects),
+      buildCard(
+        "PORTFOLIO",
+        "Carteira valida",
+        serviceScope === "MANUTENCAO"
+          ? "Manutencao e emergencial ativas, sem teste, terceiros ou retiradas."
+          : "Obras ativas sem teste, terceiros, retiradas, manutencao ou emergencial.",
+        consolidatedProjects,
+      ),
       buildCard("CONCLUDED", "Concluidas", "Ultimo Estado Trabalho valido concluido.", consolidatedProjects.filter((project) => project.completed)),
-      buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired && !project.stageReviewRequired && !project.interruptedCompletedRequired)),
-      buildCard("REVIEW_STAGES", "Revisao de etapas", "Etapa cancelada ou adiada com etapa futura ativa.", consolidatedProjects.filter((project) => project.stageReviewRequired)),
-      buildCard("INTERRUPTED_COMPLETED", "Interrompidas concluidas", "Programacao cancelada ou adiada com Estado Trabalho concluido.", consolidatedProjects.filter((project) => project.interruptedCompletedRequired)),
+      buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired)),
       buildCard("PENDING", "Pendentes", "Programacao ativa com pendencia aberta (nao concluida).", consolidatedProjects.filter((project) => project.hasOpenPendencia)),
       buildCard("PARTIAL_PLANNED", "Parcial planejada", "Ultimo Estado Trabalho valido parcial planejado.", consolidatedProjects.filter((project) => isPartialPlannedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("PARTIAL", "Parciais", "Ultimo Estado Trabalho valido parcial.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
@@ -560,6 +545,7 @@ export async function GET(request: NextRequest) {
       buildCard("INTERRUPTED", "Canceladas/adiadas", "Ultima programacao cancelada ou adiada sem continuidade posterior.", consolidatedProjects.filter((project) => project.interrupted && !project.hasFutureActiveProgramming)),
       buildCard("WITHOUT_STATUS", "Sem Estado Trabalho", "Sem Estado Trabalho valido em programacao vencida.", consolidatedProjects.filter((project) => project.withoutStatus)),
       buildCard("NEVER_PROGRAMMED", "Nunca programadas", "Obras validas sem historico em Programacao.", consolidatedProjects.filter((project) => project.neverProgrammed)),
+      buildCard("WITHDRAWN", "Retiradas da carteira", "Obras marcadas como retiradas; contadas a parte, fora da Carteira valida.", withdrawnProjects),
     ];
 
     const activeTeams = Array.from(teamMap.values()).filter((team) => team.active);
@@ -579,23 +565,14 @@ export async function GET(request: NextRequest) {
       filters: {
         startDate,
         endDate,
+        serviceScope,
         generatedAt: new Date().toISOString(),
         teamPeriodEnabled: hasTeamPeriod,
       },
-      summary: {
-        portfolioProjectCount: consolidatedProjects.length,
-        actionRequiredProjectCount: consolidatedProjects.filter((project) => project.actionRequired || project.neverProgrammed).length,
-        concludedProjectCount: consolidatedProjects.filter((project) => project.completed).length,
-        toReprogramProjectCount: consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired && !project.stageReviewRequired && !project.interruptedCompletedRequired).length,
-        stageReviewProjectCount: consolidatedProjects.filter((project) => project.stageReviewRequired).length,
-        interruptedCompletedProjectCount: consolidatedProjects.filter((project) => project.interruptedCompletedRequired).length,
-        neverProgrammedProjectCount: consolidatedProjects.filter((project) => project.neverProgrammed).length,
-        interruptedProjectCount: consolidatedProjects.filter((project) => project.interrupted && !project.hasFutureActiveProgramming).length,
-        withoutStatusProjectCount: consolidatedProjects.filter((project) => project.withoutStatus).length,
-        activeTeamCount: activeTeams.length,
-        teamsWithoutProgrammingCount: teamsWithoutProgramming.length,
-        programmedTeamCount: hasTeamPeriod ? activeTeams.length - teamsWithoutProgramming.length : 0,
-      },
+      // Sem bloco `summary`: ele so alimentava a faixa de indicadores do topo,
+      // que repetia cards do grid e — por vir pronta do servidor — ignorava os
+      // filtros locais de centro/busca, divergindo dos cards de baixo. Agora
+      // todo numero da tela sai de `statusCards` passando por `filterProjects`.
       statusCards,
       priorityProjects: consolidatedProjects.filter((project) => project.actionRequired && !project.neverProgrammed),
       neverProgrammedProjects: consolidatedProjects.filter((project) => project.neverProgrammed),

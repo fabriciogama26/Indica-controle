@@ -21,6 +21,10 @@ Arquitetura
 - View:
   - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
   - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
+  - `src/modules/dashboard/mapa-programacao/components/ProjectTable.tsx`
+  - `src/modules/dashboard/mapa-programacao/components/ProjectMiniCard.tsx`
+  - `src/modules/dashboard/mapa-programacao/formatters.ts`
+  - `src/modules/dashboard/mapa-programacao/types.ts`
   - `src/modules/dashboard/mapa-programacao/index.ts`
 - Navegacao e autorizacao:
   - `src/components/layout/AppShell.tsx`
@@ -40,6 +44,7 @@ Filtros, auto-complete e listagem
 - Filtros:
   - data inicial opcional
   - data final opcional
+  - tipo (`Obras` ou `Manutencao`)
   - centro de servico
   - busca por obra/projeto/status
   - busca por equipe
@@ -48,6 +53,14 @@ Filtros, auto-complete e listagem
   - se uma data for preenchida, a outra tambem e obrigatoria.
   - os cards de carteira nao mudam com o periodo.
   - equipes sem programacao so sao calculadas quando o periodo e informado.
+- Regra do tipo:
+  - `Manutencao` traz as obras cujo Tipo de Servico e manutencao OU emergencial.
+  - `Obras` (padrao) traz tudo o que nao cai em `Manutencao`.
+  - Os dois escopos sao complementares e exclusivos: nenhuma obra fica de fora e nenhuma aparece nos dois.
+  - `Manutencao` casa por texto normalizado contendo `EMERGENCIAL` ou `MANUTENCAO` (pega `EMERGENCIAL BT`, `MANUTENCAO PREVENTIVA` etc.).
+  - A classificacao e regra de codigo sobre um catalogo editavel por tenant; tipo novo cai em `Obras` por omissao. Ver a secao MELHORIA FUTURA no fim deste arquivo.
+  - O escopo vale para a tela inteira: cards, prazos das obras, tabelas, obras prioritarias e exportacoes.
+  - O filtro e resolvido no servidor (`serviceScope` na query) e aplica na hora, sem depender do botao `Aplicar`.
 - Atalhos de periodo:
   - sem periodo
   - hoje
@@ -58,8 +71,6 @@ Filtros, auto-complete e listagem
   - Carteira valida
   - Concluidas
   - Para reprogramar
-  - Revisao de etapas
-  - Interrompidas concluidas
   - Pendentes
   - Parcial planejada
   - Parciais
@@ -67,25 +78,22 @@ Filtros, auto-complete e listagem
   - Canceladas/adiadas
   - Sem Estado Trabalho vencido
   - Nunca programadas
+  - Retiradas da carteira
 - Modal:
   - aberto ao clicar em um card.
   - mostra obras daquela situacao em tabela paginada.
   - ao clicar em uma linha, abre o detalhe da obra em formato de card.
-  - a tabela exibe SOB, ultima data, status, Estado Trabalho, equipe (lista), encarregado (lista), quantidade de etapas, quantidade de equipes distintas, revisao de etapas e dias desde a ultima programacao.
-  - o detalhe exibe SOB, projeto, ultima data, equipe (lista), encarregado (lista), Estado Trabalho, quantidade de etapas, quantidade de equipes distintas, ultima etapa, revisao de etapas, dias desde a ultima programacao e motivo/observacao quando existir.
+  - a tabela exibe SOB, ultima data, status, Estado Trabalho, equipe (lista), encarregado (lista), quantidade de etapas, quantidade de equipes distintas e dias desde a ultima programacao.
+  - o detalhe exibe SOB, projeto, ultima data, equipe (lista), encarregado (lista), Estado Trabalho, quantidade de etapas, quantidade de equipes distintas, ultima etapa, dias desde a ultima programacao e motivo/observacao quando existir.
   - no detalhe aberto pela tabela, o titulo usa `ID: {uuid}` da obra.
 - Secoes:
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
-  - Revisao de etapas em tabela propria, destacando obras com etapa cancelada/adiada e etapa ativa posterior.
-  - Interrompidas com Estado concluido em tabela propria, destacando divergencia entre status operacional e Estado Trabalho.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
   - Equipes sem programacao
 - Exportacao:
   - CSV dos prazos das obras na janela selecionada.
   - CSV das obras do card aberto.
-  - CSV da tabela dedicada de `Revisao de etapas`.
-  - CSV da tabela dedicada de `Interrompidas com Estado concluido`.
   - CSV de equipes sem programacao quando houver periodo.
 - Prazos das Obras:
   - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
@@ -102,7 +110,9 @@ Boas praticas
 - O frontend nao envia `tenant_id`, role ou usuario como fonte de verdade.
 - O endpoint resolve o tenant pela sessao autenticada.
 - A rota exige `mapa-programacao/read` antes de consultar dados de negocio.
-- Obras de teste, retiradas da carteira, inativas e emergenciais nao entram na carteira valida.
+- Obras de teste, inativas, de terceiros e retiradas da carteira nao entram na `Carteira valida`.
+- Obras de terceiros (`is_third_party`) ficam fora da tela inteira: nao aparecem em nenhum card, tabela, prazo ou exportacao.
+- Obras retiradas (`is_withdrawn`) sao contadas a parte, no card `Retiradas da carteira`; nunca somam na `Carteira valida` nem nos cards derivados dela.
 - A mesma obra aparece uma unica vez nos cards, mesmo quando possui varias programacoes.
 - A referencia operacional da obra considera a ultima programacao por `execution_date`, com desempate por `updated_at`, `created_at` e `id`.
 - A classificacao dos cards de Estado Trabalho usa o ultimo Estado Trabalho valido encontrado no historico da obra.
@@ -110,11 +120,7 @@ Boas praticas
 - A obra tambem nao e reaberta por uma programacao `CANCELADA` ou `ADIADA` posterior sem Estado Trabalho quando o ultimo Estado Trabalho valido anterior ja era concluido.
 - `Estado Trabalho` concluido segue a regra tecnica: `CONCLUIDO`, `COMPLETO` ou codigo iniciado por `CONCLUIDO`.
 - `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
-- Etapa `CANCELADA` ou `ADIADA` preserva o numero historico da etapa; se houver etapa ativa posterior no mesmo projeto, a obra entra em `Revisao de etapas`.
-- `Revisao de etapas` nao renumera etapas e nao altera dados; apenas sinaliza que as etapas futuras dependem de revisao operacional.
 - Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284.
-- Programacao `ADIADA` ou `CANCELADA` com `Estado Trabalho = CONCLUIDO` e tratada como divergencia legada/importacao administrativa e aparece em `Interrompidas com Estado concluido`.
-- Obras com divergencia `ADIADA/CANCELADA + CONCLUIDO` nao entram como concluidas no Mapa ate saneamento.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
 - `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
 - A quantidade de etapas conta linhas de `programming` da obra (uma linha = uma etapa no modelo normalizado).
@@ -204,6 +210,14 @@ Funcoes principais
   - Responsavel por: renderizar filtros, cards, painel de prazos, modal de prazos, modal de obras, obras prioritarias, equipes sem programacao, exportacoes e mensagens da tela.
 - Caminho: `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
   - Responsavel por: estilos dos cards, modal, prioridades, filtros e listas.
+- Caminho: `src/modules/dashboard/mapa-programacao/components/ProjectTable.tsx`
+  - Responsavel por: tabela paginada de obras reutilizada pelos cards, modais e tabelas dedicadas.
+- Caminho: `src/modules/dashboard/mapa-programacao/components/ProjectMiniCard.tsx`
+  - Responsavel por: detalhe da obra no modal, incluindo Tipo de Servico e marcacao de retirada.
+- Caminho: `src/modules/dashboard/mapa-programacao/formatters.ts`
+  - Responsavel por: formatacao de data, lista de nomes e dias desde a ultima programacao.
+- Caminho: `src/modules/dashboard/mapa-programacao/types.ts`
+  - Responsavel por: contratos da tela (obra consolidada, card, escopo por tipo, resposta da API e filtros).
 - Caminho: `src/components/layout/AppShell.tsx`
   - Responsavel por: exibir o item de menu e titulo/subtitulo da rota.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -225,7 +239,8 @@ Constantes e configuracoes
 
 Funcoes utilitarias relacionadas
 - `fetchProjects`
-  - Carrega projetos ativos da carteira e remove teste, retirado e emergencial.
+  - Carrega projetos ativos do tenant e remove apenas teste e terceiros; retiradas e emergenciais seguem para a separacao em memoria.
+  - Nao existe consulta de fallback sem as flags: `is_withdrawn` (migration 174) e `is_third_party` (migration 307) sao `not null` em `project_with_labels`, e um fallback que assumisse `false` reportaria zero retiradas e incluiria terceiros em silencio.
 - `fetchProgrammingStagesForMap` (fachada `@/server/modules/programacao-normalizada`)
   - Carrega as etapas (`programming`) do tenant desde a janela de 18 meses, com as equipes de cada etapa (`programming_team(team_id, status)`) embutidas.
 - `fetchWorkCompletionCatalog`
@@ -240,12 +255,8 @@ Funcoes utilitarias relacionadas
   - Resolve se o Estado Trabalho e conclusivo.
 - `resolvePriorityLevel`
   - Classifica a prioridade visual por dias desde a ultima programacao e ausencia de Estado Trabalho.
-- `resolveStageReviewIssue`
-  - Identifica etapa `CANCELADA` ou `ADIADA` com etapa ativa posterior no mesmo projeto, preservando a numeracao historica e retornando dados para o card `Revisao de etapas`.
-- `resolveInterruptedCompletedIssue`
-  - Identifica programacao `ADIADA` ou `CANCELADA` com Estado Trabalho conclusivo e retorna dados para o card `Interrompidas concluidas`.
 - `ProjectTable`
-  - Renderiza tabelas paginadas de obras prioritarias, nunca programadas e cards abertos, com coluna opcional de revisao de etapas.
+  - Renderiza tabelas paginadas de obras prioritarias, nunca programadas e cards abertos.
 - `filterProjects`
   - Aplica filtros locais de busca/centro sobre cards, tabelas e modal.
 - `exportCsv`
@@ -446,3 +457,84 @@ IMPLEMENTADO 2026-07-31 - Fase 4 do corte: Mapa lendo Programacao Normalizada
   compilar e falham por `Cannot find name 'Deno'` — nao ha erro nos arquivos
   do app. Sem teste manual em navegador (tabelas de producao nao acessadas
   nesta sessao).
+
+IMPLEMENTADO 2026-08-11 - Filtro por Tipo de Servico, retiradas contadas a parte e
+limpeza de Revisao de etapas / Interrompidas com Estado concluido
+-------------------------------------------------------------------------------
+- Filtro `Tipo` (`Obras` | `Manutencao`) criado. Emergencial deixou de ser
+  exclusao fixa da consulta e virou escopo (`serviceScope`) resolvido no
+  servidor, valendo para cards, prazos, tabelas e exportacoes.
+- `Carteira valida` passou a excluir explicitamente terceiros e retiradas, alem
+  de teste e inativa. Retiradas viraram card proprio, nunca somadas a carteira.
+  Terceiros seguem fora da tela inteira.
+- Fallback de `fetchProjects` removido: ele assumia `is_withdrawn = false` e
+  `is_third_party = false`, o que passaria a reportar zero retiradas e incluir
+  terceiros em silencio quando a consulta principal falhasse. As duas colunas
+  sao `not null` em `project_with_labels` (migrations 174 e 307).
+- `ProjectTable`, `ProjectMiniCard`, formatadores e tipos extraidos da PageView
+  (1143 -> ~800 linhas), que saiu do baseline de `lint:size`.
+
+- `Revisao de etapas` e `Interrompidas com Estado concluido` REMOVIDOS (cards,
+  tabelas dedicadas, coluna `Revisao`, colunas de CSV,
+  `resolveStageReviewIssue`, `resolveInterruptedCompletedIssue`, os campos
+  `stageReview*`/`interruptedCompleted*` do contrato e o CSS de destaque).
+  Isto executa a etapa prevista na secao "ORDEM" acima: a Fase 4 (2026-07-31)
+  manteve os dois blocos como alarme da virada e condicionou a remocao a um
+  ciclo de observacao com os detectores em zero. O ciclo passou e os dois
+  ficaram em zero nos dois escopos do filtro novo (`Obras` e `Manutencao`).
+- Motivo de negocio: a criacao de etapas na Programacao Normalizada e
+  automatizada (`reclassify_project_programming_stages` renumera a cada
+  operacao), entao a numeracao furada que o detector procurava nao se forma; e
+  o cancelamento/adiamento zera `work_completion_status` (migrations 318 e 326),
+  tornando a combinacao interrompida + concluido impossivel por construcao.
+- Efeito colateral tratado: `completed` deixou de descontar
+  `interruptedCompletedRequired`, `actionRequired` perdeu os dois ramos de
+  inconsistencia e `Para reprogramar` deixou de excluir as duas situacoes.
+  O nivel `INCONSISTENCY` de `priorityLevel` CONTINUA existindo — ele tambem e
+  emitido por `resolvePriorityLevel` (programacao vencida sem Estado Trabalho),
+  que nao tem relacao com os dois blocos removidos.
+- Faixa de indicadores do topo REMOVIDA na mesma entrega, junto com o bloco
+  `summary` da resposta da API e o CSS `.overviewGrid`/`.overviewCard`. Os seis
+  tiles eram todos redundantes: quatro repetiam card do grid (`Carteira valida`,
+  `Retiradas da carteira`, `Concluidas`, `Para reprogramar`), `Equipes sem
+  programacao` ja tem seccao propria com a lista, e `Total que precisa de acao`
+  era a soma exata de `Para reprogramar` + `Nunca programadas`.
+- Ganho alem da limpeza: a faixa era o unico ponto da tela que lia numero
+  pronto do servidor e por isso IGNORAVA os filtros locais de centro/busca,
+  divergindo dos cards logo abaixo (que passam por `filterProjects`). Sem ela,
+  todo numero visivel sai de `statusCards` filtrado no cliente, e a divergencia
+  deixa de ser possivel por construcao.
+- `summary` nao tinha outro consumidor: `GET /api/mapa-programacao` e usado
+  somente por esta tela, e dentro dela apenas pelos seis tiles.
+
+MELHORIA FUTURA - parametrizar a classificacao Obras x Manutencao
+-------------------------------------------------------------------------------
+Estado atual (assumido conscientemente, nao e descuido):
+- A classificacao e uma regra de codigo: `isMaintenanceServiceType` casa
+  substring normalizada `EMERGENCIAL` ou `MANUTENCAO` em `service_type_text`.
+  Tudo que nao casa e `OBRAS`.
+- `project_service_types` NAO e catalogo fixo: a migration 031 apenas semeou os
+  valores distintos que ja existiam como texto livre em `project.service_type`,
+  e a tela `/tipo-servico` permite cadastrar novos por tenant.
+
+Por que isso pede parametrizacao:
+- Tipo novo cadastrado amanha cai em `OBRAS` por omissao, sem ninguem ser
+  avisado. O erro e silencioso: nao quebra, so classifica errado.
+- A regra e por substring, entao um tipo chamado `OBRA SEM MANUTENCAO
+  PREVENTIVA` seria classificado como Manutencao pelo texto.
+- Cada tenant pode nomear seus tipos de forma diferente; uma regra de codigo
+  unica atende bem um tenant e mal os outros — conflita com multi-tenant.
+- O mesmo par de conceitos ja aparece em outro eixo do sistema:
+  `service_activities.category` tem `MANUTENCAO` como valor (migration 147).
+  Vale checar se a classificacao certa nao deveria vir dali em vez do nome.
+
+Caminho sugerido quando for priorizado:
+- Coluna de classificacao no proprio catalogo (ex.: `project_service_types.scope`
+  com `OBRA` | `MANUTENCAO`), preenchida no cadastro do Tipo de Servico, com
+  backfill pela regra de texto atual e default explicito para tipo novo.
+- Com isso a tela passa a ler a coluna em vez de adivinhar pelo nome, o filtro
+  deixa de ser binario fixo (da para ter mais escopos sem mexer em codigo) e o
+  criterio fica auditavel por tenant.
+- Decidir na mesma tarefa o que fazer com tipo sem classificacao: cair em
+  `OBRAS` silenciosamente (comportamento de hoje) ou aparecer como pendencia de
+  cadastro. A segunda opcao e a que evita o erro silencioso.

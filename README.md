@@ -308,6 +308,8 @@ vercel --prod
 - `src/modules/dashboard/mapa-programacao/`
   - `MapProgrammingPageView.tsx`: tela de mapa da programacao para carteira nunca programada e equipes sem programacao.
   - `MapProgrammingPageView.module.css`: estilos da tela.
+  - `components/ProjectTable.tsx` e `components/ProjectMiniCard.tsx`: tabela paginada de obras e card de detalhe da obra.
+  - `formatters.ts` e `types.ts`: formatacao compartilhada e contratos da tela.
   - `index.ts`: fachada publica do modulo.
 - `src/modules/dashboard/medicao/`
   - `MeasurementPageView.tsx`: tela de Ordem de Medicao com cadastro independente da programacao, pre-preenchimento do cabecalho via Composicao de Equipe, lista paginada, filtros por Tipo de Servico e Atividade, modos `Com producao` e `Sem producao`, motivo estruturado por tenant, inclusao de atividades da medicao, taxa unica por ordem com coluna `Taxa aplicada` na edicao, sugestao automatica da taxa ao selecionar projeto (ultima medicao do projeto) tambem em `Sem producao`, cadastro em massa CSV com suporte aos dois tipos, detalhe por item com `taxa` visivel, importacao reforcada por match exato/univoco do codigo da atividade, bloqueio de atividade duplicada na mesma ordem com validacao tambem na RPC, status de execucao baseado no ultimo `Estado Trabalho` do projeto, coluna de composicao da equipe na data e resumo filtrado da garantia minima com valor liquido descontado.

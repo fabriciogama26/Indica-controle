@@ -7,7 +7,6 @@
 
 .toolbar,
 .card,
-.overviewCard,
 .summaryCard,
 .projectCard {
   background: #ffffff;
@@ -58,7 +57,7 @@
 
 .filterGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
 }
 
@@ -124,23 +123,11 @@
   cursor: not-allowed;
 }
 
-.overviewGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 12px;
-}
-
-.overviewCard {
-  padding: 14px;
-}
-
-.overviewCard span,
 .summaryCard span {
   color: #667085;
   font-size: 0.82rem;
 }
 
-.overviewCard strong,
 .summaryCard strong {
   display: block;
   margin-top: 8px;
@@ -189,20 +176,6 @@
   border-left: 4px solid #df5b57;
 }
 
-.summaryReview {
-  border-left: 4px solid #7c3aed;
-  background: #fbf7ff;
-}
-
-.stageReviewCard {
-  border-color: #c4b5fd;
-  background: #fdfaff;
-}
-
-.interruptedCompletedCard {
-  border-color: #fca5a5;
-  background: #fff8f8;
-}
 
 .contentGrid {
   display: grid;
@@ -302,25 +275,6 @@
   overflow-wrap: anywhere;
 }
 
-.projectMetaGrid .stageReviewMeta {
-  border-color: #c4b5fd;
-  background: #fbf7ff;
-  color: #6b21a8;
-}
-
-.projectMetaGrid .stageReviewMeta strong {
-  color: #4c1d95;
-}
-
-.projectMetaGrid .interruptedCompletedMeta {
-  border-color: #fca5a5;
-  background: #fff8f8;
-  color: #991b1b;
-}
-
-.projectMetaGrid .interruptedCompletedMeta strong {
-  color: #7f1d1d;
-}
 
 .reasonText {
   margin: 10px 0 0;
@@ -394,23 +348,6 @@
   outline: none;
 }
 
-.compactTable tbody tr.stageReviewRow {
-  background: #fbf7ff;
-}
-
-.compactTable tbody tr.stageReviewRow:hover,
-.compactTable tbody tr.stageReviewRow:focus {
-  background: #f3e8ff;
-}
-
-.compactTable tbody tr.interruptedCompletedRow {
-  background: #fff8f8;
-}
-
-.compactTable tbody tr.interruptedCompletedRow:hover,
-.compactTable tbody tr.interruptedCompletedRow:focus {
-  background: #fee2e2;
-}
 
 .paginationBar {
   display: flex;
@@ -511,7 +448,6 @@
 
 @media (max-width: 1180px) {
   .filterGrid,
-  .overviewGrid,
   .summaryGrid,
   .contentGrid,
   .projectGrid {
