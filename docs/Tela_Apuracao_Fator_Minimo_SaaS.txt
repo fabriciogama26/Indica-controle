@@ -161,3 +161,45 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: botoes de CSV geravam o arquivo sem modal padrao.
 - Depois: botoes usam `CsvExportButton` e exibem o modal compartilhado `Gerando...`.
 - Multi-tenant: nao houve rota, query, schema, RLS ou permissao alterada.
+
+Atualizacao 2026-08-11 - Cartao `Meta financeira total`, ajuda nos cartoes e CSV somavel:
+- Arquivos alterados:
+  - `src/app/api/apuracao-fator-minimo/route.ts`
+  - `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.tsx`
+  - `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.module.css`
+  - `src/lib/utils/csv.ts`
+- Funcoes/campos tocados: `buildAnalysis` (reduce do `summary`), tipo `AnalysisResponse`,
+  `SummaryCard`, `SUMMARY_HELP`, `downloadCsv`, `exportRows`, `exportDetail`,
+  `formatCsvNumber`, classes `.summaryGrid`, `.summaryCardHeader`, `.infoButton`, `.infoIcon`,
+  `.secondaryButton`.
+- Antes: o resumo tinha 5 cartoes e o unico valor financeiro exibido era `Complemento estimado`,
+  que por definicao soma `max(0, metaFinanceira - valorApurado)` por linha e portanto so
+  acumula valor das linhas com status `Nao atingiu` (linhas `Atingiu` e `Sem meta` entram com 0).
+- Depois: o `summary` da API passa a devolver `financialTargetValue`, soma da `financialTarget`
+  de TODAS as linhas do resultado filtrado, independente do status (`Atingiu`, `Nao atingiu` e
+  `Sem meta`, esta ultima com meta 0).
+- Depois: o resumo exibe 6 cartoes, com `Meta financeira total` ao lado de `Complemento estimado`.
+  `.summaryGrid` passou de 5 para 6 colunas em tela larga; os breakpoints de 1180px (3 colunas)
+  e 760px (1 coluna) permanecem inalterados.
+- Depois: todos os 6 cartoes do resumo tem botao de ajuda (`ActionIcon name="info"` dentro de
+  `.infoButton`, com o texto em `title`), seguindo o padrao ja usado em `dash-estoque`. Os
+  textos ficam na constante `SUMMARY_HELP` e explicam exatamente o que entra em cada soma,
+  incluindo que `Complemento estimado` conta apenas quem ficou abaixo da meta.
+- Depois: os cartoes passam a ser renderizados pelo componente local `SummaryCard`.
+- Depois: `.secondaryButton` (usado apenas pelos dois botoes de exportacao desta tela) trocou o
+  verde `#2f6f73` pelo azul padrao do app (`rgba(37, 74, 156, 0.1)` / `#17347a`), igual ao das
+  demais telas. A geometria (36px de altura, raio 6px) segue a das outras acoes desta tela.
+- Depois: os botoes usam os rotulos padrao do `CsvExportButton` (`Exportar Excel (CSV)` e
+  `Exportando...`); o botao do modal usa `Exportar detalhe (CSV)` por existirem duas exportacoes
+  na tela.
+- Depois: a tela deixou de ter `csvEscape`/`downloadCsv` proprios e passou a usar
+  `buildCsvContent` e `downloadCsvFile` de `src/lib/utils/csv.ts`.
+- Depois: valores monetarios e numericos do CSV usam `formatCsvNumber` (novo helper em
+  `src/lib/utils/csv.ts`): sem `R$`, sem separador de milhar e com virgula decimal, para o Excel
+  pt-BR reconhecer como numero e permitir soma direta. Antes o CSV gravava `R$ 174.689,81`, que
+  o Excel importava como texto. Os cabecalhos das colunas monetarias passaram a indicar a
+  unidade: `Valor (R$)`, `Meta financeira (R$)`, `Complemento estimado (R$)`.
+- Multi-tenant: nao houve rota, query, schema, RLS ou permissao alterada; o novo total e
+  derivado das mesmas linhas ja filtradas por `tenant_id`.
+- Pendencia conhecida fora do escopo desta tela: outras telas ainda gravam moeda formatada no
+  CSV (ex.: `meta/MetaPageView.tsx`), com o mesmo problema de soma no Excel.

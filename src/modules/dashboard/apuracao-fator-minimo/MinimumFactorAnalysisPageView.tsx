@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { buildCsvContent, downloadCsvFile, formatCsvNumber } from "@/lib/utils/csv";
 import styles from "./MinimumFactorAnalysisPageView.module.css";
 
 type Option = {
@@ -82,6 +84,7 @@ type AnalysisResponse = {
     withoutTargetCount: number;
     totalPoints: number;
     totalValue: number;
+    financialTargetValue: number;
     complementValue: number;
   };
   message?: string;
@@ -139,25 +142,10 @@ function formatCurrency(value: number) {
   });
 }
 
-function csvEscape(value: string | number) {
-  const text = String(value ?? "");
-  if (/[;"\n\r]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
-  }
-  return text;
-}
-
 function downloadCsv(filename: string, rows: Array<Array<string | number>>) {
-  const csv = `\uFEFF${rows.map((row) => row.map(csvEscape).join(";")).join("\n")}`;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  const [headers, ...dataRows] = rows;
+  if (!headers) return;
+  downloadCsvFile(buildCsvContent(headers.map(String), dataRows), filename);
 }
 
 function buildQuery(filters: FilterState) {
@@ -182,6 +170,35 @@ function statusClassName(status: AnalysisRow["status"]) {
   if (status === "ATINGIU") return styles.statusSuccess;
   if (status === "NAO_ATINGIU") return styles.statusDanger;
   return styles.statusNeutral;
+}
+
+const SUMMARY_HELP = {
+  rowCount:
+    "Quantidade de linhas apuradas. Cada linha e a combinacao de uma equipe com uma data de execucao dentro do periodo e dos filtros aplicados.",
+  reachedCount:
+    "Linhas em que os pontos apurados ficaram maiores ou iguais a meta de pontos do tipo de equipe vigente na data.",
+  notReachedCount:
+    "Linhas com meta de pontos cadastrada em que os pontos apurados ficaram abaixo da meta. Linhas sem meta cadastrada nao entram nesta contagem.",
+  totalPoints:
+    "Soma dos pontos de todas as linhas do resultado. Quando ha filtro de codigo de servico, somente os itens desses codigos entram na soma.",
+  complementValue:
+    "Soma, linha a linha, da diferenca entre a meta financeira e o valor apurado, considerada apenas quando o valor apurado ficou abaixo da meta. Linhas que atingiram a meta e linhas sem meta entram com zero.",
+  financialTargetValue:
+    "Soma da meta financeira de todas as linhas do resultado, independente do status. Inclui as linhas que atingiram e as que nao atingiram; linhas sem meta cadastrada entram com zero.",
+} as const;
+
+function SummaryCard({ label, value, help }: { label: string; value: string; help: string }) {
+  return (
+    <article className={styles.summaryCard}>
+      <div className={styles.summaryCardHeader}>
+        <span>{label}</span>
+        <button type="button" className={styles.infoButton} aria-label={`Como ${label} e calculado`} title={help}>
+          <ActionIcon name="info" className={styles.infoIcon} />
+        </button>
+      </div>
+      <strong>{value}</strong>
+    </article>
+  );
 }
 
 export function MinimumFactorAnalysisPageView() {
@@ -371,18 +388,18 @@ export function MinimumFactorAnalysisPageView() {
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
       downloadCsv(`apuracao_fator_minimo_${toIsoDate(new Date())}.csv`, [
-        ["Data", "Equipe", "Encarregado", "Tipo", "Pontos", "Meta pontos", "Diferenca pontos", "Valor", "Meta financeira", "Complemento estimado", "Status", "Ordens", "Projetos", "Codigos"],
+        ["Data", "Equipe", "Encarregado", "Tipo", "Pontos", "Meta pontos", "Diferenca pontos", "Valor (R$)", "Meta financeira (R$)", "Complemento estimado (R$)", "Status", "Ordens", "Projetos", "Codigos"],
         ...rows.map((row) => [
           formatDate(row.executionDate),
           row.teamName,
           row.foremanName,
           row.teamTypeName,
-          formatDecimal(row.points),
-          formatDecimal(row.pointTarget),
-          formatDecimal(row.pointDifference),
-          formatCurrency(row.totalValue),
-          formatCurrency(row.financialTarget),
-          formatCurrency(row.complementValue),
+          formatCsvNumber(row.points),
+          formatCsvNumber(row.pointTarget),
+          formatCsvNumber(row.pointDifference),
+          formatCsvNumber(row.totalValue),
+          formatCsvNumber(row.financialTarget),
+          formatCsvNumber(row.complementValue),
           statusLabel(row.status),
           row.orderCount,
           row.projectCodes.join(" / "),
@@ -404,7 +421,7 @@ export function MinimumFactorAnalysisPageView() {
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
       downloadCsv(`apuracao_fator_minimo_detalhe_${detailModal.row.teamName}_${detailModal.row.executionDate}.csv`, [
-        ["Ordem", "Data", "Projeto", "Centro de servico", "Codigo", "Descricao", "Quantidade", "Pontos", "Valor", "Status ordem"],
+        ["Ordem", "Data", "Projeto", "Centro de servico", "Codigo", "Descricao", "Quantidade", "Pontos", "Valor (R$)", "Status ordem"],
         ...detailModal.details.map((row) => [
           row.orderNumber,
           formatDate(row.executionDate),
@@ -412,9 +429,9 @@ export function MinimumFactorAnalysisPageView() {
           row.serviceCenter,
           row.activityCode,
           row.activityDescription,
-          formatDecimal(row.quantity, 4),
-          formatDecimal(row.points),
-          formatCurrency(row.totalValue),
+          formatCsvNumber(row.quantity, 4),
+          formatCsvNumber(row.points),
+          formatCsvNumber(row.totalValue),
           row.status,
         ]),
       ]);
@@ -551,26 +568,20 @@ export function MinimumFactorAnalysisPageView() {
       </article>
 
       <div className={styles.summaryGrid}>
-        <article className={styles.summaryCard}>
-          <span>Dias/equipes</span>
-          <strong>{summary?.rowCount ?? 0}</strong>
-        </article>
-        <article className={styles.summaryCard}>
-          <span>Atingiram</span>
-          <strong>{summary?.reachedCount ?? 0}</strong>
-        </article>
-        <article className={styles.summaryCard}>
-          <span>Nao atingiram</span>
-          <strong>{summary?.notReachedCount ?? 0}</strong>
-        </article>
-        <article className={styles.summaryCard}>
-          <span>Pontos apurados</span>
-          <strong>{formatDecimal(summary?.totalPoints ?? 0)}</strong>
-        </article>
-        <article className={styles.summaryCard}>
-          <span>Complemento estimado</span>
-          <strong>{formatCurrency(summary?.complementValue ?? 0)}</strong>
-        </article>
+        <SummaryCard label="Dias/equipes" value={String(summary?.rowCount ?? 0)} help={SUMMARY_HELP.rowCount} />
+        <SummaryCard label="Atingiram" value={String(summary?.reachedCount ?? 0)} help={SUMMARY_HELP.reachedCount} />
+        <SummaryCard label="Nao atingiram" value={String(summary?.notReachedCount ?? 0)} help={SUMMARY_HELP.notReachedCount} />
+        <SummaryCard label="Pontos apurados" value={formatDecimal(summary?.totalPoints ?? 0)} help={SUMMARY_HELP.totalPoints} />
+        <SummaryCard
+          label="Complemento estimado"
+          value={formatCurrency(summary?.complementValue ?? 0)}
+          help={SUMMARY_HELP.complementValue}
+        />
+        <SummaryCard
+          label="Meta financeira total"
+          value={formatCurrency(summary?.financialTargetValue ?? 0)}
+          help={SUMMARY_HELP.financialTargetValue}
+        />
       </div>
 
       <article className={styles.card}>
@@ -588,8 +599,6 @@ export function MinimumFactorAnalysisPageView() {
               disabled={isLoading || isExporting || !rows.length}
               isLoading={isExporting}
               className={styles.secondaryButton}
-              idleLabel="Exportar CSV"
-              loadingLabel="Gerando..."
             />
           </div>
         </div>
@@ -666,8 +675,7 @@ export function MinimumFactorAnalysisPageView() {
                   isLoading={isExporting}
                   showProgressModal={false}
                   className={styles.secondaryButton}
-                  idleLabel="Exportar detalhe"
-                  loadingLabel="Gerando..."
+                  idleLabel="Exportar detalhe (CSV)"
                 />
                 <button type="button" className={styles.ghostButton} onClick={() => setDetailModal(null)}>Fechar</button>
               </div>
