@@ -9,6 +9,16 @@ export function escapeCsvValue(value: CsvCell): string {
   return raw;
 }
 
+/**
+ * Formata numero para celula de CSV que o Excel pt-BR reconhece como numero.
+ * Sem simbolo de moeda e sem separador de milhar, com virgula decimal, para
+ * que a coluna aceite soma direta na planilha.
+ */
+export function formatCsvNumber(value: number, digits = 2): string {
+  const safeValue = Number.isFinite(value) ? Number(value) : 0;
+  return safeValue.toFixed(digits).replace(".", ",");
+}
+
 export function buildCsvContent(headers: string[], rows: CsvRow[]): string {
   const lines = [headers, ...rows].map((line) =>
     line.map((cell) => escapeCsvValue(cell)).join(";"),

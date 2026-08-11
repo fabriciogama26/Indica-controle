@@ -159,9 +159,9 @@
 }
 
 .secondaryButton {
-  border: 1px solid #2f6f73;
-  background: #2f6f73;
-  color: #ffffff;
+  border: 1px solid rgba(23, 52, 122, 0.15);
+  background: rgba(37, 74, 156, 0.1);
+  color: #17347a;
 }
 
 .ghostButton {
@@ -199,7 +199,7 @@
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(6, minmax(130px, 1fr));
   gap: 12px;
 }
 
@@ -208,10 +208,43 @@
   padding: 14px;
 }
 
+.summaryCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
 .summaryCard span {
   color: #667085;
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.infoButton {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8d5ea;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f4ea3;
+  cursor: help;
+  padding: 0;
+}
+
+.infoButton:hover,
+.infoButton:focus-visible {
+  border-color: #1f4ea3;
+  outline: none;
+}
+
+.infoIcon {
+  width: 14px;
+  height: 14px;
 }
 
 .summaryCard strong {

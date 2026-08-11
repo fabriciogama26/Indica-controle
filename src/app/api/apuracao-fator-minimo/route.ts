@@ -632,6 +632,7 @@ async function buildAnalysis(context: AuthenticatedAppUserContext, request: Next
         withoutTargetCount: 0,
         totalPoints: 0,
         totalValue: 0,
+        financialTargetValue: 0,
         complementValue: 0,
       },
     });
@@ -663,6 +664,7 @@ async function buildAnalysis(context: AuthenticatedAppUserContext, request: Next
         withoutTargetCount: 0,
         totalPoints: 0,
         totalValue: 0,
+        financialTargetValue: 0,
         complementValue: 0,
       },
     });
@@ -824,9 +826,10 @@ async function buildAnalysis(context: AuthenticatedAppUserContext, request: Next
       withoutTargetCount: accumulator.withoutTargetCount + (row.status === "SEM_META" ? 1 : 0),
       totalPoints: accumulator.totalPoints + row.points,
       totalValue: accumulator.totalValue + row.totalValue,
+      financialTargetValue: accumulator.financialTargetValue + row.financialTarget,
       complementValue: accumulator.complementValue + row.complementValue,
     }),
-    { rowCount: 0, reachedCount: 0, notReachedCount: 0, withoutTargetCount: 0, totalPoints: 0, totalValue: 0, complementValue: 0 },
+    { rowCount: 0, reachedCount: 0, notReachedCount: 0, withoutTargetCount: 0, totalPoints: 0, totalValue: 0, financialTargetValue: 0, complementValue: 0 },
   );
 
   return NextResponse.json({
@@ -848,6 +851,7 @@ async function buildAnalysis(context: AuthenticatedAppUserContext, request: Next
       ...summary,
       totalPoints: Number(summary.totalPoints.toFixed(2)),
       totalValue: Number(summary.totalValue.toFixed(2)),
+      financialTargetValue: Number(summary.financialTargetValue.toFixed(2)),
       complementValue: Number(summary.complementValue.toFixed(2)),
     },
   });
