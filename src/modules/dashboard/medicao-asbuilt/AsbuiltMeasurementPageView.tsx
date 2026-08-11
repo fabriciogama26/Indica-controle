@@ -648,6 +648,7 @@ export function AsbuiltMeasurementPageView() {
         throw new Error("Falha ao carregar detalhes das medicoes asbuilt para exportar.");
       }
 
+      const serviceCenterByOrderId = new Map(exportOrders.map((order) => [order.id, order.projectServiceCenter]));
       const rows: string[][] = [];
       for (const detail of details) {
         const detailItems = detail.items.length ? detail.items : [{
@@ -669,6 +670,7 @@ export function AsbuiltMeasurementPageView() {
           rows.push([
             detail.asbuiltMeasurementNumber,
             detail.projectCode,
+            serviceCenterByOrderId.get(detail.id) || "Sem base",
             formatDate(detail.serviceCoverageEndDate),
             asbuiltMeasurementKindLabel(detail.asbuiltMeasurementKind),
             detail.noProductionReasonName || "-",
@@ -690,7 +692,7 @@ export function AsbuiltMeasurementPageView() {
       }
 
       downloadCsv(`medicao_asbuilt_detalhamento_${toIsoDate(new Date())}.csv`, [
-        ["numero", "projeto", "servicos_considerados_ate", "tipo", "motivo_sem_producao", "status", "codigo_atividade", "descricao_atividade", "unidade", "status_atividade", "pontos", "quantidade", "taxa", "valor_unitario", "valor_item", "observacao_item", "observacao_medicao_asbuilt", "atualizado_em"],
+        ["numero", "projeto", "centro_servico", "servicos_considerados_ate", "tipo", "motivo_sem_producao", "status", "codigo_atividade", "descricao_atividade", "unidade", "status_atividade", "pontos", "quantidade", "taxa", "valor_unitario", "valor_item", "observacao_item", "observacao_medicao_asbuilt", "atualizado_em"],
         ...rows,
       ]);
 
