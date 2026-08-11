@@ -76,7 +76,7 @@ Filtros, auto-complete e listagem
   - Parciais
   - Beneficio atingido
   - Canceladas/adiadas
-  - Sem Estado Trabalho vencido
+  - Sem Estado Trabalho (etapa ativa vencida sem apontamento)
   - Nunca programadas
   - Retiradas da carteira
 - Modal:
@@ -120,9 +120,11 @@ Boas praticas
 - A obra tambem nao e reaberta por uma programacao `CANCELADA` ou `ADIADA` posterior sem Estado Trabalho quando o ultimo Estado Trabalho valido anterior ja era concluido.
 - `Estado Trabalho` concluido segue a regra tecnica: `CONCLUIDO`, `COMPLETO` ou codigo iniciado por `CONCLUIDO`.
 - `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
-- Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284.
+- Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284; o adiamento in-place tambem limpa o campo desde a migration 326.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
-- `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente.
+- `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente, E a ultima etapa NAO esta `ADIADA`/`CANCELADA`. Obra interrompida e contada somente em `Canceladas/adiadas`, porque para ela o campo vazio e regra de banco e nao falta de apontamento.
+- Obra cuja ultima etapa esta `ADIADA`/`CANCELADA` sem `Estado Trabalho` NAO recebe o nivel `INCONSISTENCY`; cai na escala normal por dias (`NORMAL`/`ATENCAO`/`PRIORIDADE`) e continua priorizada pelo atraso real.
+- O `Estado Trabalho` exibido para obra sem apontamento distingue o motivo: `Nao se aplica (cancelada)` / `Nao se aplica (adiada)` quando a ultima etapa esta interrompida, e `Nao informado` apenas quando a etapa podia ter apontamento e nao teve. O rotulo e montado no servidor, entao vale para tabela, detalhe e CSV.
 - A quantidade de etapas conta linhas de `programming` da obra (uma linha = uma etapa no modelo normalizado).
 - A quantidade de equipes conta `team_id` distintos em `programming_team` (qualquer status) entre as etapas da obra.
 - Pendencia aberta (card `Pendentes`) e a flag `is_pendencia = true` numa etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) cujo `work_completion_status` ainda nao e `CONCLUIDO` — mesma definicao do chip "Pendencias abertas" da lista da Programacao Normalizada.
@@ -289,7 +291,7 @@ Servicos e integracoes externas
 Ajuda contextual
 - Use os cards de Estado Trabalho para acompanhar obras cujo ultimo Estado Trabalho valido ainda nao concluiu a execucao.
 - Use `Canceladas/adiadas` para localizar obras cuja ultima tentativa foi interrompida e nao teve continuidade posterior.
-- Use `Sem Estado Trabalho` para corrigir inconsistencias de apontamento.
+- Use `Sem Estado Trabalho` para corrigir inconsistencias de apontamento: sao etapas ativas que venceram e ninguem apontou. Obra cancelada/adiada nao entra aqui — ela nunca poderia ser apontada.
 - Use `Nunca programadas` para localizar carteira que ainda nao entrou em nenhuma programacao.
 
 Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
@@ -299,6 +301,21 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Depois: listas e modal de prazos exibem `ExportProgressModal`/`CsvExportButton` durante a geracao.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
 
+
+Atualizacao 2026-08-11 - Etapa cancelada deixa de virar falso positivo:
+- Arquivos alterados: `src/app/api/mapa-programacao/route.ts`, `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`.
+- Funcoes tocadas: `resolvePriorityLevel`, `resolveWorkCompletionLabel` (nova), `consolidateProjects`, o filtro do card `WITHOUT_STATUS` e o mapeamento de `Prazos das Obras`.
+- Problema: as migrations 284 e 326 apagam `work_completion_status` de etapa `ADIADA`/`CANCELADA`, mas a tela tratava o campo vazio como falha de apontamento. Efeito em tres pontos:
+  1. a obra interrompida aparecia ao mesmo tempo em `Canceladas/adiadas` e em `Sem Estado Trabalho`, e nunca sairia do segundo card;
+  2. `resolvePriorityLevel` marcava a obra como `INCONSISTENCY` (peso 0 da ordenacao), jogando cancelamento normal para o topo das listas e de `Obras prioritarias` como se fosse erro de cadastro;
+  3. a coluna `Estado Trabalho` mostrava `Nao informado`, sugerindo esquecimento onde o apontamento e proibido por regra.
+- Depois:
+  1. o card `WITHOUT_STATUS` filtra `withoutStatus && !interrupted` — passa a contar so etapa ativa vencida sem apontamento, sem duplicar com `Canceladas/adiadas`;
+  2. `resolvePriorityLevel` recebe `latestStatusInterrupted` e nao emite `INCONSISTENCY` para etapa interrompida; a obra cai na escala por dias e segue priorizada pelo atraso;
+  3. o rotulo distingue `Nao se aplica (cancelada)` / `Nao se aplica (adiada)` de `Nao informado`, montado no servidor.
+- `Para reprogramar` e `Obras prioritarias` NAO mudaram de conteudo de proposito: obra cancelada sem continuidade continua exigindo acao — ali o resultado ja estava correto.
+- `Prazos das Obras` deixou de comparar o texto do rotulo (`=== "Nao informado"`) e passou a decidir pelo codigo `latestWorkCompletionStatus`, preservando a coluna em branco quando nao ha apontamento.
+- Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao. Nenhuma migration nova — a regra de banco ja existia; a tela e que passou a respeita-la na leitura.
 
 Planejado 2026-07-29 - Fase 4 do corte para a Programacao Normalizada
 ----------------------------------------------------------------------

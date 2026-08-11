@@ -178,6 +178,22 @@ function compareProgrammingRows(left: ProgrammingRow, right: ProgrammingRow) {
   return normalizeText(left.id).localeCompare(normalizeText(right.id));
 }
 
+// "Nao informado" so vale para etapa que PODIA ter apontamento e nao teve. Em
+// etapa ADIADA/CANCELADA o banco apaga o Estado Trabalho por regra (migrations
+// 284 e 326), entao o vazio e esperado e o rotulo diz isso explicitamente.
+function resolveWorkCompletionLabel(params: {
+  workCompletionStatus: string | null;
+  workCompletionLabelMap: Map<string, string>;
+  latestProgrammingStatus: string;
+}) {
+  if (params.workCompletionStatus) {
+    return params.workCompletionLabelMap.get(params.workCompletionStatus) ?? params.workCompletionStatus;
+  }
+  if (params.latestProgrammingStatus === "CANCELADA") return "Nao se aplica (cancelada)";
+  if (params.latestProgrammingStatus === "ADIADA") return "Nao se aplica (adiada)";
+  return "Nao informado";
+}
+
 function resolveStageLabel(row: ProgrammingRow | null) {
   if (!row) return "Sem etapa";
   if (row.etapa_final) return "Etapa final";
@@ -186,12 +202,25 @@ function resolveStageLabel(row: ProgrammingRow | null) {
   return Number.isInteger(stageNumber) && stageNumber > 0 ? `${stageNumber} etapa` : "Sem etapa";
 }
 
+// Estado Trabalho ausente numa etapa vencida e inconsistencia de apontamento —
+// EXCETO quando a ultima etapa esta ADIADA/CANCELADA: nesse caso o proprio banco
+// limpa `work_completion_status` (migrations 284 e 326), entao o campo vazio e a
+// regra, nao um erro de preenchimento. Sem esta excecao a obra interrompida subia
+// ao topo da ordenacao (peso 0) marcada como inconsistencia; agora ela cai na
+// escala normal de dias e continua priorizada pelo atraso real.
 function resolvePriorityLevel(params: {
   latestDate: string;
   daysSinceLatest: number | null;
   workCompletionStatus: string | null;
+  latestStatusInterrupted: boolean;
 }) {
-  if (!params.workCompletionStatus && params.latestDate && params.daysSinceLatest !== null && params.daysSinceLatest > 0) {
+  if (
+    !params.workCompletionStatus
+    && !params.latestStatusInterrupted
+    && params.latestDate
+    && params.daysSinceLatest !== null
+    && params.daysSinceLatest > 0
+  ) {
     return "INCONSISTENCY" satisfies PriorityLevel;
   }
   if (params.daysSinceLatest === null || params.daysSinceLatest <= 2) return "NORMAL" satisfies PriorityLevel;
@@ -359,10 +388,13 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
       const workCompletionStatus = latestWorkCompletion?.work_completion_status
         ? normalizeToken(latestWorkCompletion.work_completion_status)
         : null;
-      const workCompletionLabel = workCompletionStatus
-        ? workCompletionLabelMap.get(workCompletionStatus) ?? workCompletionStatus
-        : "Nao informado";
       const latestProgrammingStatus = normalizeToken(latest?.status) || "SEM_PROGRAMACAO";
+      const latestStatusInterrupted = isInterruptedStatus(latest?.status);
+      const workCompletionLabel = resolveWorkCompletionLabel({
+        workCompletionStatus,
+        workCompletionLabelMap,
+        latestProgrammingStatus,
+      });
       // Etapa (linha de `programming`) tem N equipes em `programming_team`, nao
       // mais uma so (achado da auditoria: mostrar uma equipe so escondia as
       // demais quando a etapa tinha mais de uma equipe ativa).
@@ -424,7 +456,7 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
         reason: normalizeText(latest?.cancellation_reason) || normalizeText(latest?.note),
         daysSinceLatest,
         priorityLevel: latest
-          ? resolvePriorityLevel({ latestDate, daysSinceLatest, workCompletionStatus })
+          ? resolvePriorityLevel({ latestDate, daysSinceLatest, workCompletionStatus, latestStatusInterrupted })
           : ("ATTENTION" satisfies PriorityLevel),
         hasFutureActiveProgramming,
         completed,
@@ -543,7 +575,11 @@ export async function GET(request: NextRequest) {
       buildCard("PARTIAL", "Parciais", "Ultimo Estado Trabalho valido parcial.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("BENEFIT_REACHED", "Beneficio atingido", "Beneficio atingido sem conclusao marcada.", consolidatedProjects.filter((project) => !project.completed && isBenefitReachedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("INTERRUPTED", "Canceladas/adiadas", "Ultima programacao cancelada ou adiada sem continuidade posterior.", consolidatedProjects.filter((project) => project.interrupted && !project.hasFutureActiveProgramming)),
-      buildCard("WITHOUT_STATUS", "Sem Estado Trabalho", "Sem Estado Trabalho valido em programacao vencida.", consolidatedProjects.filter((project) => project.withoutStatus)),
+      // Obra interrompida fica de fora: etapa ADIADA/CANCELADA nao pode ter
+      // Estado Trabalho (migrations 284 e 326), entao ela nunca sairia deste card
+      // e ainda aparecia duplicada em `Canceladas/adiadas`. O card conta apenas o
+      // que e acionavel: etapa vencida ativa que ninguem apontou.
+      buildCard("WITHOUT_STATUS", "Sem Estado Trabalho", "Sem Estado Trabalho valido em programacao ativa vencida.", consolidatedProjects.filter((project) => project.withoutStatus && !project.interrupted)),
       buildCard("NEVER_PROGRAMMED", "Nunca programadas", "Obras validas sem historico em Programacao.", consolidatedProjects.filter((project) => project.neverProgrammed)),
       buildCard("WITHDRAWN", "Retiradas da carteira", "Obras marcadas como retiradas; contadas a parte, fora da Carteira valida.", withdrawnProjects),
     ];
