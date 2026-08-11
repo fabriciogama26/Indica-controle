@@ -278,9 +278,12 @@ export function MapProgrammingPageView() {
           executionDeadline,
           latestProgrammingDate: project.latestDate,
           reason: project.reason,
-          workCompletionStatus: project.latestWorkCompletionLabel === "Nao informado"
-            ? ""
-            : project.latestWorkCompletionLabel,
+          // Prazos das Obras mostra a coluna em branco quando nao ha Estado
+          // Trabalho. Decide pelo codigo, nao pelo texto do rotulo: o servidor
+          // passou a distinguir "Nao informado" de "Nao se aplica (cancelada)".
+          workCompletionStatus: project.latestWorkCompletionStatus
+            ? project.latestWorkCompletionLabel
+            : "",
           daysDiff,
         };
       })
