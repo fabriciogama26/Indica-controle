@@ -107,6 +107,12 @@ Filtros, auto-complete e listagem
   - Valor total
   - Status
   - Atualizado em
+- Resumo da lista:
+  - `Faturamentos na pagina`: quantidade de registros carregados na pagina atual.
+  - `Total filtrado`: quantidade de faturamentos que atendem aos filtros, contada no banco.
+  - `Valor total`: soma de `project_billing_order_items.total_value` (itens ativos) de TODOS os faturamentos filtrados, nao apenas os da pagina. Vem do backend em `summary.totalAmount`, agregado pela RPC `project_billing_orders_summary`.
+  - `Total filtrado` e `Valor total` saem da mesma RPC, com os mesmos filtros, para nao divergirem entre si.
+  - Faturamentos `CANCELADA` continuam somando no `Valor total`, igual ao que a lista ja exibia por linha.
 - Acoes:
   - Detalhes
   - Historico
@@ -185,6 +191,7 @@ Atualizacao 2026-05
     - Incluido respiro vertical entre os campos de inclusao e a tabela de atividades para evitar o botao `Adicionar` colado na lista.
     - Incluido espacamento padrao entre resumos, botoes de acao e tabela na lista/filtros do Faturamento.
     - Rotulo do resumo financeiro da lista ajustado de `Valor da pagina` para `Valor total`.
+    - `Valor total` da lista passou a somar todos os faturamentos filtrados no banco (RPC `project_billing_orders_summary`, migration `360`), em vez de somar apenas os registros da pagina carregada; a contagem de `Total filtrado` passou a sair da mesma RPC.
     - Itens de faturamento foram ajustados para registrar apenas quantidade e taxa, com valor total calculado por `Pontos x Quantidade x Taxa x Valor unitario`.
     - Botao `Adicionar`, botoes de acao da tabela e botoes principais alinhados ao padrao visual da tela Medicao.
     - Incluido `Detalhamento (CSV)` na listagem.
@@ -228,7 +235,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/faturamento/BillingPageView.tsx`
   - Responsavel por: fluxo de cadastro, filtros, lista, exportacao CSV, importacao CSV, detalhes, historico e status.
 - Caminho: `src/app/api/faturamento/route.ts`
-  - Responsavel por: validacao de payload, permissao server-side da pagina, leitura paginada em `project_billing_orders`, agregacao de itens em `project_billing_order_items`, detalhe, historico em `project_billing_order_history`, save via RPC e status via RPC.
+  - Responsavel por: validacao de payload, permissao server-side da pagina, leitura paginada em `project_billing_orders`, resumo agregado (contagem + valor total dos filtros) via RPC `project_billing_orders_summary`, agregacao de itens da pagina em `project_billing_order_items`, detalhe, historico em `project_billing_order_history`, save via RPC e status via RPC.
 - Caminho: `src/app/api/faturamento/meta/route.ts`
   - Responsavel por: carregar `project` e `measurement_no_production_reasons` por tenant.
 - Caminho: `src/app/api/faturamento/activities/catalog/route.ts`
@@ -245,6 +252,8 @@ Constantes e configuracoes
   - Responsavel por: patch incremental para coluna `activity_active_snapshot` e RPCs de save/lote parcial em bases ja migradas.
 - Caminho: `supabase/migrations/263_fix_voice_point_in_billing_items.sql`
   - Responsavel por: alinhar schemas legados de `project_billing_order_items` ao contrato atual de quantidade, taxa, pontos, valor unitario e total calculado.
+- Caminho: `supabase/migrations/360_project_billing_orders_summary_rpc.sql`
+  - Responsavel por: RPC `project_billing_orders_summary`, que devolve contagem e valor total de todos os faturamentos filtrados para o resumo da lista.
 - Caminho: `supabase/migrations/264_fix_billing_paid_value_legacy_not_null.sql`
   - Responsavel por: remover o `NOT NULL` legado de `paid_value` quando a `263` ja foi aplicada anteriormente.
 - Caminho: `supabase/migrations/265_fix_billing_paid_value_legacy_check.sql`

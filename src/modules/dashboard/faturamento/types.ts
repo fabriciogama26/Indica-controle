@@ -122,6 +122,9 @@ export type BillingListResponse = {
     pageSize: number;
     total: number;
   };
+  summary?: {
+    totalAmount: number;
+  };
   message?: string;
   dbError?: unknown;
 };

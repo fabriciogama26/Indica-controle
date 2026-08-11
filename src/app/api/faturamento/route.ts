@@ -60,6 +60,11 @@ type BillingAggregateItem = {
   total_value: number | string;
 };
 
+type BillingSummaryRow = {
+  total_orders: number | string | null;
+  total_amount: number | string | null;
+};
+
 type AppUserRow = {
   id: string;
   display: string | null;
@@ -238,6 +243,9 @@ function billingModuleMigrationHint(message: string | undefined) {
     || normalized.includes("set_project_billing_order_status")
   ) {
     return " Verifique se a migration 176_create_project_billing_module.sql foi aplicada.";
+  }
+  if (normalized.includes("project_billing_orders_summary")) {
+    return " Verifique se a migration 360_project_billing_orders_summary_rpc.sql foi aplicada.";
   }
   return "";
 }
@@ -541,27 +549,31 @@ export async function GET(request: NextRequest) {
     maxPage: 10_000,
   });
 
-  // C1: count no banco com os mesmos filtros (evita buscar todos os registros em memoria)
-  let countQuery = resolution.supabase
-    .from("project_billing_orders")
-    .select("*", { count: "exact", head: true })
-    .eq("tenant_id", resolution.appUser.tenant_id);
+  const statusParam = statusFilter && statusFilter !== "TODOS" ? statusFilter : null;
+  const billingKindParam = billingKindFilter === "COM_PRODUCAO" || billingKindFilter === "SEM_PRODUCAO" ? billingKindFilter : null;
 
-  if (projectId) countQuery = countQuery.eq("project_id", projectId);
-  if (statusFilter && statusFilter !== "TODOS") countQuery = countQuery.eq("status", statusFilter);
-  if (billingKindFilter === "COM_PRODUCAO" || billingKindFilter === "SEM_PRODUCAO") countQuery = countQuery.eq("billing_kind", billingKindFilter);
-  if (noProductionReasonIdFilter) countQuery = countQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
+  // C1: count e valor total agregados no banco com os mesmos filtros da listagem
+  // (evita buscar todos os registros em memoria). O valor total cobre TODOS os
+  // faturamentos filtrados, nao apenas a pagina retornada.
+  const { data: summaryData, error: summaryError } = await resolution.supabase.rpc("project_billing_orders_summary", {
+    p_tenant_id: resolution.appUser.tenant_id,
+    p_project_id: projectId,
+    p_status: statusParam,
+    p_billing_kind: billingKindParam,
+    p_no_production_reason_id: noProductionReasonIdFilter,
+  });
 
-  const { count: rawTotal, error: countError } = await countQuery;
-  if (countError) {
+  if (summaryError) {
     return dbErrorResponse({
-      error: countError,
-      operation: "faturamento.list.count",
+      error: summaryError,
+      operation: "faturamento.list.summary",
       message: "Falha ao listar faturamentos.",
     });
   }
 
-  const total = rawTotal ?? 0;
+  const summaryRow = (Array.isArray(summaryData) ? summaryData[0] : summaryData) as BillingSummaryRow | null | undefined;
+  const total = Number(summaryRow?.total_orders ?? 0);
+  const totalAmount = Number(summaryRow?.total_amount ?? 0);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const safePage = Math.min(page, totalPages);
   const startIndex = (safePage - 1) * pageSize;
@@ -575,8 +587,8 @@ export async function GET(request: NextRequest) {
     .range(startIndex, startIndex + pageSize - 1);
 
   if (projectId) dataQuery = dataQuery.eq("project_id", projectId);
-  if (statusFilter && statusFilter !== "TODOS") dataQuery = dataQuery.eq("status", statusFilter);
-  if (billingKindFilter === "COM_PRODUCAO" || billingKindFilter === "SEM_PRODUCAO") dataQuery = dataQuery.eq("billing_kind", billingKindFilter);
+  if (statusParam) dataQuery = dataQuery.eq("status", statusParam);
+  if (billingKindParam) dataQuery = dataQuery.eq("billing_kind", billingKindParam);
   if (noProductionReasonIdFilter) dataQuery = dataQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
 
   const { data: pagedBaseOrders, error } = await dataQuery.returns<BillingOrderRow[]>();
@@ -646,6 +658,9 @@ export async function GET(request: NextRequest) {
       page: safePage,
       pageSize,
       total,
+    },
+    summary: {
+      totalAmount,
     },
   });
 }

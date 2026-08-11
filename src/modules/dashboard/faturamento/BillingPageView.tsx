@@ -129,6 +129,8 @@ export function BillingPageView() {
   const [filterDraft, setFilterDraft] = useState<BillingFilters>(INITIAL_FILTERS);
   const [orders, setOrders] = useState<BillingListItem[]>([]);
   const [pagination, setPagination] = useState({ page: 1, pageSize: BILLING_PAGE_SIZE, total: 0 });
+  // Valor total de TODOS os faturamentos filtrados, agregado no banco (nao so a pagina)
+  const [listTotalAmount, setListTotalAmount] = useState(0);
   const [feedback, setFeedback] = useState<FeedbackState | null>(null);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
@@ -165,11 +167,6 @@ export function BillingPageView() {
   const formTotalAmount = useMemo(
     () => form.items.reduce((sum, item) => sum + calculateItemTotal(item), 0),
     [form.items],
-  );
-
-  const listTotalAmount = useMemo(
-    () => orders.reduce((sum, item) => sum + Number(item.totalAmount ?? 0), 0),
-    [orders],
   );
 
   const selectedProject = useMemo(
@@ -270,6 +267,7 @@ export function BillingPageView() {
         pageSize: payload.pagination?.pageSize ?? BILLING_PAGE_SIZE,
         total: payload.pagination?.total ?? 0,
       });
+      setListTotalAmount(Number(payload.summary?.totalAmount ?? 0));
     } catch (error) {
       setError(error instanceof Error ? error.message : "Falha ao carregar faturamentos.");
       await logError("Falha ao carregar lista de faturamento", error, { filters });
