@@ -1362,3 +1362,18 @@ Atualizacao 2026-08-06 - Tela dedicada de Visualizacao Medicao
 - Impacto multi-tenant:
   - `pageKey` nova `medicao-visualizacao`, sem alteracao de RLS ou policies.
   - `fetchFilterSources` filtra `project_with_labels` e `teams` por `tenant_id` da sessao.
+
+Atualizacao 2026-08-11 - `fetchProjectServiceCenterMap` extraida para modulo compartilhado:
+- Arquivos alterados: `src/app/api/medicao/route.ts`, `src/server/modules/projects/serviceCenters.ts` (novo).
+- Antes: `fetchProjectServiceCenterMap` e os tipos `ProjectServiceCenterRow` /
+  `ProjectServiceCenterLookupRow` eram locais de `api/medicao/route.ts`.
+- Depois: a funcao vive em `src/server/modules/projects/serviceCenters.ts` (mesma logica, mesmo
+  fallback `project_with_labels` -> `project` + `project_service_centers`, mesmo default
+  `Sem base` exportado como `PROJECT_SERVICE_CENTER_FALLBACK`) e e importada tambem por
+  `api/medicao-asbuilt/route.ts`, que passou a devolver `projectServiceCenter` na listagem.
+- Comportamento da tela Medicao: inalterado. Os dois pontos de uso (`detalhe da ordem` e
+  `listagem simples`) chamam a funcao com a mesma assinatura.
+- Multi-tenant: sem mudanca. A funcao continua exigindo `tenantId` e filtrando por
+  `.eq("tenant_id", ...)`.
+- Tamanho de arquivo: `api/medicao/route.ts` 2061 -> 1987 linhas; baseline reduzido via
+  `npm run lint:size:update`.

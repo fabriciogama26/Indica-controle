@@ -72,6 +72,7 @@ export type AsbuiltMeasurementListItem = {
   asbuiltMeasurementNumber: string;
   projectId: string;
   projectCode: string;
+  projectServiceCenter: string;
   serviceCoverageEndDate: string | null;
   asbuiltMeasurementKind: AsbuiltMeasurementKind;
   noProductionReasonId: string | null;
@@ -88,7 +89,8 @@ export type AsbuiltMeasurementListItem = {
   totalAmount: number;
 };
 
-export type AsbuiltMeasurementDetail = AsbuiltMeasurementListItem & {
+// O endpoint de detalhe (?orderId=) nao resolve o Centro de Servico do projeto — ele vem da listagem.
+export type AsbuiltMeasurementDetail = Omit<AsbuiltMeasurementListItem, "projectServiceCenter"> & {
   items: Array<{
     id: string;
     activityId: string;

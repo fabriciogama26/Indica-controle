@@ -3,6 +3,7 @@
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchProjectServiceCenterMap, PROJECT_SERVICE_CENTER_FALLBACK } from "@/server/modules/projects/serviceCenters";
 
 type AsbuiltMeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type AsbuiltMeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
@@ -675,15 +676,22 @@ export async function GET(request: NextRequest) {
     allAggregateItems = allAggregateItems.concat(chunkData ?? []);
   }
 
-  // User map only for the current page
+  // User map and project service center only for the current page
   const pageUserIds = Array.from(new Set(
     pageOrders.flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item)),
   ));
-  const userMap = await fetchAppUserMap({
-    supabase: resolution.supabase,
-    tenantId: resolution.appUser.tenant_id,
-    ids: pageUserIds,
-  });
+  const [userMap, projectServiceCenterMap] = await Promise.all([
+    fetchAppUserMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      ids: pageUserIds,
+    }),
+    fetchProjectServiceCenterMap({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      projectIds: pageOrders.map((item) => item.project_id),
+    }),
+  ]);
 
   const aggregateMap = buildAsbuiltMeasurementAggregateMap(allAggregateItems);
   const summary = Array.from(aggregateMap.values()).reduce(
@@ -701,6 +709,7 @@ export async function GET(request: NextRequest) {
       asbuiltMeasurementNumber: normalizeText(item.asbuilt_number),
       projectId: item.project_id,
       projectCode: normalizeText(item.project_code_snapshot),
+      projectServiceCenter: projectServiceCenterMap.get(item.project_id) ?? PROJECT_SERVICE_CENTER_FALLBACK,
       serviceCoverageEndDate: item.service_coverage_end_date,
       asbuiltMeasurementKind: normalizeAsbuiltMeasurementKind(item.asbuilt_kind),
       noProductionReasonId: item.no_production_reason_id,

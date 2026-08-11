@@ -110,7 +110,8 @@ Filtros, auto-complete e listagem
   - Cancelar (quando diferente de `CANCELADA`)
 - Exportacao:
   - CSV com cooldown de 10 segundos.
-  - `Detalhamento (CSV)` exporta uma linha por atividade da Medicao Asbuilt.
+  - `Detalhamento (CSV)` exporta uma linha por atividade da Medicao Asbuilt, incluindo
+    `centro_servico` do projeto (`Sem base` quando nao cadastrado).
 
 Boas praticas
 -------------
@@ -341,6 +342,36 @@ Atualizacao 2026-07-04 - Modal compartilhado de exportacao:
 - Antes: detalhamento usava botao local sem o modal padrao.
 - Depois: detalhamento usa `CsvExportButton`, herdando `ExportProgressModal`.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-08-11 - Coluna `centro_servico` no Detalhamento (CSV):
+- Arquivos alterados:
+  - `src/server/modules/projects/serviceCenters.ts` (novo)
+  - `src/app/api/medicao-asbuilt/route.ts`
+  - `src/app/api/medicao/route.ts`
+  - `src/modules/dashboard/medicao-asbuilt/types.ts`
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+- Funcoes/estado tocados:
+  - `fetchProjectServiceCenterMap` extraida de `api/medicao/route.ts` para
+    `src/server/modules/projects/serviceCenters.ts` e reusada pelas duas rotas (regra 20 do
+    guia_backend: regra reutilizavel vira funcao central, sem duplicar).
+  - GET de listagem do asbuilt: `fetchAppUserMap` e `fetchProjectServiceCenterMap` rodam em
+    `Promise.all`, resolvendo o Centro de Servico apenas dos projetos da pagina atual.
+  - Listagem passa a devolver `projectServiceCenter` por ordem; `AsbuiltMeasurementDetail` usa
+    `Omit<..., "projectServiceCenter">` porque o endpoint de detalhe (`?orderId=`) nao resolve
+    esse campo.
+  - `exportOrdersDetailed`: `serviceCenterByOrderId` monta o mapa a partir do payload da listagem
+    ja carregado; nenhuma request extra por ordem exportada.
+- Comportamento antes/depois:
+  - Antes: `Detalhamento (CSV)` tinha `numero, projeto, servicos_considerados_ate, ...`.
+  - Depois: coluna `centro_servico` entra logo apos `projeto`; sem valor cadastrado exibe
+    `Sem base`, mesmo rotulo usado na tela Medicao.
+  - Export resumido (`medicao_asbuilt.csv`) permanece sem a coluna.
+- Origem do dado: `project_with_labels.service_center_text`, com fallback para
+  `project.service_center` + `project_service_centers.name` quando a view nao estiver disponivel.
+- Multi-tenant: sem mudanca de RLS/permissao. A query nova filtra por
+  `.eq("tenant_id", ...)` e `.in("id", projectIds da pagina)`.
+- Tamanho de arquivo: `AsbuiltMeasurementPageView.tsx` 1248 -> 1250 (+2), aceito via
+  `npm run lint:size:accept`; `api/medicao/route.ts` 2061 -> 1987 (-74) apos extrair o helper.
 
 Atualizacao 2026-07-10 - Hardening de RPC:
 - Arquivo alterado: `supabase/migrations/298_harden_security_definer_execute_grants.sql`.

@@ -3,6 +3,7 @@
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
 
 type MeasurementOrderStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
@@ -137,17 +138,6 @@ type ProjectTestRow = {
   id: string;
   is_test: boolean | null;
   is_third_party?: boolean | null;
-};
-
-type ProjectServiceCenterRow = {
-  id: string;
-  service_center?: string | null;
-  service_center_text: string | null;
-};
-
-type ProjectServiceCenterLookupRow = {
-  id: string;
-  name: string | null;
 };
 
 type ProjectServiceTypeProjectRow = {
@@ -981,70 +971,6 @@ async function fetchServiceActivityIddMap(params: {
   }
 
   return new Map((data ?? []).map((item) => [item.id, normalizeText(item.code_idd)]));
-}
-
-async function fetchProjectServiceCenterMap(params: {
-  supabase: AuthenticatedAppUserContext["supabase"];
-  tenantId: string;
-  projectIds: string[];
-}) {
-  if (!params.projectIds.length) {
-    return new Map<string, string>();
-  }
-
-  const uniqueProjectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
-  const labeled = await params.supabase
-    .from("project_with_labels")
-    .select("id, service_center_text")
-    .eq("tenant_id", params.tenantId)
-    .in("id", uniqueProjectIds)
-    .returns<ProjectServiceCenterRow[]>();
-
-  if (!labeled.error) {
-    return new Map((labeled.data ?? []).map((item) => [item.id, normalizeText(item.service_center_text) || "Sem base"]));
-  }
-
-  const { data, error } = await params.supabase
-    .from("project")
-    .select("id, service_center, service_center_text")
-    .eq("tenant_id", params.tenantId)
-    .in("id", uniqueProjectIds)
-    .returns<ProjectServiceCenterRow[]>();
-
-  if (error) {
-    return new Map<string, string>();
-  }
-
-  const serviceCenterMap = new Map<string, string>();
-  const lookupIds = Array.from(
-    new Set(
-      (data ?? [])
-        .filter((item) => !normalizeText(item.service_center_text))
-        .map((item) => normalizeUuid(item.service_center))
-        .filter((item): item is string => Boolean(item)),
-    ),
-  );
-
-  if (lookupIds.length) {
-    const { data: lookups } = await params.supabase
-      .from("project_service_centers")
-      .select("id, name")
-      .eq("tenant_id", params.tenantId)
-      .in("id", lookupIds)
-      .returns<ProjectServiceCenterLookupRow[]>();
-
-    for (const item of lookups ?? []) {
-      serviceCenterMap.set(item.id, normalizeText(item.name) || "Sem base");
-    }
-  }
-
-  return new Map((data ?? []).map((item) => {
-    const textValue = normalizeText(item.service_center_text);
-    const lookupValue = normalizeUuid(item.service_center)
-      ? serviceCenterMap.get(normalizeUuid(item.service_center) ?? "")
-      : "";
-    return [item.id, textValue || lookupValue || "Sem base"];
-  }));
 }
 
 async function fetchTeamTypeResolutionMaps(params: {
