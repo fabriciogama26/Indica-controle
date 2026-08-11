@@ -908,7 +908,7 @@ npm run lint:size:accept -- src/modules/dashboard/<tela>/<Arquivo>.tsx
   - Solucao: aplicar `340_fix_save_stage_unassigned_record.sql`. A operacao nao chega a gravar nada, entao nao ha dado parcial para limpar.
 - `Acesso negado para executar read em programacao-concluir.` (ou `programacao-pendencia` / `programacao-corrigir-data`):
   - Causa: permissao granular por operacao da Programacao (Normalizada), criada bloqueada pela migration `328`. Admin passa porque `requirePageAction` libera admin antes de consultar a permissao.
-  - Solucao: liberar a permissao na tela `/permissoes`, secao `Operacao` (`Concluir/Reabrir`, `Pendencia`, `Corrigir data` — Programacao Normalizada), e o usuario entrar novamente para reidratar `pageAccess`.
+  - Solucao: liberar o card `Programacao (Normalizada)` na tela `/permissoes`, secao `Operacao` — desde 2026-08-11 esse toggle unico grava a tela e as 3 permissoes granulares juntas (`Inclui: Concluir/Reabrir, Pendencia, Corrigir data`). Depois o usuario precisa entrar novamente para reidratar `pageAccess`.
 - `Falha ao enviar convite do usuario.`:
   - Causa: usuario sem email, sem `matricula`, sem `login_name` ou ja vinculado ao Auth do Supabase.
   - Solucao: revisar o pre-cadastro em `app_users` antes de usar o botao `Enviar convite` na tela `/permissoes`.

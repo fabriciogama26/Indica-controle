@@ -13,6 +13,11 @@ type PermissionCard = {
   path: string;
   section: string;
   enabled: boolean;
+  // Permissao granular agrupada sob o card da tela: nao ganha card proprio na
+  // grade e segue sempre o toggle do `parentPageKey`. `groupLabel` e o nome
+  // curto listado no card pai.
+  parentPageKey?: string;
+  groupLabel?: string;
 };
 
 type RoleOption = {
@@ -55,6 +60,9 @@ function resolveRoleLabel(role: string) {
 // 1) Criar migration com app_pages + role_page_permissions + app_user_page_permissions (backfill por tenant).
 // 2) Incluir pageKey/path/section no catalogo abaixo.
 // 3) Atualizar menuSections/titleMap no AppShell para manter navegacao e titulo consistentes.
+// Permissao granular por operacao (page_key sem rota navegavel) entra no catalogo
+// com `parentPageKey` quando deve ser concedida junto com a tela, ou sem ele
+// quando precisa de toggle proprio (ex.: `saida-requisicao`).
 const permissionCatalog = [
   { pageKey: "home", label: "Home", path: "/home", section: "Visao Geral" },
   { pageKey: "dash-estoque", label: "Dashboard Estoque", path: "/dash-estoque", section: "Visao Geral" },
@@ -76,23 +84,35 @@ const permissionCatalog = [
   // rotas navegaveis: o path e virtual (mesmo padrao de saida-requisicao) e o
   // backend checa a page_key DENTRO da operacao. Sem estas entradas aqui a
   // permissao nasce bloqueada e nao existe como conceder pela aplicacao.
+  //
+  // `parentPageKey` agrupa as tres sob o card unico da tela: elas continuam
+  // existindo como page_key propria no banco e no `requirePageAction` de cada
+  // operacao (handlers.ts), mas na UI de Permissoes o admin so ve o toggle de
+  // `programacao-normalizada`, que grava as quatro juntas. Para voltar a
+  // conceder cada operacao separadamente basta remover o `parentPageKey`.
   {
     pageKey: "programacao-concluir",
     label: "Concluir/Reabrir (Programacao Normalizada)",
     path: "/programacao-concluir",
     section: "Operacao",
+    parentPageKey: "programacao-normalizada",
+    groupLabel: "Concluir/Reabrir",
   },
   {
     pageKey: "programacao-pendencia",
     label: "Pendencia (Programacao Normalizada)",
     path: "/programacao-pendencia",
     section: "Operacao",
+    parentPageKey: "programacao-normalizada",
+    groupLabel: "Pendencia",
   },
   {
     pageKey: "programacao-corrigir-data",
     label: "Corrigir data (Programacao Normalizada)",
     path: "/programacao-corrigir-data",
     section: "Operacao",
+    parentPageKey: "programacao-normalizada",
+    groupLabel: "Corrigir data",
   },
   {
     pageKey: "programacao-visualizacao",
@@ -148,6 +168,22 @@ const permissionCatalog = [
   { pageKey: "municipio", label: "Municipio", path: "/municipio", section: "Cadastro Base" },
 ] as const;
 
+// Forca cada permissao granular agrupada a seguir o card pai. Rodado na montagem
+// da matriz (papel e snapshot do banco) para o estado nunca guardar um valor que
+// a UI nao renderiza: sem isso um usuario com a tela liberada e a granular
+// bloqueada no banco ficaria com o card marcado "Liberado" e a operacao tomando
+// 403, sem nenhum toggle para corrigir.
+function syncLinkedPermissions(cards: PermissionCard[]): PermissionCard[] {
+  const enabledByPageKey = new Map(cards.map((card) => [card.pageKey, card.enabled]));
+
+  return cards.map((card) => {
+    if (!card.parentPageKey) return card;
+    if (!enabledByPageKey.has(card.parentPageKey)) return card;
+
+    return { ...card, enabled: Boolean(enabledByPageKey.get(card.parentPageKey)) };
+  });
+}
+
 // Matriz inicial exibida quando o admin troca o PAPEL do usuario (`handleRoleChange`) — este e
 // o unico caminho em que o resultado nao e sobrescrito pelo snapshot salvo do banco. Por isso a
 // lista usada aqui e a mesma de `resolveDefaultPageAccess`: duas listas separadas divergiram e
@@ -155,7 +191,7 @@ const permissionCatalog = [
 function createPermissionSet(role: string): PermissionCard[] {
   const defaultPageAccess: readonly string[] = DEFAULT_USER_PAGE_ACCESS;
 
-  return permissionCatalog.map((item) => {
+  const cards = permissionCatalog.map<PermissionCard>((item) => {
     if (role === "master" || role === "admin") {
       return { ...item, enabled: true };
     }
@@ -173,6 +209,8 @@ function createPermissionSet(role: string): PermissionCard[] {
       enabled: defaultPageAccess.includes(item.pageKey),
     };
   });
+
+  return syncLinkedPermissions(cards);
 }
 
 function applyPermissionSnapshot(role: string, snapshots: PermissionSnapshot[]) {
@@ -182,10 +220,12 @@ function applyPermissionSnapshot(role: string, snapshots: PermissionSnapshot[]) 
   }
 
   const snapshotMap = new Map(snapshots.map((item) => [item.pageKey, item.enabled]));
-  return base.map((permission) => ({
-    ...permission,
-    enabled: snapshotMap.has(permission.pageKey) ? Boolean(snapshotMap.get(permission.pageKey)) : false,
-  }));
+  return syncLinkedPermissions(
+    base.map((permission) => ({
+      ...permission,
+      enabled: snapshotMap.has(permission.pageKey) ? Boolean(snapshotMap.get(permission.pageKey)) : false,
+    })),
+  );
 }
 
 export function PermissionsPageView() {
@@ -312,8 +352,12 @@ export function PermissionsPageView() {
     };
   }, [isSearchActive, logError, searchValue, session?.accessToken]);
 
+  // Permissao granular agrupada nao ganha card proprio: ela e gravada junto com
+  // o toggle do card pai (`updatePermission`) e continua no payload do save.
   const groupedPermissions = useMemo(() => {
     return permissions.reduce<Record<string, PermissionCard[]>>((accumulator, permission) => {
+      if (permission.parentPageKey) return accumulator;
+
       if (!accumulator[permission.section]) {
         accumulator[permission.section] = [];
       }
@@ -323,7 +367,25 @@ export function PermissionsPageView() {
     }, {});
   }, [permissions]);
 
-  const releasedScreens = useMemo(() => permissions.filter((permission) => permission.enabled).length, [permissions]);
+  const releasedScreens = useMemo(
+    () => permissions.filter((permission) => permission.enabled && !permission.parentPageKey).length,
+    [permissions],
+  );
+
+  // Nomes curtos das permissoes granulares que cada card pai grava junto, para o
+  // admin saber o que o toggle unico esta liberando.
+  const linkedLabelsByParent = useMemo(() => {
+    return permissions.reduce<Record<string, string[]>>((accumulator, permission) => {
+      if (!permission.parentPageKey) return accumulator;
+
+      if (!accumulator[permission.parentPageKey]) {
+        accumulator[permission.parentPageKey] = [];
+      }
+
+      accumulator[permission.parentPageKey].push(permission.groupLabel ?? permission.label);
+      return accumulator;
+    }, {});
+  }, [permissions]);
   const showResults = isSearchActive && searchValue.trim().length >= 2 && (isSearching || searchResults.length > 0);
 
   async function applyUser(user: TenantUser) {
@@ -392,9 +454,11 @@ export function PermissionsPageView() {
       return;
     }
 
+    // O toggle de um card pai grava tambem as permissoes granulares agrupadas
+    // nele (ex.: `programacao-normalizada` -> concluir/pendencia/corrigir-data).
     setPermissions((current) =>
       current.map((permission) =>
-        permission.pageKey === pageKey
+        permission.pageKey === pageKey || permission.parentPageKey === pageKey
           ? {
               ...permission,
               enabled,
@@ -701,6 +765,11 @@ export function PermissionsPageView() {
                     <div>
                       <div className={styles.permissionTitle}>{permission.label}</div>
                       <div className={styles.permissionRoute}>{permission.path}</div>
+                      {linkedLabelsByParent[permission.pageKey] ? (
+                        <div className={styles.permissionRoute}>
+                          Inclui: {linkedLabelsByParent[permission.pageKey].join(", ")}
+                        </div>
+                      ) : null}
                     </div>
 
                     <button
