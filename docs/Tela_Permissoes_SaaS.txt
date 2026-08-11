@@ -417,3 +417,46 @@ Incidente: tela nova nascendo LIBERADA para todos os usuarios.
   para as 54 paginas), e `resolveDefaultPageAccess` so vale quando `hasCustomPermissions` e
   falso (login local / usuario sem nenhuma linha). O caminho que realmente mudou e
   `handleRoleChange`: trocar o papel do usuario nao pre-marca mais as 7 telas bloqueadas.
+
+Atualizacao 2026-08-11
+-----------------------
+- Antes: a Programacao (Normalizada) ocupava 4 cards na secao `Operacao` da tela de
+  Permissoes — a tela (`programacao-normalizada`) e as 3 permissoes granulares da
+  migration 328 (`programacao-concluir`, `programacao-pendencia`,
+  `programacao-corrigir-data`). Como a migration 348 ja liberou o trio inteiro para o
+  papel "Usuario" (unico papel nao-admin do sistema), a granularidade nao separava
+  ninguem na pratica: os 3 cards extras so poluiam a grade e criavam a chance de o
+  admin liberar a tela e esquecer as operacoes, deixando o usuario tomar 403 dentro da
+  tela liberada.
+- Depois: agrupamento SO NA UI. `PermissionCard` ganhou os campos opcionais
+  `parentPageKey` e `groupLabel`; as 3 entradas granulares apontam
+  `parentPageKey: "programacao-normalizada"`. Efeitos em `PermissionsPageView.tsx`:
+  1. `groupedPermissions` nao renderiza card para quem tem `parentPageKey` — sobra um
+     card unico "Programacao (Normalizada)", com a linha "Inclui: Concluir/Reabrir,
+     Pendencia, Corrigir data" abaixo do path.
+  2. `updatePermission` propaga o toggle do pai para os filhos (`permission.pageKey
+     === pageKey || permission.parentPageKey === pageKey`), entao um clique grava as 4
+     `page_key` no mesmo save.
+  3. `syncLinkedPermissions` forca filho = pai na montagem da matriz, tanto em
+     `createPermissionSet` (troca de papel) quanto em `applyPermissionSnapshot`
+     (snapshot do banco). Sem isso, um usuario com a tela liberada e a granular
+     bloqueada no banco ficaria com o card marcado "Liberado" e a operacao recusada,
+     sem nenhum toggle para corrigir — o mesmo tipo de bug de estado invisivel que o
+     CLAUDE.md descreve no padrao de permissao granular.
+  4. `releasedScreens` ignora quem tem `parentPageKey`: permissao granular nao e tela e
+     nao entra na contagem de "telas liberadas".
+- O que NAO mudou: as 4 `page_key` continuam existindo em `app_pages` e o backend segue
+  checando cada uma DENTRO da operacao (`authorizeGranularAction` em
+  `src/server/modules/programacao-normalizada/handlers.ts`). Nenhuma migration foi
+  criada. A barreira server-side de concluir/reabrir, pendencia e corrigir data continua
+  sendo uma checagem propria; o que se perdeu foi apenas a possibilidade de conceder
+  cada uma separadamente pela tela.
+- Efeito colateral esperado no save: abrir um usuario cujo pai e filhos estejam
+  divergentes no banco e salvar passa a alinhar as 3 granulares ao valor do card da
+  tela. Para usuario com a tela bloqueada isso REVOGA as granulares que estivessem
+  soltas; para usuario com a tela liberada, concede.
+- Como reverter: remover o `parentPageKey` das 3 entradas do `permissionCatalog`. Os 3
+  cards voltam a aparecer com toggle proprio, sem tocar em banco nem em backend.
+- Precedente que NAO segue esta regra: `saida-requisicao` (Operacoes de Equipe) continua
+  com card proprio de proposito — ali a permissao existe justamente para bloquear uma
+  operacao de quem tem a tela.

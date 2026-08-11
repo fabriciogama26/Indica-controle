@@ -164,11 +164,21 @@ Filtros, auto-complete e listagem
 - Permissoes granulares (migration 328): `programacao-concluir` (Concluir/Reabrir/sair de
   Concluido), `programacao-pendencia` (flag e criacao de etapa de pendencia) e
   `programacao-corrigir-data`. Nascem bloqueadas; as demais operacoes seguem sob a permissao da tela.
-  - ONDE CONCEDER: tela `Permissoes`, secao `Operacao`, entradas "Concluir/Reabrir",
-    "Pendencia" e "Corrigir data" (Programacao Normalizada). Nao sao rotas navegaveis — o
-    path e virtual, mesmo padrao de `saida-requisicao`. Ate a correcao destas entradas as
-    3 permissoes nasciam bloqueadas e NAO existia como conceder pela aplicacao (so admin
-    passava, porque `requirePageAction` libera admin antes de consultar a permissao).
+  - ONDE CONCEDER (desde 2026-08-11): tela `Permissoes`, secao `Operacao`, card UNICO
+    "Programacao (Normalizada)" — o toggle grava a tela mais as 3 granulares no mesmo save
+    (`parentPageKey` no `permissionCatalog` de `PermissionsPageView.tsx`; o card mostra
+    "Inclui: Concluir/Reabrir, Pendencia, Corrigir data"). Nao existe mais toggle separado
+    por operacao: liberar a tela libera as tres, bloquear a tela bloqueia as tres.
+    - As 3 `page_key` CONTINUAM existindo em `app_pages` e sendo checadas uma a uma no
+      backend (`authorizeGranularAction` neste modulo). O agrupamento e so de UI, entao
+      voltar a conceder separadamente e remover o `parentPageKey` — sem migration.
+    - Nao sao rotas navegaveis: o path e virtual, mesmo padrao de `saida-requisicao` (que
+      segue com card proprio de proposito, por bloquear uma operacao de quem tem a tela).
+    - Historico: ate 2026-07-29 as 3 nao estavam no `permissionCatalog` e NAO existia como
+      conceder pela aplicacao (so admin passava, porque `requirePageAction` libera admin
+      antes de consultar a permissao); depois viraram 3 cards proprios; a migration 348
+      liberou o trio para todo o papel "Usuario", o que tornou a separacao inerte na
+      pratica e motivou o agrupamento.
   - ESCOPO EXATO DE `programacao-concluir` (o que fica indisponivel sem ela):
     - Card: botoes `Concluir` e `Reabrir` nao sao renderizados.
     - Lista: botao `Reabrir` na linha da etapa nao e renderizado.
