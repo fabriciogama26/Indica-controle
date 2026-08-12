@@ -146,9 +146,28 @@ type ScatterUnitSummary = {
 };
 
 const DASH_IN_FILTER_CHUNK_SIZE = 100;
+
+// Teto de movimentacoes que este dashboard consegue trazer para a memoria do
+// Node antes de agregar em JavaScript. Estourar o teto NAO pode degradar em
+// numero parcial silencioso: `loadTransfers` detecta e a rota devolve 422.
+// O teto deixa de existir quando a agregacao subir para o banco (RPC), porque
+// agregacao nao precisa de teto de linhas.
 const DASH_TRANSFERS_MAX_ROWS = 20000;
+const DASH_TRANSFERS_LIMIT_CODE = "DASH_ESTOQUE_PERIODO_EXCEDE_LIMITE";
 const DASH_SCATTER_ROWS_PER_UNIT = 25;
 const DASH_SCATTER_ROWS_PER_OPERATION = 200;
+
+class DashTransfersLimitError extends Error {
+  readonly code = DASH_TRANSFERS_LIMIT_CODE;
+  readonly limit = DASH_TRANSFERS_MAX_ROWS;
+
+  constructor() {
+    super(
+      `O periodo selecionado excede o limite de ${DASH_TRANSFERS_MAX_ROWS.toLocaleString("pt-BR")} movimentacoes que este dashboard consegue processar. Reduza o intervalo de datas ou filtre por centro de estoque.`,
+    );
+    this.name = "DashTransfersLimitError";
+  }
+}
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -376,6 +395,31 @@ async function loadTransfers(params: {
     rows.push(...(data ?? []));
 
     if ((data ?? []).length < batchSize) break;
+  }
+
+  // O laco acima para no teto. Antes, parava em silencio: se o periodo tivesse
+  // mais movimentacoes que o teto, TODOS os indicadores derivados eram calculados
+  // sobre um recorte parcial e apresentados como se fossem o total. Aqui a
+  // truncagem passa a ser detectada e vira erro 422 na rota, porque KPI parcial
+  // sem aviso e pior do que dashboard que recusa carregar.
+  //
+  // A sondagem so roda no caso de borda (teto exatamente atingido) e distingue
+  // "existem 20.000 movimentacoes" de "existem mais de 20.000" — sem ela, um
+  // periodo com exatamente o teto seria recusado por engano.
+  if (rows.length >= DASH_TRANSFERS_MAX_ROWS) {
+    const { data: overflow, error: overflowError } = await params.context.supabase
+      .from("stock_transfers")
+      .select("id")
+      .eq("tenant_id", params.context.appUser.tenant_id)
+      .gte("entry_date", params.startDate)
+      .lte("entry_date", params.endDate)
+      .order("entry_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(DASH_TRANSFERS_MAX_ROWS, DASH_TRANSFERS_MAX_ROWS)
+      .returns<{ id: string }[]>();
+
+    if (overflowError) throw new Error("Falha ao carregar movimentacoes do dashboard.");
+    if ((overflow ?? []).length > 0) throw new DashTransfersLimitError();
   }
 
   return rows;
@@ -1119,6 +1163,16 @@ export async function GET(request: NextRequest) {
       scatter: buildScatterRows(movements, balanceByMaterial),
     });
   } catch (error) {
+    // Periodo grande demais nao e falha do servidor: e pedido que o dashboard
+    // nao consegue responder inteiro. Devolver 422 com o limite explicito, em
+    // vez de 500 ou de KPI parcial, e o que impede numero errado na tela.
+    if (error instanceof DashTransfersLimitError) {
+      return NextResponse.json(
+        { message: error.message, code: error.code, limit: error.limit },
+        { status: 422 },
+      );
+    }
+
     const message = error instanceof Error ? error.message : "Falha ao carregar Dashboard Estoque.";
     return NextResponse.json({ message }, { status: 500 });
   }

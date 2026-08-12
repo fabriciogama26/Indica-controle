@@ -183,7 +183,9 @@ Ganho colateral: o índice C-1 ([`04`](04-nivel-c-explain.md#c-1--project_measur
 
 Carrega até **20.000 movimentações** (`DASH_TRANSFERS_MAX_ROWS`), depois busca itens, materiais, equipes, projetos, operações de equipe e dois conjuntos de estorno — tudo em chunks — para agregar saldo e movimento em JavaScript.
 
-Aqui há um agravante que os outros dois não têm: o teto de 20.000 é **silencioso**. Passando disso, o dashboard mostra números errados sem avisar ninguém. Isso é um bug de correção, não só de performance.
+Aqui havia um agravante que os outros dois não têm: o teto de 20.000 era **silencioso**. Passando disso, o dashboard mostrava números errados sem avisar ninguém — bug de correção, não de performance.
+
+> ✅ **Corrigido em 2026-08-12** (P0.1). O truncamento agora é detectado e vira **HTTP 422** com mensagem acionável, em vez de KPI parcial. O teto em si **continua existindo** — a remoção definitiva é esta seção (P2.1): agregação no banco não precisa de teto de linhas.
 
 **Caminho:** RPC `dash_estoque_summary(p_tenant_id, p_inicio, p_fim, p_stock_center, p_material_type)` que faz `GROUP BY` no banco. O teto desaparece junto — agregação não precisa de teto de linhas.
 
