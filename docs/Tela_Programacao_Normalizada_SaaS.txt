@@ -380,9 +380,14 @@ Participacao por equipe (Fase 2, migration 349, APLICADA)
 Atalhos
 -------
 - Rota: `/programacao-normalizada`.
-- Secao no menu: `Operacao`, ao lado de `Programacao` (`programacao-simples`).
-- Tela irma (fonte do dado legado, ja transposto pelas migrations 315 e 335):
-  `/programacao-simples`.
+- Secao no menu: `Operacao`, com o rotulo `Programacao` (desde o C6; antes era
+  `Programacao (Normalizada)`, ao lado da tela antiga).
+- `/programacao` redireciona para ca desde o C6 (antes ia para
+  `/programacao-simples`).
+- `/programacao-visualizacao` renderiza esta mesma view em `mode="consulta"`
+  desde o C5.
+- Tela antiga (`/programacao-simples`): fora do menu desde o C6, somente leitura,
+  ainda alcancavel por URL ate o C8 remove-la.
 
 Atualizacao 2026-08-12 (2) - Tela liberada para o papel "Usuario" (C3 do corte)
 --------------------------------------------------------------------------------

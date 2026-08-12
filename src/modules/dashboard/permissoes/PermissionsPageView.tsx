@@ -73,10 +73,13 @@ const permissionCatalog = [
   { pageKey: "projetos", label: "Projetos", path: "/projetos", section: "Operacao" },
   { pageKey: "cronograma-solicitacoes", label: "Cronograma de Solicitacoes", path: "/cronograma-solicitacoes", section: "Operacao" },
   { pageKey: "locacao", label: "Locacao", path: "/locacao", section: "Operacao" },
-  { pageKey: "programacao-simples", label: "Programacao", path: "/programacao-simples", section: "Operacao" },
+  // C6 do corte: a Normalizada assumiu o nome "Programacao"; a tela antiga saiu
+  // do menu e continua aqui so para o admin conseguir revogar o acesso de quem
+  // ainda o tem, ate o C8 remover a tela e esta linha.
+  { pageKey: "programacao-simples", label: "Programacao (tela antiga)", path: "/programacao-simples", section: "Operacao" },
   {
     pageKey: "programacao-normalizada",
-    label: "Programacao (Normalizada)",
+    label: "Programacao",
     path: "/programacao-normalizada",
     section: "Operacao",
   },
