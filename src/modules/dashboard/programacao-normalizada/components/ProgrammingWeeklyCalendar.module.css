@@ -1,0 +1,341 @@
+/* ProgrammingWeeklyCalendar.module.css
+ *
+ * Estilos do Calendario Semanal, portados de ProgrammingSimplePageView.module.css
+ * no C4 do corte da Programacao Normalizada.
+ *
+ * Modulo PROPRIO pelo mesmo motivo do cluster de prazos (ver
+ * mapa-programacao/components/ProgrammingDeadline.module.css): .card,
+ * .secondaryButton e .ghostButton existem com definicao diferente em outros
+ * modulos, e o porte tem de preservar a aparencia exata do calendario de hoje.
+ *
+ * Regras copiadas verbatim da origem.
+ */
+
+.card {
+  border-radius: 24px;
+  border: 1px solid rgba(20, 41, 97, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 38px rgba(15, 32, 74, 0.08);
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+}
+
+.cardTitle {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.42rem;
+}
+
+.secondaryButton,
+.ghostButton {
+  border-radius: 14px;
+  min-height: 44px;
+  padding: 0 18px;
+  cursor: pointer;
+  font-weight: 800;
+  border: 1px solid transparent;
+}
+
+.secondaryButton {
+  background: rgba(37, 74, 156, 0.1);
+  color: #17347a;
+  border-color: rgba(23, 52, 122, 0.15);
+}
+
+.ghostButton {
+  background: #ffffff;
+  color: #17347a;
+  border-color: rgba(23, 52, 122, 0.15);
+}
+
+.secondaryButton:disabled,
+.ghostButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.helperText {
+  margin: 0;
+  color: #4c5f85;
+  font-size: 0.84rem;
+}
+
+.calendarHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.calendarTopCard {
+  order: -10;
+}
+
+.calendarActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weekLegend {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weekLegendItem {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.weekLegendPlanned {
+  background: #1f57b8;
+}
+
+.weekLegendPostponed {
+  color: #6f5606;
+  background: #f3d572;
+}
+
+.weekLegendRescheduled {
+  background: #8f4fd8;
+}
+
+.weekLegendCompleted {
+  background: #0f6a35;
+}
+
+.weekLegendAnticipated {
+  background: #4d7c8a;
+}
+
+.weekLegendCancelled {
+  background: #c53d3d;
+}
+
+.weekCalendarWrapper {
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  overflow: auto;
+  background: #ffffff;
+}
+
+.weekCalendarHeader,
+.weekCalendarRow {
+  display: grid;
+  grid-template-columns: 220px repeat(7, minmax(180px, 1fr));
+  min-width: 1480px;
+}
+
+.weekCalendarTeamHeader,
+.weekCalendarDayHeader,
+.weekCalendarTeamCell,
+.weekCalendarDayCell {
+  border-bottom: 1px solid rgba(23, 52, 122, 0.1);
+  border-right: 1px solid rgba(23, 52, 122, 0.1);
+  min-height: 100%;
+}
+
+.weekCalendarTeamHeader {
+  padding: 12px;
+  font-weight: 800;
+  color: #17347a;
+  background: rgba(23, 52, 122, 0.06);
+}
+
+.weekCalendarDayHeader {
+  padding: 10px 8px;
+  text-align: center;
+  display: grid;
+  gap: 4px;
+  background: rgba(23, 52, 122, 0.06);
+}
+
+.weekCalendarDayHeader strong {
+  color: #17347a;
+  font-size: 0.84rem;
+}
+
+.weekCalendarDayHeader small {
+  color: #5b6a85;
+  font-size: 0.76rem;
+}
+
+.weekCalendarTeamCell {
+  padding: 12px;
+  background: #f8fbff;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.weekCalendarTeamCell strong {
+  color: #17347a;
+}
+
+.weekCalendarTeamCell small {
+  color: #5b6a85;
+  font-size: 0.8rem;
+}
+
+.weekCalendarDayCell {
+  padding: 8px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 140px;
+  background: #ffffff;
+}
+
+.weekCard {
+  border-radius: 12px;
+  border: 1px solid transparent;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.weekCardPlanned {
+  background: linear-gradient(180deg, #2c6ed9 0%, #1f57b8 100%);
+  color: #f3f8ff;
+}
+
+.weekCardRescheduled {
+  background: linear-gradient(180deg, #bb8cf2 0%, #8f4fd8 100%);
+  color: #f8f1ff;
+}
+
+.weekCardCompleted {
+  background: linear-gradient(180deg, #1f9e53 0%, #0f6a35 100%);
+  color: #eefcf3;
+  border-color: rgba(8, 79, 38, 0.28);
+}
+
+.weekCardPostponed {
+  background: linear-gradient(180deg, #ffe9ad 0%, #f3d572 100%);
+  color: #6d5206;
+  border-color: rgba(145, 106, 7, 0.2);
+}
+
+.weekCardAnticipated {
+  background: linear-gradient(180deg, #9cc6d3 0%, #4d7c8a 100%);
+  color: #0e3440;
+  border-color: rgba(39, 91, 106, 0.24);
+}
+
+.weekCardTransferred {
+  background: linear-gradient(180deg, #d8dee8 0%, #a8b3c4 100%);
+  color: #253044;
+  border-color: rgba(71, 84, 103, 0.24);
+}
+
+.weekCardCancelled {
+  background: linear-gradient(180deg, #f5bcbc 0%, #e98787 100%);
+  color: #7f1f1f;
+  border-color: rgba(139, 35, 35, 0.2);
+}
+
+.weekCardTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.weekCardTop strong {
+  font-size: 0.86rem;
+}
+
+.weekCardTop span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.weekIndicators {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.weekIndicatorOn,
+.weekIndicatorOff {
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  border: 1px solid transparent;
+}
+
+.weekIndicatorOn {
+  color: #ffffff;
+  background: #1f9e53;
+  border-color: rgba(16, 122, 61, 0.9);
+}
+
+.weekIndicatorOff {
+  background: rgba(17, 27, 53, 0.08);
+  border-color: rgba(17, 27, 53, 0.14);
+}
+
+.weekCardActions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.weekActionButton {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  border: 1px solid rgba(17, 27, 53, 0.2);
+  background: rgba(255, 255, 255, 0.2);
+  color: inherit;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.weekActionButton svg {
+  width: 14px;
+  height: 14px;
+}
+
+.weekEmptyCell {
+  min-height: 100%;
+  border-radius: 10px;
+  border: 1px dashed rgba(23, 52, 122, 0.16);
+  background: #f9fbff;
+  color: #65789f;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 0.8rem;
+  padding: 8px;
+}
+
+.weekCalendarEmpty {
+  padding: 16px;
+  color: #5b6a85;
+}
+
+@media (max-width: 980px) {
+  .calendarActions {
+      width: 100%;
+    }
+
+  .calendarActions .ghostButton,
+  .calendarActions .secondaryButton {
+      flex: 1 1 auto;
+    }
+}

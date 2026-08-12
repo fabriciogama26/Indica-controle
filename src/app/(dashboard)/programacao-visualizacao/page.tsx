@@ -1,5 +1,5 @@
-import { ProgrammingSimplePageView } from "@/modules/dashboard/programacao-simples";
+import { ProgrammingNormalizedPageView } from "@/modules/dashboard/programacao-normalizada";
 
 export default function ProgramacaoVisualizacaoPage() {
-  return <ProgrammingSimplePageView mode="visualizacao" />;
+  return <ProgrammingNormalizedPageView mode="consulta" />;
 }

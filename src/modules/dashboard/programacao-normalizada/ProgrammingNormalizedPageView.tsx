@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -31,16 +31,24 @@ import {
 } from "./hooks";
 import { ListFiltersBar, SobEntryBar, StageListTable } from "./listComponents";
 import styles from "./ProgrammingNormalizedPageView.module.css";
+import { ProgrammingWeeklyCalendarPanel } from "./components/ProgrammingWeeklyCalendarPanel";
 import { ProjectPlanView } from "./ProjectPlanView";
 import { buildReasonText } from "./validators";
-import { toIsoDate } from "./utils";
+import { addDaysIso, startOfWeekMondayIso, toIsoDate } from "./utils";
 import type { FeedbackState, ProgrammingStage, StageListItem, StageTeam } from "./types";
 
-export function ProgrammingNormalizedPageView() {
+// `consulta` e o modo de `/programacao-visualizacao` (C4 do corte): esconde toda
+// a escrita e acrescenta o Calendario Semanal, que era o motivo daquela tela
+// existir. Leitura, filtros, detalhe, historico e exportacoes continuam iguais.
+export type ProgrammingNormalizedPageViewMode = "cadastro" | "consulta";
+
+export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: ProgrammingNormalizedPageViewMode } = {}) {
   const { session } = useAuth();
   const logError = useErrorLogger("programacao_normalizada");
   const accessToken = session?.accessToken ?? null;
   const today = useMemo(() => toIsoDate(new Date()), []);
+  const isConsultaMode = mode === "consulta";
+  const [weekStartDate, setWeekStartDate] = useState(() => startOfWeekMondayIso(toIsoDate(new Date())));
 
   const [activeProject, setActiveProject] = useState<{ id: string; code: string } | null>(null);
   const [sob, setSob] = useState("");
@@ -102,6 +110,83 @@ export function ProgrammingNormalizedPageView() {
   const workCompletionCatalog = meta?.workCompletionCatalog ?? [];
   const supportOptions = meta?.supportOptions ?? [];
   const totalPages = Math.max(1, Math.ceil(total / STAGE_LIST_PAGE_SIZE));
+
+  // FAN-OUT etapa -> equipe para o Calendario Semanal (modo consulta).
+  // O calendario e uma grade (equipe x dia), e a etapa normalizada tem N equipes.
+  // Uma etapa com 2 equipes ATIVAS ocupa 2 celulas — que e exatamente o que a
+  // tela antiga mostrava, onde cada linha ja era uma equipe. Mesmo criterio de
+  // equipe ATIVA usado no endpoint de fontes da Medicao (C0).
+  const weekDates = useMemo(
+    () => Array.from({ length: 7 }, (_, index) => addDaysIso(weekStartDate, index)),
+    [weekStartDate],
+  );
+  // O calendario NAO pode ser alimentado por `items`: a lista e paginada
+  // (STAGE_LIST_PAGE_SIZE = 50) sobre uma janela padrao de 90 dias, entao uma
+  // semana apareceria vazia so porque suas etapas caem na pagina 3 — truncagem
+  // silenciosa, a mesma classe de bug que o P0 do dash-estoque corrigiu.
+  // Por isso a semana e carregada a parte, com os MESMOS filtros do usuario
+  // (equipe, status, busca, municipio) porem com a janela de data trocada pela
+  // semana exibida.
+  const [weekStages, setWeekStages] = useState<StageListItem[]>([]);
+  const [isLoadingWeek, setIsLoadingWeek] = useState(false);
+
+  useEffect(() => {
+    if (!isConsultaMode || !accessToken) {
+      setWeekStages([]);
+      return;
+    }
+
+    let ignore = false;
+    setIsLoadingWeek(true);
+
+    fetchProgrammingStageList({
+      accessToken,
+      filters: { ...filters, dateFrom: weekStartDate, dateTo: addDaysIso(weekStartDate, 6) },
+      page: 1,
+      pageSize: 1,
+      forExport: true,
+    })
+      .then((data) => {
+        if (ignore) return;
+        setWeekStages(data.list ?? []);
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setWeekStages([]);
+        logError(error, { scope: "programacao_normalizada_calendario_semanal" });
+      })
+      .finally(() => {
+        if (!ignore) setIsLoadingWeek(false);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, filters, isConsultaMode, logError, weekStartDate]);
+
+  const weeklyStageMap = useMemo(() => {
+    const map = new Map<string, StageListItem[]>();
+    if (!isConsultaMode) return map;
+
+    const weekDateSet = new Set(weekDates);
+    for (const stage of weekStages) {
+      if (!stage.executionDate || !weekDateSet.has(stage.executionDate)) continue;
+
+      for (const team of stage.teams) {
+        if (team.status !== "ATIVA") continue;
+        const key = `${team.teamId}__${stage.executionDate}`;
+        const list = map.get(key) ?? [];
+        list.push(stage);
+        map.set(key, list);
+      }
+    }
+
+    return map;
+  }, [isConsultaMode, weekStages, weekDates]);
+  const calendarTeams = useMemo(
+    () => [...teams].sort((left, right) => left.name.localeCompare(right.name)),
+    [teams],
+  );
 
   async function fetchAllFilteredStages() {
     if (!accessToken) return { stages: [] as StageListItem[], truncated: false, total: 0 };
@@ -399,8 +484,12 @@ export function ProgrammingNormalizedPageView() {
   return (
     <div className={styles.page}>
       <div className={styles.header}>
-        <h2>Programacao</h2>
-        <p className={styles.emptyHint}>Busque um SOB para abrir o plano de etapas, ou crie um novo.</p>
+        <h2>{isConsultaMode ? "Visualizacao da Programacao" : "Programacao"}</h2>
+        <p className={styles.emptyHint}>
+          {isConsultaMode
+            ? "Consulta da programacao: lista de etapas, calendario semanal, detalhe, historico e extracoes."
+            : "Busque um SOB para abrir o plano de etapas, ou crie um novo."}
+        </p>
       </div>
 
       {feedback ? (
@@ -409,7 +498,11 @@ export function ProgrammingNormalizedPageView() {
         </div>
       ) : null}
 
-      <SobEntryBar sob={sob} setSob={setSob} onSubmit={openOrCreateBySob} isSubmitting={false} projects={projects} />
+      {/* Entrada por SOB abre o plano de etapas, que e a superficie de escrita —
+          fora do modo consulta. */}
+      {isConsultaMode ? null : (
+        <SobEntryBar sob={sob} setSob={setSob} onSubmit={openOrCreateBySob} isSubmitting={false} projects={projects} />
+      )}
 
       <ListFiltersBar
         filters={filters}
@@ -421,7 +514,31 @@ export function ProgrammingNormalizedPageView() {
         onClear={clearFilters}
       />
 
+      {isConsultaMode ? (
+        <ProgrammingWeeklyCalendarPanel
+          weekStartDate={weekStartDate}
+          weekDates={weekDates}
+          calendarTeams={calendarTeams}
+          weeklyStageMap={weeklyStageMap}
+          sgdTypes={sgdTypes}
+          isLoading={isLoadingWeek}
+          onPreviousWeek={() => setWeekStartDate((current) => addDaysIso(current, -7))}
+          onCurrentWeek={() => setWeekStartDate(startOfWeekMondayIso(today))}
+          onNextWeek={() => setWeekStartDate((current) => addDaysIso(current, 7))}
+          onRefresh={() => {
+            // Recarrega a lista e a semana: sao duas cargas independentes de
+            // proposito (ver o comentario de `weekStages`).
+            reloadList();
+            setWeekStartDate((current) => current);
+            setFilters((current) => ({ ...current }));
+          }}
+          onOpenDetails={(stage) => void openDetails(stage)}
+          onOpenHistory={(stage) => historyModal.setHistoryTarget({ id: stage.id, executionDate: stage.executionDate })}
+        />
+      ) : null}
+
       <StageListTable
+        isReadOnly={isConsultaMode}
         items={items}
         isLoading={isLoadingList}
         loadError={listError}
