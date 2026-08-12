@@ -225,11 +225,33 @@ Ordem revista depois das correções, com a recomendação de corte do usuário 
 | ~~C3~~ | Migration liberando `default_user_access = true` para `programacao-normalizada` | **migration** | — | ✅ **feito** — `362`, aguarda aplicação |
 | ~~C4~~ | Implementar modo consulta na Normalizada **+ portar o Calendário Semanal** | implementação | — | ✅ **feito** — 2026-08-12 |
 | ~~C5~~ | Repontar `/programacao-visualizacao` para a Normalizada | configuração | — | ✅ **feito** — 2026-08-12 |
-| C6 | Repontar `/programacao` → `/programacao-normalizada` e deixar só "Programacao" no menu | configuração | baixo | C3, C4 |
-| C7 | Ajustar `DEFAULT_USER_PAGE_ACCESS` e `page_key` de permissão | configuração | **atenção** — granulares | C3, C6 |
+| ~~C6~~ | Repontar `/programacao` → `/programacao-normalizada` e deixar só "Programacao" no menu | configuração | — | ✅ **feito** — 2026-08-12 ⚠️ **exige a 362 aplicada antes do deploy** |
+| **C7** | Ajustar `DEFAULT_USER_PAGE_ACCESS` e `page_key` de permissão | configuração | **atenção** — granulares | ← **fase atual** |
 | C8 | Remover `programacao-simples`, `/api/programacao(/meta)`, `server/modules/programacao` | remoção | baixo | C0–C7 |
 
 **C0 e C1 concluídos em 2026-08-12.** C2 continua independente e pode ir já.
+
+> ### 🚨 Ordem de deploy do C6 — a única armadilha operacional do corte
+>
+> O C6 **já está no código**, mas depende da migration `362` estar **aplicada no banco**. As duas coisas são independentes: o código sobe por deploy, a migration por `supabase db push`.
+>
+> ```
+> ERRADO                              CERTO
+> deploy do C6                        aplicar a 362
+>   menu → só Normalizada               ↓
+>   ↓                                 deploy do C6
+> 362 ainda não aplicada                menu → só Normalizada
+>   ↓
+> usuário comum: default_user_access
+> da Normalizada = false, e a Simples
+> sumiu do menu
+>   ↓
+> SEM NENHUMA PROGRAMAÇÃO
+> ```
+>
+> A janela de risco existe porque a Normalizada nasceu com `default_user_access = false` (312) e só a `362` inverte isso. Enquanto a Simples estava no menu, ela cobria o buraco; o C6 tirou essa cobertura.
+>
+> **Mitigação se o deploy for antes:** a Simples continua alcançável por URL direta (`/programacao-simples`) até o C8 — dá para orientar o usuário por lá até a migration entrar.
 
 **C3 antes de C6/C7:** trocar o menu sem liberar a permissão deixa o usuário comum sem acesso a nenhuma Programação.
 

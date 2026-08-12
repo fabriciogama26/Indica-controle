@@ -14,7 +14,11 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/programacao-normalizada", pageKey: "programacao-normalizada" },
   { prefix: "/programacao-visualizacao", pageKey: "programacao-visualizacao" },
   { prefix: "/mapa-programacao", pageKey: "mapa-programacao" },
-  { prefix: "/programacao", pageKey: "programacao-simples" },
+  // C6 do corte: `/programacao` redireciona para a Normalizada, entao a chave de
+  // permissao acompanhou. Nao ha risco de capturar `/programacao-simples` nem
+  // `/programacao-visualizacao`: `resolvePageKeyFromPath` casa por igualdade
+  // exata ou por `prefixo + "/"`, nunca por prefixo solto.
+  { prefix: "/programacao", pageKey: "programacao-normalizada" },
   { prefix: "/composicao-equipe", pageKey: "composicao-equipe" },
   { prefix: "/controle-apr", pageKey: "controle-apr" },
   { prefix: "/apuracao-fator-minimo", pageKey: "apuracao-fator-minimo" },
