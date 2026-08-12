@@ -89,13 +89,15 @@ export const DEFAULT_USER_PAGE_ACCESS = [
   "dash-operacional-faturamento",
   "projetos",
   "locacao",
-  "programacao-simples",
-  "programacao-visualizacao",
-  // Liberada no banco pela migration 362 (C3 do corte). `programacao-simples` e
-  // `programacao-visualizacao` seguem aqui de proposito ate o menu passar a
-  // apontar para a Normalizada (C6/C7): removidas agora, o usuario comum sem
-  // permissao customizada ficaria sem NENHUMA Programacao.
+  // Liberada no banco pela migration 362 (C3 do corte).
+  //
+  // `programacao-simples` saiu desta lista no C7: a migration 363 zerou o
+  // `default_user_access` dela, que e a condicao que a regra acima exige para
+  // remover uma chave daqui. Quem JA tem a tela antiga concedida continua com
+  // ela — a 363 nao revoga, e a limpeza dessas linhas e do C8, junto com a
+  // remocao da tela.
   "programacao-normalizada",
+  "programacao-visualizacao",
   "composicao-equipe",
   "controle-apr",
   "medicao-asbuilt",

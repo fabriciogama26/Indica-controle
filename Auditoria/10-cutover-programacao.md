@@ -226,8 +226,8 @@ Ordem revista depois das correções, com a recomendação de corte do usuário 
 | ~~C4~~ | Implementar modo consulta na Normalizada **+ portar o Calendário Semanal** | implementação | — | ✅ **feito** — 2026-08-12 |
 | ~~C5~~ | Repontar `/programacao-visualizacao` para a Normalizada | configuração | — | ✅ **feito** — 2026-08-12 |
 | ~~C6~~ | Repontar `/programacao` → `/programacao-normalizada` e deixar só "Programacao" no menu | configuração | — | ✅ **feito** — 2026-08-12 ⚠️ **exige a 362 aplicada antes do deploy** |
-| **C7** | Ajustar `DEFAULT_USER_PAGE_ACCESS` e `page_key` de permissão | configuração | **atenção** — granulares | ← **fase atual** |
-| C8 | Remover `programacao-simples`, `/api/programacao(/meta)`, `server/modules/programacao` | remoção | baixo | C0–C7 |
+| ~~C7~~ | Parar de conceder a Simples a usuário novo (`363`) e removê-la de `DEFAULT_USER_PAGE_ACCESS` | migration + configuração | — | ✅ **feito** — 2026-08-12 |
+| **C8** | Remover `programacao-simples`, `/api/programacao(/meta)`, `server/modules/programacao` | remoção | baixo | ← **fase atual** (todas as anteriores feitas) |
 
 **C0 e C1 concluídos em 2026-08-12.** C2 continua independente e pode ir já.
 
@@ -252,6 +252,8 @@ Ordem revista depois das correções, com a recomendação de corte do usuário 
 > A janela de risco existe porque a Normalizada nasceu com `default_user_access = false` (312) e só a `362` inverte isso. Enquanto a Simples estava no menu, ela cobria o buraco; o C6 tirou essa cobertura.
 >
 > **Mitigação se o deploy for antes:** a Simples continua alcançável por URL direta (`/programacao-simples`) até o C8 — dá para orientar o usuário por lá até a migration entrar.
+>
+> **A `363` (C7) tem a mesma dependência, e ela se defende sozinha:** a última validação daquela migration aborta se `programacao-normalizada` ainda estiver com `default_user_access = false`. Ou seja, aplicar a `363` sem a `362` falha em vez de deixar usuário novo nascer sem nenhuma Programação. **Ordem obrigatória no banco: `362` → `363`.**
 
 **C3 antes de C6/C7:** trocar o menu sem liberar a permissão deixa o usuário comum sem acesso a nenhuma Programação.
 
