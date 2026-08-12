@@ -1,10 +1,32 @@
-# Corte para a Programação Normalizada — o que falta
+# Corte para a Programação Normalizada
 
 Premissa do usuário: **`/programacao-normalizada` deve ser a principal, e tudo deve partir dela; as demais programações não devem mais ser usadas.**
 
-Esta análise mede a distância entre essa premissa e o código de hoje.
+> ## ✅ Corte concluído no código — 2026-08-12
+>
+> As 9 fases (C0 a C8) estão feitas. `/programacao-normalizada` é a Programação; a tela antiga, `/api/programacao(/meta)` e `server/modules/programacao` **não existem mais**.
+>
+> **Falta aplicar em produção, nesta ordem:**
+>
+> | # | Migration | O que faz |
+> |---|---|---|
+> | 1 | `362` | libera `programacao-normalizada` para o papel "Usuário" |
+> | 2 | `363` | para de conceder a tela antiga a usuário novo (aborta se a `362` não entrou) |
+> | 3 | `364` | revoga o acesso residual e aposenta o `page_key` (aborta se alguém ficaria sem nenhuma Programação) |
+>
+> ⚠️ **O deploy do código não pode ir antes da `362`.** As três migrations se defendem sozinhas — a `363` e a `364` abortam se a anterior não tiver sido aplicada —, mas o código não tem essa proteção: subir o C6 sem a `362` deixa o usuário comum sem nenhuma Programação, e depois do C8 não existe mais a tela antiga como rede de segurança.
+>
+> **O que o C8 removeu como rollback:** até o C7, `/programacao-simples` respondia por URL direta e servia de comparação. O C8 apagou essa saída. Se a Normalizada apresentar problema em produção, o caminho de volta é reverter o deploy, não trocar de tela.
+>
+> Os roteiros de validação manual de cada fase estão em `TASKS.md`.
 
-**Conclusão: o corte está adiantado no banco e nas migrations, mas a virada na aplicação não está completa** — e há um consumidor vivo do modelo legado que contradiz o que a migration 351 declara ter fechado.
+---
+
+**A análise abaixo é o retrato de 2026-08-12 ANTES do corte** e está preservada como histórico — ela explica por que cada passo foi necessário. Os estados "não feita"/"restante" nas seções seguintes referem-se àquele momento, não ao atual.
+
+Esta análise mede a distância entre a premissa e o código de então.
+
+**Conclusão da época: o corte estava adiantado no banco e nas migrations, mas a virada na aplicação não estava completa** — e havia um consumidor vivo do modelo legado que contradizia o que a migration 351 declara ter fechado.
 
 > ### ⚠️ Correção da primeira versão deste documento
 >
@@ -28,11 +50,11 @@ Fases conforme as decisões travadas em 2026-07-29.
 | 3 | Consumidores só-leitura por projeto | ✅ **feita** | nenhum deles lê `project_programming` |
 | 4 | Mapa de Programação | ✅ **feita** | backend já usava `@/server/modules/programacao-normalizada`; a UI foi desacoplada no **C2** (2026-08-12) — o Mapa não importa mais nada de `programacao-simples` |
 | 5 | Três donos de FK (Medição, APR, Cronograma) | ✅ **feita** | `344_cronograma_...`, `350_apr_control_...`, `351_medicao_...` aplicadas; o front da Medição foi corrigido no **C0** (commit `eadefad`). Ver §3.0 |
-| 6 | Aposentar a Simples | ❌ **não feita** | é o que resta |
+| 6 | Aposentar a Simples | ✅ **feita** | **C8** (2026-08-12): tela, rotas de API e módulo server removidos; page_key aposentado pela migration 364 |
 
 A fase 5 é a que estava mal classificada na primeira versão. **A migration foi feita; a tela não acompanhou.** É a origem do risco alto da §3.0.
 
-Escrita da Simples já congelada: `PROGRAMMING_SIMPLES_READ_ONLY = true` em [`handlers.ts:98`](../src/server/modules/programacao/handlers.ts#L98). A tela é **somente leitura** desde o commit `7ecd00a`.
+Escrita da Simples já congelada: `PROGRAMMING_SIMPLES_READ_ONLY = true` em `server/modules/programacao/handlers.ts:98`. A tela era **somente leitura** desde o commit `7ecd00a` — o arquivo foi removido no C8.
 
 ---
 
@@ -227,7 +249,7 @@ Ordem revista depois das correções, com a recomendação de corte do usuário 
 | ~~C5~~ | Repontar `/programacao-visualizacao` para a Normalizada | configuração | — | ✅ **feito** — 2026-08-12 |
 | ~~C6~~ | Repontar `/programacao` → `/programacao-normalizada` e deixar só "Programacao" no menu | configuração | — | ✅ **feito** — 2026-08-12 ⚠️ **exige a 362 aplicada antes do deploy** |
 | ~~C7~~ | Parar de conceder a Simples a usuário novo (`363`) e removê-la de `DEFAULT_USER_PAGE_ACCESS` | migration + configuração | — | ✅ **feito** — 2026-08-12 |
-| **C8** | Remover `programacao-simples`, `/api/programacao(/meta)`, `server/modules/programacao` | remoção | baixo | ← **fase atual** (todas as anteriores feitas) |
+| ~~C8~~ | Remover `programacao-simples`, `/api/programacao(/meta)`, `server/modules/programacao` + migration 364 | remoção | — | ✅ **feito** — 2026-08-12 |
 
 **C0 e C1 concluídos em 2026-08-12.** C2 continua independente e pode ir já.
 

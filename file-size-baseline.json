@@ -20,13 +20,8 @@
     "src/modules/dashboard/meta/MetaPageView.tsx": 1069,
     "src/modules/dashboard/pessoas/PeoplePageView.tsx": 1950,
     "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1077,
-    "src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx": 3029,
-    "src/modules/dashboard/programacao-simples/components.tsx": 2076,
-    "src/modules/dashboard/programacao-simples/hooks.ts": 1092,
     "src/modules/dashboard/projetos/ProjectsPageView.tsx": 4057,
     "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2832,
-    "src/server/modules/dashboard-measurement/controller.ts": 1700,
-    "src/server/modules/programacao/handlers.ts": 2337,
-    "src/server/modules/programacao/rpc.ts": 1017
+    "src/server/modules/dashboard-measurement/controller.ts": 1700
   }
 }
