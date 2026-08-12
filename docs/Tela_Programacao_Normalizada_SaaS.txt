@@ -1474,3 +1474,37 @@ Atualizacao 2026-08-05 - Adicionar equipe: pre-checagem de agenda no modal (fase
   - `src/modules/dashboard/programacao-normalizada/components/modals/AddTeamModal.tsx`
   - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`
   - `src/modules/dashboard/programacao-normalizada/ProjectPlanView.tsx`
+
+Atualizacao 2026-08-12 - Fachada publica para fontes da Medicao (C0 do corte)
+--------------------------------------------------------------------------------
+- A Programacao Normalizada passa a expor, pela fachada publica
+  `src/server/modules/programacao-normalizada/index.ts`, leituras especificas para a
+  Medicao:
+  - `fetchProgrammingStagesForMeasurementSources`
+  - `fetchProgrammingStagesForMeasurementMatch`
+  - `fetchCanceledProgrammingStageIdsForMeasurement`
+  - `fetchProgrammingCompletionRowsForMeasurement`
+  - `fetchProgrammingWorkCompletionHistoryForMeasurement`
+- Objetivo:
+  - Tirar a Medicao de `/api/programacao` e de leituras diretas locais de `programming`,
+    mantendo a Medicao dona da propria autorizacao e do proprio endpoint.
+  - Preservar o contrato da migration 351: `p_programming_id` deve receber
+    `programming.id` normalizado, e `p_team_id` continua separado.
+- Endpoint consumidor:
+  - `GET /api/medicao/programming-sources`, autorizado por `medicao/read`.
+  - Nao depende de `programacao-normalizada/read`, porque nao e uma tela de Programacao:
+    e uma fonte contextual da Medicao.
+- Regra de shape:
+  - O endpoint da Medicao converte 1 etapa normalizada em N `ScheduleItem`, um por
+    `programming_team` ATIVA. Esse fan-out substitui o modelo legado, que era 1 linha por
+    projeto+equipe+data.
+- Corte:
+  - C0 concluido no frontend da Medicao: as duas leituras de fonte de programacao
+    (`MeasurementPageView.tsx`, carregamento normal e cadastro em massa) apontam para
+    `/api/medicao/programming-sources`.
+  - C1 tambem concluido nesta mesma entrega: o modulo orfao
+    `src/modules/dashboard/programacao/` foi removido.
+  - Proximo passo independente permanece C2: mover os simbolos de prazo/deadline que o
+    Mapa ainda importa de `programacao-simples`.
+- Validado com `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npm.cmd run lint:size:update`
+  e `npm.cmd run build`.

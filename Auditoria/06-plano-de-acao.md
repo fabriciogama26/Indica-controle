@@ -157,7 +157,11 @@ Ver [`10-cutover-programacao.md`](10-cutover-programacao.md). **Entra antes de P
 2. Risco menor que escrever RPC de agregação nova: nenhum número de card muda, porque a tela inteira sai.
 3. Resolve `project_programming_history` nos dois cenários possíveis — se for tráfego vivo, zera; se for pré-cutover, decai sozinho. Ou seja, **não precisa esperar P1.1** para este item.
 
-O corte está mais adiantado do que o menu sugere: 5 das 6 fases feitas, escrita já congelada (`PROGRAMMING_SIMPLES_READ_ONLY = true`), e o modelo legado isolado num único caminho (`programacao-simples` → `/api/programacao` → `server/modules/programacao`). Restam 6 passos, dos quais **apenas um é implementação de verdade** (modo consulta na Normalizada); o resto é mover 5 símbolos de deadline para o `mapa-programacao`, repontar rotas/menu e ajustar `page_key`.
+O corte está adiantado no banco (5 fases com migration aplicada) e a escrita da Simples já está congelada, **mas a virada na aplicação não está completa**. O C0 foi tratado primeiro porque era correção de dado, não dívida:
+
+> ✅ **C0 concluído em 2026-08-12:** a Medição não lê mais `/api/programacao` como fonte viva. Agora usa `GET /api/medicao/programming-sources`, autorizado por `medicao/read`, que devolve `ScheduleItem.id = programming.id` normalizado e faz fan-out por equipe ATIVA. Ver [`10` §4](10-cutover-programacao.md#4-ordem-sugerida).
+
+Restam 7 passos (C2–C8). O C1 também foi concluído em 2026-08-12 com a remoção do módulo órfão `src/modules/dashboard/programacao/`. O próximo passo independente e imediato é mover os 5 símbolos de deadline para o `mapa-programacao` (C2).
 
 ### Ordem de ataque
 

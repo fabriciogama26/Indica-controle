@@ -3,15 +3,23 @@ Tela: Programacao SaaS
 Visao geral
 -----------
 - Tela operacional para programar obras por equipe e por data.
-- A tela agora consome dados reais de projetos, equipes, atividades e programacoes ja persistidas no tenant autenticado.
+- Documento historico da Programacao legada. A Programacao principal do corte e
+  `programacao-normalizada`; a tela `programacao-simples` permanece apenas como legado em
+  consulta/leitura ate o C8.
+- A implementacao antiga de `src/modules/dashboard/programacao/` foi removida em
+  2026-08-12 porque era modulo orfao, sem rota consumidora viva.
+- A tela legada ainda acessivel consome dados reais de projetos, equipes, atividades e
+  programacoes ja persistidas no tenant autenticado via `programacao-simples`.
 - O backlog pendente continua visual no painel esquerdo e a agenda continua em timeline semanal/diaria no painel direito.
 - O catalogo de projetos e a grade operacional ignoram obras marcadas como teste (`project.is_test = true`), evitando impacto em consolidacoes operacionais.
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/programacao/page.tsx`
-- View principal: `src/modules/dashboard/programacao/ProgrammingPageView.tsx`
-- Estilo dedicado: `src/modules/dashboard/programacao/ProgrammingPageView.module.css`
+- Estado atual da rota: redirect para a experiencia legada `programacao-simples` ate a
+  conclusao do corte de menu/rota.
+- View legada viva: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx`
+- Estilo legado vivo: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
 - API principal: `src/app/api/programacao/route.ts`
 - Catalogo de atividades reutilizado: `src/app/api/projects/activity-forecast/catalog/route.ts`
 - Migrations principais:
@@ -529,3 +537,22 @@ Atualizacao 2026-06-21 - Vínculo estruturado origem -> copia no COPY_TO_DATES
 - Multi-tenant:
   - A origem e validada por `tenant_id` dentro da RPC.
   - A FK composta existente impede referencia cruzada entre tenants.
+
+Atualizacao 2026-08-12 - Remocao do modulo orfao `dashboard/programacao` (C1)
+--------------------------------------------------------------------------------
+- Removido `src/modules/dashboard/programacao/`:
+  - `ProgrammingPageView.tsx`
+  - `ProgrammingPageView.module.css`
+  - `index.ts`
+  - `types.ts`
+  - `utils.ts`
+- Motivo:
+  - Nenhuma rota ou modulo importava essa implementacao antiga.
+  - O codigo continha chamadas de escrita para `/api/programacao`; estavam inertes, mas eram
+    risco de religacao acidental do modelo legado.
+- O que NAO mudou:
+  - `/programacao-simples` continua existindo e usando `src/modules/dashboard/programacao-simples`.
+  - `/api/programacao` continua existindo para a Simples ate o C8.
+  - O Mapa ainda importa simbolos de deadline da Simples; essa remocao nao toca esse acoplamento.
+- Baseline de tamanho atualizado pelo script oficial (`npm.cmd run lint:size:update`), removendo
+  a entrada obsoleta de `src/modules/dashboard/programacao/ProgrammingPageView.tsx`.
