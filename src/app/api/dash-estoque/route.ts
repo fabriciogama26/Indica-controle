@@ -549,10 +549,37 @@ async function loadTeams(params: {
   return result;
 }
 
+// Conjuntos de estorno do periodo, para a agregacao descartar transferencia
+// estornada e a propria transferencia de estorno.
+//
+// FAN-OUT: era o maior consumidor VIVO do banco na medicao de 2026-08-12
+// (`Auditoria/08-nivel-b-resultado.md`) — 1.496 chamadas em
+// `stock_transfer_item_reversals` contra 8 da carga de movimentacoes, ~187:1.
+//
+// A causa era chunkar os estornos de ITEM pela lista de `itemIds`, que e muito
+// maior que a de transferencias (um transfer tem N itens). Como
+// `stock_transfer_item_reversals` tambem guarda `original_stock_transfer_id` e
+// `reversal_stock_transfer_id` — ambos `not null` (migration 179) e ambos
+// indexados (`idx_stock_transfer_item_reversals_original_transfer` /
+// `_reversal_transfer`) —, da para filtrar pela MESMA lista de transferencias.
+//
+// O conjunto resultante e identico: `itemIds` sempre foi "todos os itens dos
+// `transferIds`" (`loadTransferItems` nao aplica outro filtro), entao todo item
+// nosso pertence a um transfer nosso, e vice-versa. O que muda e so a chave do
+// filtro — e, com ela, a quantidade de chunks.
+//
+// Com uma unica lista de ids, os quatro recortes cabem no mesmo laco: 4
+// consultas por chunk de transferencia, em vez de 2 por chunk de transferencia
+// MAIS 2 por chunk de item.
+//
+// A reducao restante depende de tirar a lista de ids da URL, o que exige RPC
+// com parametro `uuid[]` no corpo (P2.1). Ate la, `DASH_IN_FILTER_CHUNK_SIZE`
+// fica em 100 de proposito: cada consulta carrega uma lista de ~3,7 kB, e subir
+// o chunk aproximaria do limite de tamanho de URL do PostgREST — falha de
+// "URL too long" em producao seria pior que o ganho.
 async function loadReversalSets(params: {
   context: AuthenticatedAppUserContext;
   transferIds: string[];
-  itemIds: string[];
 }) {
   const reversedTransferIds = new Set<string>();
   const reversalTransferIds = new Set<string>();
@@ -560,7 +587,7 @@ async function loadReversalSets(params: {
   const reversalItemIds = new Set<string>();
 
   for (const ids of chunk(params.transferIds, DASH_IN_FILTER_CHUNK_SIZE)) {
-    const [fromOriginal, fromReversal] = await Promise.all([
+    const [transferFromOriginal, transferFromReversal, itemFromOriginal, itemFromReversal] = await Promise.all([
       params.context.supabase
         .from("stock_transfer_reversals")
         .select("original_stock_transfer_id, reversal_stock_transfer_id")
@@ -573,42 +600,39 @@ async function loadReversalSets(params: {
         .eq("tenant_id", params.context.appUser.tenant_id)
         .in("reversal_stock_transfer_id", ids)
         .returns<TransferReversalRow[]>(),
-    ]);
-
-    for (const row of fromOriginal.data ?? []) {
-      reversedTransferIds.add(row.original_stock_transfer_id);
-      reversalTransferIds.add(row.reversal_stock_transfer_id);
-    }
-    for (const row of fromReversal.data ?? []) {
-      reversedTransferIds.add(row.original_stock_transfer_id);
-      reversalTransferIds.add(row.reversal_stock_transfer_id);
-    }
-  }
-
-  for (const ids of chunk(params.itemIds, DASH_IN_FILTER_CHUNK_SIZE)) {
-    const [fromOriginal, fromReversal] = await Promise.all([
       params.context.supabase
         .from("stock_transfer_item_reversals")
         .select("original_stock_transfer_item_id, reversal_stock_transfer_item_id")
         .eq("tenant_id", params.context.appUser.tenant_id)
-        .in("original_stock_transfer_item_id", ids)
+        .in("original_stock_transfer_id", ids)
         .returns<ItemReversalRow[]>(),
       params.context.supabase
         .from("stock_transfer_item_reversals")
         .select("original_stock_transfer_item_id, reversal_stock_transfer_item_id")
         .eq("tenant_id", params.context.appUser.tenant_id)
-        .in("reversal_stock_transfer_item_id", ids)
+        .in("reversal_stock_transfer_id", ids)
         .returns<ItemReversalRow[]>(),
     ]);
 
-    if (!fromOriginal.error) {
-      for (const row of fromOriginal.data ?? []) {
+    for (const row of transferFromOriginal.data ?? []) {
+      reversedTransferIds.add(row.original_stock_transfer_id);
+      reversalTransferIds.add(row.reversal_stock_transfer_id);
+    }
+    for (const row of transferFromReversal.data ?? []) {
+      reversedTransferIds.add(row.original_stock_transfer_id);
+      reversalTransferIds.add(row.reversal_stock_transfer_id);
+    }
+
+    // Os dois recortes de item preservam a tolerancia a erro que ja existia
+    // aqui: falha num deles nao derruba o dashboard inteiro.
+    if (!itemFromOriginal.error) {
+      for (const row of itemFromOriginal.data ?? []) {
         reversedItemIds.add(row.original_stock_transfer_item_id);
         if (row.reversal_stock_transfer_item_id) reversalItemIds.add(row.reversal_stock_transfer_item_id);
       }
     }
-    if (!fromReversal.error) {
-      for (const row of fromReversal.data ?? []) {
+    if (!itemFromReversal.error) {
+      for (const row of itemFromReversal.data ?? []) {
         reversedItemIds.add(row.original_stock_transfer_item_id);
         if (row.reversal_stock_transfer_item_id) reversalItemIds.add(row.reversal_stock_transfer_item_id);
       }
@@ -993,7 +1017,7 @@ export async function GET(request: NextRequest) {
     const [teamOperations, projects, reversals, movementMaterials] = await Promise.all([
       transferIds.length ? loadTeamOperations({ context, transferIds }) : Promise.resolve([]),
       loadProjects({ context, projectIds: relevantTransfers.map((transfer) => transfer.project_id ?? "").filter(Boolean) }),
-      loadReversalSets({ context, transferIds, itemIds: items.map((item) => item.id) }),
+      loadReversalSets({ context, transferIds }),
       loadMovementMaterials({ context, materialIds: items.map((item) => item.material_id), materialCode, materialType }),
     ]);
     const teamIds = Array.from(new Set(teamOperations.map((operation) => operation.team_id).filter(Boolean)));

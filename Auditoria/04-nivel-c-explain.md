@@ -77,7 +77,7 @@ limit 1000;
 **Verificação da correção:**
 
 ```sql
-create index concurrently if not exists idx_pmo_kind_active_status_exec
+create index if not exists idx_pmo_kind_active_status_exec
   on public.project_measurement_orders
   (tenant_id, measurement_kind, is_active, status, execution_date);
 
@@ -115,7 +115,7 @@ limit 1000 offset 0;
 
 ```sql
 -- (a) índice que cobre filtro + ordenação, eliminando o Sort
-create index concurrently if not exists idx_project_tenant_active_test_third_sob
+create index if not exists idx_project_tenant_active_test_third_sob
   on public.project (tenant_id, is_active, is_test, is_third_party, sob);
 ```
 
@@ -188,7 +188,7 @@ order by project_id, execution_date, updated_at;
 **Hipótese:** usa `idx_programming_tenant_status_date (tenant_id, status, execution_date desc)` e depois filtra `project_id` linha a linha → `Rows Removed by Filter` alto quando o range de data é largo.
 
 ```sql
-create index concurrently if not exists idx_programming_tenant_project_status_exec
+create index if not exists idx_programming_tenant_project_status_exec
   on public.programming (tenant_id, project_id, status, execution_date);
 ```
 

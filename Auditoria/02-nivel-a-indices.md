@@ -40,18 +40,21 @@ Dois pares com colunas e predicado idênticos. Um dos dois de cada par é 100% m
 |---|---|---|---|---|
 | `project` | `idx_project_tenant_priority` | `idx_project_tenant_priority_uuid` | `(tenant_id, priority)` | `029` e `038` |
 | `project` | `idx_project_tenant_city` | `idx_project_tenant_city_uuid` | `(tenant_id, city)` | `029` e `038` |
+| `project` | constraint `unique (tenant_id, sob)` | `idx_project_tenant_sob` | `(tenant_id, sob)` | ambos na `029` |
 
 **Causa:** a migration `038_project_lookup_uuid_columns.sql` converteu `priority` e `city` de texto para UUID e recriou os índices com sufixo `_uuid`, mas só dropou `idx_project_priority_id` e `idx_project_municipality_id` — deixou os originais `029` de pé.
 
 **Correção:**
 
 ```sql
--- migration nova
-drop index if exists public.idx_project_tenant_priority_uuid;
-drop index if exists public.idx_project_tenant_city_uuid;
+-- migration 365
+-- Dropa `_uuid` somente quando o par sem sufixo tambem existe e a assinatura em
+-- pg_index e identica. Se so o `_uuid` existe, ele e o indice valido e fica.
 ```
 
-Manter os nomes originais (sem `_uuid`), que são os mais antigos e referenciados.
+Correcao apos teste real da 365: nao assumir que os nomes sem `_uuid` existem. Em replay limpo ou ambiente ja saneado, a 038 pode ter removido os indices originais ao renomear/dropar as colunas texto; nesse caso `idx_project_tenant_priority_uuid` e `idx_project_tenant_city_uuid` sao os unicos indices validos e devem ser preservados.
+
+Segunda correcao apos teste real da 365: a propria 029 cria `unique (tenant_id, sob)` e tambem `idx_project_tenant_sob`. O indice da constraint UNIQUE cobre a busca por `(tenant_id, sob)` e preserva a regra de unicidade; o indice nao-unique e redundante e pode ser removido quando o UNIQUE equivalente existir.
 
 > **Severidade: MÉDIO / Confiança: Alta.** Ganho é de escrita e espaço, não de leitura. Seguro: um índice duplicado exato nunca é o único caminho de nenhuma consulta. **É o único item desta auditoria que pode ir para produção sem passar pelo Nível B.**
 
@@ -225,4 +228,23 @@ E as remoções:
 | 8 | avaliar `idx_programming_tenant_work_completion_status` | baixo — coberto por `..._idx` |
 | 9 | avaliar `idx_teams_tenant_stock_center` | baixo — coberto pelo unique global |
 
-Regra para toda migration de índice neste projeto, conforme `guias/guia_sql.md`: usar `create index concurrently if not exists` fora de transação, e medir `EXPLAIN` antes/depois no PR.
+### ⚠️ `CONCURRENTLY` não funciona nas migrations deste projeto
+
+Erro real ao aplicar a migration `365`:
+
+```
+ERROR: 25001: DROP INDEX CONCURRENTLY cannot run inside a transaction block
+```
+
+**O Supabase CLI executa o arquivo de migration inteiro dentro de uma transação**, não statement a statement. Como `CREATE INDEX CONCURRENTLY` e `DROP INDEX CONCURRENTLY` são proibidos em bloco transacional pelo PostgreSQL, eles **não podem** aparecer num arquivo de migration aqui.
+
+> Correção de rumo: a primeira versão deste documento mandava usar `create index concurrently if not exists` *"conforme `guias/guia_sql.md`"*. **Aquele guia não contém essa regra** — a citação estava errada, e a receita também. Todas as receitas de índice desta auditoria foram corrigidas para `create index if not exists`.
+
+**O que fazer em cada caso:**
+
+| Situação | Caminho |
+|---|---|
+| Tabela pequena (o caso deste projeto — banco de 90 MB) | `create index if not exists` / `drop index if exists` direto na migration. O `ACCESS EXCLUSIVE` dura milissegundos: é mudança de catálogo, não reescrita de dados. É o padrão já usado em 15 dos 18 `drop index` do repositório, incluindo a migration `300`. |
+| Tabela grande o bastante para o lock incomodar | Rodar o `CONCURRENTLY` **fora** da migration (SQL editor ou `psql`), e registrar no `README.txt` das migrations que o índice foi criado manualmente — senão o schema versionado passa a divergir do banco. |
+
+Medir `EXPLAIN` antes/depois no PR continua valendo em qualquer um dos dois caminhos.
