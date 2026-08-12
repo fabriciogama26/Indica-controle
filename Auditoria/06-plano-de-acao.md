@@ -56,19 +56,17 @@ Decisão de produto tomada com o usuário: **recusar e pedir período menor**, e
 
 | # | Ação | Severidade | Validação |
 |---|---|---|---|
-| P0.2 | `drop index public.idx_project_tenant_priority_uuid` | MÉDIO | duplicata exata de `idx_project_tenant_priority` |
-| P0.3 | `drop index public.idx_project_tenant_city_uuid` | MÉDIO | duplicata exata de `idx_project_tenant_city` |
+| ~~P0.2~~ | remover duplicata de `project(tenant_id, priority)` quando existir | ✅ migration `365` | drop condicional: preserva `_uuid` se ele for o unico indice valido |
+| ~~P0.3~~ | remover duplicata de `project(tenant_id, city)` quando existir | ✅ migration `365` | drop condicional: preserva `_uuid` se ele for o unico indice valido |
+| ~~P0.4~~ | remover duplicata de `project(tenant_id, sob)` quando existir | ✅ migration `365` | remove `idx_project_tenant_sob`, preserva o UNIQUE `(tenant_id, sob)` |
 
 Uma migration só, com comentário explicando a origem (a `038` recriou com sufixo `_uuid` e não dropou os originais da `029`).
 
 ```sql
--- 362_drop_duplicate_project_indexes.sql
--- A migration 038 converteu project.priority e project.city para UUID e recriou
--- os indices com sufixo _uuid, mas nao dropou os originais da 029. Sao pares
--- exatamente identicos (mesmas colunas, mesmo predicado): o planner nunca usa os
--- dois, e ambos sao mantidos em toda escrita na tabela project (17 indices).
-drop index if exists public.idx_project_tenant_priority_uuid;
-drop index if exists public.idx_project_tenant_city_uuid;
+-- 365_drop_duplicate_project_indexes.sql
+-- Dropa `_uuid` somente se o par sem sufixo tambem existir e a assinatura em
+-- pg_index for identica. Se so o `_uuid` existir, ele e preservado.
+-- Remove tambem idx_project_tenant_sob quando ele duplica o UNIQUE de SOB.
 ```
 
 Validação: `npm run db:migration-list`, depois a consulta de duplicatas de [`03` §5](03-nivel-b-pg-stat-statements.md#5-inventário-real-de-índices) deve voltar vazia.
@@ -226,12 +224,12 @@ Nota: **P2 pode reduzir ou eliminar a necessidade de P3.1 e P3.2.** Se as consul
 Sempre, quando promovido:
 
 ```sql
-create index concurrently if not exists <nome>
+create index if not exists <nome>
   on public.<tabela> (<colunas>);
 analyze public.<tabela>;
 ```
 
-`CONCURRENTLY` fica **fora** de bloco transacional — ver `guias/guia_sql.md`.
+**Sem `CONCURRENTLY`**: o Supabase CLI roda a migration inteira numa transação e o PostgreSQL proíbe `CONCURRENTLY` ali. Ver [`02` §8](02-nivel-a-indices.md#️-concurrently-não-funciona-nas-migrations-deste-projeto).
 
 ### Remoções condicionadas ao `idx_scan` real
 
@@ -250,9 +248,9 @@ Só depois de uma janela de coleta representativa (≥ 30 dias, incluindo um fec
 Condicionado à seletividade medida em [`03` §6](03-nivel-b-pg-stat-statements.md#6-seletividade-real-das-colunas-booleanas). Se `most_common_freqs` do valor filtrado > 0,20, o índice não é usado e deve sair ou virar parcial:
 
 ```sql
-create index concurrently idx_project_tenant_is_test_partial
+create index if not exists idx_project_tenant_is_test_partial
   on public.project (tenant_id) where is_test = true;
-drop index concurrently public.idx_project_tenant_is_test;
+drop index if exists public.idx_project_tenant_is_test;
 ```
 
 Aplica-se a `is_test`, `is_withdrawn`, `is_third_party`, `has_locacao`, `fob`. **Não** a `is_active` — a maioria das linhas é `true`, então o índice parcial não filtraria nada; ali o caminho é o composto P3.3.

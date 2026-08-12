@@ -22,7 +22,8 @@ Todo artefato `.md` de auditoria de performance vive aqui. Nada nesta pasta alte
 | [`07-baseline-p1.md`](07-baseline-p1.md) | B | Runbook do P1: habilitar `pg_stat_statements`, capturar `T0` e comparar com `T1` sem se enganar com variação de tráfego |
 | [`08-nivel-b-resultado.md`](08-nivel-b-resultado.md) | B | **Resultado medido (parcial)** — o que a primeira medição real confirmou, derrubou e reordenou |
 | [`09-telas-em-uso.md`](09-telas-em-uso.md) | A | Telas vivas, telas mortas e telas vazias — por que a Programação legada ainda é o destino padrão do menu |
-| [`10-cutover-programacao.md`](10-cutover-programacao.md) | A/D | O que falta para a Normalizada ser a única Programação — estado das 6 fases e os 6 passos restantes |
+| [`10-cutover-programacao.md`](10-cutover-programacao.md) | A/D | O corte da Programação Normalizada — estado das fases e os passos C0 a C8 |
+| [`11-infraestrutura.md`](11-infraestrutura.md) | B | **Evidência de infraestrutura** — CPU/Disk I/O em 82–86% com banco de 90 MB; marco T0 do before/after |
 | [`baseline/`](baseline/) | B | Capturas brutas de `scripts/perf-baseline-capture.sql`, uma por arquivo |
 
 ### Auditorias anteriores nesta pasta
@@ -63,7 +64,7 @@ Argumento opcional para focar um módulo:
 | Nível | Status | Observação |
 |---|---|---|
 | A — análise estática do repositório | 🟢 Concluído | Feito sem tocar em produção. Base de todos os outros níveis. |
-| B — `pg_stat_statements` | 🟡 Parcial | Primeira medição válida em 2026-08-12 (bloco `08`, frequência). Resultados e o que eles mudaram em [`08-nivel-b-resultado.md`](08-nivel-b-resultado.md). **Faltam os blocos `00`, `02`, `03` e `04`** — sem eles não há ranking por custo acumulado, e ~90% do tempo do banco segue não atribuído. |
+| B — `pg_stat_statements` | 🟡 Parcial | Duas capturas do bloco `08` em 2026-08-12 permitiram o **delta**, que respondeu P1.1 e P1.3 ([`08`](08-nivel-b-resultado.md)), mais a evidência de infraestrutura ([`11`](11-infraestrutura.md)). **Faltam os blocos `02`, `03` e `04`** — sem o `04` não há ranking por custo acumulado, e ~90% do tempo do banco segue não atribuído. |
 | C — `EXPLAIN (ANALYZE, BUFFERS)` | 🟡 Parcial | Candidatas selecionadas por evidência estática; falta rodar contra dados reais. |
 | D — arquitetura | 🟢 Concluído | Achados de arquitetura não dependem de acesso a produção. |
 
@@ -73,6 +74,7 @@ Argumento opcional para focar um módulo:
 
 ## Limites desta auditoria
 
-- Nenhuma medição foi feita contra o banco de produção. Todo número de "risco" é uma priorização por evidência estática (volume de código, padrão de filtro, ausência de índice compatível), não uma medição.
+- **Atualizado em 2026-08-12:** houve medição contra produção — duas capturas de `pg_stat_statements` (frequência + delta) e o painel `Infrastructure`. Os "riscos" do Nível A que **não** foram cobertos por essas capturas continuam sendo priorização estática, não medição.
+- A medição já **derrubou duas conclusões** da análise estática: a tese "milhares de linhas por chamada" (nenhuma consulta passa de 152 blocos/chamada) e o ranking que elegeu `programacao (legado)` como maior consumidor (delta zero — era histórico acumulado). Ler [`08`](08-nivel-b-resultado.md) e [`11`](11-infraestrutura.md) antes de qualquer conclusão tirada só do Nível A.
 - Contagem de linhas/tabelas vem de `supabase/migrations/` (371 arquivos) e de `src/`. Se o schema de produção divergir das migrations, o Nível B corrige.
 - Não há suíte automatizada de teste no projeto — validação de qualquer correção derivada daqui é manual, conforme `guias/guia_validacao.md`.

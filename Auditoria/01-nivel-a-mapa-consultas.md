@@ -133,7 +133,7 @@ project_measurement_orders                              (route.ts:356)
 ```sql
 -- CANDIDATO. Não aplicar antes do Nível B confirmar frequência
 -- e do Nível C confirmar mudança de plano.
-create index concurrently if not exists idx_project_measurement_orders_kind_active_status_exec
+create index if not exists idx_project_measurement_orders_kind_active_status_exec
   on public.project_measurement_orders
   (tenant_id, measurement_kind, is_active, status, execution_date);
 ```
@@ -220,7 +220,7 @@ programming
 
 ```sql
 -- CANDIDATO. Não aplicar antes do Nível B + C.
-create index concurrently if not exists idx_programming_tenant_project_status_exec
+create index if not exists idx_programming_tenant_project_status_exec
   on public.programming
   (tenant_id, project_id, status, execution_date);
 ```
@@ -243,7 +243,7 @@ Cobre as 4 variantes (com e sem range de data), na ordem correta.
 
 ```sql
 -- CANDIDATO de baixa prioridade. Provavelmente não se paga.
-create index concurrently if not exists idx_project_billing_orders_tenant_updated
+create index if not exists idx_project_billing_orders_tenant_updated
   on public.project_billing_orders (tenant_id, updated_at desc);
 ```
 
@@ -331,7 +331,7 @@ Contraexemplo saudável: `stock-requisitions/route.ts` usa `DEFAULT_PAGE_SIZE = 
 
 ```sql
 -- CANDIDATO. Não aplicar antes do Nível B + C-2.
-create index concurrently if not exists idx_project_tenant_active_test_third_sob
+create index if not exists idx_project_tenant_active_test_third_sob
   on public.project (tenant_id, is_active, is_test, is_third_party, sob);
 ```
 

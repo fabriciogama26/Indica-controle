@@ -1,4 +1,50 @@
-# Nível B — Resultado medido (parcial)
+# Nível B — Resultado medido
+
+> ## 🎯 P1.1 respondida por delta entre duas capturas — 2026-08-12
+>
+> Duas capturas do bloco `08` no mesmo dia permitiram calcular o **delta por `queryid`**, que era o caminho recomendado em [`07` §…](07-baseline-p1.md) para não depender dos cumulativos. O resultado **inverte a conclusão da leitura cumulativa**.
+>
+> ### O legado da Programação está congelado — delta ZERO
+>
+> | Consulta | Δ chamadas |
+> |---|---|
+> | `project_programming` (3 variantes) | **0, 0, 0** |
+> | `project_programming_history` | **0** |
+> | `project_programming_activities` | +56 |
+>
+> As quatro primeiras não moveram **uma única chamada**, e o `total_exec_time_ms` veio idêntico até a casa decimal (`911706.90` nas duas capturas). Zero execuções no intervalo.
+>
+> **Portanto: os 912 s de `project_programming_history` são histórico acumulado, não custo atual.** A suspeita registrada em §1.3 está confirmada — era tráfego fantasma de antes do corte, e a leitura cumulativa que o elegeu "maior consumidor medido" era artefato.
+>
+> **Consequência para o plano:** o C8 (remoção do legado) continua tendo sido a coisa certa a fazer — era código morto e dívida de manutenção —, mas **a justificativa de performance dele evapora**. Foi limpeza, não otimização. Nenhum ganho de I/O deve ser esperado do corte.
+>
+> Ponta solta: `project_programming_activities` +56 é a única do grupo que se moveu. Não deveria, se a tela antiga não foi usada. Precisa de explicação antes de dar o assunto por encerrado.
+>
+> ### O gargalo vivo é outro, e agora está quantificado
+>
+> | Consulta | Δ chamadas |
+> |---|---|
+> | `stock_transfer_item_reversals` (**duas** consultas) | **+748 cada = 1.496** |
+> | `stock_transfer_items` | +364 |
+> | `app_users`/`app_roles`/`app_user_tenants` (auth) | +393 cada |
+> | `app_user_page_permissions` | +362 |
+> | `stock_transfers` (carga do dash-estoque) | **+8** |
+>
+> **A razão é o achado:** `stock_transfers` moveu **8** e `stock_transfer_item_reversals` moveu **1.496** — cerca de **187 chamadas de estorno para cada chamada da carga de movimentações**. É o `loadReversalSets` disparando duas consultas por chunk, agora medido em tráfego real e não inferido do código.
+>
+> ⚠️ Ressalva: `stock_transfers` é o laço paginado, então as 8 chamadas podem ser páginas de poucos carregamentos, não 8 carregamentos. A razão 187:1 é sólida; a leitura "por carregamento" depende do denominador do log da hospedagem.
+>
+> **Nova ordem de prioridade do P2, agora por medição e não por análise estática:**
+>
+> 1. `loadReversalSets` do `dash-estoque` — maior fan-out vivo, isolado e corrigível
+> 2. `resolveAuthenticatedAppUser` + `requirePageAction` — ~1.541 chamadas de overhead fixo no mesmo intervalo
+> 3. o resto do `dash-estoque` (`stock_transfer_items`, +364)
+>
+> `programacao (legado)` **sai da fila** — não tem custo vivo.
+
+---
+
+## Leitura cumulativa (captura única) — preservada como histórico
 
 Primeira medição real com tráfego de aplicação válido. Captura de **2026-08-12**, bloco `08_muitas_chamadas` (top 25 por `calls`).
 

@@ -14,6 +14,16 @@ Toda a auditoria existe para responder **qual das três** está causando o pico.
 | 2 | **Cache hit ratio baixo** | Disk read constante mesmo em consultas repetidas | `shared_blks_read` vs `shared_blks_hit`; alvo ≥ **99%** para tabelas quentes | Índice que reduza blocos lidos; menos colunas no `SELECT`; upgrade de RAM |
 | 3 | **Queries lentas** | Picos de I/O correlacionados a rotas específicas | `mean_exec_time` — a documentação chama atenção especificamente para **> ~1 segundo** | Índice composto alinhado ao filtro real, agregação no banco, reescrita da query |
 
+> ### ⚠️ Uma quarta causa, que a documentação não destaca
+>
+> Este projeto mediu **Disk I/O em 86% e CPU em 82% sem disparar nenhum dos três alarmes acima** ([`11-infraestrutura.md`](11-infraestrutura.md)): memória em 49%, banco de 90,5 MB, nenhuma consulta acima de ~44 ms de média, `blks_read_per_call` praticamente zero.
+>
+> O padrão era:
+>
+> **Fan-out de consultas baratas** — centenas de milhares de chamadas de 1–5 ms, cada uma tocando poucos blocos, que somadas saturam CPU e I/O sem existir query lenta, tabela grande ou pressão de memória.
+>
+> **Portanto: não conclua "não há problema de I/O" só porque as três causas canônicas não aparecem.** Sempre olhar `calls` além de `total_exec_time` e `blks_read`. O bloco `08` do script de baseline existe para isso.
+
 **Regra de ouro do alvo:** o alvo não é a query mais lenta, é o **custo acumulado**.
 
 ```
