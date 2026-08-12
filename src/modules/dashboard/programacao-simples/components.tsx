@@ -6,8 +6,6 @@ import styles from "./ProgrammingSimplePageView.module.css";
 import type {
   ActivityCatalogItem,
   AlertModalState,
-  DeadlineViewMode,
-  DeadlineVisualVariant,
   DocumentEntry,
   DocumentKey,
   ElectricalEqCatalogItem,
@@ -47,49 +45,12 @@ type StageConflictModalState = {
   teams: StageValidationTeamSummary[];
 };
 
-type DeadlineModalItem = {
-  id: string;
-  sob: string;
-  serviceCenter: string;
-  priority: string;
-  workType: string;
-  executionDeadline: string;
-  latestProgrammingDate: string;
-  reason: string;
-  workCompletionStatus: string;
-  statusLabel: string;
-  daysDiff: number;
-  rangeLabel: string;
-};
-
 type CopyToDatesDraftRow = {
   id: string;
   date: string;
   etapaNumber: string;
   teamIds: string[];
 };
-
-type DeadlinePanelSummary = {
-  dueToday: number;
-  dueSoon: number;
-  overdue: number;
-  normal: number;
-};
-
-type DeadlinePanelItem = {
-  id: string;
-  sob: string;
-  executionDeadline: string;
-  statusLabel: string;
-  visualVariant: DeadlineVisualVariant;
-};
-
-const DEADLINE_VIEW_OPTIONS: Array<{ value: DeadlineViewMode; label: string }> = [
-  { value: "15", label: "15 dias" },
-  { value: "30", label: "30 dias" },
-  { value: "60", label: "60 dias" },
-  { value: "90", label: "90 dias" },
-];
 
 type UpdateFormField = <Key extends keyof FormState>(field: Key, value: FormState[Key]) => void;
 
@@ -712,154 +673,6 @@ function getScheduleCardClassName(status: ProgrammingStatus, workCompletionStatu
   return styles.weekCardPlanned;
 }
 
-function getDeadlineCardClassName(visualVariant: DeadlineVisualVariant) {
-  if (visualVariant === "OVERDUE_CRITICAL") {
-    return styles.deadlineSobCardOverdueCritical;
-  }
-
-  if (visualVariant === "OVERDUE") {
-    return styles.deadlineSobCardOverdue;
-  }
-
-  if (visualVariant === "TODAY") {
-    return styles.deadlineSobCardToday;
-  }
-
-  if (visualVariant === "SOON") {
-    return styles.deadlineSobCardSoon;
-  }
-
-  return styles.deadlineSobCardNormal;
-}
-
-export function ProgrammingDeadlinePanel(props: {
-  summary: DeadlinePanelSummary;
-  windowHeading: string;
-  viewMode: DeadlineViewMode;
-  windowDays: number;
-  pages: DeadlinePanelItem[][];
-  carouselPage: number;
-  totalPages: number;
-  onViewModeChange: (value: DeadlineViewMode) => void;
-  onOpenModal: () => void;
-  onPreviousPage: () => void;
-  onNextPage: () => void;
-}) {
-  const {
-    summary,
-    windowHeading,
-    viewMode,
-    windowDays,
-    pages,
-    carouselPage,
-    totalPages,
-    onViewModeChange,
-    onOpenModal,
-    onPreviousPage,
-    onNextPage,
-  } = props;
-
-  return (
-    <article className={styles.card}>
-      <h3 className={styles.cardTitle}>Prazos das Obras</h3>
-      <div className={styles.deadlineSummaryGrid}>
-        <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummaryToday}`}>
-          <strong>Vence hoje</strong>
-          <span>{summary.dueToday}</span>
-        </article>
-        <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummarySoon}`}>
-          <strong>Vence em breve</strong>
-          <span>{summary.dueSoon}</span>
-        </article>
-        <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummaryOverdue}`}>
-          <strong>Vencida</strong>
-          <span>{summary.overdue}</span>
-        </article>
-        <article className={`${styles.deadlineSummaryCard} ${styles.deadlineSummaryNormal}`}>
-          <strong>No prazo</strong>
-          <span>{summary.normal}</span>
-        </article>
-      </div>
-
-      <div className={`${styles.sectionHeader} ${styles.deadlineSectionHeader}`}>
-        <div>
-          <h4>{windowHeading}</h4>
-          <p>Cards por obra com data limite, status do prazo e alerta visual.</p>
-        </div>
-        <div className={styles.deadlineViewToggle} role="group" aria-label="Janela de prazo dos cards SOB">
-          {DEADLINE_VIEW_OPTIONS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`${styles.deadlineViewToggleButton} ${
-                viewMode === option.value ? styles.deadlineViewToggleButtonActive : ""
-              }`}
-              onClick={() => onViewModeChange(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-          <button type="button" className={styles.secondaryButton} onClick={onOpenModal}>
-            Ver todos
-          </button>
-        </div>
-      </div>
-
-      {pages.length ? (
-        <div className={styles.deadlineCarouselWrapper}>
-          <button
-            type="button"
-            className={styles.deadlineCarouselButton}
-            onClick={onPreviousPage}
-            disabled={carouselPage === 0}
-            aria-label="Pagina anterior dos cards SOB"
-          >
-            {"<"}
-          </button>
-          <div className={styles.deadlineCarouselViewport}>
-            <div
-              className={styles.deadlineCarouselTrack}
-              style={{ transform: `translateX(-${carouselPage * 100}%)` }}
-            >
-              {pages.map((pageItems, pageIndex) => (
-                <div key={`deadline-page-${pageIndex}`} className={styles.deadlineCarouselPage}>
-                  {pageItems.map((item) => (
-                    <article
-                      key={item.id}
-                      className={`${styles.deadlineSobCard} ${getDeadlineCardClassName(item.visualVariant)}`}
-                    >
-                      <strong>SOB {item.sob}</strong>
-                      <span>Data limite: {formatDate(item.executionDeadline)}</span>
-                      <span>Status: {item.statusLabel}</span>
-                    </article>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </div>
-          <button
-            type="button"
-            className={styles.deadlineCarouselButton}
-            onClick={onNextPage}
-            disabled={carouselPage >= totalPages - 1}
-            aria-label="Proxima pagina dos cards SOB"
-          >
-            {">"}
-          </button>
-        </div>
-      ) : (
-        <p className={styles.emptyHint}>Nenhuma obra com data limite ate {windowDays} dias a frente.</p>
-      )}
-
-      {pages.length ? (
-        <p className={styles.deadlineCarouselPageInfo}>
-          Pagina {carouselPage + 1} de {totalPages}
-        </p>
-      ) : null}
-    </article>
-  );
-}
-
 export function ProgrammingWeeklyCalendarPanel(props: {
   weekStartDate: string;
   weekDates: string[];
@@ -1030,94 +843,6 @@ export function ProgrammingWeeklyCalendarPanel(props: {
         )}
       </div>
     </article>
-  );
-}
-
-export function ProgrammingDeadlineModal(props: {
-  isOpen: boolean;
-  items: DeadlineModalItem[];
-  windowDays: number;
-  isExporting: boolean;
-  onClose: () => void;
-  onExport: () => void;
-}) {
-  const { isOpen, items, windowDays, isExporting, onClose, onExport } = props;
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    <div className={styles.modalOverlay} onClick={onClose}>
-      <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-        <header className={styles.modalHeader}>
-          <div className={styles.modalTitleBlock}>
-            <h4>Todos os prazos das obras ({windowDays} dias)</h4>
-            <p className={styles.modalSubtitle}>
-              Total: {items.length} | Janela: ate {windowDays} dias | Concluidas nao entram.
-            </p>
-          </div>
-          <button type="button" className={styles.modalCloseButton} onClick={onClose}>
-            Fechar
-          </button>
-        </header>
-
-        <div className={styles.modalBody}>
-          <div className={styles.deadlineModalActions}>
-            <CsvExportButton
-              onClick={onExport}
-              disabled={isExporting || !items.length}
-              isLoading={isExporting}
-              className={styles.secondaryButton}
-            />
-          </div>
-
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>SOB</th>
-                  <th>Centro de servico</th>
-                  <th>Prioridade</th>
-                  <th>Tipo de obra</th>
-                  <th>Data limite</th>
-                  <th>Data Programacao</th>
-                  <th>Motivo</th>
-                  <th>Estado Trabalho</th>
-                  <th>Status do prazo</th>
-                  <th>Dias para vencimento</th>
-                  <th>Faixa</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.length ? (
-                  items.map((item) => (
-                    <tr key={`deadline-modal-${item.id}`}>
-                      <td>{item.sob}</td>
-                      <td>{item.serviceCenter}</td>
-                      <td>{item.priority}</td>
-                      <td>{item.workType}</td>
-                      <td>{formatDate(item.executionDeadline)}</td>
-                      <td>{item.latestProgrammingDate ? formatDate(item.latestProgrammingDate) : "-"}</td>
-                      <td>{item.reason || "-"}</td>
-                      <td>{item.workCompletionStatus || "-"}</td>
-                      <td>{item.statusLabel}</td>
-                      <td>{item.daysDiff}</td>
-                      <td>{item.rangeLabel}</td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td className={styles.emptyRow} colSpan={11}>
-                      Nenhuma obra encontrada para a janela selecionada.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </article>
-    </div>
   );
 }
 

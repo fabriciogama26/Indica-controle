@@ -39,6 +39,49 @@ Cadastro
 - A tela e somente consulta/exportacao.
 - Acoes exibidas nos cards direcionam para telas existentes (`Programacao` e `Projetos`).
 
+Atualizacao 2026-08-12 (3) - Cluster "Prazos das Obras" passa a ser do Mapa (C2)
+---------------------------------------------------------------------------------
+- Origem: C2 do corte da Programacao Normalizada (`Auditoria/10-cutover-programacao.md`).
+- REFATORACAO EXCLUSIVAMENTE ESTRUTURAL: nenhuma mudanca de layout, texto, classe CSS,
+  atributo de acessibilidade, regra de calculo, filtro, dado exibido ou chamada de API.
+- Antes:
+  - O painel e o modal de prazos eram importados de `programacao-simples`
+    (`components.tsx`, `constants.ts`, `utils.ts`, `exports.ts`, `types.ts`), junto com
+    11 simbolos. Era a UNICA dependencia de runtime entre os dois modulos e o que
+    impedia a Programacao Simples de ser removida.
+  - Verificado simbolo a simbolo antes do move: o Mapa era o unico consumidor de todos
+    eles; a Simples nao usava nenhum na propria tela. Eram ativos do Mapa morando no
+    modulo errado — nao houve perda de funcionalidade na Simples.
+- Depois:
+  - `src/modules/dashboard/mapa-programacao/deadline.ts` — constantes (`DEADLINE_*`),
+    tipos (`DeadlineStatus`, `DeadlineVisualVariant`, `DeadlineViewMode`,
+    `DeadlinePanelSummary`, `DeadlinePanelItem`, `DeadlineModalItem`), helpers
+    (`resolveDeadlineStatus`, `resolveDeadlineVisualVariant`,
+    `formatDeadlineStatusLabel`) e `buildDeadlineCsvContent`.
+  - `components/ProgrammingDeadlinePanel.tsx` e `components/ProgrammingDeadlineModal.tsx`
+    — JSX identico ao original.
+  - `components/ProgrammingDeadline.module.css` — CSS module PROPRIO do cluster.
+- Por que CSS module proprio, e nao merge em `MapProgrammingPageView.module.css`:
+  - Quatro classes de que estes componentes dependem JA existiam no CSS do Mapa com
+    definicao DIFERENTE: `.card` no Mapa e so `padding: 16px` (na origem tem
+    border-radius 24px, borda, sombra e padding 22px); `.secondaryButton` no Mapa e um
+    botao solido verde-escuro (#2f6f73 com texto branco), na origem e um botao claro
+    azulado (rgba(37,74,156,0.1) com texto #17347a); `.modalHeader` e `.tableWrapper`
+    tambem divergem. Mesclar mudaria a aparencia do painel, e o C2 e movimentacao SEM
+    mudanca visual. Modulo proprio preserva as regras exatas.
+- Copias verbatim deliberadas em `deadline.ts` (`formatDeadlineDate`, `escapeCsvValue`,
+  `buildCsvContent`): a Simples tem semantica propria — data invalida cai no valor cru,
+  e o CSV usa separador `;` com BOM. Reaproveitar `formatters.ts` do Mapa ou
+  `@/lib/utils/csv` mudaria a saida do painel e do CSV.
+- Baseline do ratchet: `programacao-simples/components.tsx` 2351 -> 2076 (-275 linhas),
+  reduzido com `npm run lint:size:update`.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros; 37 warnings
+  legados) e `npm run build`.
+- Validacao manual pendente (nao existe suite automatizada): abrir `/mapa-programacao` e
+  conferir que o bloco `Prazos das Obras` esta visualmente IDENTICO ao de antes — cards
+  de resumo, cores por faixa, carrossel, botoes de janela (15/30/60/90), botao
+  `Ver todos`, modal e `Extrair CSV`.
+
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:

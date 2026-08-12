@@ -220,6 +220,36 @@ Atalhos
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
 
+Atualizacao 2026-08-12 (2) - Validacao de equipe ATIVA saiu do estado dormente
+--------------------------------------------------------------------------------
+- Nota operacional do C0 (commit `eadefad`). NAO e mudanca nova de codigo: e a
+  consequencia esperada da troca de fonte, registrada aqui para quem atender chamado.
+- O que mudou de fato para o usuario:
+  - ANTES do C0 a tela enviava `programmingId` vindo de `project_programming` (legado).
+    A migration 351 ja resolvia `p_programming_id` contra `programming` (normalizado),
+    entao o ID legado NUNCA casava e a RPC caia sempre no fallback por
+    projeto + equipe + data. O caminho explicito, e com ele a validacao "a equipe
+    pedida precisa estar ATIVA na etapa", ficava DORMENTE.
+  - DEPOIS do C0 a tela envia `programming.id` de verdade, o match explicito passa a
+    acontecer, e a validacao de equipe ATIVA passa a valer.
+- Sintoma possivel: erro ao salvar/editar ordem em caso de borda que antes passava
+  calado pelo fallback — tipicamente ordem cuja equipe nao esta mais ATIVA na etapa
+  (`programming_team.status <> 'ATIVA'`).
+- Como tratar quando aparecer: isso e a correcao FUNCIONANDO, nao regressao. Conferir
+  em `programming_team` se a equipe da ordem esta ATIVA na etapa; se nao estiver, o
+  vinculo pedido esta mesmo errado e a ordem precisa apontar para a etapa/equipe certa.
+  NAO reverter para a fonte legada.
+- Dimensao do impacto, medida em producao pela propria migration 351 (2026-07-31,
+  `scripts/audit-medicao-programming-match-readonly.mjs`): a validacao rejeitaria 1 das
+  181 ordens ja vinculadas, e somente se ela fosse REEDITADA pela tela. Ordens ja
+  gravadas nao foram alteradas.
+- Ganho silencioso que vem junto: antes, o fallback re-resolvia por status
+  (PROGRAMADA > REPROGRAMADA > ADIADA > CANCELADA) e podia vincular a ordem a uma etapa
+  DIFERENTE da que o usuario escolheu na tela; e, quando a etapa tinha sido reprogramada
+  ou adiada para outra data depois da criacao da ordem, o fallback nao achava nada e
+  `programming_id` ficava nulo (14 de 181 ordens nesse padrao). Os dois casos deixam de
+  acontecer.
+
 Atualizacao 2026-07-23 (Bloqueio de atividade duplicada na Medicao)
 --------------------------------------------------------------------
 - Arquivos alterados/criados:
