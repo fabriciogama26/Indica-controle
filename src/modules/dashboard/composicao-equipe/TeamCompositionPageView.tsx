@@ -155,6 +155,7 @@ type FilterState = {
   projectCode: string;
   teamId: string;
   workStatus: WorkStatusFilter;
+  measurementStatus: "" | "UNMEASURED";
 };
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
@@ -205,6 +206,7 @@ function buildQuery(filters: FilterState, projectId: string | null, page: number
   if (projectId) params.set("projectId", projectId);
   if (filters.teamId) params.set("teamId", filters.teamId);
   if (filters.workStatus) params.set("workStatus", filters.workStatus);
+  if (filters.measurementStatus) params.set("measurementStatus", filters.measurementStatus);
   return params.toString();
 }
 
@@ -416,7 +418,7 @@ export function TeamCompositionPageView() {
   const logError = useErrorLogger("composicao-equipe");
   const exportCooldown = useExportCooldown();
   const today = useMemo(() => toIsoDate(new Date()), []);
-  const initialFilters = useMemo<FilterState>(() => ({ ...monthRange(today), projectCode: "", teamId: "", workStatus: "" }), [today]);
+  const initialFilters = useMemo<FilterState>(() => ({ ...monthRange(today), projectCode: "", teamId: "", workStatus: "", measurementStatus: "" }), [today]);
   const [form, setForm] = useState<FormState>(() => createInitialForm(today));
   const [coverageDate, setCoverageDate] = useState(today);
   const [filterDraft, setFilterDraft] = useState<FilterState>(initialFilters);
@@ -450,10 +452,7 @@ export function TeamCompositionPageView() {
   const projectById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
   const activeFilterProject = projectByCode.get(normalizeLookupKey(activeFilters.projectCode)) ?? null;
   const selectedTeam = teams.find((team) => team.id === form.teamId) ?? null;
-  const selectedFormProjects = useMemo(
-    () => form.projectIds.map((projectId) => projectById.get(projectId)).filter((project): project is ProjectOption => Boolean(project)),
-    [form.projectIds, projectById],
-  );
+  const selectedFormProjects = useMemo(() => form.projectIds.map((projectId) => projectById.get(projectId)).filter((project): project is ProjectOption => Boolean(project)), [form.projectIds, projectById]);
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
   const formForemanPhone = getFormForemanPhone(selectedTeam, form.members);
   const dailyCoverageByTeam = useMemo(
@@ -1246,6 +1245,7 @@ export function TeamCompositionPageView() {
           <label className={styles.field}><span>Projeto</span><input list="composicao-project-list" value={filterDraft.projectCode} onChange={(event) => updateFilterField("projectCode", event.target.value)} placeholder="Todos" /></label>
           <label className={styles.field}><span>Equipe</span><select value={filterDraft.teamId} onChange={(event) => updateFilterField("teamId", event.target.value)}><option value="">Todas</option>{teams.map((team) => <option key={team.id} value={team.id}>{teamOptionLabel(team)}</option>)}</select></label>
           <label className={styles.field}><span>Situacao da equipe</span><select value={filterDraft.workStatus} onChange={(event) => updateFilterField("workStatus", event.target.value as WorkStatusFilter)}><option value="">Todas</option><option value="WORKING">Atuando</option><option value="NOT_WORKING">Nao atuou</option></select></label>
+          <label className={styles.field}><span>Medicao</span><select value={filterDraft.measurementStatus} onChange={(event) => updateFilterField("measurementStatus", event.target.value as FilterState["measurementStatus"])}><option value="">Todas</option><option value="UNMEASURED">Sem medicao</option></select></label>
         </div>
         <div className={styles.actions}>
           <button type="button" className={styles.secondaryButton} onClick={applyFilters} disabled={isLoadingList}>Aplicar</button>

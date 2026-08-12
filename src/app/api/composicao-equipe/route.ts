@@ -165,6 +165,13 @@ type SaveTeamCompositionRpcResult = {
   updated_at?: string;
 };
 
+type MeasurementStatusFilter = "UNMEASURED";
+
+type UnmeasuredCompositionIdRow = {
+  composition_id: string;
+  total_count: number | string | null;
+};
+
 const MEASUREMENT_CONTEXT_PAGE_SIZE = 1000;
 
 function normalizeText(value: unknown) {
@@ -195,6 +202,11 @@ function normalizeNullableText(value: unknown) {
 function normalizeWorkStatus(value: unknown): "WORKING" | "NOT_WORKING" | null {
   const normalized = normalizeText(value).toUpperCase();
   return normalized === "WORKING" || normalized === "NOT_WORKING" ? normalized : null;
+}
+
+function normalizeMeasurementStatus(value: unknown): MeasurementStatusFilter | null {
+  const normalized = normalizeText(value).toUpperCase();
+  return normalized === "UNMEASURED" ? normalized : null;
 }
 
 function isMissingWorkStatusColumnError(error: unknown) {
@@ -899,6 +911,7 @@ export async function GET(request: NextRequest) {
     const projectId = normalizeUuid(params.get("projectId"));
     const teamId = normalizeUuid(params.get("teamId"));
     const workStatus = normalizeWorkStatus(params.get("workStatus"));
+    const measurementStatus = normalizeMeasurementStatus(params.get("measurementStatus"));
     const { page, pageSize, from, to } = parsePagination(params, { maxPageSize: 100 });
 
     let projectCompositionIds: string[] | null = null;
@@ -916,6 +929,30 @@ export async function GET(request: NextRequest) {
       } else if (!isMissingCompositionProjectsTableError(projectLinks.error)) {
         return NextResponse.json({ message: "Falha ao filtrar projetos da composicao." }, { status: 500 });
       }
+    }
+
+    let unmeasuredCompositionIds: string[] | null = null;
+    let unmeasuredTotalCount: number | null = null;
+
+    if (measurementStatus === "UNMEASURED") {
+      const { data: unmeasuredRows, error: unmeasuredError } = await supabase.rpc("list_unmeasured_team_composition_ids", {
+        p_tenant_id: appUser.tenant_id,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_project_id: projectId,
+        p_team_id: teamId,
+        p_work_status: workStatus,
+        p_page: page,
+        p_page_size: pageSize,
+      });
+
+      if (unmeasuredError) {
+        return NextResponse.json({ message: "Falha ao filtrar composicoes sem medicao." }, { status: 500 });
+      }
+
+      const rows = (Array.isArray(unmeasuredRows) ? unmeasuredRows : []) as UnmeasuredCompositionIdRow[];
+      unmeasuredCompositionIds = rows.map((row) => row.composition_id).filter(Boolean);
+      unmeasuredTotalCount = Number(rows[0]?.total_count ?? 0);
     }
 
     const fetchCompositionPage = (skipWorkStatusFilter = false) => {
@@ -943,17 +980,24 @@ export async function GET(request: NextRequest) {
       if (teamId) {
         query = query.eq("team_id", teamId);
       }
+      if (unmeasuredCompositionIds) {
+        query = unmeasuredCompositionIds.length
+          ? query.in("id", unmeasuredCompositionIds)
+          : query.eq("id", "00000000-0000-0000-0000-000000000000");
+      }
       if (workStatus && !skipWorkStatusFilter) {
         query = workStatus === "WORKING"
           ? query.or("work_status.eq.WORKING,work_status.is.null")
           : query.eq("work_status", workStatus);
       }
 
-      return query
+      const orderedQuery = query
         .order("composition_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .range(from, to)
-        .returns<CompositionRow[]>();
+        .order("created_at", { ascending: false });
+
+      return unmeasuredCompositionIds
+        ? orderedQuery.returns<CompositionRow[]>()
+        : orderedQuery.range(from, to).returns<CompositionRow[]>();
     };
 
     let { data, error, count } = await fetchCompositionPage();
@@ -1030,7 +1074,7 @@ export async function GET(request: NextRequest) {
       pagination: {
         page,
         pageSize,
-        total: count ?? 0,
+        total: measurementStatus === "UNMEASURED" ? unmeasuredTotalCount ?? 0 : count ?? 0,
       },
     });
   } catch {
