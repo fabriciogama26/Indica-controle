@@ -491,6 +491,12 @@ export function StageListTable(props: {
   onChangeWorkCompletionStatus: (stage: StageListItem, value: string | null) => void;
   // Permissao granular programacao-concluir (migration 328).
   canComplete: boolean;
+  // Modo consulta (`/programacao-visualizacao`, C4 do corte): esconde TODA a
+  // escrita da lista — abrir plano, menu da equipe, select de Estado do
+  // Trabalho e a barra de acoes da linha. Leitura, detalhe, historico e
+  // exportacoes continuam. O bloqueio real e do servidor; isto existe para o
+  // usuario nao encontrar botao que nao deveria estar ali.
+  isReadOnly?: boolean;
   isExportingCsv: boolean;
   isExportingEnel: boolean;
   isExportingEnelNovo: boolean;
@@ -519,6 +525,7 @@ export function StageListTable(props: {
     onPostponeTeam,
     onChangeWorkCompletionStatus,
     canComplete,
+    isReadOnly = false,
     isExportingCsv,
     isExportingEnel,
     isExportingEnelNovo,
@@ -690,9 +697,11 @@ export function StageListTable(props: {
                 )}
               </span>
               <span className={styles.rowActions}>
-                <button type="button" className={styles.openPlanButton} onClick={() => onOpenProject(group.projectId)}>
-                  Abrir plano
-                </button>
+                {isReadOnly ? null : (
+                  <button type="button" className={styles.openPlanButton} onClick={() => onOpenProject(group.projectId)}>
+                    Abrir plano
+                  </button>
+                )}
               </span>
             </div>
 
@@ -745,18 +754,20 @@ export function StageListTable(props: {
                       <span className={styles.stageTeamsCell}>
                         {activeTeams.length ? (
                           activeTeams.map((team) => (
-                            <span key={team.id} className={`${styles.teamChip} ${isActive && !isCompleted ? styles.teamChipRemovable : ""}`}>
+                            <span key={team.id} className={`${styles.teamChip} ${!isReadOnly && isActive && !isCompleted ? styles.teamChipRemovable : ""}`}>
                               <span className={styles.teamChipMain}>{team.teamName}</span>
                               {stage.startTime || stage.endTime ? (
                                 <small className={styles.teamChipTime}>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
                               ) : null}
-                              <TeamChipMenu
-                                teamName={team.teamName}
-                                disabled={!isActive || isCompleted}
-                                onRemove={() => onRemoveTeam(team.id)}
-                                onCancelParticipation={() => onCancelTeam(team, stage)}
-                                onPostpone={() => onPostponeTeam(team, stage)}
-                              />
+                              {isReadOnly ? null : (
+                                <TeamChipMenu
+                                  teamName={team.teamName}
+                                  disabled={!isActive || isCompleted}
+                                  onRemove={() => onRemoveTeam(team.id)}
+                                  onCancelParticipation={() => onCancelTeam(team, stage)}
+                                  onPostpone={() => onPostponeTeam(team, stage)}
+                                />
+                              )}
                             </span>
                           ))
                         ) : (
@@ -780,10 +791,14 @@ export function StageListTable(props: {
                         })()}
                       </span>
                       <span>
-                        <WorkCompletionCell stage={stage} isSubmitting={isSubmitting} canComplete={canComplete} onChange={onChangeWorkCompletionStatus} />
+                        {isReadOnly ? (
+                          <span className={styles.emptyHint}>{getWorkCompletionLabel(stage.workCompletionStatus)}</span>
+                        ) : (
+                          <WorkCompletionCell stage={stage} isSubmitting={isSubmitting} canComplete={canComplete} onChange={onChangeWorkCompletionStatus} />
+                        )}
                       </span>
                       <span className={styles.rowActions}>
-                        {isActive && !isCompleted ? (
+                        {!isReadOnly && isActive && !isCompleted ? (
                           <>
                             <button
                               type="button"
@@ -828,7 +843,7 @@ export function StageListTable(props: {
                             >
                               <ActionIcon name="details" />
                             </button>
-                            {isCompleted && canComplete ? (
+                            {!isReadOnly && isCompleted && canComplete ? (
                               <button
                                 type="button"
                                 className={`${styles.actionButton} ${styles.actionComplete}`}

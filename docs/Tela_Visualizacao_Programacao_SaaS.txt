@@ -9,11 +9,13 @@ Visao geral
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/programacao-visualizacao/page.tsx`
-- View reutilizada: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.tsx` (modo `visualizacao`)
-- Estilo: `src/modules/dashboard/programacao-simples/ProgrammingSimplePageView.module.css`
-- API: `src/app/api/programacao/route.ts`
-- API de catalogos: `src/app/api/programacao/meta/route.ts`
-- Autorizacao server-side: `src/server/modules/programacao/handlers.ts`
+- View reutilizada: `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx` (modo `consulta`)
+- Calendario: `src/modules/dashboard/programacao-normalizada/components/ProgrammingWeeklyCalendarPanel.tsx`
+  e `ProgrammingWeeklyCalendar.module.css`
+- Estilo: `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`
+- API: `src/app/api/programacao-normalizada/route.ts`
+- API de catalogos: `src/app/api/programacao-normalizada/meta/route.ts`
+- Autorizacao server-side: `src/server/modules/programacao-normalizada/handlers.ts`
 - Permissao/menu:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -21,10 +23,41 @@ Arquitetura
 - Migration:
   - `supabase/migrations/093_add_programacao_visualizacao_page_permissions.sql`
 
+Atualizacao 2026-08-12 - Tela passa a usar a Programacao Normalizada (C4/C5)
+-----------------------------------------------------------------------------
+- Origem: fases C4 e C5 de `Auditoria/10-cutover-programacao.md`.
+- Antes: renderizava `ProgrammingSimplePageView mode="visualizacao"`, lendo
+  `/api/programacao` -> `project_programming` (modelo legado).
+- Depois: renderiza `ProgrammingNormalizedPageView mode="consulta"`, sobre
+  `programming`/`programming_team` (modelo normalizado).
+- O modo consulta esconde TODA a escrita: barra de SOB, botao `Abrir plano`, menu da
+  equipe no chip, select de Estado do Trabalho e a barra de acoes da linha (adicionar
+  equipe, adiar, cancelar, reabrir). Continuam disponiveis: filtros, listagem, detalhe,
+  historico, paginacao e as tres extracoes.
+- Calendario Semanal PRESERVADO, que era o motivo desta tela existir. Portado de
+  `programacao-simples` com CSS module proprio
+  (`programacao-normalizada/components/ProgrammingWeeklyCalendar.module.css`), pelo mesmo
+  motivo do cluster de prazos no C2: `.card`, `.secondaryButton` e `.ghostButton` tem
+  definicao diferente em outros modulos e o merge mudaria a aparencia.
+- FAN-OUT etapa -> equipe: o calendario e uma grade (equipe x dia) e o legado ja era uma
+  linha por equipe; a etapa normalizada tem N equipes em `programming_team`. Uma etapa
+  com 2 equipes ATIVAS ocupa 2 celulas, reproduzindo a tela antiga. Mesmo criterio de
+  equipe ATIVA do endpoint de fontes da Medicao (C0).
+- ARMADILHA EVITADA, registrada porque quase entrou: a primeira versao alimentava o
+  calendario com `items`, que e a PAGINA atual da lista (`STAGE_LIST_PAGE_SIZE = 50`)
+  sobre uma janela padrao de 90 dias. Uma semana apareceria vazia so porque suas etapas
+  caem na pagina 3 — truncagem silenciosa, a mesma classe de bug que o P0 do dash-estoque
+  corrigiu. A semana passou a ter carga PROPRIA, com os mesmos filtros do usuario
+  (equipe, status, busca, municipio) e a janela de data trocada pela semana exibida.
+- Permissao inalterada: a rota continua sob o page_key `programacao-visualizacao`
+  (`src/lib/auth/authorization.ts`), entao quem via a tela continua vendo.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros) e `npm run build`.
+
 Cadastro
 --------
 - Nao se aplica nesta tela.
-- O cadastro continua na rota `/programacao-simples`.
+- O cadastro fica em `/programacao-normalizada` (ate o C6, `/programacao-simples` ainda
+  responde como a Programacao principal do menu).
 
 Filtros, auto-complete e listagem
 ---------------------------------

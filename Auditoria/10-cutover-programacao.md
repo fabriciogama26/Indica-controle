@@ -223,8 +223,8 @@ Ordem revista depois das correções, com a recomendação de corte do usuário 
 | ~~C1~~ | Remover o módulo órfão `src/modules/dashboard/programacao/` | remoção | — | ✅ **feito** — `eadefad` |
 | ~~**C2**~~ | Mover o **cluster de prazo (11 símbolos + CSS)** para `mapa-programacao` | mecânico | — | ✅ **feito** — 2026-08-12 |
 | ~~C3~~ | Migration liberando `default_user_access = true` para `programacao-normalizada` | **migration** | — | ✅ **feito** — `362`, aguarda aplicação |
-| C4 | Implementar modo consulta na Normalizada | **implementação** | médio | — |
-| C5 | Repontar `/programacao-visualizacao` para a Normalizada | configuração | baixo | C4 |
+| ~~C4~~ | Implementar modo consulta na Normalizada **+ portar o Calendário Semanal** | implementação | — | ✅ **feito** — 2026-08-12 |
+| ~~C5~~ | Repontar `/programacao-visualizacao` para a Normalizada | configuração | — | ✅ **feito** — 2026-08-12 |
 | C6 | Repontar `/programacao` → `/programacao-normalizada` e deixar só "Programacao" no menu | configuração | baixo | C3, C4 |
 | C7 | Ajustar `DEFAULT_USER_PAGE_ACCESS` e `page_key` de permissão | configuração | **atenção** — granulares | C3, C6 |
 | C8 | Remover `programacao-simples`, `/api/programacao(/meta)`, `server/modules/programacao` | remoção | baixo | C0–C7 |
