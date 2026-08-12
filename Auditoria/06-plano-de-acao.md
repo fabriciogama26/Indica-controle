@@ -7,21 +7,54 @@ Achados priorizados. Nada aqui foi aplicado ao código — esta auditoria é som
 ## Regra de sequenciamento
 
 ```
-Fase 0 (sem risco)  →  Fase 1 (medir)  →  Fase 2 (índices)  →  Fase 3 (arquitetura)
+P0 correção   →  P1 medição   →  P2 arquitetura   →  P3 índices
+(bug de KPI)     (pg_stat_       (agregação no       (só depois
+                  statements)     banco)              de medir)
 ```
 
-**Não pular a Fase 1.** Criar os 4 índices propostos sem medir custa escrita permanente em 4 tabelas quentes para acelerar consultas cuja frequência real é desconhecida. A Fase 0 existe justamente porque é o único conjunto que dispensa medição.
+Duas regras que governam a ordem:
+
+**1. Bug de correção vem antes de qualquer benchmark.** O teto silencioso de 20.000 linhas do `dash-estoque` não é problema de performance — é KPI potencialmente errado entregue sem aviso. Não espera medição, não espera refactor.
+
+**2. Índice não se cria por análise estática.** Cada índice adicional cobra custo permanente em `INSERT`, `UPDATE`, `VACUUM`, cache e armazenamento. Análise estática gera **candidato**; produção decide se vale. Por isso P3 vem depois de P1, e não junto.
+
+**A exceção deliberada é P2:** agregação em JavaScript não precisa de `pg_stat_statements` para ser diagnosticada. O problema é estrutural e visível no próprio código —
+
+```
+hoje:      DB → milhares de linhas → rede → Node → agregação JS
+deveria:   DB → agregação → poucas linhas/um objeto → Node
+```
+
+— e a correção usa um padrão **já aprovado dentro do projeto** (`dashboard-portfolio`), o que reduz o risco de agir antes da medição.
 
 ---
 
-## Fase 0 — aplicar sem medir
+## P0 — correção imediata (bug de KPI)
 
-Ganho pequeno, risco zero, nenhuma dependência do Nível B.
-
-| # | Ação | Severidade | Onde | Validação |
+| # | Ação | Severidade | Onde | Status |
 |---|---|---|---|---|
-| 0.1 | `drop index public.idx_project_tenant_priority_uuid` | MÉDIO | migration nova | duplicata exata de `idx_project_tenant_priority`; nenhuma consulta perde caminho de acesso |
-| 0.2 | `drop index public.idx_project_tenant_city_uuid` | MÉDIO | migration nova | duplicata exata de `idx_project_tenant_city` |
+| P0.1 | Eliminar o truncamento **silencioso** de `DASH_TRANSFERS_MAX_ROWS = 20000` | **CRÍTICO** | [`dash-estoque/route.ts`](../src/app/api/dash-estoque/route.ts) | ✅ **CORRIGIDO** em 2026-08-12 |
+
+**O bug:** `loadTransfers` paginava em blocos de 1.000 até o teto de 20.000 e parava. Se o período tivesse mais movimentações que isso, o laço encerrava sem sinal algum — e **todos** os indicadores derivados (`movementCount`, `totalMovementQuantity`, `summaryByUnit`, evolução, ABC, sem giro, dispersão) eram calculados sobre um recorte parcial, apresentados como se fossem o total.
+
+Agrava que este é o **segundo** teto silencioso da mesma função: a correção de 2026-07-03 resolveu o corte de 1.000 linhas do PostgREST paginando via `.range()`, mas deixou o teto de 20.000 igualmente mudo.
+
+**Por que foi P0 e não parte do refactor:** um número errado sem aviso é pior que um dashboard que falha. Quem lê o card não tem como saber que faltam dados. A correção do teto não dependia da RPC e não devia esperar por ela.
+
+**O que foi feito:** quando o teto é atingido, `loadTransfers` faz uma sondagem exata de 1 linha em `.range(20000, 20000)` — que distingue "existem exatamente 20.000" (carga válida) de "existem mais de 20.000" (recusa). Havendo excedente, a rota devolve **HTTP 422** com `code: "DASH_ESTOQUE_PERIODO_EXCEDE_LIMITE"`, `limit` e mensagem acionável. Nenhum KPI parcial é renderizado. O frontend não precisou mudar — `hooks.ts` já propaga `payload.message` de qualquer resposta não-ok.
+
+Decisão de produto tomada com o usuário: **recusar e pedir período menor**, em vez de renderizar com aviso de dados parciais. Número parcial rotulado continua sendo número que alguém printa fora de contexto.
+
+**Correção definitiva ainda pendente:** o teto continua existindo — o que mudou é que parou de mentir. A agregação no banco (P2.1) o faz desaparecer, porque agregação não precisa de teto de linhas, e leva junto a sondagem e o 422.
+
+### Higiene de índices, sem dependência de medição
+
+Único conjunto de índices que dispensa o Nível B, porque duplicata exata nunca é o único caminho de acesso de nenhuma consulta.
+
+| # | Ação | Severidade | Validação |
+|---|---|---|---|
+| P0.2 | `drop index public.idx_project_tenant_priority_uuid` | MÉDIO | duplicata exata de `idx_project_tenant_priority` |
+| P0.3 | `drop index public.idx_project_tenant_city_uuid` | MÉDIO | duplicata exata de `idx_project_tenant_city` |
 
 Uma migration só, com comentário explicando a origem (a `038` recriou com sufixo `_uuid` e não dropou os originais da `029`).
 
@@ -39,7 +72,7 @@ Validação: `npm run db:migration-list`, depois a consulta de duplicatas de [`0
 
 ---
 
-## Fase 1 — medir (bloqueia tudo abaixo)
+## P1 — habilitar a medição real do banco
 
 | # | Ação | Dependência |
 |---|---|---|
@@ -49,24 +82,58 @@ Validação: `npm run db:migration-list`, depois a consulta de duplicatas de [`0
 | 1.4 | Preencher a tabela de cruzamento de [`03` §3](03-nivel-b-pg-stat-statements.md#3-cruzamento-obrigatório-com-o-nível-a) | 1.2, 1.3 |
 | 1.5 | Rodar as 3 consultas complementares ([`03` §6, §7, §8](03-nivel-b-pg-stat-statements.md)) — seletividade de booleanos, FK sem índice, bloat | 1.1 |
 
-**Critério de saída:** existir uma lista ordenada por `total_exec_time` com `pct_do_tempo_total`, e a coluna `rows/call` preenchida para as 6 rotas de risco. Sem isso, a Fase 2 é chute.
+**Critério de saída:** existir uma lista ordenada por `total_exec_time` com `pct_do_tempo_total`, e a coluna `rows/call` preenchida para as 6 rotas de risco. Sem isso, P3 é chute.
 
-**O que a Fase 1 pode derrubar:** se `rows/call` das rotas de dashboard for baixo (dezenas, não milhares), o achado estrutural do Nível D perde força e a Fase 3 desce de prioridade. É um resultado possível e legítimo — a auditoria estática superestima quando o volume real de dados ainda é pequeno.
+**O que P1 pode derrubar:** se `rows/call` das rotas de dashboard for baixo (dezenas, não milhares), o achado estrutural do Nível D perde força e P2 desce de prioridade. É um resultado possível e legítimo — a auditoria estática superestima quando o volume real de dados ainda é pequeno.
 
 ---
 
-## Fase 2 — índices (depois de medir, um por vez)
+## P2 — eliminar as agregações em JavaScript
+
+Único bloco de arquitetura que **não** espera o Nível B. O diagnóstico não precisa de medição porque o problema está no formato do código, não no tempo de execução:
+
+```
+hoje:      DB → milhares de linhas → rede → Node → agregação JS
+deveria:   DB → agregação → poucas linhas/um objeto → Node
+```
+
+**Padrão a seguir: `dashboard-portfolio`.** Não inventar camada nova — ver [`05` §2](05-nivel-d-arquitetura.md#2-o-projeto-já-resolveu-isso-uma-vez--e-funcionou). Já existe implementação aprovada dentro do projeto (`dashboard_portfolio_asbuilt_factor`, `dashboard_portfolio_forecast_gap_summary`, `project_billing_orders_summary`, `list_unmeasured_team_composition_ids`) e, para os imports, a família `*_batch_partial`. Isso reduz o risco de agir antes da medição: é convergência para arquitetura estabelecida, não aposta.
+
+### Ordem de ataque
+
+| # | Tela | Ação | Evidência | Esforço |
+|---|---|---|---|---|
+| **P2.1** | `dash-estoque` | RPC de agregação; **faz o teto de 20k desaparecer** (agregação não precisa de teto) | 29 consultas, 12 tabelas, até 20.000 linhas em memória | Alto |
+| **P2.2** | `dash-operacional-faturamento` | RPC única; 40 consultas → 1–2 | 2.398 linhas; `project_measurement_orders` lida **3×**; `service_activities` lida **2×** | Alto |
+| **P2.3** | `apuracao-fator-minimo` | RPC agregada; elimina o aninhamento chunk × página | laço duplo: nº de consultas cresce com projetos × ordens | Médio |
+| **P2.4** | `dashboard-medicao` | RPC de resumo do ciclo | 38 consultas, 12 tabelas; `project_measurement_orders` em 4 pontos | Alto |
+| **P2.5** | `stock-transfers/import` | RPC em lote `jsonb`, mantendo `results[]` por linha | N transações, N commits, N gravações de WAL | Médio |
+| **P2.6** | `team-stock-operations/import` | idem | idem | Médio |
+| **P2.7** | `dash-estoque` | keyset pagination no lugar de `OFFSET` | absorvido por P2.1 se a RPC eliminar a paginação | Baixo |
+| **P2.8** | 5 telas com `slice()` no frontend | paginação real de banco — **só depois** da RPC correspondente | — | Baixo |
+
+**P2.1 vem primeiro** porque fecha o bug de P0 de forma definitiva: com agregação no banco, não existe teto de linhas a estourar.
+
+**P2.8 depende de P2.1–P2.4.** Paginar no banco uma consulta que ainda carrega tudo para agregar em JS não resolve nada e ainda quebra os totais dos cards.
+
+---
+
+## P3 — índices (`CANDIDATE`, depois de medir, um por vez)
+
+> Todos os quatro estão marcados **`CANDIDATE — awaiting pg_stat_statements / EXPLAIN`**, não "missing index". Ver [`02` §8](02-nivel-a-indices.md#8-índices--candidatos-não-faltantes). Cada índice adicional cobra custo permanente em `INSERT`, `UPDATE`, `VACUUM`, cache e armazenamento — a análise estática levanta o candidato, produção decide se ele se paga.
 
 Cada item exige `EXPLAIN` antes/depois conforme [`04`](04-nivel-c-explain.md). Índice que não muda o plano deve ser **revertido**, não mantido "por garantia".
 
-| # | Índice | Resolve | Prioridade | Pré-requisito |
-|---|---|---|---|---|
-| 2.1 | `project_measurement_orders (tenant_id, measurement_kind, is_active, status, execution_date)` | 6 consultas em 4 rotas — o padrão de filtro mais repetido do repositório | **ALTA** | C-1 confirmar `Rows Removed by Filter` alto |
-| 2.2 | `programming (tenant_id, project_id, status, execution_date)` | 4 consultas em `medicao` + `programacao-normalizada` | **ALTA** | C-4 |
-| 2.3 | `project (tenant_id, is_active, is_test, is_third_party, sob)` | elimina `Sort` do `ORDER BY sob` em 11 usos de `project_with_labels` | MÉDIA | C-2 confirmar `external merge` |
-| 2.4 | `project_billing_orders (tenant_id, updated_at desc)` | listagem sem filtro de status | BAIXA | C confirmar `Sort` relevante |
+| # | Índice candidato | Evidência estática | Promove para `APPLY` se |
+|---|---|---|---|
+| P3.1 | `project_measurement_orders (tenant_id, measurement_kind, is_active, status, execution_date)` | 6 consultas em 4 rotas — a mais forte das quatro | B mostrar custo acumulado relevante **e** C-1 mostrar `Rows Removed by Filter` alto que some depois |
+| P3.2 | `programming (tenant_id, project_id, status, execution_date)` | 4 consultas em 2 módulos | B + C-4 |
+| P3.3 | `project (tenant_id, is_active, is_test, is_third_party, sob)` | 11 usos com `ORDER BY sob` sem índice | B + C-2 confirmar `external merge` |
+| P3.4 | `project_billing_orders (tenant_id, updated_at desc)` | 1 consulta — evidência fraca | só se B destacar espontaneamente |
 
-Sempre:
+Nota: **P2 pode reduzir ou eliminar a necessidade de P3.1 e P3.2.** Se as consultas hoje repetidas virarem uma CTE dentro de uma RPC, o padrão de acesso muda e o candidato precisa ser reavaliado contra a nova query — não contra a antiga. Ordem importa aqui.
+
+Sempre, quando promovido:
 
 ```sql
 create index concurrently if not exists <nome>
@@ -82,9 +149,9 @@ Só depois de uma janela de coleta representativa (≥ 30 dias, incluindo um fec
 
 | # | Índice | Coberto por |
 |---|---|---|
-| 2.5 | `idx_project_programming_tenant_date_team` | `idx_project_programming_tenant_date_team_active` |
-| 2.6 | `idx_programming_tenant_work_completion_status` | `programming_tenant_work_completion_idx` |
-| 2.7 | `idx_teams_tenant_stock_center` | `idx_teams_unique_stock_center` (unique global) |
+| P3.5 | `idx_project_programming_tenant_date_team` | `idx_project_programming_tenant_date_team_active` |
+| P3.6 | `idx_programming_tenant_work_completion_status` | `programming_tenant_work_completion_idx` |
+| P3.7 | `idx_teams_tenant_stock_center` | `idx_teams_unique_stock_center` (unique global) |
 
 **Nunca** remover índice `UNIQUE` por `idx_scan = 0` — ele existe para a constraint, não para leitura.
 
@@ -98,40 +165,19 @@ create index concurrently idx_project_tenant_is_test_partial
 drop index concurrently public.idx_project_tenant_is_test;
 ```
 
-Aplica-se a `is_test`, `is_withdrawn`, `is_third_party`, `has_locacao`, `fob`. **Não** a `is_active` — a maioria das linhas é `true`, então o índice parcial não filtraria nada; ali o caminho é o composto 2.3.
+Aplica-se a `is_test`, `is_withdrawn`, `is_third_party`, `has_locacao`, `fob`. **Não** a `is_active` — a maioria das linhas é `true`, então o índice parcial não filtraria nada; ali o caminho é o composto P3.3.
 
 ---
 
-## Fase 3 — arquitetura (maior ganho, maior esforço)
-
-| # | Tela | Ação | Severidade | Esforço |
-|---|---|---|---|---|
-| 3.1 | `dash-operacional-faturamento` | RPC única de agregação; 40 consultas → 1–2 | **CRÍTICO** | Alto |
-| 3.2 | `dash-estoque` | RPC de agregação; remove o teto silencioso de 20.000 linhas | **ALTO** | Alto |
-| 3.3 | `apuracao-fator-minimo` | RPC agregada; elimina o aninhamento chunk × página | **ALTO** | Médio |
-| 3.4 | `dashboard-medicao` | RPC de resumo do ciclo | **ALTO** | Alto |
-| 3.5 | `stock-transfers/import` | RPC em lote `jsonb`, mantendo `results[]` por linha | **ALTO** | Médio |
-| 3.6 | `team-stock-operations/import` | idem | **ALTO** | Médio |
-| 3.7 | `dash-estoque` | keyset pagination no lugar de `OFFSET` | MÉDIO | Baixo |
-| 3.8 | 5 telas com `slice()` no frontend | paginação real de banco — **só depois** da RPC correspondente | MÉDIO | Baixo |
-
-Todas seguem padrão já existente e validado no projeto (`dashboard_portfolio_*`, `*_batch_partial`) — ver [`05` §2](05-nivel-d-arquitetura.md#2-o-projeto-já-resolveu-isso-uma-vez--e-funcionou). É convergência para uma arquitetura estabelecida, não introdução de arquitetura nova.
-
-**3.2 tem um componente de correção, não só de performance:** o teto de `DASH_TRANSFERS_MAX_ROWS = 20000` faz o dashboard exibir números errados sem avisar quando o período ultrapassa o limite. Vale tratar mesmo que a Fase 1 despriorize o resto.
-
-Ordem sugerida: **3.5 e 3.6 primeiro** (esforço médio, padrão já pronto no repositório, ganho imediato em WAL) → **3.3** (esforço médio) → **3.1** (maior ganho) → 3.2 → 3.4 → 3.7 → 3.8.
-
----
-
-## Fase 4 — condicional
+## P4 — condicional
 
 | # | Item | Gatilho |
 |---|---|---|
-| 4.1 | Corrigir `auth.uid()` → `(select auth.uid())` nas 65 ocorrências restantes | Só se/quando alguma rota passar a usar o cliente autenticado do usuário em vez de `service_role`. Hoje é INFORMATIVO — ver [`02` §7](02-nivel-a-indices.md#7-rls--por-que-não-é-o-gargalo-aqui). |
-| 4.2 | Índice `pg_trgm` GIN para `sob ilike '%…%'` | Só se o Nível B mostrar essa busca com custo acumulado relevante |
-| 4.3 | Materialized view de saldo de estoque | Só se 3.2 não resolver sozinha |
-| 4.4 | Cache de `requirePageAction` junto ao cache de auth de 45 s | Ganho de latência (até 3 round-trips/request), não de I/O. Baixa prioridade. |
-| 4.5 | Auditoria de isolamento multi-tenant | Fora do escopo desta auditoria. Ver [`05` §8](05-nivel-d-arquitetura.md#8-observação-fora-de-escopo-de-performance). |
+| P4.1 | Corrigir `auth.uid()` → `(select auth.uid())` nas 65 ocorrências restantes | Só se/quando alguma rota passar a usar o cliente autenticado do usuário em vez de `service_role`. Hoje é INFORMATIVO — ver [`02` §7](02-nivel-a-indices.md#7-rls--por-que-não-é-o-gargalo-aqui). |
+| P4.2 | Índice `pg_trgm` GIN para `sob ilike '%…%'` | Só se o Nível B mostrar essa busca com custo acumulado relevante |
+| P4.3 | Materialized view de saldo de estoque | Só se P2.1 não resolver sozinha |
+| P4.4 | Cache de `requirePageAction` junto ao cache de auth de 45 s | Ganho de latência (até 3 round-trips/request), não de I/O. Baixa prioridade. |
+| P4.5 | Auditoria de isolamento multi-tenant | Fora do escopo desta auditoria. Ver [`05` §8](05-nivel-d-arquitetura.md#8-observação-fora-de-escopo-de-performance). |
 
 ---
 
@@ -139,11 +185,12 @@ Ordem sugerida: **3.5 e 3.6 primeiro** (esforço médio, padrão já pronto no r
 
 | Severidade | Qtd | Itens |
 |---|---|---|
-| **CRÍTICO** | 1 | 3.1 |
-| **ALTO** | 7 | 2.1, 2.2, 3.2, 3.3, 3.4, 3.5, 3.6 |
-| **MÉDIO** | 6 | 0.1, 0.2, 2.3, 3.7, 3.8, booleanos de `project` |
-| **BAIXO** | 4 | 2.4, 2.5, 2.6, 2.7 |
-| **INFORMATIVO** | 5 | Fase 4 |
+| **CRÍTICO** | 2 | P0.1 (bug de KPI), P2.2 |
+| **ALTO** | 5 | P2.1, P2.3, P2.4, P2.5, P2.6 |
+| **MÉDIO** | 5 | P0.2, P0.3, P2.7, P2.8, booleanos de `project` |
+| **BAIXO** | 3 | P3.5, P3.6, P3.7 |
+| **CANDIDATE** | 4 | P3.1, P3.2, P3.3, P3.4 — aguardam medição, não são "índices faltantes" |
+| **INFORMATIVO** | 5 | P4 |
 
 **O que já está certo e não deve ser mexido:**
 

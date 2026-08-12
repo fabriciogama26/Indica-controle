@@ -128,10 +128,12 @@ project_measurement_orders                              (route.ts:356)
 - `..._tenant_exec_status` põe `execution_date` (range) **na 2ª posição** → tudo depois dele é inutilizado para busca.
 - `..._context_lookup` tem `team_id` no meio; quando a tela não filtra equipe, o `execution_date` da 4ª posição não é usado para seek.
 
-**Recomendado:**
+**`CANDIDATE — awaiting pg_stat_statements / EXPLAIN`** (não criar ainda — ver [`02` §8](02-nivel-a-indices.md#8-índices--candidatos-não-faltantes)):
 
 ```sql
-create index if not exists idx_project_measurement_orders_kind_active_status_exec
+-- CANDIDATO. Não aplicar antes do Nível B confirmar frequência
+-- e do Nível C confirmar mudança de plano.
+create index concurrently if not exists idx_project_measurement_orders_kind_active_status_exec
   on public.project_measurement_orders
   (tenant_id, measurement_kind, is_active, status, execution_date);
 ```
@@ -191,6 +193,8 @@ stock_transfer_reversals, stock_transfer_item_reversals
 
 **Até 20.000 movimentações trazidas para a memória do Node**, mais itens, materiais, equipes, projetos e conjuntos de estorno — tudo para agregar em JavaScript.
 
+> ✅ **P0.1 corrigido em 2026-08-12:** estourar o teto deixou de truncar em silêncio e passou a devolver **HTTP 422**. O teto continua existindo até a agregação subir para o banco (P2.1).
+
 Índice atual `idx_stock_transfers_tenant_entry_date (tenant_id, entry_date desc, created_at desc)` atende o filtro e o `ORDER BY entry_date`, mas a ordenação da rota é `entry_date ASC, id ASC` — o `id` não está no índice, então há uma ordenação residual, e o `OFFSET` crescente do laço (`.range(offset, offset+999)`) força o Postgres a **reprocessar e descartar** todas as linhas anteriores a cada página. Na página 20 isso significa varrer 19.000 linhas para devolver 1.000.
 
 **Recomendado:** trocar `OFFSET` por keyset pagination (`.gt("id", lastId)` dentro da mesma data) **ou**, melhor, mover a agregação para RPC — ver [`05`](05-nivel-d-arquitetura.md).
@@ -212,10 +216,11 @@ programming
 
 **Problema:** o filtro mais usado é `tenant_id + project_id[in] + status`, e nenhum índice não-parcial começa por `(tenant_id, project_id)`. Os uniques que começam assim têm `WHERE status IN ('PROGRAMADA','REPROGRAMADA')` e `execution_date is not null` — só servem quando a consulta cai exatamente dentro do predicado parcial.
 
-**Recomendado:**
+**`CANDIDATE — awaiting pg_stat_statements / EXPLAIN`**:
 
 ```sql
-create index if not exists idx_programming_tenant_project_status_exec
+-- CANDIDATO. Não aplicar antes do Nível B + C.
+create index concurrently if not exists idx_programming_tenant_project_status_exec
   on public.programming
   (tenant_id, project_id, status, execution_date);
 ```
@@ -234,10 +239,11 @@ Cobre as 4 variantes (com e sem range de data), na ordem correta.
 
 Índices atuais: `(tenant_id, status, updated_at desc)`, `(tenant_id, project_id, updated_at desc)`, `(tenant_id, ingresso_date desc)`. Nenhum é `(tenant_id, updated_at)`. Uma listagem sem filtro de status paga uma ordenação — candidata a `Sort Method: external merge` quando a tabela crescer (causa raiz #1).
 
-**Recomendado:** confirmar no Nível C se o plano usa `..._tenant_status_updated` com `Seq Scan` + `Sort`. Se sim:
+**`CANDIDATE — awaiting pg_stat_statements / EXPLAIN`**, com a evidência mais fraca das quatro (1 consulta só). Confirmar no Nível C se o plano usa `..._tenant_status_updated` com `Seq Scan` + `Sort`. Se sim:
 
 ```sql
-create index if not exists idx_project_billing_orders_tenant_updated
+-- CANDIDATO de baixa prioridade. Provavelmente não se paga.
+create index concurrently if not exists idx_project_billing_orders_tenant_updated
   on public.project_billing_orders (tenant_id, updated_at desc);
 ```
 
@@ -321,10 +327,11 @@ Contraexemplo saudável: `stock-requisitions/route.ts` usa `DEFAULT_PAGE_SIZE = 
 
 **Problema:** o `ORDER BY sob` — o mais frequente — não é atendido por nenhum índice (`ux_project_tenant_sob_upper` indexa `upper(sob)`, não `sob`). Toda listagem paga um `Sort` sobre o resultado de um join de 11 tabelas. Com `.range()` por cima, é o cenário clássico de `external merge` (causa raiz #1).
 
-**Recomendado (validar no Nível C antes):**
+**`CANDIDATE — awaiting pg_stat_statements / EXPLAIN`**:
 
 ```sql
-create index if not exists idx_project_tenant_active_test_third_sob
+-- CANDIDATO. Não aplicar antes do Nível B + C-2.
+create index concurrently if not exists idx_project_tenant_active_test_third_sob
   on public.project (tenant_id, is_active, is_test, is_third_party, sob);
 ```
 

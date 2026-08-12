@@ -194,16 +194,26 @@ O `(select …)` transforma a chamada em InitPlan — avaliada **uma vez** por q
 
 ---
 
-## 8. Índices recomendados — consolidado
+## 8. Índices — **CANDIDATOS**, não faltantes
 
-Nenhum destes deve ir para produção antes do Nível B confirmar frequência e do Nível C confirmar mudança de plano.
+> ### `CANDIDATE — awaiting pg_stat_statements / EXPLAIN`
+>
+> Nenhum item desta seção é um "índice faltante a criar". São **candidatos** levantados por análise estática, aguardando medição. A distinção não é semântica: cada índice adicional cobra custo permanente em `INSERT`, `UPDATE`, `VACUUM`, cache e armazenamento. Análise estática gera candidato; **produção decide se vale o índice**.
+>
+> Só promover de `CANDIDATE` para `APPLY` quando as duas condições forem satisfeitas:
+> 1. **Nível B** confirmar que a consulta tem custo acumulado (`total_exec_time`) relevante — não basta o padrão de filtro se repetir no código;
+> 2. **Nível C** confirmar, com `EXPLAIN (ANALYZE, BUFFERS)` antes/depois, que o plano muda e os blocos lidos do disco caem.
 
-| # | Tabela | Índice proposto | Resolve | Prioridade |
+| # | Tabela | Índice candidato | Evidência estática | Status |
 |---|---|---|---|---|
-| 1 | `project_measurement_orders` | `(tenant_id, measurement_kind, is_active, status, execution_date)` | 6 consultas em 4 rotas — o padrão mais repetido do repo | **ALTA** |
-| 2 | `programming` | `(tenant_id, project_id, status, execution_date)` | 4 consultas em `medicao` + `programacao-normalizada` | **ALTA** |
-| 3 | `project` | `(tenant_id, is_active, is_test, is_third_party, sob)` | elimina `Sort` de `ORDER BY sob` em 11 usos de `project_with_labels` | MÉDIA |
-| 4 | `project_billing_orders` | `(tenant_id, updated_at desc)` | listagem sem filtro de status | BAIXA |
+| 1 | `project_measurement_orders` | `(tenant_id, measurement_kind, is_active, status, execution_date)` | 6 consultas em 4 rotas — o padrão de filtro mais repetido do repositório; os índices atuais ou não têm `execution_date` ou o colocam na 2ª posição, cortando tudo depois | `CANDIDATE` — aguarda B + C-1 |
+| 2 | `programming` | `(tenant_id, project_id, status, execution_date)` | 4 consultas em `medicao` + `programacao-normalizada`; nenhum índice não-parcial começa por `(tenant_id, project_id)` | `CANDIDATE` — aguarda B + C-4 |
+| 3 | `project` | `(tenant_id, is_active, is_test, is_third_party, sob)` | 11 usos de `project_with_labels` com `ORDER BY sob`, sem índice que atenda a ordenação | `CANDIDATE` — aguarda B + C-2 |
+| 4 | `project_billing_orders` | `(tenant_id, updated_at desc)` | 1 listagem sem filtro de status | `CANDIDATE` — evidência fraca; só investigar se o Nível B destacar |
+
+**A justificativa do candidato 1 é a mais forte das quatro** — 6 consultas em 4 rotas, e o desalinhamento com os índices existentes é demonstrável sem medir. Ainda assim permanece `CANDIDATE`: força de justificativa estática não substitui frequência real. Se o Nível B mostrar que essas 6 consultas somam 2% do `total_exec_time`, o índice não se paga.
+
+**Resultado possível e legítimo:** o Nível B derrubar todos os quatro. Registrar isso é tão valioso quanto aprová-los — evita que a mesma proposta volte em seis meses.
 
 E as remoções:
 

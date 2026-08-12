@@ -118,6 +118,29 @@ Cancelamento e saldo
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
 
+Atualizacao 2026-08-12 - Teto de movimentacoes deixa de truncar em silencio (HTTP 422)
+----------------------------------------------------------------------------------------
+- Origem: auditoria de performance/Disk I/O (`Auditoria/`, item P0.1 de `Auditoria/06-plano-de-acao.md`).
+- Arquivos alterados:
+  - `src/app/api/dash-estoque/route.ts`
+  - `docs/Tela_Dash_Estoque_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - A correcao de 2026-07-03 (2) resolveu o truncamento em 1000 linhas do PostgREST paginando via `.range()`, mas manteve um SEGUNDO teto silencioso: o laco de `loadTransfers` para em `DASH_TRANSFERS_MAX_ROWS = 20000` e simplesmente encerra, sem sinal nenhum.
+  - Periodo com mais de 20.000 movimentacoes fazia TODOS os indicadores derivados serem calculados sobre um recorte parcial e apresentados como se fossem o total: `movementCount`, `totalMovementQuantity`, `summaryByUnit`, evolucao, Curva ABC, sem giro e dispersao.
+  - Isso e bug de CORRECAO, nao de performance: quem le o card nao tem como saber que faltam dados. E o mesmo tipo de falha da 2026-07-03, so que num teto maior.
+- Depois:
+  - `loadTransfers` detecta a truncagem de forma exata: quando o teto e atingido, faz UMA sondagem de 1 linha em `.range(20000, 20000)`. A sondagem distingue "existem exatamente 20.000 movimentacoes" (carga valida, segue) de "existem mais de 20.000" (recusa) — sem ela, um periodo com exatamente o teto seria recusado por engano.
+  - Havendo excedente, a rota devolve **HTTP 422** com `code: "DASH_ESTOQUE_PERIODO_EXCEDE_LIMITE"`, `limit: 20000` e mensagem acionavel ("Reduza o intervalo de datas ou filtre por centro de estoque"). NENHUM KPI parcial e renderizado.
+  - Decisao de produto tomada com o usuario: recusar e pedir periodo menor, em vez de renderizar com banner de "dados parciais". Numero parcial rotulado continua sendo numero que alguem printa fora de contexto; a unica opcao em que ninguem le KPI errado e a que nao renderiza.
+  - 422 e nao 500 de proposito: nao e falha do servidor, e pedido que o dashboard nao consegue responder inteiro.
+  - Frontend NAO precisou mudar: `hooks.ts` ja propaga `payload.message` de qualquer resposta nao-ok para o feedback de erro existente.
+- Estado conhecido / divida:
+  - O teto continua existindo — o que mudou e que ele parou de mentir. A remocao definitiva e o item P2.1 da auditoria: subir a agregacao para o banco via RPC, no padrao ja aprovado em `dashboard-portfolio` (`dashboard_portfolio_asbuilt_factor`, `dashboard_portfolio_forecast_gap_summary`). Agregacao no banco nao precisa de teto de linhas, e a sondagem e o 422 saem junto.
+  - A sondagem usa `.range(20000, 20000)`, que obriga o Postgres a descartar 20.000 linhas. Custo aceito por ser um caso de borda, ja degenerado, e temporario ate o P2.1.
+- Impacto multi-tenant:
+  - Sem mudanca de schema, RLS, policy ou permissao. A sondagem repete o mesmo filtro `tenant_id` das paginas de `loadTransfers`.
+
 Atualizacao 2026-08-05 (2) - Refatoracao estrutural do modulo (piloto do padrao)
 ----------------------------------------------------------------------------------
 - Arquivos alterados:
