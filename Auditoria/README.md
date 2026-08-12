@@ -18,7 +18,12 @@ Todo artefato `.md` de auditoria de performance vive aqui. Nada nesta pasta alte
 | [`03-nivel-b-pg-stat-statements.md`](03-nivel-b-pg-stat-statements.md) | B | Scripts SQL de custo acumulado, cache hit ratio, temp blocks, índices não usados |
 | [`04-nivel-c-explain.md`](04-nivel-c-explain.md) | C | Playbook `EXPLAIN (ANALYZE, BUFFERS)` + queries candidatas já identificadas |
 | [`05-nivel-d-arquitetura.md`](05-nivel-d-arquitetura.md) | D | Dashboards que fazem N consultas para N cards; candidatos a RPC única / materialized view |
-| [`06-plano-de-acao.md`](06-plano-de-acao.md) | — | Achados priorizados por (impacto × esforço), com validação de cada item |
+| [`06-plano-de-acao.md`](06-plano-de-acao.md) | — | Achados priorizados em P0→P4, com validação de cada item |
+| [`07-baseline-p1.md`](07-baseline-p1.md) | B | Runbook do P1: habilitar `pg_stat_statements`, capturar `T0` e comparar com `T1` sem se enganar com variação de tráfego |
+| [`08-nivel-b-resultado.md`](08-nivel-b-resultado.md) | B | **Resultado medido (parcial)** — o que a primeira medição real confirmou, derrubou e reordenou |
+| [`09-telas-em-uso.md`](09-telas-em-uso.md) | A | Telas vivas, telas mortas e telas vazias — por que a Programação legada ainda é o destino padrão do menu |
+| [`10-cutover-programacao.md`](10-cutover-programacao.md) | A/D | O que falta para a Normalizada ser a única Programação — estado das 6 fases e os 6 passos restantes |
+| [`baseline/`](baseline/) | B | Capturas brutas de `scripts/perf-baseline-capture.sql`, uma por arquivo |
 
 ### Auditorias anteriores nesta pasta
 
@@ -58,7 +63,7 @@ Argumento opcional para focar um módulo:
 | Nível | Status | Observação |
 |---|---|---|
 | A — análise estática do repositório | 🟢 Concluído | Feito sem tocar em produção. Base de todos os outros níveis. |
-| B — `pg_stat_statements` | 🔴 Bloqueado | A extensão **não está habilitada** neste projeto (nenhuma migration a cria). Scripts prontos em `03-...`; exigem execução no banco. |
+| B — `pg_stat_statements` | 🟡 Parcial | Primeira medição válida em 2026-08-12 (bloco `08`, frequência). Resultados e o que eles mudaram em [`08-nivel-b-resultado.md`](08-nivel-b-resultado.md). **Faltam os blocos `00`, `02`, `03` e `04`** — sem eles não há ranking por custo acumulado, e ~90% do tempo do banco segue não atribuído. |
 | C — `EXPLAIN (ANALYZE, BUFFERS)` | 🟡 Parcial | Candidatas selecionadas por evidência estática; falta rodar contra dados reais. |
 | D — arquitetura | 🟢 Concluído | Achados de arquitetura não dependem de acesso a produção. |
 
