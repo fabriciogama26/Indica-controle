@@ -384,6 +384,41 @@ Atalhos
 - Tela irma (fonte do dado legado, ja transposto pelas migrations 315 e 335):
   `/programacao-simples`.
 
+Atualizacao 2026-08-12 (2) - Tela liberada para o papel "Usuario" (C3 do corte)
+--------------------------------------------------------------------------------
+- Migration: `362_grant_programming_normalized_page_to_user_role.sql`.
+- Origem: fase C3 de `Auditoria/10-cutover-programacao.md`. Premissa do usuario e que
+  `/programacao-normalizada` passe a ser a Programacao principal.
+- Antes:
+  - A tela nasceu BLOQUEADA para nao-admin na migration 312
+    (`default_user_access = false`), e so era alcancada por concessao individual.
+  - INVERSAO PAI/FILHO: a migration 348 liberou as tres permissoes granulares FILHAS
+    (`programacao-concluir`, `programacao-pendencia`, `programacao-corrigir-data`) para
+    o papel "Usuario", mas a tela PAI seguiu bloqueada por default. O papel tinha as
+    sub-permissoes de uma tela a que nao chegava sozinho.
+- Depois:
+  - `app_pages.default_user_access = true` (usuario novo ja nasce com a tela).
+  - `role_page_permissions.can_access = true` para o papel "Usuario" (template; nao e
+    lido em runtime, mas evita divergencia template/dado real).
+  - `app_user_page_permissions` das pessoas atuais do papel: as 7 colunas de acao viram
+    true, mesmo padrao de `save_user_permissions` (253), em que o toggle da UI habilita
+    todas as acoes juntas.
+  - `app_user_permission_history` gravado ANTES do update, so para quem mudou de false
+    para true (`change_type = 'PAGE_ACCESS_CHANGED'`, `created_by` nulo = via migration).
+  - `DEFAULT_USER_PAGE_ACCESS` (`src/lib/auth/authorization.ts`) ganhou
+    `programacao-normalizada`. A constante e o fallback de sessao para usuario SEM
+    nenhuma linha em `app_user_page_permissions` (`hasCustomPermissions` e
+    `length > 0`), e alimenta a matriz inicial da tela de Permissoes — na pratica, quem
+    muda o acesso do usuario real e a migration, nao a constante.
+- Duas validacoes pos-execucao na migration: (1) ninguem do papel "Usuario" ativo pode
+  ficar sem `can_access = true`; (2) a inversao pai/filho tem de estar fechada — aborta
+  se houver granular liberada por default com a tela pai ainda bloqueada.
+- O que esta migration NAO faz, de proposito: nao remove acesso a `programacao-simples`
+  nem a `programacao-visualizacao`. Enquanto o menu apontar para a Simples (C6/C7),
+  tirar acesso aqui deixaria o usuario comum sem NENHUMA Programacao.
+- Nao altera schema, RLS, policies, grants nem cria funcao. Migration NAO aplicada em
+  producao nesta tarefa.
+
 Atualizacao 2026-07
 --------------------
 - Antes: nao existia.

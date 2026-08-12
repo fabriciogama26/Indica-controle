@@ -203,6 +203,10 @@ Isso é o oposto do que "a Normalizada é a principal" exige, e **não é uma li
 
 Ou seja, liberar `programacao-normalizada` no fallback exige **migration** antes — a 356 força `default_user_access = false` em todo `INSERT` de `app_pages`. Adicionar a chave na lista sem a migration concederia a tela a todo usuário não administrativo sem registro em `app_user_permission_history`.
 
+> ✅ **Resolvido no C3** pela migration `362`, que seguiu o padrão de 4 passos da 348 e fechou uma **inversão pai/filho** que a análise não tinha visto: a 348 liberou as três granulares filhas para o papel "Usuário", mas a tela **pai** continuou bloqueada desde a 312 — o papel tinha as sub-permissões de uma tela a que não chegava sozinho. A migration tem validação que aborta se essa inversão persistir.
+>
+> **Divergência pré-existente, deixada de fora do C3 de propósito:** as três granulares estão `default_user_access = true` no banco (348) e **não** aparecem em `DEFAULT_USER_PAGE_ACCESS`. Pela regra documentada na própria constante, adicioná-las seria permitido — o banco já está `true`. Não foi feito aqui por ser fora do escopo do C3 e por ser mudança de permissão, que não deve pegar carona em outra entrega. Vale decidir em separado.
+
 [`PermissionsPageView.tsx:76`](../src/modules/dashboard/permissoes/PermissionsPageView.tsx#L76) lista `programacao-simples` com o rótulo "Programacao" e precisa acompanhar a troca. As granulares precisam ser conferidas uma a uma contra a Normalizada antes de qualquer remoção, sob pena de operação liberada por engano.
 
 ---
@@ -218,7 +222,7 @@ Ordem revista depois das correções, com a recomendação de corte do usuário 
 | ~~**C0**~~ | **Medição: endpoint próprio de fontes** com fan-out por equipe ATIVA e `schedule.id = programming.id` | correção de bug | — | ✅ **feito** — `eadefad` |
 | ~~C1~~ | Remover o módulo órfão `src/modules/dashboard/programacao/` | remoção | — | ✅ **feito** — `eadefad` |
 | ~~**C2**~~ | Mover o **cluster de prazo (11 símbolos + CSS)** para `mapa-programacao` | mecânico | — | ✅ **feito** — 2026-08-12 |
-| C3 | Migration liberando `default_user_access = true` para `programacao-normalizada` | **migration** | médio — mexe em permissão | — |
+| ~~C3~~ | Migration liberando `default_user_access = true` para `programacao-normalizada` | **migration** | — | ✅ **feito** — `362`, aguarda aplicação |
 | C4 | Implementar modo consulta na Normalizada | **implementação** | médio | — |
 | C5 | Repontar `/programacao-visualizacao` para a Normalizada | configuração | baixo | C4 |
 | C6 | Repontar `/programacao` → `/programacao-normalizada` e deixar só "Programacao" no menu | configuração | baixo | C3, C4 |
