@@ -1022,3 +1022,8 @@ Observacao
 - Reaproveita `stock_transfers.direct_purchase` em vez de criar coluna nova. `EXIT` com `project_id = null` e `direct_purchase = true` ja existia: as RPCs de estorno da `216` repassam a flag do registro original e o guard da `193` sempre teve escape por `notes ilike 'ESTORNO%'` — a migration libera o caminho manual, nao um estado novo de dados.
 - Patch textual por `pg_get_functiondef` + `replace`, no padrao das `222`/`223`, porque a funcao ja foi patchada assim antes. Reescrever a partir do texto da `193` reverteria o fix de tabela temporaria da `222`, e o bloco de validacao final aborta justamente se o tratamento de `tmp_retired_serial_transfer_items` se perder, se o bloqueio novo nao entrar ou se o antigo sobreviver.
 - Nao altera schema, RLS, policies nem grants; nao cria funcao `SECURITY DEFINER` nova. A base `save_stock_transfer_record_base_v181` ja pulava `PROJECT_REQUIRED` pela GUC `app.stock_transfer_direct_purchase` desde a `193`, entao nada muda nela.
+
+361_team_composition_unmeasured_filter_rpc.sql
+- Cria `list_unmeasured_team_composition_ids(...)` para filtrar a listagem de Composicao de Equipe por projetos sem Medicao antes da paginacao, evitando filtro parcial no frontend.
+- A composicao entra quando pelo menos um projeto vinculado nao possui ordem ativa e nao cancelada em `project_measurement_orders` para o mesmo `Tenant + Projeto + Equipe + Data`; com filtro de Projeto ativo, a checagem vale somente para o projeto filtrado.
+- `security invoker`, `search_path = public`, sem schema novo/RLS/policies; EXECUTE revogado de `public`, `anon` e `authenticated`, liberado apenas para `service_role`.

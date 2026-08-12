@@ -96,6 +96,13 @@ Filtros, auto-complete e listagem
   - Projeto (input + datalist por SOB; filtra composicoes que contenham o projeto)
   - Equipe (opcoes no formato `Equipe / Encarregado`, quando o encarregado esta identificado)
   - Situacao da equipe (`Todas`, `Atuando` ou `Nao atuou`)
+  - Medicao (`Todas` ou `Sem medicao`), aplicado antes da paginacao e exportacao
+    pela RPC `list_unmeasured_team_composition_ids`.
+    - `Sem medicao` retorna composicoes em que ao menos um projeto vinculado nao possui
+      ordem ativa e nao cancelada em `project_measurement_orders` para o mesmo
+      `Tenant + Projeto + Equipe + Data`.
+    - Quando o filtro de Projeto tambem esta ativo, a checagem de medicao vale
+      somente para o projeto filtrado.
 - Listagem:
   - Data
   - Projetos
@@ -561,3 +568,38 @@ Atualizacao 2026-08-06 - Bloqueio de pessoa presente em mais de uma equipe
 - Impacto multi-tenant:
   - Todas as consultas usam `tenant_id` da sessao ou da propria linha operacional.
   - A migration nao altera RLS, grants, policies nem cria funcao `SECURITY DEFINER`.
+
+Atualizacao 2026-08-12 - Filtro de projetos sem Medicao
+-------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `supabase/migrations/361_team_composition_unmeasured_filter_rpc.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `FilterState`
+  - `buildQuery`
+  - `normalizeMeasurementStatus`
+  - `GET /api/composicao-equipe`
+  - RPC `list_unmeasured_team_composition_ids`
+- Comportamento antes/depois:
+  - Antes: a coluna `Projetos` indicava com borda verde quais projetos ja tinham
+    medicao, mas nao havia filtro para localizar as linhas sem esse indicador.
+  - Depois: o painel `Filtros` possui `Medicao = Sem medicao`, retornando linhas
+    onde ao menos um projeto da composicao nao tem medicao ativa e nao cancelada
+    no mesmo contexto.
+  - Depois: o filtro e aplicado no banco antes da paginacao, totalizacao e
+    exportacoes CSV; nao depende de filtrar a pagina ja carregada no navegador.
+- Impacto multi-tenant:
+  - A API continua resolvendo `tenant_id` pela sessao autenticada e envia esse
+    tenant para a RPC.
+  - A RPC cruza somente `team_compositions`, `team_composition_projects` e
+    `project_measurement_orders` do mesmo tenant.
+  - Nao houve alteracao de RLS, policies ou tabelas; EXECUTE da RPC fica restrito
+    a `service_role`.
+- Lacuna tecnica:
+  - `TeamCompositionPageView.tsx` permanece acima do limite recomendado pelo guia
+    de frontend; a proxima melhoria estrutural deve extrair filtros/lista/modais
+    para componentes/hooks do proprio modulo.
