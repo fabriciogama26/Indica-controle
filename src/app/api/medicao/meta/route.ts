@@ -87,7 +87,7 @@ async function fetchFilterSources(params: {
       .returns<TeamSourceRow[]>(),
   ]);
 
-  // Mesma tolerancia de `fetchProjects` (server/modules/programacao/catalogs.ts):
+  // Tolerancia herdada do `fetchProjects` da Programacao antiga (removida no C8):
   // bases sem as colunas de obra de teste caem no recorte legado por `is_active`.
   const projectRows = projectResult.error
     ? (await params.supabase

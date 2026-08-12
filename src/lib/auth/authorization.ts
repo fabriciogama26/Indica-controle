@@ -10,14 +10,13 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/projetos", pageKey: "projetos" },
   { prefix: "/cronograma-solicitacoes", pageKey: "cronograma-solicitacoes" },
   { prefix: "/locacao", pageKey: "locacao" },
-  { prefix: "/programacao-simples", pageKey: "programacao-simples" },
   { prefix: "/programacao-normalizada", pageKey: "programacao-normalizada" },
   { prefix: "/programacao-visualizacao", pageKey: "programacao-visualizacao" },
   { prefix: "/mapa-programacao", pageKey: "mapa-programacao" },
   // C6 do corte: `/programacao` redireciona para a Normalizada, entao a chave de
-  // permissao acompanhou. Nao ha risco de capturar `/programacao-simples` nem
-  // `/programacao-visualizacao`: `resolvePageKeyFromPath` casa por igualdade
-  // exata ou por `prefixo + "/"`, nunca por prefixo solto.
+  // permissao acompanhou. Nao ha risco de capturar `/programacao-visualizacao`:
+  // `resolvePageKeyFromPath` casa por igualdade exata ou por `prefixo + "/"`,
+  // nunca por prefixo solto.
   { prefix: "/programacao", pageKey: "programacao-normalizada" },
   { prefix: "/composicao-equipe", pageKey: "composicao-equipe" },
   { prefix: "/controle-apr", pageKey: "controle-apr" },
@@ -91,11 +90,10 @@ export const DEFAULT_USER_PAGE_ACCESS = [
   "locacao",
   // Liberada no banco pela migration 362 (C3 do corte).
   //
-  // `programacao-simples` saiu desta lista no C7: a migration 363 zerou o
-  // `default_user_access` dela, que e a condicao que a regra acima exige para
-  // remover uma chave daqui. Quem JA tem a tela antiga concedida continua com
-  // ela — a 363 nao revoga, e a limpeza dessas linhas e do C8, junto com a
-  // remocao da tela.
+  // `programacao-simples` saiu desta lista no C7 (migration 363 zerou o
+  // `default_user_access` dela, condicao que a regra acima exige para remover
+  // uma chave daqui) e deixou de existir no C8, que removeu a tela do codigo e
+  // aposentou o page_key na migration 364.
   "programacao-normalizada",
   "programacao-visualizacao",
   "composicao-equipe",

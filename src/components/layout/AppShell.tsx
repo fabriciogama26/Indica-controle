@@ -31,10 +31,8 @@ const menuSections = [
       { href: "/projetos", label: "Projetos", icon: "folder" },
       { href: "/cronograma-solicitacoes", label: "Cronograma de Solicitacoes", icon: "calendar" },
       { href: "/locacao", label: "Locacao", icon: "briefcase" },
-      // C6 do corte: a Normalizada assumiu o nome principal e a entrada da
-      // `programacao-simples` saiu do menu. A tela congelada continua acessivel
-      // por URL direta ate o C8 remove-la, de proposito: e a rede de seguranca
-      // caso a Normalizada precise ser comparada com a antiga em producao.
+      // A Programacao e a do modelo normalizado desde o C6. A tela antiga
+      // (`programacao-simples`) saiu do menu no C6 e do codigo no C8.
       { href: "/programacao-normalizada", label: "Programacao", icon: "calendar" },
       { href: "/programacao-visualizacao", label: "Visualizacao Programacao", icon: "calendar" },
       { href: "/mapa-programacao", label: "Mapa de Programacao", icon: "calendar" },
@@ -135,12 +133,6 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/locacao": {
     title: "Locacao",
     subtitle: "Controle de recursos alocados por locacao.",
-  },
-  // Fora do menu desde o C6, mas ainda alcancavel por URL ate o C8 — o titulo
-  // fica para a tela nao aparecer sem cabecalho para quem chegar por link antigo.
-  "/programacao-simples": {
-    title: "Programacao (tela antiga)",
-    subtitle: "Somente leitura. Substituida pela Programacao no modelo normalizado.",
   },
   "/programacao-normalizada": {
     title: "Programacao",
