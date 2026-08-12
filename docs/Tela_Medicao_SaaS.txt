@@ -21,7 +21,7 @@ Arquitetura
 - Consulta de uso de atividades especiais por projeto:
   - `src/app/api/medicao/project-activity-usage/route.ts`
 - Fonte complementar para selecao de origem (somente contexto da ordem):
-  - `src/app/api/programacao/route.ts`
+  - `src/app/api/medicao/programming-sources/route.ts`
 - Catalogo de atividades proprio da Medicao:
   - `src/app/api/medicao/activities/catalog/route.ts`
 - Sugestao de taxa para novo cadastro da Medicao:
@@ -1377,3 +1377,43 @@ Atualizacao 2026-08-11 - `fetchProjectServiceCenterMap` extraida para modulo com
   `.eq("tenant_id", ...)`.
 - Tamanho de arquivo: `api/medicao/route.ts` 2061 -> 1987 linhas; baseline reduzido via
   `npm run lint:size:update`.
+
+Atualizacao 2026-08-12 - C0 do corte da Programacao Normalizada na Medicao
+--------------------------------------------------------------------------------
+- Problema corrigido:
+  - A tela de cadastro da Medicao carregava fontes por `GET /api/programacao`, portanto
+    recebia `project_programming.id` legado em `ScheduleItem.id`.
+  - Ao salvar, esse valor seguia como `programmingId` para as RPCs da Medicao, mas a
+    migration 351 passou a resolver `p_programming_id` contra `programming.id`
+    normalizado. O ID explicito nunca casava; a RPC caia no fallback por
+    projeto+equipe+data e a etapa escolhida pelo usuario podia ser descartada.
+- Depois:
+  - Criado `GET /api/medicao/programming-sources`, autorizado pela propria Medicao
+    (`medicao/read`), sem exigir permissao da tela de Programacao.
+  - O endpoint le a Programacao pela fachada publica
+    `src/server/modules/programacao-normalizada/index.ts`, nunca por `/api/programacao`.
+  - O shape entregue para `MeasurementPageView.tsx` permanece igual ao contrato antigo,
+    mas `ScheduleItem.id` agora e `programming.id`.
+  - Como o modelo normalizado tem 1 etapa com N equipes, o endpoint faz fan-out por
+    `programming_team.status = ATIVA`: uma linha de agenda por equipe ativa, todas com o
+    mesmo `programming.id` e `teamId` separado.
+- Mapeamento principal:
+  - `id` <- `programming.id`
+  - `projectId` <- `programming.project_id`
+  - `teamId` <- `programming_team.team_id` ATIVA
+  - `date` <- `programming.execution_date`
+  - `status`, `electricalField`, `workCompletionStatus` <- campos da etapa normalizada
+  - `activities` <- `programming_activity` ativa + catalogo `service_activities`
+- Codigo relacionado:
+  - As leituras internas de reconciliacao em `src/app/api/medicao/route.ts` tambem passaram
+    a chamar funcoes exportadas pela fachada da Programacao Normalizada, removendo leituras
+    diretas locais de `programming`/`programming_history`.
+  - As duas chamadas da tela foram trocadas para
+    `/api/medicao/programming-sources` (carregamento normal e cadastro em massa).
+- Impacto esperado:
+  - A validacao da 351 passa a ser exercitada de verdade: a equipe escolhida precisa estar
+    ATIVA na etapa normalizada. Casos de borda que antes passavam pelo fallback podem
+    retornar erro de negocio; isso e a correcao do vinculo explicito funcionando.
+- Validado com `npx.cmd tsc --noEmit`, `npm.cmd run lint` (0 erros; 36 warnings legados),
+  `npm.cmd run lint:size:update` e `npm.cmd run build` (aprovado fora do sandbox apos
+  `spawn EPERM` no sandbox).

@@ -293,9 +293,6 @@ vercel --prod
   - `CronogramaSolicitacoesPageView.tsx`: tela de solicitacoes tecnicas com filtros, prazos, verificacao, cancelamento e integracao com a programacao normalizada.
   - `CronogramaSolicitacoesPageView.module.css`: estilos da tela de Cronograma de Solicitacoes.
   - `api.ts`, `constants.ts`, `types.ts` e `index.ts`: cliente, configuracoes, contratos e fachada publica do modulo.
-- `src/modules/dashboard/programacao/`
-  - `ProgrammingPageView.tsx`: implementacao legada da tela antiga de Programacao (desativada no fluxo atual e mantida sem exclusao de codigo).
-  - `ProgrammingPageView.module.css`: estilos da tela de programacao.
 - `src/modules/dashboard/programacao-simples/`
   - `ProgrammingSimplePageView.tsx`: tela legada de Programacao, mantida em somente leitura para filtros, lista, detalhes, historico e extracoes.
   - `ProgrammingSimplePageView.module.css`: estilos da tela legada de Programacao.

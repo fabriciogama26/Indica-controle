@@ -191,7 +191,7 @@ limit 40;
 
 **Preencher esta tabela e anexar ao relatório:**
 
-| Rota (Nível A) | Tabela | `total_ms` | `calls` | `avg_ms` | `rows/call` | `blks_read` | `temp_written` | Confirma o risco? |
+| Rota (Nível A) | Tabela | `total_ms` | `calls` | `avg_ms` | `blks_total/call` | `blks_read` | `temp_written` | Confirma o risco? |
 |---|---|---|---|---|---|---|---|---|
 | `/api/apuracao-fator-minimo` | `project_measurement_orders` | | | | | | | |
 | `/api/dashboard-medicao` | `project_measurement_orders` | | | | | | | |
@@ -200,7 +200,9 @@ limit 40;
 | `/api/medicao` | `programming` | | | | | | | |
 | `/api/faturamento` | `project_billing_orders` | | | | | | | |
 
-`rows/call` é a coluna que confirma ou derruba o achado estrutural do Nível A. Se `project_measurement_orders` devolve 3.000 linhas por chamada, a agregação em JavaScript está confirmada como problema. Se devolve 40, o Nível A superestimou e a prioridade cai.
+**`blks_total/call`** — `(shared_blks_hit + shared_blks_read) / calls`, blocos de 8 kB — é a coluna que confirma ou derruba o achado estrutural do Nível A. Acima de ~1.000 blocos (~8 MB) por chamada, a varredura ampla para agregar em JavaScript está confirmada. Abaixo de ~100, o Nível A superestimou e a prioridade cai.
+
+> **Não usar `rows/call` para isso.** Medido na captura de 2026-08-12: em tráfego PostgREST ela é **sempre `1,00`**, porque o `json_agg()` do PostgREST devolve todo o resultado empacotado numa única linha. Detalhe em [`07` §3.1](07-baseline-p1.md#31-tabela-de-cruzamento-do-nível-a).
 
 ---
 

@@ -58,9 +58,10 @@ function dedupeNoProductionReasons(items: NoProductionReasonRow[]) {
 const PROJECT_SOURCE_SELECT = "id, sob, service_description, service_type_text";
 
 // Fontes de projeto/equipe para os filtros da tela `medicao-visualizacao`. A tela de
-// cadastro carrega isso de `GET /api/programacao`, que exige permissao da Programacao —
-// dependencia que a tela de consulta nao pode herdar. So entra quando pedido por
-// `?includeSources=1`, para nao aumentar o egress da tela de cadastro.
+// cadastro carrega fontes de Programacao pelo endpoint proprio
+// `/api/medicao/programming-sources`, sem herdar permissao da tela de Programacao.
+// So entra quando pedido por `?includeSources=1`, para nao aumentar o egress da tela
+// de cadastro.
 async function fetchFilterSources(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;

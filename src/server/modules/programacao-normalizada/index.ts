@@ -37,4 +37,23 @@ export {
   type ProgrammingMapStageRow,
   type ProgrammingMapTeamRow,
   fetchTeamIdsProgrammedInPeriod,
+
+  // Fonte normalizada consumida pela Medicao.
+  fetchProgrammingStagesForMeasurementSources,
+  fetchProgrammingStagesForMeasurementMatch,
+  fetchCanceledProgrammingStageIdsForMeasurement,
+  fetchProgrammingCompletionRowsForMeasurement,
+  fetchProgrammingWorkCompletionHistoryForMeasurement,
 } from "./queries";
+
+export type {
+  ProgrammingMeasurementMatchHistoryRow,
+  ProgrammingMeasurementMatchRow,
+  ProgrammingMeasurementSourceStageRow,
+} from "./types";
+
+export {
+  fetchProgrammingWorkCompletionCatalog,
+  fetchServiceActivitiesByIds,
+  fetchTeams,
+} from "./catalogs";

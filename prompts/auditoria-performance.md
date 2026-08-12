@@ -38,10 +38,12 @@ src/modules/dashboard/**         PageViews, hooks, paginação, refetch
 src/lib/react-query/**           staleTime, refetchInterval, refetchOnWindowFocus
 supabase/migrations/*.sql        índices, RLS, funções, views, triggers
 supabase/functions/**            Edge Functions
-scripts/supabase-monitoring-readonly.sql          ← já existe, NÃO reescrever
+scripts/supabase-monitoring-readonly.sql          ← já existe, NÃO reescrever (saúde do banco)
+scripts/perf-baseline-capture.sql                 ← já existe, NÃO reescrever (baseline diffável)
 scripts/supabase-report-*.txt                     ← relatório para Supabase Reports
 scripts/supabase-log-explorer-monitoring.sql      ← PostgREST / Edge Functions
 Auditoria/*.md                                    ← auditoria anterior, se houver
+Auditoria/baseline/*.txt                          ← capturas T0/T1 anteriores
 ```
 Produza um mapa de: página → API/RPC → tabela(s) → filtros → índices existentes → índice recomendado → risco.
 </arquivos_a_inspecionar>
@@ -190,6 +192,7 @@ Ao final, conforme a seção 11 do `CLAUDE.md`: resumo do que mudou, validaçõe
 <notas>
 - Análise estática prioriza; só `pg_stat_statements` decide. Nunca apresentar risco estimado como se fosse medição.
 - `rows/call` é a métrica que confirma ou derruba o achado "carrega milhares de linhas para agregar em JS". Sempre coletar.
+- **Nunca comparar antes/depois com números brutos.** `total_exec_time`, `calls` e `shared_blks_read` são proporcionais ao tráfego da janela — uma semana calma faz qualquer mudança parecer ótima. Comparar por chamada (`mean_exec_time`, `blks_read_per_call`, `rows_per_call`) e, quando a mudança substitui várias consultas por uma RPC, por **unidade de carregamento da tela** — o que exige capturar o denominador (nº de carregamentos) em `T0`, antes da mudança. Depois que a RPC entra, o `queryid` antigo some e não há mais diff linha a linha.
 - Agregação no PostgreSQL não é otimização exótica: `SUM` lê as páginas uma vez e devolve 8 bytes; o mesmo cálculo em JS lê as mesmas páginas, serializa, trafega e aloca. O I/O é igual ou pior e todo o resto é desperdício.
 - Toda proposta de índice deve declarar o custo de escrita. Tabela com 19 índices paga 19 atualizações por `INSERT`, e WAL vai para disco — write amplification **é** Disk I/O.
 - Bloat e estatística desatualizada causam I/O que não aparece em nenhuma query específica. Sempre checar `n_dead_tup` e `last_autoanalyze`.

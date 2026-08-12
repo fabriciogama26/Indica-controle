@@ -108,6 +108,52 @@ export type ProgrammingActivityRow = {
   is_active: boolean;
 };
 
+export type ProgrammingMeasurementSourceTeamRow = {
+  team_id: string;
+  status: ProgrammingTeamStatus;
+};
+
+export type ProgrammingMeasurementSourceActivityRow = {
+  id: string;
+  service_activity_id: string;
+  quantity: number | string;
+  is_active: boolean;
+};
+
+export type ProgrammingMeasurementSourceStageRow = {
+  id: string;
+  project_id: string;
+  execution_date: string | null;
+  status: ProgrammingStatus;
+  campo_eletrico: string | null;
+  work_completion_status: string | null;
+  programming_team: ProgrammingMeasurementSourceTeamRow[] | null;
+  programming_activity: ProgrammingMeasurementSourceActivityRow[] | null;
+};
+
+export type ProgrammingMeasurementMatchTeamRow = {
+  team_id: string;
+  status: string;
+};
+
+export type ProgrammingMeasurementMatchRow = {
+  id: string;
+  project_id: string;
+  team_id?: string;
+  execution_date: string;
+  status: string;
+  work_completion_status: string | null;
+  updated_at: string;
+  programming_team?: ProgrammingMeasurementMatchTeamRow[] | null;
+};
+
+export type ProgrammingMeasurementMatchHistoryRow = {
+  id: string;
+  programming_id: string;
+  changes: Record<string, unknown> | null;
+  created_at: string;
+};
+
 export type ProgrammingDocumentRow = {
   id: string;
   document_type: ProgrammingDocumentType;

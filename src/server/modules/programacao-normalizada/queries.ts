@@ -5,6 +5,9 @@ import { PROGRAMMING_STAGE_SELECT_WITH_CHILDREN } from "./selects";
 import type {
   AppUserLookupRow,
   ProgrammingHistoryRow,
+  ProgrammingMeasurementMatchHistoryRow,
+  ProgrammingMeasurementMatchRow,
+  ProgrammingMeasurementSourceStageRow,
   ProgrammingStageListFilters,
   ProgrammingStageRow,
 } from "./types";
@@ -633,6 +636,141 @@ export async function fetchProgrammingStageById(params: {
   if (error) return null;
 
   return data;
+}
+
+export async function fetchProgrammingStagesForMeasurementSources(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  startDate: string;
+  endDate: string;
+}) {
+  const { data, error } = await params.supabase
+    .from("programming")
+    .select(`
+      id, project_id, execution_date, status, campo_eletrico, work_completion_status,
+      programming_team ( team_id, status ),
+      programming_activity ( id, service_activity_id, quantity, is_active )
+    `)
+    .eq("tenant_id", params.tenantId)
+    .gte("execution_date", params.startDate)
+    .lte("execution_date", params.endDate)
+    .order("execution_date", { ascending: true })
+    .returns<ProgrammingMeasurementSourceStageRow[]>();
+
+  if (error) {
+    throw new Error(`Falha ao carregar fontes de Programacao para Medicao: ${error.message}`);
+  }
+
+  return data ?? [];
+}
+
+async function fetchPagedProgrammingRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message?: string } | null }>,
+) {
+  const rows: T[] = [];
+  let from = 0;
+  const pageSize = 1000;
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await fetchPage(from, to);
+    if (error) {
+      throw new Error(error.message ?? "Falha ao carregar Programacao paginada.");
+    }
+
+    const pageRows = data ?? [];
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return rows;
+}
+
+export async function fetchProgrammingStagesForMeasurementMatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds: string[];
+  startDate: string;
+  endDate: string;
+}) {
+  if (!params.projectIds.length) return [] as ProgrammingMeasurementMatchRow[];
+
+  return fetchPagedProgrammingRows<ProgrammingMeasurementMatchRow>((from, to) =>
+    params.supabase
+      .from("programming")
+      .select("id, project_id, execution_date, status, work_completion_status, updated_at, programming_team(team_id, status)")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", params.projectIds)
+      .gte("execution_date", params.startDate)
+      .lte("execution_date", params.endDate)
+      .range(from, to)
+      .returns<ProgrammingMeasurementMatchRow[]>(),
+  );
+}
+
+export async function fetchCanceledProgrammingStageIdsForMeasurement(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds: string[];
+}) {
+  if (!params.projectIds.length) return [] as Array<Pick<ProgrammingMeasurementMatchRow, "id">>;
+
+  return fetchPagedProgrammingRows<Pick<ProgrammingMeasurementMatchRow, "id">>((from, to) =>
+    params.supabase
+      .from("programming")
+      .select("id")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", params.projectIds)
+      .eq("status", "CANCELADA")
+      .range(from, to)
+      .returns<Array<Pick<ProgrammingMeasurementMatchRow, "id">>>(),
+  );
+}
+
+export async function fetchProgrammingCompletionRowsForMeasurement(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds: string[];
+  windowEndDate: string;
+}) {
+  if (!params.projectIds.length) {
+    return [] as Array<Pick<ProgrammingMeasurementMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>;
+  }
+
+  return fetchPagedProgrammingRows<Pick<ProgrammingMeasurementMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>((from, to) =>
+    params.supabase
+      .from("programming")
+      .select("project_id, execution_date, work_completion_status, updated_at")
+      .eq("tenant_id", params.tenantId)
+      .in("project_id", params.projectIds)
+      .lte("execution_date", params.windowEndDate)
+      .neq("status", "CANCELADA")
+      .not("work_completion_status", "is", null)
+      .range(from, to)
+      .returns<Array<Pick<ProgrammingMeasurementMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
+  );
+}
+
+export async function fetchProgrammingWorkCompletionHistoryForMeasurement(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  projectIds: string[];
+}) {
+  if (!params.projectIds.length) return [] as ProgrammingMeasurementMatchHistoryRow[];
+
+  return fetchPagedProgrammingRows<ProgrammingMeasurementMatchHistoryRow>((from, to) =>
+    params.supabase
+      .from("programming_history")
+      .select("id, programming_id, changes, created_at, programming!inner(project_id, tenant_id)")
+      .eq("tenant_id", params.tenantId)
+      .eq("programming.tenant_id", params.tenantId)
+      .in("programming.project_id", params.projectIds)
+      .contains("changes", { workCompletionStatus: {} })
+      .order("created_at", { ascending: false })
+      .range(from, to)
+      .returns<ProgrammingMeasurementMatchHistoryRow[]>(),
+  );
 }
 
 // =============================================================================

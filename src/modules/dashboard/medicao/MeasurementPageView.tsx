@@ -1205,7 +1205,7 @@ export function MeasurementPageView() {
         const executionDateForSources = prefill?.executionDate || form.executionDate;
         const sourceStartDate = executionDateForSources && executionDateForSources < activeFilters.startDate ? executionDateForSources : activeFilters.startDate;
         const sourceEndDate = executionDateForSources && executionDateForSources > activeFilters.endDate ? executionDateForSources : activeFilters.endDate;
-        const response = await fetch(`/api/programacao?startDate=${sourceStartDate}&endDate=${sourceEndDate}`, {
+        const response = await fetch(`/api/medicao/programming-sources?startDate=${sourceStartDate}&endDate=${sourceEndDate}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
@@ -2007,7 +2007,7 @@ export function MeasurementPageView() {
       const startDate = dates[0];
       const endDate = dates[dates.length - 1];
 
-      const scheduleResponse = await fetch(`/api/programacao?startDate=${startDate}&endDate=${endDate}`, {
+      const scheduleResponse = await fetch(`/api/medicao/programming-sources?startDate=${startDate}&endDate=${endDate}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });

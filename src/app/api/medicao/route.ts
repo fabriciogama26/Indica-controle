@@ -4,6 +4,12 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { parsePagination } from "@/lib/server/apiHelpers";
 import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
+import {
+  fetchCanceledProgrammingStageIdsForMeasurement,
+  fetchProgrammingCompletionRowsForMeasurement,
+  fetchProgrammingStagesForMeasurementMatch,
+  fetchProgrammingWorkCompletionHistoryForMeasurement,
+} from "@/server/modules/programacao-normalizada";
 
 type MeasurementOrderStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
@@ -117,11 +123,6 @@ type ProgrammingWorkCompletionHistoryRow = {
   programming_id: string;
   changes: Record<string, unknown> | null;
   created_at: string;
-};
-
-type ProgrammingTeamMatchRow = {
-  team_id: string;
-  status: string;
 };
 
 type MeasurementOrderActivityFilterRow = {
@@ -665,70 +666,29 @@ async function loadProgrammingMatchMap(params: {
   const endDate = executionDates[executionDates.length - 1];
 
   const [programmingStages, canceledProgrammingRows, projectCompletionRows, projectCompletionHistoryRows] = await Promise.all([
-    fetchPagedSupabaseRows<{
-      id: string;
-      project_id: string;
-      execution_date: string;
-      status: string;
-      work_completion_status: string | null;
-      updated_at: string;
-      programming_team: ProgrammingTeamMatchRow[] | null;
-    }>((from, to) =>
-      params.supabase
-        .from("programming")
-        .select("id, project_id, execution_date, status, work_completion_status, updated_at, programming_team(team_id, status)")
-        .eq("tenant_id", params.tenantId)
-        .in("project_id", projectIds)
-        .gte("execution_date", startDate)
-        .lte("execution_date", endDate)
-        .range(from, to)
-        .returns<Array<{
-          id: string;
-          project_id: string;
-          execution_date: string;
-          status: string;
-          work_completion_status: string | null;
-          updated_at: string;
-          programming_team: ProgrammingTeamMatchRow[] | null;
-        }>>(),
-    ),
-    fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "id">>((from, to) =>
-      params.supabase
-        .from("programming")
-        .select("id")
-        .eq("tenant_id", params.tenantId)
-        .in("project_id", projectIds)
-        .eq("status", "CANCELADA")
-        .range(from, to)
-        .returns<Array<Pick<ProgrammingMatchRow, "id">>>(),
-    ),
-    fetchPagedSupabaseRows<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>((from, to) =>
-      params.supabase
-        .from("programming")
-        .select("project_id, execution_date, work_completion_status, updated_at")
-        .eq("tenant_id", params.tenantId)
-        .in("project_id", projectIds)
-        .lte("execution_date", params.windowEndDate)
-        .neq("status", "CANCELADA")
-        .not("work_completion_status", "is", null)
-        .range(from, to)
-        .returns<Array<Pick<ProgrammingMatchRow, "project_id" | "execution_date" | "work_completion_status" | "updated_at">>>(),
-    ),
-    // `programming_history` (310) nao tem `project_id` proprio — o filtro por
-    // projeto usa o embed `programming!inner` (mesmo padrao ja usado no Mapa de
-    // Programacao), sem precisar de 2 idas ao banco em sequencia.
-    fetchPagedSupabaseRows<ProgrammingWorkCompletionHistoryRow>((from, to) =>
-      params.supabase
-        .from("programming_history")
-        .select("id, programming_id, changes, created_at, programming!inner(project_id, tenant_id)")
-        .eq("tenant_id", params.tenantId)
-        .eq("programming.tenant_id", params.tenantId)
-        .in("programming.project_id", projectIds)
-        .contains("changes", { workCompletionStatus: {} })
-        .order("created_at", { ascending: false })
-        .range(from, to)
-        .returns<ProgrammingWorkCompletionHistoryRow[]>(),
-    ),
+    fetchProgrammingStagesForMeasurementMatch({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds,
+      startDate,
+      endDate,
+    }),
+    fetchCanceledProgrammingStageIdsForMeasurement({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds,
+    }),
+    fetchProgrammingCompletionRowsForMeasurement({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds,
+      windowEndDate: params.windowEndDate,
+    }),
+    fetchProgrammingWorkCompletionHistoryForMeasurement({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      projectIds,
+    }),
   ]);
 
   // Modelo normalizado: 1 linha de `programming` = 1 etapa, com N equipes em
@@ -737,7 +697,7 @@ async function loadProgrammingMatchMap(params: {
   // por equipe ATIVA da etapa, reaproveitando o MESMO formato `ProgrammingMatchRow`
   // e a mesma logica de agrupamento/prioridade que ja existia (nao muda).
   const data: ProgrammingMatchRow[] = [];
-  for (const stage of programmingStages.data ?? []) {
+  for (const stage of programmingStages) {
     const activeTeamIds = (stage.programming_team ?? [])
       .filter((team) => team.status === "ATIVA")
       .map((team) => team.team_id);
@@ -778,8 +738,8 @@ async function loadProgrammingMatchMap(params: {
     programmingStatusMap.set(row.id, row.status);
   }
 
-  const canceledProgrammingIds = new Set((canceledProgrammingRows.data ?? []).map((item) => item.id));
-  const projectWorkCompletionTimeline = buildProjectWorkCompletionTimeline(projectCompletionRows.data ?? []);
+  const canceledProgrammingIds = new Set(canceledProgrammingRows.map((item) => item.id));
+  const projectWorkCompletionTimeline = buildProjectWorkCompletionTimeline(projectCompletionRows);
 
   const projectDateWorkCompletionStatusMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
   for (const row of data ?? []) {
@@ -803,7 +763,7 @@ async function loadProgrammingMatchMap(params: {
   }
 
   const projectDateWorkCompletionHistoryMap = new Map<string, { completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>();
-  for (const row of projectCompletionHistoryRows.data ?? []) {
+  for (const row of projectCompletionHistoryRows) {
     if (canceledProgrammingIds.has(row.programming_id) || isCanceledProgrammingStatus(programmingStatusMap.get(row.programming_id))) {
       continue;
     }
