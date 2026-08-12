@@ -87,6 +87,11 @@ export const DEFAULT_USER_PAGE_ACCESS = [
   "locacao",
   "programacao-simples",
   "programacao-visualizacao",
+  // Liberada no banco pela migration 362 (C3 do corte). `programacao-simples` e
+  // `programacao-visualizacao` seguem aqui de proposito ate o menu passar a
+  // apontar para a Normalizada (C6/C7): removidas agora, o usuario comum sem
+  // permissao customizada ficaria sem NENHUMA Programacao.
+  "programacao-normalizada",
   "composicao-equipe",
   "controle-apr",
   "medicao-asbuilt",
