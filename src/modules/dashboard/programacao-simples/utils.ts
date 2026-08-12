@@ -5,8 +5,6 @@
 } from "./constants";
 import type {
   ActivityCatalogItem,
-  DeadlineStatus,
-  DeadlineVisualVariant,
   DocumentEntry,
   DocumentKey,
   FormState,
@@ -39,59 +37,6 @@ export function calculateDateDiffInDays(targetDate: string, referenceDate: strin
   const reference = new Date(referenceYear, referenceMonth - 1, referenceDay);
   const diffMs = target.getTime() - reference.getTime();
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-}
-
-export function formatDeadlineStatusLabel(daysDiff: number, windowDays: number) {
-  if (daysDiff < 0) {
-    const absDays = Math.abs(daysDiff);
-    return `Vencida ha ${absDays} dia${absDays === 1 ? "" : "s"}`;
-  }
-
-  if (daysDiff === 0) {
-    return "Vence hoje";
-  }
-
-  if (daysDiff <= windowDays) {
-    return `Vence em ${daysDiff} dia${daysDiff === 1 ? "" : "s"}`;
-  }
-
-  return "Ainda no prazo";
-}
-
-export function resolveDeadlineStatus(daysDiff: number, windowDays: number): DeadlineStatus {
-  if (daysDiff < 0) {
-    return "OVERDUE";
-  }
-
-  if (daysDiff === 0) {
-    return "TODAY";
-  }
-
-  if (daysDiff <= windowDays) {
-    return "SOON";
-  }
-
-  return "NORMAL";
-}
-
-export function resolveDeadlineVisualVariant(daysDiff: number, windowDays: number): DeadlineVisualVariant {
-  if (daysDiff <= -30) {
-    return "OVERDUE_CRITICAL";
-  }
-
-  if (daysDiff < 0) {
-    return "OVERDUE";
-  }
-
-  if (daysDiff === 0) {
-    return "TODAY";
-  }
-
-  if (daysDiff <= windowDays) {
-    return "SOON";
-  }
-
-  return "NORMAL";
 }
 
 export function getCurrentYearDateRange(referenceDate: string) {

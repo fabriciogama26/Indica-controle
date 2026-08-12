@@ -413,6 +413,31 @@ Atalhos
 - Rota legada desativada: `/programacao` (redireciona para `/programacao-simples`).
 - Menu: secao `Operacao`.
 
+Atualizacao 2026-08-12 - Cluster "Prazos das Obras" saiu deste modulo (C2)
+---------------------------------------------------------------------------
+- Origem: C2 do corte da Programacao Normalizada (`Auditoria/10-cutover-programacao.md`).
+- NAO houve perda de funcionalidade nesta tela. Os 11 simbolos removidos NAO eram usados
+  por ela — verificado simbolo a simbolo: fora dos arquivos que os definiam, o unico
+  consumidor era `mapa-programacao`. Eram ativos do Mapa morando no modulo errado.
+- Removidos daqui e movidos para `src/modules/dashboard/mapa-programacao/`:
+  - `components.tsx`: `ProgrammingDeadlinePanel`, `ProgrammingDeadlineModal`,
+    `getDeadlineCardClassName`, `DEADLINE_VIEW_OPTIONS` e os tipos `DeadlineModalItem`,
+    `DeadlinePanelSummary`, `DeadlinePanelItem` (-275 linhas; 2351 -> 2076).
+  - `constants.ts`: `DEADLINE_CAROUSEL_PAGE_SIZE`, `DEADLINE_WINDOW_SHORT_DAYS`,
+    `DEADLINE_WINDOW_LONG_DAYS`, `DEADLINE_WINDOW_EXTENDED_DAYS`,
+    `DEADLINE_WINDOW_MAX_DAYS`.
+  - `utils.ts`: `formatDeadlineStatusLabel`, `resolveDeadlineStatus`,
+    `resolveDeadlineVisualVariant`.
+  - `exports.ts`: `buildDeadlineCsvContent` e o tipo `DeadlineExportItem`.
+  - `types.ts`: `DeadlineStatus`, `DeadlineVisualVariant`, `DeadlineViewMode`.
+- O CSS de origem (`ProgrammingSimplePageView.module.css`) NAO foi alterado: as regras
+  foram COPIADAS para o modulo proprio do Mapa. A tela continua com o CSS que tinha.
+- Por que importa para o corte: esta era a UNICA dependencia de runtime entre
+  `programacao-simples` e outro modulo. Com ela resolvida, este modulo pode ser removido
+  no C8 sem arrastar nada junto — restam apenas rota, menu e `page_key` (C4 a C7).
+- Este modulo continua CONGELADO (secao 5 do CLAUDE.md) e somente leitura
+  (`PROGRAMMING_SIMPLES_READ_ONLY = true`), aguardando remocao.
+
 Atualizacao 2026-03
 -------------------
 - Criada tela da nova `Programacao` no padrao de cadastro.

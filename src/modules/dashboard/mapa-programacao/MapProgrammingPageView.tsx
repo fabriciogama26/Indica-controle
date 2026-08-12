@@ -8,26 +8,20 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import {
-  ProgrammingDeadlineModal,
-  ProgrammingDeadlinePanel,
-} from "@/modules/dashboard/programacao-simples/components";
-import {
+  buildDeadlineCsvContent,
   DEADLINE_CAROUSEL_PAGE_SIZE,
   DEADLINE_WINDOW_EXTENDED_DAYS,
   DEADLINE_WINDOW_LONG_DAYS,
   DEADLINE_WINDOW_MAX_DAYS,
   DEADLINE_WINDOW_SHORT_DAYS,
-} from "@/modules/dashboard/programacao-simples/constants";
-import { buildDeadlineCsvContent } from "@/modules/dashboard/programacao-simples/exports";
-import {
   formatDeadlineStatusLabel,
   resolveDeadlineStatus,
   resolveDeadlineVisualVariant,
-} from "@/modules/dashboard/programacao-simples/utils";
-import type {
-  DeadlineStatus,
-  DeadlineViewMode,
-} from "@/modules/dashboard/programacao-simples/types";
+  type DeadlineStatus,
+  type DeadlineViewMode,
+} from "./deadline";
+import { ProgrammingDeadlineModal } from "./components/ProgrammingDeadlineModal";
+import { ProgrammingDeadlinePanel } from "./components/ProgrammingDeadlinePanel";
 import { ProjectMiniCard } from "./components/ProjectMiniCard";
 import { ProjectTable } from "./components/ProjectTable";
 import { formatDate, formatNameList } from "./formatters";

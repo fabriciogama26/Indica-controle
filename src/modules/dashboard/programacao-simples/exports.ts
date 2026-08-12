@@ -24,20 +24,6 @@ import {
 
 type CsvValue = string | number;
 
-type DeadlineExportItem = {
-  sob: string;
-  serviceCenter: string;
-  priority: string;
-  workType: string;
-  executionDeadline: string;
-  latestProgrammingDate: string;
-  reason: string;
-  workCompletionStatus: string;
-  statusLabel: string;
-  daysDiff: number;
-  rangeLabel: string;
-};
-
 type ExportContext = {
   schedules: ScheduleItem[];
   projectMap: Map<string, ProjectItem>;
@@ -57,42 +43,6 @@ function fillBlankCsvCells(rows: CsvValue[][]) {
 
     return cell.trim() ? cell : "-";
   }));
-}
-
-export function buildDeadlineCsvContent(params: {
-  items: DeadlineExportItem[];
-  deadlineWindowDays: number;
-}) {
-  const header = [
-    "SOB",
-    "Centro de servico",
-    "Prioridade",
-    "Tipo de obra",
-    "Data limite",
-    "Data Programacao",
-    "Motivo",
-    "Estado Trabalho",
-    "Status do prazo",
-    "Dias para vencimento",
-    "Faixa",
-    "Janela selecionada",
-  ];
-  const rows = params.items.map((item) => [
-    item.sob,
-    item.serviceCenter,
-    item.priority,
-    item.workType,
-    formatDate(item.executionDeadline),
-    item.latestProgrammingDate ? formatDate(item.latestProgrammingDate) : "",
-    item.reason,
-    item.workCompletionStatus,
-    item.statusLabel,
-    item.daysDiff,
-    item.rangeLabel,
-    `${params.deadlineWindowDays} dias`,
-  ]);
-
-  return buildCsvContent(header, rows);
 }
 
 export function buildProgrammingCsvContent({ schedules, projectMap, teamMap }: ExportContext) {

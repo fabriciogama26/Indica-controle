@@ -26,8 +26,8 @@ Fases conforme as decisões travadas em 2026-07-29.
 | 1 | Tabela de mapeamento legado→novo | ✅ **feita** | `342_create_programming_legacy_map.sql` |
 | 2 | Histórico legado migrado | ✅ **feita** | `343_migrate_legacy_programming_history.sql` |
 | 3 | Consumidores só-leitura por projeto | ✅ **feita** | nenhum deles lê `project_programming` |
-| 4 | Mapa de Programação | 🟡 **backend feito, UI não** | `/api/mapa-programacao` já importa de `@/server/modules/programacao-normalizada`; a `MapProgrammingPageView` ainda importa UI da Simples |
-| 5 | Três donos de FK (Medição, APR, Cronograma) | 🟠 **banco feito, front da Medição não** | `344_cronograma_...`, `350_apr_control_...`, `351_medicao_...` aplicadas — mas a tela de Medição continua lendo do legado e enviando ID legado. Ver **§3.0** |
+| 4 | Mapa de Programação | ✅ **feita** | backend já usava `@/server/modules/programacao-normalizada`; a UI foi desacoplada no **C2** (2026-08-12) — o Mapa não importa mais nada de `programacao-simples` |
+| 5 | Três donos de FK (Medição, APR, Cronograma) | ✅ **feita** | `344_cronograma_...`, `350_apr_control_...`, `351_medicao_...` aplicadas; o front da Medição foi corrigido no **C0** (commit `eadefad`). Ver §3.0 |
 | 6 | Aposentar a Simples | ❌ **não feita** | é o que resta |
 
 A fase 5 é a que estava mal classificada na primeira versão. **A migration foi feita; a tela não acompanhou.** É a origem do risco alto da §3.0.
@@ -40,21 +40,20 @@ Escrita da Simples já congelada: `PROGRAMMING_SIMPLES_READ_ONLY = true` em [`ha
 
 No **servidor**, o isolamento é real: `project_programming`, `project_programming_history` e `project_programming_activities` são lidas **só** por `server/modules/programacao/{handlers,queries}.ts`, importado **só** por `/api/programacao` e `/api/programacao/meta`. `project_programming_copy_batches` não é lida por ninguém.
 
-No **frontend**, não. Varrendo o `src/` inteiro por `/api/programacao`, aparecem **três** consumidores:
+No **frontend**, havia três consumidores. **Dois foram eliminados no commit `eadefad` (2026-08-12)**:
 
-| Consumidor | Chamadas | Natureza |
+| Consumidor | Chamadas | Estado |
 |---|---|---|
-| `programacao-simples/api.ts` | 11 (leitura + escrita) | esperado — é a tela congelada |
-| **`medicao/MeasurementPageView.tsx`** | **2 leituras** ([:1208](../src/modules/dashboard/medicao/MeasurementPageView.tsx#L1208), [:2010](../src/modules/dashboard/medicao/MeasurementPageView.tsx#L2010)) | **não esperado — ver §3.0** |
-| `programacao/ProgrammingPageView.tsx` | 4 (1 leitura + 3 escritas) | **módulo órfão — ver §3.5** |
+| `programacao-simples/api.ts` | 11 (leitura + escrita) | ✅ esperado — é a tela congelada, sai no C8 |
+| ~~`medicao/MeasurementPageView.tsx`~~ | ~~2 leituras~~ | ✅ **corrigido no C0** — passou a usar `/api/medicao/programming-sources` |
+| ~~`programacao/ProgrammingPageView.tsx`~~ | ~~4 (1 leitura + 3 escritas)~~ | ✅ **removido no C1** — módulo órfão apagado (~3.700 linhas) |
 
 ```
-programacao-simples ─┐
-medicao        ──────┼→ /api/programacao → server/modules/programacao → project_programming*
-programacao (órfão) ─┘
+programacao-simples ──→ /api/programacao → server/modules/programacao → project_programming*
+                        ↑ único consumidor restante
 ```
 
-Cortar a Simples **não** corta o legado sozinho. Restam Medição e o módulo órfão.
+Depois do C0/C1, **cortar a Simples passa a cortar o legado inteiro** — que era o que a primeira versão deste documento afirmava, erradamente, já ser verdade.
 
 ---
 
@@ -129,7 +128,7 @@ Mais `projects`, `teams` e `workCompletionCatalog`, que a tela também lê da me
 
 **Impacto na tela: 2 linhas.** Só a URL em [`:1208`](../src/modules/dashboard/medicao/MeasurementPageView.tsx#L1208) e [`:2010`](../src/modules/dashboard/medicao/MeasurementPageView.tsx#L2010). O shape é idêntico, então o `MeasurementPageView.tsx` (3.641 linhas, acima do teto) **não precisa ser refatorado** — o que mantém o C0 pequeno e revisável.
 
-> **Consequência não óbvia, e é a que exige atenção no teste:** hoje o caminho explícito de `p_programming_id` nunca é exercitado, então a validação nova da 351 — "a equipe pedida precisa estar ATIVA na etapa" — está **dormente**. Depois do C0 ela passa a valer de verdade. A própria 351 mediu que isso rejeitaria 1 das 181 ordens já vinculadas se ela fosse reeditada. Ou seja: o C0 pode fazer aparecer erro de salvamento em casos de borda que antes passavam calados pelo fallback. **Isso é a correção funcionando**, não regressão — mas precisa ser esperado e comunicado, não descoberto em produção.
+> **Consequência não óbvia, agora ATIVA em produção:** até o C0, o caminho explícito de `p_programming_id` nunca era exercitado, então a validação da 351 — "a equipe pedida precisa estar ATIVA na etapa" — estava **dormente**. **Depois do C0 (`eadefad`) ela vale de verdade.** A própria 351 mediu que rejeitaria 1 das 181 ordens já vinculadas se fosse reeditada. Ou seja: pode aparecer erro de salvamento em casos de borda que antes passavam calados pelo fallback. **Isso é a correção funcionando**, não regressão — está registrado em `docs/Tela_Medicao_SaaS.txt` para quem for atender o chamado.
 
 **Verificação pré-implantação (read-only, sem tocar em nada):** para um período representativo, comparar o conjunto de tuplas `(projectId, teamId, date)` devolvido pelo endpoint novo com o do `/api/programacao`. Devem coincidir; a única diferença esperada é o `id`. Divergência aqui indica etapa sem equipe ATIVA ou lacuna de migração — e tem que ser explicada **antes** de trocar a tela.
 
@@ -216,9 +215,9 @@ Ordem revista depois das correções, com a recomendação de corte do usuário 
 
 | # | Passo | Natureza | Risco | Depende de |
 |---|---|---|---|---|
-| **C0** | **Medição: endpoint próprio de fontes**, autorizado por `medicao`, com fan-out por equipe ATIVA e `schedule.id = programming.id` | **correção de bug** | **ALTO se não feito** | — (de propósito: **não** depende do C3) |
-| C1 | Remover o módulo órfão `src/modules/dashboard/programacao/` | remoção | muito baixo | — |
-| C2 | Mover os 5 símbolos de deadline para `mapa-programacao` | mecânico | baixo | — |
+| ~~**C0**~~ | **Medição: endpoint próprio de fontes** com fan-out por equipe ATIVA e `schedule.id = programming.id` | correção de bug | — | ✅ **feito** — `eadefad` |
+| ~~C1~~ | Remover o módulo órfão `src/modules/dashboard/programacao/` | remoção | — | ✅ **feito** — `eadefad` |
+| ~~**C2**~~ | Mover o **cluster de prazo (11 símbolos + CSS)** para `mapa-programacao` | mecânico | — | ✅ **feito** — 2026-08-12 |
 | C3 | Migration liberando `default_user_access = true` para `programacao-normalizada` | **migration** | médio — mexe em permissão | — |
 | C4 | Implementar modo consulta na Normalizada | **implementação** | médio | — |
 | C5 | Repontar `/programacao-visualizacao` para a Normalizada | configuração | baixo | C4 |
