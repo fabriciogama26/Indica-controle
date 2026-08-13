@@ -116,7 +116,7 @@ Filtros, auto-complete e listagem
   - Para reprogramar
   - Pendentes
   - Parcial planejada
-  - Parciais
+  - Parciais nao planejada
   - Beneficio atingido
   - Canceladas/adiadas
   - Sem Estado Trabalho (etapa ativa vencida sem apontamento)
@@ -566,6 +566,23 @@ limpeza de Revisao de etapas / Interrompidas com Estado concluido
   deixa de ser possivel por construcao.
 - `summary` nao tinha outro consumidor: `GET /api/mapa-programacao` e usado
   somente por esta tela, e dentro dela apenas pelos seis tiles.
+
+IMPLEMENTADO 2026-08-13 - Card Parciais renomeado para Parciais nao planejada
+-------------------------------------------------------------------------------
+- Arquivos alterados: `src/app/api/mapa-programacao/route.ts` e
+  `docs/Tela_Mapa_Programacao_SaaS.txt`.
+- Funcoes tocadas: `isPartialPlannedWorkStatus`, `isPartialWorkStatus` e o
+  array `statusCards` do `GET` de `/api/mapa-programacao`.
+- Antes: o card `PARTIAL` aparecia como `Parciais`, embora represente o estado
+  de trabalho parcial nao planejado. Alem disso, a classificacao usava
+  `includes("PLANEJ")`; por isso `PARCIAL_NAO_PLANEJADO` podia ser contado como
+  planejado por conter o trecho `PLANEJADO`.
+- Depois: `Parcial planejada` conta somente `PARCIAL_PLANEJADO`; `Parciais nao
+  planejada` conta `PARCIAL_NAO_PLANEJADO` e os legados `PARCIAL`/`PARTIAL`.
+  O card `PARTIAL` tambem passa a aparecer como `Parciais nao planejada` e a
+  descricao diz `Ultimo Estado Trabalho valido parcial nao planejado.`.
+- Escopo: sem mudanca de schema, chave `PARTIAL`, filtros, autorizacao
+  `mapa-programacao/read`, RLS ou isolamento por tenant.
 
 MELHORIA FUTURA - parametrizar a classificacao Obras x Manutencao
 -------------------------------------------------------------------------------

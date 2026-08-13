@@ -141,12 +141,12 @@ function parseServiceScope(value: unknown): ServiceScope {
 
 function isPartialPlannedWorkStatus(value: unknown) {
   const token = normalizeToken(value);
-  return token.includes("PARCIAL") && token.includes("PLANEJ");
+  return token === "PARCIAL_PLANEJADO";
 }
 
 function isPartialWorkStatus(value: unknown) {
   const token = normalizeToken(value);
-  return token.includes("PARCIAL") && !token.includes("PLANEJ");
+  return token === "PARCIAL_NAO_PLANEJADO" || token === "PARCIAL" || token === "PARTIAL";
 }
 
 function isBenefitReachedWorkStatus(value: unknown) {
@@ -572,7 +572,7 @@ export async function GET(request: NextRequest) {
       buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired)),
       buildCard("PENDING", "Pendentes", "Programacao ativa com pendencia aberta (nao concluida).", consolidatedProjects.filter((project) => project.hasOpenPendencia)),
       buildCard("PARTIAL_PLANNED", "Parcial planejada", "Ultimo Estado Trabalho valido parcial planejado.", consolidatedProjects.filter((project) => isPartialPlannedWorkStatus(project.latestWorkCompletionStatus))),
-      buildCard("PARTIAL", "Parciais", "Ultimo Estado Trabalho valido parcial.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
+      buildCard("PARTIAL", "Parciais nao planejada", "Ultimo Estado Trabalho valido parcial nao planejado.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("BENEFIT_REACHED", "Beneficio atingido", "Beneficio atingido sem conclusao marcada.", consolidatedProjects.filter((project) => !project.completed && isBenefitReachedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("INTERRUPTED", "Canceladas/adiadas", "Ultima programacao cancelada ou adiada sem continuidade posterior.", consolidatedProjects.filter((project) => project.interrupted && !project.hasFutureActiveProgramming)),
       // Obra interrompida fica de fora: etapa ADIADA/CANCELADA nao pode ter
