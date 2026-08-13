@@ -39,7 +39,8 @@ src/lib/react-query/**           staleTime, refetchInterval, refetchOnWindowFocu
 supabase/migrations/*.sql        índices, RLS, funções, views, triggers
 supabase/functions/**            Edge Functions
 scripts/supabase-monitoring-readonly.sql          ← já existe, NÃO reescrever (saúde do banco)
-scripts/perf-baseline-capture.sql                 ← já existe, NÃO reescrever (baseline diffável)
+scripts/perf-baseline-capture.sql                 ← já existe, NÃO reescrever (baseline diffável, via CLI)
+scripts/perf-baseline-onequery.sql                ← já existe, NÃO reescrever (mesma coleta num resultado só, para o SQL Editor)
 scripts/supabase-report-*.txt                     ← relatório para Supabase Reports
 scripts/supabase-log-explorer-monitoring.sql      ← PostgREST / Edge Functions
 Auditoria/*.md                                    ← auditoria anterior, se houver
@@ -192,6 +193,7 @@ Ao final, conforme a seção 11 do `CLAUDE.md`: resumo do que mudou, validaçõe
 <notas>
 - Análise estática prioriza; só `pg_stat_statements` decide. Nunca apresentar risco estimado como se fosse medição.
 - `rows/call` é a métrica que confirma ou derruba o achado "carrega milhares de linhas para agregar em JS". Sempre coletar.
+- **O SQL Editor do Supabase devolve apenas o resultado do ÚLTIMO `select` do arquivo.** Um script com vários blocos perde todos menos o último, sem erro nenhum — o sintoma é receber sempre um bloco plausível e nunca os demais. Se a coleta for pelo editor, use um script que empilhe tudo com `union all` num `select` só. Confirme quantos blocos chegaram antes de concluir que faltou dado no banco.
 - **Nunca comparar antes/depois com números brutos.** `total_exec_time`, `calls` e `shared_blks_read` são proporcionais ao tráfego da janela — uma semana calma faz qualquer mudança parecer ótima. Comparar por chamada (`mean_exec_time`, `blks_read_per_call`, `rows_per_call`) e, quando a mudança substitui várias consultas por uma RPC, por **unidade de carregamento da tela** — o que exige capturar o denominador (nº de carregamentos) em `T0`, antes da mudança. Depois que a RPC entra, o `queryid` antigo some e não há mais diff linha a linha.
 - Agregação no PostgreSQL não é otimização exótica: `SUM` lê as páginas uma vez e devolve 8 bytes; o mesmo cálculo em JS lê as mesmas páginas, serializa, trafega e aloca. O I/O é igual ou pior e todo o resto é desperdício.
 - **`CREATE/DROP INDEX CONCURRENTLY` não funciona em migration deste projeto:** o Supabase CLI executa o arquivo inteiro numa transação e o PostgreSQL recusa (`25001`). Em tabela pequena, usar a forma simples; em tabela grande, rodar fora da migration e registrar no `README.txt`. Não recomendar `concurrently` dentro de migration.

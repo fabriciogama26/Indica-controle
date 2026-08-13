@@ -24,6 +24,7 @@ Todo artefato `.md` de auditoria de performance vive aqui. Nada nesta pasta alte
 | [`09-telas-em-uso.md`](09-telas-em-uso.md) | A | Telas vivas, telas mortas e telas vazias — por que a Programação legada ainda é o destino padrão do menu |
 | [`10-cutover-programacao.md`](10-cutover-programacao.md) | A/D | O corte da Programação Normalizada — estado das fases e os passos C0 a C8 |
 | [`11-infraestrutura.md`](11-infraestrutura.md) | B | **Evidência de infraestrutura** — CPU/Disk I/O em 82–86% com banco de 90 MB; marco T0 do before/after |
+| [`12-nivel-b-ranking-custo.md`](12-nivel-b-ranking-custo.md) | B | **Ranking por custo — fecha o Nível B.** ~32% do banco é introspecção do Supabase Studio; o dash-estoque custa ~1% |
 | [`baseline/`](baseline/) | B | Capturas brutas de `scripts/perf-baseline-capture.sql`, uma por arquivo |
 
 ### Auditorias anteriores nesta pasta
@@ -64,7 +65,7 @@ Argumento opcional para focar um módulo:
 | Nível | Status | Observação |
 |---|---|---|
 | A — análise estática do repositório | 🟢 Concluído | Feito sem tocar em produção. Base de todos os outros níveis. |
-| B — `pg_stat_statements` | 🟡 Parcial | Duas capturas do bloco `08` em 2026-08-12 permitiram o **delta**, que respondeu P1.1 e P1.3 ([`08`](08-nivel-b-resultado.md)), mais a evidência de infraestrutura ([`11`](11-infraestrutura.md)). **Faltam os blocos `02`, `03` e `04`** — sem o `04` não há ranking por custo acumulado, e ~90% do tempo do banco segue não atribuído. |
+| B — `pg_stat_statements` | 🟢 **Concluído** | Delta de duas capturas respondeu P1.1/P1.3 ([`08`](08-nivel-b-resultado.md)); infraestrutura em [`11`](11-infraestrutura.md); e o **ranking por custo** de 2026-08-13 fechou o nível em [`12`](12-nivel-b-ranking-custo.md). Achado principal: ~32% do tempo do banco é introspecção do Supabase Studio, não a aplicação. |
 | C — `EXPLAIN (ANALYZE, BUFFERS)` | 🟡 Parcial | Candidatas selecionadas por evidência estática; falta rodar contra dados reais. |
 | D — arquitetura | 🟢 Concluído | Achados de arquitetura não dependem de acesso a produção. |
 

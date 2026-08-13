@@ -6,6 +6,35 @@ Objetivo duplo: **(a)** destravar o Nível B da auditoria; **(b)** deixar um mar
 
 ---
 
+## 0a. Como rodar — e a armadilha do SQL Editor
+
+Há dois caminhos, e escolher o errado faz perder 90% do resultado **em silêncio**.
+
+| Ferramenta | Script | Por quê |
+|---|---|---|
+| **SQL Editor do Supabase** | [`scripts/perf-baseline-onequery.sql`](../scripts/perf-baseline-onequery.sql) | o editor devolve **apenas o resultado do último `select`** do arquivo |
+| `npx supabase db query --file` | [`scripts/perf-baseline-capture.sql`](../scripts/perf-baseline-capture.sql) | o CLI imprime **todos** os result sets, e este script tem os recortes extras das causas raiz |
+
+> ### 🪤 A armadilha, medida na prática
+>
+> `perf-baseline-capture.sql` tem 10 blocos, cada um um `select` separado. Rodado no **SQL Editor**, ele devolve só o último — os outros nove somem sem erro nenhum.
+>
+> Isso aconteceu de verdade nas coletas de 2026-08-12, e o sintoma foi difícil de ver porque cada rodada trazia um bloco **plausível**:
+>
+> | Captura | Último bloco do script na época | O que chegou |
+> |---|---|---|
+> | 1ª | `04_rows_por_chamada` | bloco 04 |
+> | 2ª | `07_custo_por_chamada` | bloco 07 |
+> | 3ª e 4ª | `08_muitas_chamadas` | bloco 08 |
+>
+> Sempre o último. Os blocos `00`, `02` e `03` nunca chegaram — e foi por isso que a validade temporal da amostra ficou várias rodadas sem resposta, com o ranking por custo (`04`) ausente.
+>
+> **Sinal de que você caiu nisso:** o resultado tem uma única tabela quando o script deveria produzir várias.
+
+O `perf-baseline-onequery.sql` empilha os blocos com `union all` num `select` só, então o editor devolve tudo. As colunas numéricas ficam nulas nas linhas de texto (blocos `00`, `02`, `03`) — é esperado.
+
+---
+
 ## 0. Antes de tudo: a captura é utilizável?
 
 `pg_stat_statements` acumula **tudo** que passou pelo banco — não só a aplicação. Numa janela de manutenção, restore ou logo após um `stats_reset`, o topo da lista é ruído, e ler esses números como se fossem da aplicação leva à conclusão oposta da correta.

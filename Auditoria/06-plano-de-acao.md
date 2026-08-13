@@ -134,6 +134,50 @@ deveria:   DB → agregação → poucas linhas/um objeto → Node
 
 **Padrão a seguir: `dashboard-portfolio`.** Não inventar camada nova — ver [`05` §2](05-nivel-d-arquitetura.md#2-o-projeto-já-resolveu-isso-uma-vez--e-funcionou). Já existe implementação aprovada dentro do projeto (`dashboard_portfolio_asbuilt_factor`, `dashboard_portfolio_forecast_gap_summary`, `project_billing_orders_summary`, `list_unmeasured_team_composition_ids`) e, para os imports, a família `*_batch_partial`. Isso reduz o risco de agir antes da medição: é convergência para arquitetura estabelecida, não aposta.
 
+> ## 🔄 Repriorização final — ranking por custo de 2026-08-13
+>
+> O bloco `04` fechou o Nível B ([`12`](12-nivel-b-ranking-custo.md)) e **derrubou a fila que estava aqui**. Custo medido por dashboard, sobre 6 meses de contadores:
+>
+> | Tela / módulo | % do tempo do banco | Chamadas | Veredito |
+> |---|---|---|---|
+> | **Supabase Studio** (introspecção) | **≈ 32%** | ~14 mil | não é código do projeto |
+> | `set_config` do PostgREST | 8,96% | 1.305.413 | 1 por requisição |
+> | **Programação (normalizada)** | **≈ 6,6%** | ~11,5 mil | **maior consumidor da aplicação** |
+> | Programação (legado) | ≈ 9,0% | ~110 mil | **fantasma** — delta zero em 2 janelas |
+> | `login_audit` (2 `INSERT`) | **2,65%** | 5.238 | **anômalo** — 137 ms por linha |
+> | Medição / apuração / dash-medição | ≈ 1,6% | ~37 mil | dentro do normal |
+> | **`dash-estoque`** | **≈ 1,1%** | ~214 mil | ❌ **não é problema de I/O** |
+> | Auth + permissão | ≈ 1,1% | ~240 mil | latência, não I/O |
+> | Projetos / dash-faturamento (view) | ≈ 0,8% | ~18 mil | dentro do normal |
+>
+> **P2.1 e P2.2 (RPC de agregação para `dash-estoque` e `dash-operacional-faturamento`) perdem a justificativa de I/O.** As duas telas somam menos de 2% do tempo do banco. Se forem feitas, que seja por **tempo de carregamento percebido**, que é problema real e diferente — ver §"Latência ≠ custo de banco" abaixo.
+>
+> A ordem que passa a valer está em [`12` §4](12-nivel-b-ranking-custo.md#4-o-que-fazer-com-isto).
+
+### Latência ≠ custo de banco
+
+O `dash-estoque` custa ~1,1% do banco **e ainda assim é lento para o usuário**. Não há contradição: são duas grandezas distintas.
+
+```
+custo de banco   = tempo de CPU/IO dentro do PostgreSQL
+                   dash-estoque: ~1,1% → irrelevante
+
+tempo de tela    = round-trips sequenciais × latência de rede
+                   dash-estoque: centenas de chamadas encadeadas
+                   Vercel → Supabase, cada uma com ida e volta
+```
+
+Uma consulta de 0,42 ms no banco pode custar 10–20 ms de relógio para quem espera a tela. Com centenas de chunks em série, isso vira segundos — **sem aparecer em `pg_stat_statements`, que só mede o tempo dentro do banco.**
+
+**Como decidir se vale otimizar uma tela:**
+
+| Sintoma | Ferramenta que mede | Correção |
+|---|---|---|
+| Banco saturado (CPU/IO) | `pg_stat_statements`, bloco `04` | reduzir custo por consulta, índice, agregação |
+| Tela demora a abrir | log da hospedagem / DevTools (tempo do `GET`) | reduzir **número de round-trips** — RPC, lote |
+
+O `dash-estoque` está no segundo caso. **Medir o tempo real de `GET /api/dash-estoque` antes de decidir** — se estiver aceitável, a tela não precisa de nada.
+
 ### Estado da priorização (congelado até P1.1 + P1.2)
 
 | Estado | Item | Motivo |
