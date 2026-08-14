@@ -1073,3 +1073,10 @@ Observacao
 - Corpo IDENTICO ao da 337 (aceita ADIADA, fotografa a classificacao na rota "em espera", limpa o snapshot na rota com data, checa conflito de agenda das equipes ATIVA, roda `reclassify` no fim) + o `exception` de volta. A mensagem passa a dizer etapa "ATIVA": desde a 346 a unicidade e so `PROGRAMADA`/`REPROGRAMADA`, e CANCELADA/ADIADA/ANTECIPADA convivem na mesma data.
 - Motivo de entrar agora: a tela passou a expor a SAIDA do "em espera" (etapa ADIADA volta ao plano recebendo data), e o caso mais provavel dessa retomada e justamente colidir com uma etapa criada naquela data enquanto a primeira estava em espera.
 - Nao altera schema, RLS, policies nem indices. Grants reaplicados no padrao do modulo: `service_role` apenas, com validacao pos-execucao contra `anon`/`authenticated`.
+
+369_cancel_team_participation_on_held_stage.sql
+- Permite `cancel_project_programming_team` agir em etapa "em espera" (`ADIADA`), alem de `PROGRAMADA`/`REPROGRAMADA` — mesmo movimento que a 337 fez nas RPCs de cancelar/adiar etapa. Corpo identico ao da 349, mudando so a lista de status aceitos e a mensagem de recusa.
+- Motivo: retomar uma etapa em espera revalida o conflito de agenda de TODAS as equipes ATIVA na data nova e recusa a retomada inteira se uma conflitar. Para destravar, o usuario precisa tirar aquela equipe antes; `remove_project_programming_team` ja aceitava etapa em espera, mas REMOVIDA significa "cadastrada por engano" (349) — sem esta migration, destravar custaria falsear o historico.
+- `postpone_project_programming_team` (Adiar equipe) continua recusando etapa em espera de proposito: a operacao parte da data da etapa de origem, que a etapa em espera nao tem. A UI esconde essa opcao do menu do chip nesse caso.
+- `add_project_programming_team` tambem segue bloqueado (317): sem `execution_date`, `programming_team_schedule_conflict` nao casa nada e a alocacao entraria sem checagem nenhuma.
+- A guarda LAST_ACTIVE_TEAM vale igual para etapa em espera. Nao altera schema, RLS, policies nem indices; grants reaplicados para `service_role` apenas, com validacao pos-execucao.

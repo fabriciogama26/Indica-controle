@@ -298,9 +298,25 @@ Cancelamento e saldo
   trava `nova > atual` da RPC so roda quando a etapa tem data, e etapa em espera nao tem; a data
   que ela tinha continua no snapshot da 337. Regularizar servico ja executado e caso real.
   EQUIPES: o "em espera" nunca mexeu em `programming_team` — as alocacoes seguem `ATIVA` e
-  aparecem no card (so congeladas, sem adicionar/remover). Enquanto sem data elas nao ocupam
-  agenda; ao retomar, a RPC revalida conflito de horario de TODAS elas na data escolhida e pode
-  devolver `TEAM_TIME_CONFLICT`.
+  aparecem no card. Enquanto sem data elas NAO ocupam agenda (`programming_team_schedule_
+  conflict` so olha etapa `PROGRAMADA`/`REPROGRAMADA`), ou seja, a agenda ja e liberada pelo
+  proprio "em espera", sem precisar desalocar ninguem. Ao retomar, porem, a RPC revalida o
+  conflito de TODAS elas na data escolhida e recusa a retomada inteira com
+  `TEAM_TIME_CONFLICT` se UMA conflitar — e esse e o caso provavel, nao a excecao: obra parada
+  semanas, equipe realocada pra outro projeto no meio.
+  Por isso, EDITAR equipe ja alocada vale tambem em espera (migration 369): o chip mantem o
+  menu com `Remover` e `Cancelar participacao...`, escondendo so `Adiar equipe...` (essa parte
+  da data da etapa de origem, que a etapa em espera nao tem, e a RPC recusa). Sem isso o
+  usuario lia "Uma das equipes ja tem alocacao ativa..." e nao tinha botao nenhum pra
+  destravar, a nao ser ir mexer no OUTRO projeto.
+  ADICIONAR equipe continua bloqueado ate a retomada (317): sem `execution_date` o checador de
+  conflito nao casa nada e a alocacao entraria sem checagem. Realocar e depois de retomar —
+  nao e preciso desalocar antes.
+  ALTERNATIVA AVALIADA E DESCARTADA (por ora): mover as participacoes para o status
+  `EM_ESPERA` de `programming_team` (reservado na 349, nunca escrito) ao adiar, obrigando
+  realocacao a cada retomada. Descartada porque cobraria realocacao em 100% das retomadas
+  para resolver um conflito que aparece em algumas, e as equipes sumiriam da contagem
+  "N equipes" do card, que a operacao ja le.
 - REGRESSAO CORRIGIDA JUNTO (migration 368): `postpone_project_programming_stage` tinha
   `exception when unique_violation -> 409 UNIQUE_STAGE_PER_DATE` na 326, e a 337 reescreveu a
   funcao inteira SEM recolocar o bloco. Desde entao remarcar para data que ja tem etapa ATIVA
@@ -393,9 +409,12 @@ Participacao por equipe (Fase 2, migration 349, APLICADA)
   (`TeamChipMenu`, em `components.tsx`) com as 3 acoes — Remover (sem motivo, como antes),
   Cancelar participacao... e Adiar equipe... (as duas ultimas abrem modal pedindo motivo,
   mesmo catalogo de `reasonOptions` usado por Cancelar/Adiar de etapa).
-- ESCOPO DESTA ENTREGA: so a tabela "Programacoes". `StageCard`/`ProjectPlanView.tsx` (a
-  tela "Abrir plano") ainda usa o "x" antigo (so Remover) — os modais ja sao compartilhados
-  via `components.tsx`, falta so a fiacao de estado equivalente no `ProjectPlanView.tsx`.
+- PARIDADE DAS DUAS TELAS (fechada em 2026-08-14): o `StageCard`/`ProjectPlanView.tsx` (tela
+  "Abrir plano") NAO usa mais o "x" antigo — passou a montar o mesmo `TeamChipMenu`, com a
+  fiacao de estado equivalente (CancelTeamModal, PostponeTeamModal e LastActiveTeamModal
+  agora tambem renderizados la). Motivo: o plano do projeto e onde a etapa em espera e
+  gerenciada, entao deixar as acoes de equipe so na listagem empurrava o usuario pra outra
+  tela justamente no momento em que ele precisa destravar a retomada.
   Tambem nao mudou: hoje só equipes `ATIVA` aparecem como chip (CANCELADA/TRANSFERIDA nao
   ficam visiveis na lista) — fica pra Fase 3, que precisa dessa visibilidade de qualquer
   jeito pra exportar ENEL NOVO por participacao.

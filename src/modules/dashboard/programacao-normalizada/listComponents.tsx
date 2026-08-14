@@ -727,6 +727,9 @@ export function StageListTable(props: {
                   // pode depender de abrir o plano para sair da espera.
                   const isOnHold = isOnHoldStage(stage);
                   const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
+                  // Editar equipe JA alocada vale tambem em espera (369): e o que
+                  // destrava a retomada quando uma delas conflita na data nova.
+                  const canEditTeams = !isReadOnly && (isActive || isOnHold) && !isCompleted;
                   const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
                   // Etapa encerrada continua VISIVEL, so recuada visualmente. Ela e
                   // parte da historia do projeto e sai nas extracoes (337).
@@ -759,7 +762,7 @@ export function StageListTable(props: {
                       <span className={styles.stageTeamsCell}>
                         {activeTeams.length ? (
                           activeTeams.map((team) => (
-                            <span key={team.id} className={`${styles.teamChip} ${!isReadOnly && isActive && !isCompleted ? styles.teamChipRemovable : ""}`}>
+                            <span key={team.id} className={`${styles.teamChip} ${canEditTeams ? styles.teamChipRemovable : ""}`}>
                               <span className={styles.teamChipMain}>{team.teamName}</span>
                               {stage.startTime || stage.endTime ? (
                                 <small className={styles.teamChipTime}>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
@@ -767,7 +770,8 @@ export function StageListTable(props: {
                               {isReadOnly ? null : (
                                 <TeamChipMenu
                                   teamName={team.teamName}
-                                  disabled={!isActive || isCompleted}
+                                  disabled={!canEditTeams}
+                                  hidePostpone={isOnHold}
                                   onRemove={() => onRemoveTeam(team.id)}
                                   onCancelParticipation={() => onCancelTeam(team, stage)}
                                   onPostpone={() => onPostponeTeam(team, stage)}
