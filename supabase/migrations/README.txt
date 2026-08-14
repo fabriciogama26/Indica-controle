@@ -1067,3 +1067,9 @@ Observacao
 - Registra um evento `UPDATE` em `material_history` para cada material alterado, com diff `umb: CJT -> UN`.
 - Inclui validacao pos-update que aborta a migration se ainda restar algum material com UMB `CJT`.
 - Nao reescreve snapshots operacionais (`requisicao_itens`, movimentacoes ou historicos de uso), preservando o valor historico que existia no momento da operacao.
+
+368_restore_postpone_unique_violation_handler.sql
+- Restaura em `postpone_project_programming_stage` o bloco `exception when unique_violation -> 409 UNIQUE_STAGE_PER_DATE` que existia na 326 e foi perdido quando a 337 reescreveu a funcao inteira para gravar o snapshot de classificacao. Sem ele, remarcar uma etapa para data que ja tem etapa ATIVA no projeto viola `programming_active_project_date_key` (346) e o 23505 sobe cru, virando erro generico de RPC na tela.
+- Corpo IDENTICO ao da 337 (aceita ADIADA, fotografa a classificacao na rota "em espera", limpa o snapshot na rota com data, checa conflito de agenda das equipes ATIVA, roda `reclassify` no fim) + o `exception` de volta. A mensagem passa a dizer etapa "ATIVA": desde a 346 a unicidade e so `PROGRAMADA`/`REPROGRAMADA`, e CANCELADA/ADIADA/ANTECIPADA convivem na mesma data.
+- Motivo de entrar agora: a tela passou a expor a SAIDA do "em espera" (etapa ADIADA volta ao plano recebendo data), e o caso mais provavel dessa retomada e justamente colidir com uma etapa criada naquela data enquanto a primeira estava em espera.
+- Nao altera schema, RLS, policies nem indices. Grants reaplicados no padrao do modulo: `service_role` apenas, com validacao pos-execucao contra `anon`/`authenticated`.

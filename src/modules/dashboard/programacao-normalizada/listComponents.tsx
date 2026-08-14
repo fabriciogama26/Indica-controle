@@ -23,6 +23,7 @@ import {
   getStageStatusLabel,
   getWorkCompletionLabel,
   isActiveStageStatus,
+  isOnHoldStage,
   isPendenciaPrimary,
 } from "./utils";
 import type { StageListFilters, StageListItem, StageTeam, TeamItem, WorkCompletionCatalogItem } from "./types";
@@ -721,6 +722,10 @@ export function StageListTable(props: {
 
                 {(expandedStages ?? group.stages).map((stage) => {
                   const isActive = isActiveStageStatus(stage.status);
+                  // Mesmas duas saidas do card do plano (Retomar/Cancelar): a
+                  // etapa em espera aparece aqui pelo chip "Em espera" e nao
+                  // pode depender de abrir o plano para sair da espera.
+                  const isOnHold = isOnHoldStage(stage);
                   const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
                   const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
                   // Etapa encerrada continua VISIVEL, so recuada visualmente. Ela e
@@ -852,6 +857,26 @@ export function StageListTable(props: {
                               >
                                 <ActionIcon name="activate" />
                               </button>
+                            ) : null}
+                            {!isReadOnly && isOnHold ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className={`${styles.actionButton} ${styles.actionPostpone}`}
+                                  title="Retomar (definir data e voltar ao plano)"
+                                  onClick={() => onPostpone(stage)}
+                                >
+                                  <ActionIcon name="postpone" />
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`${styles.actionButton} ${styles.actionCancel}`}
+                                  title="Cancelar"
+                                  onClick={() => onCancel(stage)}
+                                >
+                                  <ActionIcon name="cancel" />
+                                </button>
+                              </>
                             ) : null}
                           </>
                         )}

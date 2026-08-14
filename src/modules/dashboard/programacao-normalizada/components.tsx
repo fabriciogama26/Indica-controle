@@ -12,6 +12,7 @@ import {
   getStageStatusDisplayLabel,
   getWorkCompletionLabel,
   isActiveStageStatus,
+  isOnHoldStage,
   isPendenciaPrimary,
 } from "./utils";
 import type {
@@ -101,6 +102,10 @@ export function StageCard(props: {
     canCorrectDate,
   } = props;
   const isActive = isActiveStageStatus(stage.status);
+  // Etapa em espera nao e ativa (nao edita, nao recebe equipe, nao conclui), mas
+  // tem as duas saidas que as RPCs ja aceitam para ADIADA: retomar com data e
+  // cancelar. Sem isso ela virava beco sem saida na tela.
+  const isOnHold = isOnHoldStage(stage);
   const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
   const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
   const activeTeamIds = new Set(activeTeams.map((team) => team.teamId));
@@ -199,6 +204,28 @@ export function StageCard(props: {
             >
               <ActionIcon name="activate" />
             </button>
+          ) : null}
+          {isOnHold ? (
+            <>
+              <button
+                type="button"
+                className={`${styles.actionButton} ${styles.actionPostpone}`}
+                title="Retomar (definir data e voltar ao plano)"
+                onClick={onPostpone}
+                disabled={isSubmitting}
+              >
+                <ActionIcon name="postpone" />
+              </button>
+              <button
+                type="button"
+                className={`${styles.actionButton} ${styles.actionCancel}`}
+                title="Cancelar"
+                onClick={onCancel}
+                disabled={isSubmitting}
+              >
+                <ActionIcon name="cancel" />
+              </button>
+            </>
           ) : null}
         </div>
       </div>
