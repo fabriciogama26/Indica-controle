@@ -698,20 +698,23 @@
   flex-shrink: 0;
 }
 
+/* Circulo vermelho: o menu concentra as acoes destrutivas do chip (remover,
+   cancelar participacao), entao ele segue a mesma familia de cor do botao
+   Cancelar (#c62828), e nao o azul neutro do resto do chip. */
 .teamChip .teamChipMenuTrigger {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  border: 1px solid rgba(23, 52, 122, 0.18);
-  background: #ffffff;
-  color: #17347a;
+  border: 1px solid #c62828;
+  background: #fdecea;
+  color: #c62828;
   font-size: 0.85rem;
   line-height: 1;
   padding: 0;
 }
 
 .teamChip .teamChipMenuTrigger:hover {
-  background: #eef2fb;
+  background: #f9d7d3;
 }
 
 .teamChipMenuPanel {
