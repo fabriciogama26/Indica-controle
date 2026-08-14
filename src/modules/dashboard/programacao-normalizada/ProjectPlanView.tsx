@@ -26,7 +26,7 @@ import {
 } from "./hooks";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { buildReasonText, isFormReadyToSave, isTimeRangeValid } from "./validators";
-import { findActiveCompletedStage, sortStagesByDate, toIsoDate } from "./utils";
+import { findActiveCompletedStage, isOnHoldStage, sortStagesByDate, toIsoDate } from "./utils";
 import type { FeedbackState, ProgrammingStage, StageDocument } from "./types";
 
 function findDocumentEntry(documents: StageDocument[], documentType: StageDocument["documentType"]) {
@@ -402,6 +402,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       <PostponeModal
         isOpen={Boolean(postponeTarget)}
         mode={postponeMode}
+        isResumeFromHold={Boolean(postponeTarget && isOnHoldStage(postponeTarget))}
         newDate={postponeDate}
         reasonCode={postponeReasonCode}
         reasonNotes={postponeReasonNotes}

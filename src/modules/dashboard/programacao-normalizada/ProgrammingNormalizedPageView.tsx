@@ -34,7 +34,7 @@ import styles from "./ProgrammingNormalizedPageView.module.css";
 import { ProgrammingWeeklyCalendarPanel } from "./components/ProgrammingWeeklyCalendarPanel";
 import { ProjectPlanView } from "./ProjectPlanView";
 import { buildReasonText } from "./validators";
-import { addDaysIso, startOfWeekMondayIso, toIsoDate } from "./utils";
+import { addDaysIso, isOnHoldStage, startOfWeekMondayIso, toIsoDate } from "./utils";
 import type { FeedbackState, ProgrammingStage, StageListItem, StageTeam } from "./types";
 
 // `consulta` e o modo de `/programacao-visualizacao` (C4 do corte): esconde toda
@@ -592,6 +592,7 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
       <PostponeModal
         isOpen={Boolean(postponeTarget)}
         mode={postponeMode}
+        isResumeFromHold={Boolean(postponeTarget && isOnHoldStage(postponeTarget))}
         newDate={postponeDate}
         reasonCode={postponeReasonCode}
         reasonNotes={postponeReasonNotes}

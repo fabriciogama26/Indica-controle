@@ -160,7 +160,7 @@ Filtros, auto-complete e listagem
   aceitando data ANTERIOR ou posterior, mantendo a etapa e PRESERVANDO o status (nao vira
   Reprogramada — remarcar continua no Adiar). Exige a permissao propria `programacao-corrigir-data`
   e motivo; checa duplicidade projeto+data e conflito de agenda; bloqueada em Cancelada/Antecipada/
-  Concluida (reabra antes) e em etapa em espera (use Adiar).
+  Concluida (reabra antes) e em etapa em espera (use `Retomar` — ver "Saida do em espera").
 - Permissoes granulares (migration 328): `programacao-concluir` (Concluir/Reabrir/sair de
   Concluido), `programacao-pendencia` (flag e criacao de etapa de pendencia) e
   `programacao-corrigir-data`. Nascem bloqueadas; as demais operacoes seguem sob a permissao da tela.
@@ -198,7 +198,8 @@ Filtros, auto-complete e listagem
     `requirePageAction` dentro de cada operacao.
 - Botoes essenciais por etapa: `Editar`, `Adicionar equipe`, `Remover equipe`, `Adiar`,
   `Cancelar`, `Concluir`/`Reabrir`, `Detalhes`, `Historico`, `Nova etapa a partir desta`
-  (duplicar). Icones em botao redondo colorido (`.actionButton` + `.action<Tipo>`), mesmo
+  (duplicar). Etapa em espera troca o conjunto por `Retomar` + `Cancelar` (mais os de leitura)
+  — ver "Saida do em espera". Icones em botao redondo colorido (`.actionButton` + `.action<Tipo>`), mesmo
   padrao de `programacao-simples`/Faturamento/Asbuilt — nao mais texto ou icone flat.
 - Fora do escopo desta entrega (deferido, nao construido): `Copiar programacao` (opcional
   no spec), importacao em massa por Excel (secao 16 do spec, tratada como melhoria
@@ -277,6 +278,38 @@ Cancelamento e saldo
   Etapa em espera (execution_date NULL) aparece na LISTA cross-projeto pelo chip "Em espera"
   (migration 327), que ignora o filtro de periodo de proposito (essas etapas nao tem data); tambem
   e gerenciada pelo plano do projeto (ProjectPlanView).
+- SAIDA DO "EM ESPERA" (entrega de 2026-08-14). A RPC ja aceitava etapa `ADIADA` desde a 337,
+  mas a tela nao expunha nenhuma acao para ela: card e linha da lista gatilhavam tudo por
+  `isActive && !isCompleted`, e `isActiveStageStatus` e so PROGRAMADA/REPROGRAMADA. Resultado:
+  etapa em espera so tinha Detalhes/Historico/Duplicar — beco sem saida, sem voltar ao plano
+  nem ser encerrada. Agora existe o helper PROPRIO `isOnHoldStage` (`status === 'ADIADA'`, em
+  `utils.ts`) liberando exatamente DUAS acoes, no card do plano e na linha da lista:
+  - `Retomar (definir data e voltar ao plano)`: abre o PostponeModal com `isResumeFromHold`,
+    que esconde a escolha de rota (so existe "dar data"; a rota "em espera" seria recusada com
+    `ALREADY_ON_HOLD`) e troca os rotulos para retomada. A etapa vira `REPROGRAMADA`, o
+    snapshot de classificacao e LIMPO ("Era Etapa N" some e a numeracao atual volta a valer) e
+    o `reclassify` roda no fim.
+  - `Cancelar`: a RPC de cancelamento ja aceitava `ADIADA` explicitamente.
+  CONTINUA BLOQUEADO em etapa em espera, de proposito: `Editar`, `Adicionar`/`Remover equipe`,
+  `Concluir`/`Reabrir`, toggle de `Pendencia` e `Corrigir data` (para remarcar, use Retomar).
+  `isActiveStageStatus` NAO foi alargada — ela governa tambem classificacao, pendencia primaria
+  e "sem retorno", que precisam continuar valendo so para etapa no calendario.
+  DATA DA RETOMADA: qualquer data e aceita, INCLUSIVE anterior a hoje (decisao do usuario). A
+  trava `nova > atual` da RPC so roda quando a etapa tem data, e etapa em espera nao tem; a data
+  que ela tinha continua no snapshot da 337. Regularizar servico ja executado e caso real.
+  EQUIPES: o "em espera" nunca mexeu em `programming_team` — as alocacoes seguem `ATIVA` e
+  aparecem no card (so congeladas, sem adicionar/remover). Enquanto sem data elas nao ocupam
+  agenda; ao retomar, a RPC revalida conflito de horario de TODAS elas na data escolhida e pode
+  devolver `TEAM_TIME_CONFLICT`.
+- REGRESSAO CORRIGIDA JUNTO (migration 368): `postpone_project_programming_stage` tinha
+  `exception when unique_violation -> 409 UNIQUE_STAGE_PER_DATE` na 326, e a 337 reescreveu a
+  funcao inteira SEM recolocar o bloco. Desde entao remarcar para data que ja tem etapa ATIVA
+  subia 23505 cru (erro generico de RPC na tela, via `failedRpcResult`). O comentario da 346
+  afirmando que o postpone "ja captura unique_violation" descrevia a 326 e ficou desatualizado.
+  A 360 recria a funcao com corpo identico ao da 337 + o handler de volta, com a mensagem
+  corrigida para etapa "ATIVA" (desde a 346 a unicidade e so PROGRAMADA/REPROGRAMADA). Esse
+  caso ficou muito mais provavel com a retomada: etapa vai para espera, outra etapa nasce
+  naquela data, e o usuario tenta voltar para la.
 - `Cancelar` marca a etapa como `CANCELADA`, limpa Estado Trabalho e libera a agenda das
   equipes (o filtro de conflito considera apenas etapas `PROGRAMADA`/`REPROGRAMADA`). Aceita
   tambem etapa em espera (`ADIADA`). `execution_date` e MANTIDA de proposito (filtro de

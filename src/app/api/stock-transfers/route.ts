@@ -220,15 +220,18 @@ function normalizeLoadDirection(value: unknown): "initial" | "older" | "newer" {
 async function preloadMaterialTransferIds(
   supabase: SupabaseClient,
   tenantId: string,
-  materialCode: string,
+  filters: { materialCode: string; materialDescription: string },
 ): Promise<{ transferIds: string[]; materialIds: string[] }> {
-  const { data: materials } = await supabase
+  let materialsQuery = supabase
     .from("materials")
     .select("id")
     .eq("tenant_id", tenantId)
-    .ilike("codigo", `%${materialCode}%`)
-    .limit(100)
-    .returns<{ id: string }[]>();
+    .limit(100);
+
+  if (filters.materialCode) materialsQuery = materialsQuery.ilike("codigo", `%${filters.materialCode}%`);
+  if (filters.materialDescription) materialsQuery = materialsQuery.ilike("descricao", `%${filters.materialDescription}%`);
+
+  const { data: materials } = await materialsQuery.returns<{ id: string }[]>();
 
   if (!materials?.length) return { transferIds: [], materialIds: [] };
 
@@ -314,6 +317,10 @@ function normalizeCodeFilter(value: string | null) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function normalizeDescriptionFilter(value: string | null) {
+  return String(value ?? "").trim();
+}
+
 function normalizeReversalStatus(value: string | null) {
   const normalized = String(value ?? "").trim().toUpperCase();
   if (normalized === "ESTORNADAS" || normalized === "NAO_ESTORNADAS" || normalized === "ESTORNOS") {
@@ -353,6 +360,7 @@ function rowMatchesListFilters(params: {
   entryType: ReturnType<typeof normalizeEntryType>;
   projectCodeFilter: string;
   materialCodeFilter: string;
+  materialDescriptionFilter: string;
   reversalStatus: ReturnType<typeof normalizeReversalStatus>;
   cmdFilter: ReturnType<typeof normalizeCmdFilter>;
 }) {
@@ -365,6 +373,7 @@ function rowMatchesListFilters(params: {
     entryType,
     projectCodeFilter,
     materialCodeFilter,
+    materialDescriptionFilter,
     reversalStatus,
     cmdFilter,
   } = params;
@@ -381,6 +390,7 @@ function rowMatchesListFilters(params: {
   if (entryType && row.entryType !== entryType) return false;
   if (projectCodeFilter && !normalizeCodeFilter(row.projectCode).includes(projectCodeFilter)) return false;
   if (materialCodeFilter && !normalizeCodeFilter(row.materialCode).includes(materialCodeFilter)) return false;
+  if (materialDescriptionFilter && !normalizeDescriptionFilter(row.description).toLowerCase().includes(materialDescriptionFilter.toLowerCase())) return false;
   if (cmdFilter === "SIM" && !row.cmd) return false;
   if (cmdFilter === "NAO" && row.cmd) return false;
 
@@ -602,6 +612,7 @@ async function loadTransferList(request: NextRequest) {
   const entryType = normalizeEntryType(request.nextUrl.searchParams.get("entryType"));
   const projectCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("projectCode"));
   const materialCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("materialCode"));
+  const materialDescriptionFilter = normalizeDescriptionFilter(request.nextUrl.searchParams.get("materialDescription"));
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
   const cmdFilter = normalizeCmdFilter(request.nextUrl.searchParams.get("cmd"));
 
@@ -610,8 +621,8 @@ async function loadTransferList(request: NextRequest) {
   const needsReversalSets = reversalStatus !== "TODOS";
 
   const [materialFilterResult, preloadedProjectIds, reversalSets, teamOpIds] = await Promise.all([
-    materialCodeFilter
-      ? preloadMaterialTransferIds(supabase, appUser.tenant_id, materialCodeFilter)
+    materialCodeFilter || materialDescriptionFilter
+      ? preloadMaterialTransferIds(supabase, appUser.tenant_id, { materialCode: materialCodeFilter, materialDescription: materialDescriptionFilter })
       : Promise.resolve(null),
     projectCodeFilter
       ? preloadProjectIdsForCode(supabase, appUser.tenant_id, projectCodeFilter)
@@ -625,7 +636,7 @@ async function loadTransferList(request: NextRequest) {
   ]);
 
   // Short-circuit on empty pre-filter results
-  if (materialCodeFilter && materialFilterResult !== null && materialFilterResult.transferIds.length === 0) {
+  if ((materialCodeFilter || materialDescriptionFilter) && materialFilterResult !== null && materialFilterResult.transferIds.length === 0) {
     return NextResponse.json({ history: [], pageInfo: emptyPageInfo() });
   }
   if (projectCodeFilter && preloadedProjectIds !== null && preloadedProjectIds.length === 0) {
@@ -1031,6 +1042,7 @@ async function loadTransferList(request: NextRequest) {
       entryType,
       projectCodeFilter,
       materialCodeFilter,
+      materialDescriptionFilter,
       reversalStatus,
       cmdFilter,
     }),

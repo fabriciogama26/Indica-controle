@@ -2,7 +2,6 @@
 
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -17,12 +16,10 @@ type StockCenterOption = {
   centerType: "OWN" | "THIRD_PARTY";
   controlsBalance: boolean;
 };
-
 type ProjectOption = {
   id: string;
   projectCode: string;
 };
-
 type MaterialOption = {
   id: string;
   materialCode: string;
@@ -32,13 +29,11 @@ type MaterialOption = {
   serialTrackingType: SerialTrackingType;
   allowPendingSerialIdentification?: boolean;
 };
-
 type ReversalReasonOption = {
   code: string;
   label: string;
   requiresNotes: boolean;
 };
-
 type MetaResponse = {
   stockCenters?: StockCenterOption[];
   projects?: ProjectOption[];
@@ -46,7 +41,6 @@ type MetaResponse = {
   reversalReasons?: ReversalReasonOption[];
   message?: string;
 };
-
 type SerialOption = {
   id: string;
   materialId: string;
@@ -231,6 +225,7 @@ type FilterState = {
   operationPurpose: "TODOS" | "NORMAL" | "BALANCE_CORRECTION";
   projectCode: string;
   materialCode: string;
+  materialDescription: string;
   entryType: "TODOS" | "NOVO" | "SUCATA";
   cmd: "TODOS" | "SIM" | "NAO";
   reversalStatus: "TODOS" | "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
@@ -306,6 +301,7 @@ const INITIAL_FILTERS: FilterState = {
   operationPurpose: "TODOS",
   projectCode: "",
   materialCode: "",
+  materialDescription: "",
   entryType: "TODOS",
   cmd: "TODOS",
   reversalStatus: "TODOS",
@@ -739,6 +735,7 @@ export function StockTransfersPageView() {
     if (activeFilters.operationPurpose !== "TODOS") params.set("operationPurpose", activeFilters.operationPurpose);
     if (activeFilters.projectCode) params.set("projectCode", activeFilters.projectCode);
     if (activeFilters.materialCode) params.set("materialCode", activeFilters.materialCode);
+    if (activeFilters.materialDescription) params.set("materialDescription", activeFilters.materialDescription);
     if (activeFilters.entryType !== "TODOS") params.set("entryType", activeFilters.entryType);
     if (activeFilters.cmd !== "TODOS") params.set("cmd", activeFilters.cmd);
     if (activeFilters.reversalStatus !== "TODOS") params.set("reversalStatus", activeFilters.reversalStatus);
@@ -1937,6 +1934,7 @@ export function StockTransfersPageView() {
       operationPurpose: filterDraft.operationPurpose,
       projectCode: normalizeCode(filterDraft.projectCode),
       materialCode: normalizeCode(filterDraft.materialCode),
+      materialDescription: normalizeText(filterDraft.materialDescription),
       entryType: filterDraft.entryType,
       cmd: filterDraft.cmd,
       reversalStatus: filterDraft.reversalStatus,
@@ -3041,6 +3039,7 @@ export function StockTransfersPageView() {
               list="entrada-material-list"
             />
           </label>
+          <label className={styles.field}><span>Descricao do material</span><input type="text" value={filterDraft.materialDescription} onChange={(event) => setFilterDraft((current) => ({ ...current, materialDescription: event.target.value }))} placeholder="Digite a descricao do material" list="entrada-material-description-list" /></label>
           <label className={styles.field}>
             <span>Tipo</span>
             <select
@@ -3678,6 +3677,7 @@ export function StockTransfersPageView() {
           </option>
         ))}
       </datalist>
+      <datalist id="entrada-material-description-list">{materials.map((material) => <option key={material.id} value={material.description} />)}</datalist>
       <datalist id="entrada-serial-list">
         {serialOptions.map((option) => (
           <option key={option.id} value={option.serialNumber ?? ""}>

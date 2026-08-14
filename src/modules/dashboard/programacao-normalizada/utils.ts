@@ -45,6 +45,19 @@ export function isActiveStageStatus(status: string) {
   return status === "PROGRAMADA" || status === "REPROGRAMADA";
 }
 
+// Etapa ADIADA ("em espera", quando sem data) NAO e ativa — nao recebe equipe,
+// nao e editavel, nao conta na numeracao. Mas tem saida: dar data devolve ela ao
+// plano (REPROGRAMADA) e cancelar a encerra; as duas RPCs aceitam ADIADA
+// explicitamente (337). Helper PROPRIO de proposito: alargar
+// `isActiveStageStatus` liberaria junto classificacao, pendencia primaria e
+// "sem retorno", que precisam continuar valendo so para etapa no calendario.
+//
+// Cobre tambem a ADIADA COM data (linhas migradas do modelo legado, ver 346):
+// ela tem a mesma saida, so que a RPC exige data posterior a que ela carrega.
+export function isOnHoldStage(stage: { status: string }) {
+  return stage.status === "ADIADA";
+}
+
 // NOTA: `getStageClassificationLabel` foi REMOVIDA na 337 e substituida por
 // `getStageDisplayClassification` abaixo. Ela so sabia ler a classificacao ATUAL e
 // devolvia "-" para toda etapa encerrada — manter as duas conviverem era o caminho
