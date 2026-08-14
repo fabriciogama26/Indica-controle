@@ -8,11 +8,14 @@ import { StageCard, StageFormPanel } from "./components";
 import {
   AddTeamModal,
   CancelModal,
+  CancelTeamModal,
   CorrectDateModal,
   DetailsModal,
   HistoryModal,
+  LastActiveTeamModal,
   PendenciaModal,
   PostponeModal,
+  PostponeTeamModal,
 } from "./components/modals";
 import { createInitialForm } from "./constants";
 import {
@@ -27,7 +30,7 @@ import {
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { buildReasonText, isFormReadyToSave, isTimeRangeValid } from "./validators";
 import { findActiveCompletedStage, isOnHoldStage, sortStagesByDate, toIsoDate } from "./utils";
-import type { FeedbackState, ProgrammingStage, StageDocument } from "./types";
+import type { FeedbackState, ProgrammingStage, StageDocument, StageTeam } from "./types";
 
 function findDocumentEntry(documents: StageDocument[], documentType: StageDocument["documentType"]) {
   const match = documents.find((item) => item.documentType === documentType);
@@ -101,6 +104,22 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
   const [cancelTarget, setCancelTarget] = useState<ProgrammingStage | null>(null);
   const [cancelReasonCode, setCancelReasonCode] = useState("");
   const [cancelReasonNotes, setCancelReasonNotes] = useState("");
+
+  // Participacao por equipe (349) — mesmos fluxos da listagem, portados para o
+  // plano do projeto: e aqui que a etapa em espera e gerenciada, entao e aqui que
+  // o usuario precisa poder tirar a equipe que travaria a retomada.
+  const [cancelTeamTarget, setCancelTeamTarget] = useState<{ team: StageTeam; stage: ProgrammingStage } | null>(null);
+  const [cancelTeamReasonCode, setCancelTeamReasonCode] = useState("");
+  const [cancelTeamReasonNotes, setCancelTeamReasonNotes] = useState("");
+
+  const [postponeTeamTarget, setPostponeTeamTarget] = useState<{ team: StageTeam; stage: ProgrammingStage } | null>(null);
+  const [postponeTeamDate, setPostponeTeamDate] = useState("");
+  const [postponeTeamReasonCode, setPostponeTeamReasonCode] = useState("");
+  const [postponeTeamReasonNotes, setPostponeTeamReasonNotes] = useState("");
+
+  const [lastActiveTeamPrompt, setLastActiveTeamPrompt] = useState<
+    { kind: "cancel" | "postpone"; team: StageTeam; stage: ProgrammingStage; reason: string; newDate?: string } | null
+  >(null);
 
   const [pendenciaTarget, setPendenciaTarget] = useState<ProgrammingStage | null>(null);
   const [pendenciaNext, setPendenciaNext] = useState(false);
@@ -275,6 +294,71 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
     if (result.ok) setCancelTarget(null);
   }
 
+  function openCancelTeam(team: StageTeam, stage: ProgrammingStage) {
+    setCancelTeamTarget({ team, stage });
+    setCancelTeamReasonCode("");
+    setCancelTeamReasonNotes("");
+  }
+
+  function openPostponeTeam(team: StageTeam, stage: ProgrammingStage) {
+    setPostponeTeamTarget({ team, stage });
+    setPostponeTeamDate("");
+    setPostponeTeamReasonCode("");
+    setPostponeTeamReasonNotes("");
+  }
+
+  // LAST_ACTIVE_TEAM nao e erro: a RPC recusa e devolve a decisao para o usuario
+  // (cancelar a etapa inteira / manter sem equipe / voltar) — ver 349.
+  async function confirmCancelTeam() {
+    if (!cancelTeamTarget) return;
+    const reasonLabel = buildReasonText(reasonOptions, cancelTeamReasonCode, cancelTeamReasonNotes);
+    if (!reasonLabel) return;
+
+    const { team, stage } = cancelTeamTarget;
+    const result = await actions.cancelTeam(team.id, reasonLabel, team.updatedAt, false);
+    if (result.ok) {
+      setCancelTeamTarget(null);
+      return;
+    }
+    if (result.data?.reason === "LAST_ACTIVE_TEAM") {
+      setLastActiveTeamPrompt({ kind: "cancel", team, stage, reason: reasonLabel });
+      setCancelTeamTarget(null);
+    }
+  }
+
+  async function confirmPostponeTeam() {
+    if (!postponeTeamTarget || !postponeTeamDate) return;
+    const reasonLabel = buildReasonText(reasonOptions, postponeTeamReasonCode, postponeTeamReasonNotes);
+    if (!reasonLabel) return;
+
+    const { team, stage } = postponeTeamTarget;
+    const result = await actions.postponeTeam(team.id, team.teamId, postponeTeamDate, reasonLabel, team.updatedAt, false);
+    if (result.ok) {
+      setPostponeTeamTarget(null);
+      return;
+    }
+    if (result.data?.reason === "LAST_ACTIVE_TEAM") {
+      setLastActiveTeamPrompt({ kind: "postpone", team, stage, reason: reasonLabel, newDate: postponeTeamDate });
+      setPostponeTeamTarget(null);
+    }
+  }
+
+  async function confirmKeepStageWithoutTeam() {
+    if (!lastActiveTeamPrompt) return;
+    const { kind, team, reason, newDate } = lastActiveTeamPrompt;
+    const result =
+      kind === "cancel"
+        ? await actions.cancelTeam(team.id, reason, team.updatedAt, true)
+        : await actions.postponeTeam(team.id, team.teamId, newDate ?? "", reason, team.updatedAt, true);
+    if (result.ok) setLastActiveTeamPrompt(null);
+  }
+
+  function cancelWholeStageFromLastTeamPrompt() {
+    if (!lastActiveTeamPrompt) return;
+    openCancelModal(lastActiveTeamPrompt.stage);
+    setLastActiveTeamPrompt(null);
+  }
+
   function openPendenciaModal(stage: ProgrammingStage, next: boolean) {
     setPendenciaTarget(stage);
     setPendenciaNext(next);
@@ -383,6 +467,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
               onDuplicate={() => duplicateStage(stage)}
               onAddTeam={() => openAddTeamModal(stage)}
               onRemoveTeam={(programmingTeamId, expectedUpdatedAt) => actions.removeTeam(programmingTeamId, expectedUpdatedAt)}
+              onCancelTeamParticipation={(team) => openCancelTeam(team, stage)}
+              onPostponeTeam={(team) => openPostponeTeam(team, stage)}
               onPostpone={() => openPostponeModal(stage)}
               onCancel={() => openCancelModal(stage)}
               onComplete={() => actions.complete(stage.id, stage.updatedAt)}
@@ -414,6 +500,43 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         onNewDateChange={setPostponeDate}
         onReasonCodeChange={setPostponeReasonCode}
         onReasonNotesChange={setPostponeReasonNotes}
+      />
+
+      <CancelTeamModal
+        isOpen={Boolean(cancelTeamTarget)}
+        teamName={cancelTeamTarget?.team.teamName ?? ""}
+        reasonCode={cancelTeamReasonCode}
+        reasonNotes={cancelTeamReasonNotes}
+        reasonOptions={reasonOptions}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setCancelTeamTarget(null)}
+        onConfirm={confirmCancelTeam}
+        onReasonCodeChange={setCancelTeamReasonCode}
+        onReasonNotesChange={setCancelTeamReasonNotes}
+      />
+
+      <PostponeTeamModal
+        isOpen={Boolean(postponeTeamTarget)}
+        teamName={postponeTeamTarget?.team.teamName ?? ""}
+        newDate={postponeTeamDate}
+        reasonCode={postponeTeamReasonCode}
+        reasonNotes={postponeTeamReasonNotes}
+        reasonOptions={reasonOptions}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setPostponeTeamTarget(null)}
+        onConfirm={confirmPostponeTeam}
+        onNewDateChange={setPostponeTeamDate}
+        onReasonCodeChange={setPostponeTeamReasonCode}
+        onReasonNotesChange={setPostponeTeamReasonNotes}
+      />
+
+      <LastActiveTeamModal
+        isOpen={Boolean(lastActiveTeamPrompt)}
+        teamName={lastActiveTeamPrompt?.team.teamName ?? ""}
+        isSubmitting={actions.isSubmitting}
+        onClose={() => setLastActiveTeamPrompt(null)}
+        onCancelWholeStage={cancelWholeStageFromLastTeamPrompt}
+        onKeepWithoutTeam={() => void confirmKeepStageWithoutTeam()}
       />
 
       <PendenciaModal

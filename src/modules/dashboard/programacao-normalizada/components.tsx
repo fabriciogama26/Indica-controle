@@ -67,6 +67,8 @@ export function StageCard(props: {
   // previo, divergindo da listagem.
   onAddTeam: () => void;
   onRemoveTeam: (programmingTeamId: string, expectedUpdatedAt: string) => void;
+  onCancelTeamParticipation: (team: ProgrammingStage["teams"][number]) => void;
+  onPostponeTeam: (team: ProgrammingStage["teams"][number]) => void;
   onPostpone: () => void;
   onCancel: () => void;
   onComplete: () => void;
@@ -88,6 +90,8 @@ export function StageCard(props: {
     onDuplicate,
     onAddTeam,
     onRemoveTeam,
+    onCancelTeamParticipation,
+    onPostponeTeam,
     onPostpone,
     onCancel,
     onComplete,
@@ -107,6 +111,10 @@ export function StageCard(props: {
   // cancelar. Sem isso ela virava beco sem saida na tela.
   const isOnHold = isOnHoldStage(stage);
   const isCompleted = stage.workCompletionStatus === "CONCLUIDO";
+  // Mexer nas equipes JA alocadas vale tambem em espera: e o que permite tirar a
+  // equipe que travaria a retomada por conflito de agenda na data nova. Alocar
+  // equipe NOVA continua so em etapa ativa (sem data nao ha conflito a checar).
+  const canEditTeams = (isActive || isOnHold) && !isCompleted;
   const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
   const activeTeamIds = new Set(activeTeams.map((team) => team.teamId));
   const availableTeams = teamOptions.filter((team) => !activeTeamIds.has(team.id));
@@ -240,23 +248,24 @@ export function StageCard(props: {
           </span>
         </div>
         <div className={styles.teamChips}>
+          {/* Mesmo menu da listagem (antes era um "x" solto so com Remover): as
+              duas telas precisam oferecer as mesmas acoes de equipe, senao o
+              usuario e empurrado para a lista justamente quando esta no plano.
+              Em etapa em espera o menu continua ativo, sem "Adiar equipe". */}
           {activeTeams.map((team) => (
-            <span key={team.id} className={`${styles.teamChip} ${styles.teamChipLarge} ${isActive && !isCompleted ? styles.teamChipRemovable : ""}`}>
+            <span key={team.id} className={`${styles.teamChip} ${styles.teamChipLarge} ${canEditTeams ? styles.teamChipRemovable : ""}`}>
               <span className={styles.teamChipMain}>{team.teamName}</span>
               {stage.startTime || stage.endTime ? (
                 <small className={styles.teamChipTime}>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
               ) : null}
-              {isActive && !isCompleted ? (
-                <button
-                  type="button"
-                  title="Remover equipe"
-                  aria-label={`Remover ${team.teamName}`}
-                  onClick={() => onRemoveTeam(team.id, team.updatedAt)}
-                  disabled={isSubmitting}
-                >
-                ×
-                </button>
-              ) : null}
+              <TeamChipMenu
+                teamName={team.teamName}
+                disabled={!canEditTeams || isSubmitting}
+                hidePostpone={isOnHold}
+                onRemove={() => onRemoveTeam(team.id, team.updatedAt)}
+                onCancelParticipation={() => onCancelTeamParticipation(team)}
+                onPostpone={() => onPostponeTeam(team)}
+              />
             </span>
           ))}
           {!activeTeams.length ? <span className={styles.emptyHint}>Sem equipe alocada.</span> : null}
@@ -284,14 +293,20 @@ export function StageCard(props: {
 // modal proprio (pedem motivo, e podem esbarrar na guarda de ultima equipe
 // ativa — ver LastActiveTeamModal). Estado do menu (aberto/fechado) e local,
 // autocontido — nao precisa subir pro estado do pai.
+//
+// `hidePostpone` = etapa em espera. "Adiar equipe" parte da data da etapa de
+// origem, que a etapa em espera nao tem, e a RPC recusa (STAGE_NOT_ACTIVE, 349);
+// as outras duas valem — sao elas que destravam a retomada quando uma equipe
+// alocada conflita na data nova (369).
 export function TeamChipMenu(props: {
   teamName: string;
   disabled: boolean;
+  hidePostpone?: boolean;
   onRemove: () => void;
   onCancelParticipation: () => void;
   onPostpone: () => void;
 }) {
-  const { teamName, disabled, onRemove, onCancelParticipation, onPostpone } = props;
+  const { teamName, disabled, hidePostpone = false, onRemove, onCancelParticipation, onPostpone } = props;
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -370,9 +385,11 @@ export function TeamChipMenu(props: {
           <button type="button" onClick={() => { setIsOpen(false); onCancelParticipation(); }}>
             Cancelar participacao...
           </button>
-          <button type="button" onClick={() => { setIsOpen(false); onPostpone(); }}>
-            Adiar equipe...
-          </button>
+          {hidePostpone ? null : (
+            <button type="button" onClick={() => { setIsOpen(false); onPostpone(); }}>
+              Adiar equipe...
+            </button>
+          )}
         </div>,
         document.body
       )
