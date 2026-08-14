@@ -157,17 +157,60 @@ Procurar no plano: `Trigger` com tempo próprio alto, `Seq Scan` em validação 
 
 ---
 
+## 3.4 Separação autoritativa: use `rolname`, não texto de query
+
+O relatório de Query Performance do Supabase traz a coluna **`rolname`**, que resolve de vez a separação entre aplicação e plataforma — sem a heurística de `ilike` que jogava 52% do tempo num balde `indefinido`:
+
+| `rolname` | O que é |
+|---|---|
+| `service_role` | **a aplicação** — as rotas usam `getSupabaseAdmin()` |
+| `authenticator` | preâmbulo do PostgREST (`set_config`, 1 por requisição) |
+| `postgres` | **Supabase Studio**, migrations, comandos manuais |
+| `supabase_*` | rotinas da plataforma |
+
+`scripts/perf-baseline-onequery.sql` passou a fazer `left join pg_roles on oid = userid` e classificar por papel. O bucket `indefinido` deixa de existir.
+
+## 3.5 A cauda longa que a média escondia
+
+O `max_exec_time` mudou a leitura de dois itens:
+
+| Consulta | Média | **Máximo** |
+|---|---|---|
+| `INSERT` em `login_audit` | 137 ms | **4,3 s** |
+| `set_config` do PostgREST | 1,74 ms | **2,0 s** |
+| `pg_available_extensions` (Studio) | 1.331 ms | **25,0 s** |
+
+Um `INSERT` de uma linha que às vezes leva **4,3 segundos** não é "um pouco lento" — é sintoma de bloqueio ou contenção, não de custo de CPU. Reforça que a investigação do `login_audit` precisa do `EXPLAIN` e de olhar lock, não só plano.
+
+A coluna `max_ms` foi acrescentada ao script de captura por isso.
+
+---
+
 ## 4. O que fazer com isto
 
-| Prioridade | Item | Por quê |
+**Fila confirmada com o usuário em 2026-08-13**, separando explicitamente aplicação de plataforma:
+
+### Aplicação — o que de fato vamos otimizar
+
+| # | Item | Evidência |
 |---|---|---|
-| **1** | Investigar a introspecção do Studio (~32%) | maior consumidor isolado. Ver §5. |
-| **2** | RPC de resumo semanal da Programação (5,49%) | maior consumidor da aplicação; 765 blocos/chamada em 9 mil chamadas |
-| **3** | `INSERT` em `login_audit` (2,65%) | 137 ms para inserir uma linha é anômalo |
-| **4** | RPCs pesadas por chamada (2.711 / 4.298 / 13.870 blocos) | poucas chamadas, mas cada uma varre muito |
-| 5 | `project_programming_history` (5,21% somado) | **pendente de validação temporal** — delta zero em duas janelas; pode ser fantasma |
-| 6 | Auth / `set_config` (~10% somado) | atacar por número de requisições, não por query |
-| — | `dash-estoque` (~1,13%) | ❌ **sai da fila de prioridade** |
+| **1** | **`INSERT` em `login_audit`** | 2.693 chamadas, 137 ms de média, **máx 4,3 s**, ~369 s. Síncrono no login. Máximo de 4,3 s sugere contenção, não CPU. |
+| **2** | **RPC `get_programming_week_summary`** | 9.045 chamadas, 153 ms de média, ~1.384.186 ms — **maior consumidor da aplicação**; 765 blocos por chamada |
+| **3** | `project_programming_history` | 20.815 chamadas × 43,8 ms ≈ 912 s. ⚠️ **Confirmar antes de otimizar** — ver ressalva abaixo |
+| 4 | RPCs pesadas por chamada (2.711 / 4.298 / 13.870 blocos) | poucas chamadas, cada uma varre muito |
+| 5 | Auth + `set_config` (~10% somado) | atacar por **número de requisições**, não por query |
+| — | `dash-estoque` (~1,13%) | ❌ **fora da fila** |
+
+> **Ressalva no item 3, que vale um teste antes de qualquer código:** `project_programming_history` deu **delta zero em duas janelas seguidas** ([`08`](08-nivel-b-resultado.md)), com `total_exec_time` idêntico até a casa decimal. Os 912 s são acumulados desde fevereiro; a consulta pode não estar executando mais. Além disso, o **C8 removeu do código o único leitor conhecido** dessa tabela.
+>
+> **Teste de um minuto antes de investir:** capturar de novo depois de um dia útil e ver se o número mudou. Se continuar em 20.815, é fantasma e o item sai da fila. Se subir, existe consumidor vivo que a análise estática não encontrou — e aí é achado ALTO.
+
+### Plataforma — não é nosso código
+
+| Item | Evidência | O que fazer |
+|---|---|---|
+| Introspecção do Studio | ~32% do tempo, **máx de 25 s** numa única consulta, 100% do spill | reduzir navegação no dashboard; não há correção por migration |
+| `set_config` do PostgREST | 12,4% no relatório novo, 1 por requisição | cai junto com o número de requisições |
 
 ## 5. Sobre os 32% do Studio
 

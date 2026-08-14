@@ -32,10 +32,18 @@
 
 create temp table pb_raw (
   queryid            text,
+  -- Papel que executou. E a separacao AUTORITATIVA entre aplicacao e
+  -- plataforma, e substitui a heuristica por texto de query:
+  --   service_role   -> a aplicacao (nossas rotas usam getSupabaseAdmin)
+  --   postgres       -> Supabase Studio, migrations, comandos manuais
+  --   authenticator  -> preambulo do PostgREST (set_config por requisicao)
+  --   supabase_admin -> rotinas da plataforma
+  rolname            text,
   query              text,
   calls              bigint,
   total_exec_time    double precision,
   mean_exec_time     double precision,
+  max_exec_time      double precision,
   rows_total         bigint,
   shared_blks_read   bigint,
   shared_blks_hit    bigint,
@@ -55,11 +63,12 @@ begin
   if v_pgss is not null then
     execute format(
       'insert into pg_temp.pb_raw '
-      || '(queryid, query, calls, total_exec_time, mean_exec_time, rows_total, '
-      || ' shared_blks_read, shared_blks_hit, temp_blks_written) '
-      || 'select s.queryid::text, s.query, s.calls, s.total_exec_time, s.mean_exec_time, '
+      || '(queryid, rolname, query, calls, total_exec_time, mean_exec_time, max_exec_time, '
+      || ' rows_total, shared_blks_read, shared_blks_hit, temp_blks_written) '
+      || 'select s.queryid::text, coalesce(r.rolname, ''?''), s.query, s.calls, '
+      || '       s.total_exec_time, s.mean_exec_time, s.max_exec_time, '
       || '       s.rows, s.shared_blks_read, s.shared_blks_hit, s.temp_blks_written '
-      || 'from %s s where s.calls > 0',
+      || 'from %s s left join pg_roles r on r.oid = s.userid where s.calls > 0',
       v_pgss::text
     );
   end if;
@@ -69,33 +78,24 @@ $$;
 create temp table pb as
 select
   r.queryid,
+  r.rolname,
+  -- ORIGEM pelo PAPEL, nao por texto de query. O `rolname` e autoritativo:
+  -- `service_role` e a aplicacao (nossas rotas usam `getSupabaseAdmin`),
+  -- `postgres` e o Studio/migrations, `authenticator` e o preambulo do
+  -- PostgREST. A heuristica por texto que existia aqui antes classificava
+  -- errado e jogava 52% do tempo num balde `indefinido`.
   case
-    when btrim(regexp_replace(regexp_replace(r.query, '--[^\n]*', ' ', 'g'), '\s+', ' ', 'g')) ilike 'copy %'
-      then 'dump/copy'
-    when btrim(regexp_replace(regexp_replace(r.query, '--[^\n]*', ' ', 'g'), '\s+', ' ', 'g')) ilike 'create %'
-      or btrim(regexp_replace(regexp_replace(r.query, '--[^\n]*', ' ', 'g'), '\s+', ' ', 'g')) ilike 'alter %'
-      or btrim(regexp_replace(regexp_replace(r.query, '--[^\n]*', ' ', 'g'), '\s+', ' ', 'g')) ilike 'drop %'
-      then 'ddl/migration'
-    when r.query ilike '%pgrst_source%' or r.query ilike '%pgrst_payload%'
-      then 'app (postgrest)'
-    -- Preambulo que o PostgREST roda a CADA requisicao para montar o contexto
-    -- da sessao. Nao e query de negocio, mas e custo de aplicacao: aparece uma
-    -- vez por request. Media de 2026-08-13: 1.305.413 chamadas, 8,96% do tempo.
-    when r.query ilike '%set_config(%request.jwt.claims%'
-      or (r.query ilike 'select set_config(%' and r.query ilike '%search_path%')
+    when r.rolname = 'service_role' and r.query ilike '%pgrst_%'
+      then 'app (consulta)'
+    when r.rolname = 'service_role'
+      then 'app (outro)'
+    when r.rolname = 'authenticator'
       then 'app (postgrest setup)'
-    -- Introspecao do proprio Supabase Studio: Table Editor, Extensions,
-    -- catalogo de funcoes, privilegios, fusos. NAO e a aplicacao. Na captura de
-    -- 2026-08-13 somava ~32% do tempo do banco e 100% do spill para disco.
-    when r.query ilike '%pg_available_extensions%'
-      or r.query ilike '%pg_timezone_names%'
-      or r.query ilike '%base_table_info%'
-      or r.query ilike '%table_privileges%'
-      or r.query ilike '%proargmodes%'
-      or r.query ilike '%pg_stat_statements%'
-      or r.query ilike '%quoted_name%'
-      then 'studio/introspeccao'
-    else 'indefinido'
+    when r.rolname = 'postgres'
+      then 'studio/admin'
+    when r.rolname like 'supabase%'
+      then 'plataforma'
+    else 'outro (' || coalesce(r.rolname, '?') || ')'
   end as origem,
   case
     when r.query ilike '%project_measurement_order_items%' then 'medicao/faturamento (itens)'
@@ -121,6 +121,7 @@ select
   round(r.total_exec_time::numeric, 2) as total_ms,
   round((100.0 * r.total_exec_time / nullif(sum(r.total_exec_time) over (), 0))::numeric, 2) as pct_tempo,
   round(r.mean_exec_time::numeric, 2) as mean_ms,
+  round(r.max_exec_time::numeric, 2) as max_ms,
   round(((r.shared_blks_hit + r.shared_blks_read)::numeric / nullif(r.calls, 0)), 2) as blks_call,
   round((r.shared_blks_read::numeric / nullif(r.calls, 0)), 2) as blks_read_call,
   round((100.0 * r.shared_blks_hit
@@ -132,7 +133,7 @@ from pg_temp.pb_raw r;
 -- =============================================================================
 -- RESULTADO UNICO — copiar a tabela inteira
 -- =============================================================================
-select ord, bloco, info, calls, total_ms, pct_tempo, mean_ms, blks_call,
+select ord, bloco, info, calls, total_ms, pct_tempo, mean_ms, max_ms, blks_call,
        blks_read_call, cache_hit_pct, temp_blks_written, query
 from (
   -- 00 - metadados da janela
@@ -151,6 +152,7 @@ from (
          null::numeric as total_ms,
          null::numeric as pct_tempo,
          null::numeric as mean_ms,
+         null::numeric as max_ms,
          null::numeric as blks_call,
          null::numeric as blks_read_call,
          null::numeric as cache_hit_pct,
@@ -165,61 +167,61 @@ from (
          case
            when (select count(*) from pg_temp.pb) = 0
              then 'INVALIDA: pg_stat_statements vazia ou nao habilitada'
-           when (select coalesce(sum(calls), 0) from pg_temp.pb where origem = 'app (postgrest)') = 0
+           when (select coalesce(sum(calls), 0) from pg_temp.pb where rolname = 'service_role') = 0
              then 'NAO SERVE: nenhuma consulta de aplicacao na amostra'
-           when (select coalesce(sum(calls), 0) from pg_temp.pb where origem = 'app (postgrest)') < 500
+           when (select coalesce(sum(calls), 0) from pg_temp.pb where rolname = 'service_role') < 500
              then 'FRACA: menos de 500 chamadas de aplicacao'
            else 'OK: amostra dominada por trafego de aplicacao'
          end
-         || ' | chamadas_app=' || (select coalesce(sum(calls), 0) from pg_temp.pb where origem = 'app (postgrest)')
+         || ' | chamadas_app=' || (select coalesce(sum(calls), 0) from pg_temp.pb where rolname = 'service_role')
          || ' | chamadas_total=' || (select coalesce(sum(calls), 0) from pg_temp.pb),
-         null, null, null, null, null, null, null, null, null
+         null, null, null, null, null, null, null, null, null, null
 
   union all
   -- 03 - tempo por origem
   select 2, '03_origem', origem,
          sum(calls), round(sum(total_ms), 2),
          round(100.0 * sum(total_ms) / nullif(sum(sum(total_ms)) over (), 0), 2),
-         null, null, null, null, null, null
+         null, null, null, null, null, null, null
   from pg_temp.pb
   group by origem
 
   union all
   -- 04 - TOP 25 por custo acumulado (so aplicacao) — o ranking que fecha o Nivel B
-  select 3, '04_top_custo', rota, calls, total_ms, pct_tempo, mean_ms,
+  select 3, '04_top_custo', rota, calls, total_ms, pct_tempo, mean_ms, max_ms,
          blks_call, blks_read_call, cache_hit_pct, temp_blks_written, query
   from (
     select * from pg_temp.pb
-    where origem = 'app (postgrest)'
+    where rolname = 'service_role'
     order by total_ms desc nulls last
     limit 25
   ) t4
 
   union all
   -- 04b - TOP 10 fora da aplicacao (ruido: dump, migration)
-  select 4, '04b_ruido', rota, calls, total_ms, pct_tempo, mean_ms,
+  select 4, '04b_ruido', rota, calls, total_ms, pct_tempo, mean_ms, max_ms,
          blks_call, blks_read_call, cache_hit_pct, temp_blks_written, query
   from (
     select * from pg_temp.pb
-    where origem <> 'app (postgrest)'
+    where rolname <> 'service_role'
     order by total_ms desc nulls last
     limit 10
   ) t4b
 
   union all
   -- 08 - TOP 25 por numero de chamadas (fan-out)
-  select 5, '08_chamadas', rota, calls, total_ms, pct_tempo, mean_ms,
+  select 5, '08_chamadas', rota, calls, total_ms, pct_tempo, mean_ms, max_ms,
          blks_call, blks_read_call, cache_hit_pct, temp_blks_written, query
   from (
     select * from pg_temp.pb
-    where origem = 'app (postgrest)'
+    where rolname = 'service_role'
     order by calls desc nulls last
     limit 25
   ) t8
 
   union all
   -- 06 - spill para disco (qualquer linha aqui e achado)
-  select 6, '06_spill', rota, calls, total_ms, pct_tempo, mean_ms,
+  select 6, '06_spill', rota, calls, total_ms, pct_tempo, mean_ms, max_ms,
          blks_call, blks_read_call, cache_hit_pct, temp_blks_written, query
   from pg_temp.pb
   where coalesce(temp_blks_written, 0) > 0
