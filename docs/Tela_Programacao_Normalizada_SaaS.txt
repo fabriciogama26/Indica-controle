@@ -406,7 +406,9 @@ Participacao por equipe (Fase 2, migration 349, APLICADA)
   gravar nada. O front mostra `LastActiveTeamModal` (Cancelar a etapa inteira / Manter a
   etapa sem equipe / Voltar) e so rechama com a flag true se o usuario confirmar manter.
 - UI: cada chip de equipe (`listComponents.tsx`, tabela "Programacoes") ganhou um menu "⋮"
-  (`TeamChipMenu`, em `components.tsx`) com as 3 acoes — Remover (sem motivo, como antes),
+  (`TeamChipMenu`, em `components.tsx`), em circulo vermelho (borda `#c62828`, fundo `#fdecea`,
+  glifo `#c62828` — mesma familia do botao Cancelar, porque o menu concentra as acoes
+  destrutivas do chip), com as 3 acoes — Remover (sem motivo, como antes),
   Cancelar participacao... e Adiar equipe... (as duas ultimas abrem modal pedindo motivo,
   mesmo catalogo de `reasonOptions` usado por Cancelar/Adiar de etapa).
 - PARIDADE DAS DUAS TELAS (fechada em 2026-08-14): o `StageCard`/`ProjectPlanView.tsx` (tela
