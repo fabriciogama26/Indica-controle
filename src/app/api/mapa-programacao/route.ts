@@ -162,9 +162,20 @@ function isActiveProgrammingStatus(value: unknown) {
   return ACTIVE_PROGRAMMING_STATUSES.has(normalizeToken(value));
 }
 
+// Data que POSICIONA a etapa na linha do tempo do projeto. A etapa em espera nao
+// tem execution_date, entao cai para a data que tinha quando saiu do plano
+// (snapshot da 337) — mesma regra de exibicao da tela de Programacao
+// (`getStageDisplayExecutionDate`). Sem isso ela vira string vazia, ordena ANTES
+// de qualquer data real e nunca seria a ultima etapa do projeto: o Mapa
+// continuaria julgando a obra pela etapa anterior, ignorando que ela esta parada.
+// Em espera sem snapshot (dado legado, anterior a 337) segue sem posicao.
+function resolveRowTimelineDate(row: ProgrammingRow) {
+  return normalizeIsoDate(row.execution_date) ?? normalizeIsoDate(row.classification_snapshot_execution_date) ?? "";
+}
+
 function compareProgrammingRows(left: ProgrammingRow, right: ProgrammingRow) {
-  const leftDate = normalizeIsoDate(left.execution_date) ?? "";
-  const rightDate = normalizeIsoDate(right.execution_date) ?? "";
+  const leftDate = resolveRowTimelineDate(left);
+  const rightDate = resolveRowTimelineDate(right);
   if (leftDate !== rightDate) return leftDate.localeCompare(rightDate);
 
   const leftUpdatedAt = normalizeText(left.updated_at);
@@ -183,6 +194,7 @@ function compareProgrammingRows(left: ProgrammingRow, right: ProgrammingRow) {
 // 284 e 326), entao o vazio e esperado e o rotulo diz isso explicitamente.
 function resolveWorkCompletionLabel(params: {
   workCompletionStatus: string | null;
+  latestOnHold: boolean;
   workCompletionLabelMap: Map<string, string>;
   latestProgrammingStatus: string;
 }) {
@@ -190,16 +202,29 @@ function resolveWorkCompletionLabel(params: {
     return params.workCompletionLabelMap.get(params.workCompletionStatus) ?? params.workCompletionStatus;
   }
   if (params.latestProgrammingStatus === "CANCELADA") return "Nao se aplica (cancelada)";
-  if (params.latestProgrammingStatus === "ADIADA") return "Nao se aplica (adiada)";
+  // "Em espera" e ADIADA SEM data — o rotulo separa os dois porque a acao muda:
+  // adiada com data ja tem quando acontecer; em espera espera alguem definir.
+  if (params.latestProgrammingStatus === "ADIADA") {
+    return params.latestOnHold ? "Nao se aplica (em espera)" : "Nao se aplica (adiada)";
+  }
   return "Nao informado";
 }
 
+// Etapa encerrada (cancelada, em espera, antecipada) sai da numeracao ativa: o
+// reclassify zera etapa_number/unica/final. A classificacao que ela TINHA vive no
+// snapshot da 337 — sem essa queda, toda obra em espera apareceria como "Sem
+// etapa" aqui, enquanto a tela de Programacao mostra "Era Etapa N".
 function resolveStageLabel(row: ProgrammingRow | null) {
   if (!row) return "Sem etapa";
   if (row.etapa_final) return "Etapa final";
   if (row.etapa_unica) return "Etapa unica";
   const stageNumber = Number(row.etapa_number ?? 0);
-  return Number.isInteger(stageNumber) && stageNumber > 0 ? `${stageNumber} etapa` : "Sem etapa";
+  if (Number.isInteger(stageNumber) && stageNumber > 0) return `${stageNumber} etapa`;
+
+  if (row.classification_snapshot_final) return "Era etapa final";
+  if (row.classification_snapshot_unica) return "Era etapa unica";
+  const snapshotNumber = Number(row.classification_snapshot_number ?? 0);
+  return Number.isInteger(snapshotNumber) && snapshotNumber > 0 ? `Era ${snapshotNumber} etapa` : "Sem etapa";
 }
 
 // Estado Trabalho ausente numa etapa vencida e inconsistencia de apontamento —
@@ -390,8 +415,12 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
         : null;
       const latestProgrammingStatus = normalizeToken(latest?.status) || "SEM_PROGRAMACAO";
       const latestStatusInterrupted = isInterruptedStatus(latest?.status);
+      // "Em espera" = ADIADA sem data (Adiar > Deixar em espera). ADIADA COM data
+      // existe so como dado migrado do modelo legado (ver 346).
+      const latestOnHold = latestProgrammingStatus === "ADIADA" && !normalizeIsoDate(latest?.execution_date);
       const workCompletionLabel = resolveWorkCompletionLabel({
         workCompletionStatus,
+        latestOnHold,
         workCompletionLabelMap,
         latestProgrammingStatus,
       });
@@ -574,7 +603,11 @@ export async function GET(request: NextRequest) {
       buildCard("PARTIAL_PLANNED", "Parcial planejada", "Ultimo Estado Trabalho valido parcial planejado.", consolidatedProjects.filter((project) => isPartialPlannedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("PARTIAL", "Parciais nao planejada", "Ultimo Estado Trabalho valido parcial nao planejado.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("BENEFIT_REACHED", "Beneficio atingido", "Beneficio atingido sem conclusao marcada.", consolidatedProjects.filter((project) => !project.completed && isBenefitReachedWorkStatus(project.latestWorkCompletionStatus))),
-      buildCard("INTERRUPTED", "Canceladas/adiadas", "Ultima programacao cancelada ou adiada sem continuidade posterior.", consolidatedProjects.filter((project) => project.interrupted && !project.hasFutureActiveProgramming)),
+      // Inclui a etapa "em espera" (ADIADA sem data): por decisao do usuario ela
+      // NAO ganhou card proprio — o significado deste card ja e "obra parada, sem
+      // continuidade marcada", que e exatamente o caso. O detalhe de cada obra
+      // distingue as duas situacoes no Estado Trabalho ("em espera" x "adiada").
+      buildCard("INTERRUPTED", "Canceladas/adiadas", "Ultima programacao cancelada, adiada ou em espera (adiada sem data), sem continuidade posterior.", consolidatedProjects.filter((project) => project.interrupted && !project.hasFutureActiveProgramming)),
       // Obra interrompida fica de fora: etapa ADIADA/CANCELADA nao pode ter
       // Estado Trabalho (migrations 284 e 326), entao ela nunca sairia deste card
       // e ainda aparecia duplicada em `Canceladas/adiadas`. O card conta apenas o
