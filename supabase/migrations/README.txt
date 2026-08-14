@@ -118,6 +118,7 @@ Ordem de aplicacao
 282. 282_fix_completed_group_integrity_null_boolean.sql
 283. 283_sync_completed_work_status_by_programming_group.sql
 284. 284_clear_interrupted_programming_work_completion_status.sql
+366. 366_create_material_umb_options.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1053,3 +1054,9 @@ Observacao
 - Unico item da auditoria que dispensa o Nivel B: duplicata exata nunca e o unico caminho de acesso de nenhuma consulta — o planner usa um dos dois e o outro so custa escrita e WAL em toda alteracao de `project`, que carrega 17 indices. Nao ha o que medir; remover indice identico a outro nao pode piorar plano.
 - `drop index` simples, sem `concurrently`, porque migrations rodam em transacao. Validacao pos-execucao confere que resta exatamente 1 indice simples para `(tenant_id, priority)`, exatamente 1 para `(tenant_id, city)`, exatamente 1 indice UNIQUE simples para `(tenant_id, sob)`, e que nao sobrou nenhum grupo de indice duplicado em `public.project`, usando a mesma assinatura de catalogo (indrelid + indkey + indclass + indexprs + indpred) da consulta de inventario do Nivel B.
 - Nao altera schema, RLS, policies, grants nem cria funcao.
+
+366_create_material_umb_options.sql
+- Cria `material_umb_options` como catalogo multi-tenant de UMB da tela Materiais, com RLS de leitura por `user_can_access_tenant`, indice `(tenant_id, is_active, sort_order, code)` e trigger de auditoria.
+- Semeia `M`, `KG` e `UN` para todos os tenants existentes e cria trigger em `tenants` para semear as mesmas opcoes em novos tenants.
+- Republica `save_material_record` com a mesma assinatura da 288, normalizando UMB para maiusculo e recusando escrita quando a UMB nao existe ativa no catalogo do tenant.
+- Grants preservados no padrao atual: tabela com `SELECT` para `authenticated`; RPC e funcao de seed sem EXECUTE para `public`/`anon`/`authenticated`, com `save_material_record` liberada apenas para `service_role`.
