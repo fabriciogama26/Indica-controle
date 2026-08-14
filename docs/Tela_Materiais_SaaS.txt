@@ -26,6 +26,7 @@ Arquitetura
 - Banco (UMB obrigatorio na RPC de escrita): `supabase/migrations/190_require_material_umb_in_save_rpc.sql`
 - Banco (bloqueio de rastreio em uso): `supabase/migrations/243_block_material_serial_tracking_downgrade.sql`
 - Banco (catalogo de UMB): `supabase/migrations/366_create_material_umb_options.sql`
+- Banco (saneamento de UMB CJT): `supabase/migrations/367_update_materials_umb_cjt_to_un.sql`
 
 Cadastro
 --------
@@ -199,9 +200,10 @@ Atualizacao 2026-03
   - Seed padrao para todos os tenants existentes e futuros: `M`, `KG` e `UN`.
   - `GET /api/materials/meta` passou a carregar as opcoes de UMB do catalogo em vez de inferir pelos materiais ja cadastrados.
   - O campo `UMB` do cadastro manual passou de texto livre para select.
+  - Criada migration `367_update_materials_umb_cjt_to_un.sql` para trocar todos os materiais com `UMB = CJT` para `UN` no cadastro oficial.
   - Cadastro em massa normaliza UMB para maiusculo e aponta erro na coluna `umb` quando o valor nao esta no catalogo.
   - `POST`/`PUT /api/materials` validam UMB contra o catalogo antes da RPC; a RPC `save_material_record` tambem bloqueia escrita direta fora do catalogo.
-  - Dependencia de deploy: aplicar a migration `366` antes do deploy do app, pois o endpoint de metadados depende de `material_umb_options`.
+  - Dependencia de deploy: aplicar as migrations `366` e `367` antes do deploy do app, pois o endpoint de metadados depende de `material_umb_options` e os registros `CJT` precisam ser saneados para `UN`.
   - Impacto multi-tenant: a tabela nova carrega `tenant_id`, RLS de leitura por `user_can_access_tenant` e seed por tenant; nenhuma rota aceita `tenant_id` do cliente.
 
 Mapa de Codigo (funcoes, hooks e constantes)
@@ -291,6 +293,7 @@ Ajuda contextual
   - `src/app/api/materials/route.ts`
   - `src/app/api/materials/meta/route.ts`
   - `supabase/migrations/366_create_material_umb_options.sql`
+  - `supabase/migrations/367_update_materials_umb_cjt_to_un.sql`
   - `supabase/migrations/README.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas (2026-08):
@@ -299,9 +302,12 @@ Ajuda contextual
   - `POST`/`PUT` de `/api/materials`
   - `loadActiveMaterialUmbCodes`, `validateMaterialUmbOption`, `importMaterialBatch`
   - `save_material_record`, `seed_material_umb_options_for_tenant`
+  - Migration `367`: update de `materials.umb` e insert em `material_history`
 - Comportamento antes/depois (2026-08):
   - Antes: UMB era texto livre no cadastro e as opcoes do filtro vinham dos materiais ja cadastrados.
   - Depois: UMB vem do catalogo `material_umb_options` (`M`, `KG`, `UN`) e a escrita fora do catalogo e bloqueada no frontend, API e RPC.
+  - Antes: materiais cadastrados com UMB `CJT` permaneciam visiveis na lista.
+  - Depois: o cadastro oficial troca `CJT` por `UN`, com historico de alteracao por material.
 - Arquivos alterados/criados (2026-03-24):
   - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
 - Funcoes/hooks/constantes tocadas (2026-03-24):
