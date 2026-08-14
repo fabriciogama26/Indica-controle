@@ -119,6 +119,7 @@ Ordem de aplicacao
 283. 283_sync_completed_work_status_by_programming_group.sql
 284. 284_clear_interrupted_programming_work_completion_status.sql
 366. 366_create_material_umb_options.sql
+367. 367_update_materials_umb_cjt_to_un.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1060,3 +1061,9 @@ Observacao
 - Semeia `M`, `KG` e `UN` para todos os tenants existentes e cria trigger em `tenants` para semear as mesmas opcoes em novos tenants.
 - Republica `save_material_record` com a mesma assinatura da 288, normalizando UMB para maiusculo e recusando escrita quando a UMB nao existe ativa no catalogo do tenant.
 - Grants preservados no padrao atual: tabela com `SELECT` para `authenticated`; RPC e funcao de seed sem EXECUTE para `public`/`anon`/`authenticated`, com `save_material_record` liberada apenas para `service_role`.
+
+367_update_materials_umb_cjt_to_un.sql
+- Saneia o cadastro oficial de materiais trocando `materials.umb = CJT` por `UN`, com comparacao normalizada por maiusculas/espacos.
+- Registra um evento `UPDATE` em `material_history` para cada material alterado, com diff `umb: CJT -> UN`.
+- Inclui validacao pos-update que aborta a migration se ainda restar algum material com UMB `CJT`.
+- Nao reescreve snapshots operacionais (`requisicao_itens`, movimentacoes ou historicos de uso), preservando o valor historico que existia no momento da operacao.
