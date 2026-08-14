@@ -800,11 +800,17 @@ export type ProgrammingMapStageRow = {
   note: string | null;
   created_at: string;
   updated_at: string;
+  // Snapshot da 337: a etapa "em espera" perde execution_date e classificacao. O
+  // Mapa precisa dos dois para ordenar e rotular essa etapa como as demais.
+  classification_snapshot_execution_date: string | null;
+  classification_snapshot_number: number | null;
+  classification_snapshot_unica: boolean | null;
+  classification_snapshot_final: boolean | null;
   programming_team: ProgrammingMapTeamRow[] | null;
 };
 
 const MAP_STAGE_SELECT =
-  "id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, programming_team(team_id, status)";
+  "id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, classification_snapshot_execution_date, classification_snapshot_number, classification_snapshot_unica, classification_snapshot_final, programming_team(team_id, status)";
 const MAP_STAGE_ROW_LIMIT = 5000;
 
 export async function fetchProgrammingStagesForMap(params: {
@@ -812,11 +818,16 @@ export async function fetchProgrammingStagesForMap(params: {
   tenantId: string;
   sinceDate: string;
 }): Promise<ProgrammingMapStageRow[]> {
+  // Etapa "em espera" (ADIADA sem data) precisa entrar: com `gte` puro ela era
+  // descartada em silencio — `NULL >= data` e NULL, nao false —, e o Mapa nunca
+  // via essas obras. Efeito colateral do bug: obra cuja UNICA etapa estava em
+  // espera caia em "Nunca programadas". Sem data nao ha o que recortar por
+  // periodo, entao elas vem sempre; o teto de MAP_STAGE_ROW_LIMIT segue valendo.
   const { data, error } = await params.supabase
     .from("programming")
     .select(MAP_STAGE_SELECT)
     .eq("tenant_id", params.tenantId)
-    .gte("execution_date", params.sinceDate)
+    .or(`execution_date.is.null,execution_date.gte.${params.sinceDate}`)
     .limit(MAP_STAGE_ROW_LIMIT)
     .returns<ProgrammingMapStageRow[]>();
 

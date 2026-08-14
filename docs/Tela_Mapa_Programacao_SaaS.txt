@@ -288,6 +288,7 @@ Funcoes utilitarias relacionadas
   - Nao existe consulta de fallback sem as flags: `is_withdrawn` (migration 174) e `is_third_party` (migration 307) sao `not null` em `project_with_labels`, e um fallback que assumisse `false` reportaria zero retiradas e incluiria terceiros em silencio.
 - `fetchProgrammingStagesForMap` (fachada `@/server/modules/programacao-normalizada`)
   - Carrega as etapas (`programming`) do tenant desde a janela de 18 meses, com as equipes de cada etapa (`programming_team(team_id, status)`) embutidas.
+  - Traz TAMBEM as etapas sem `execution_date` (em espera), que a janela de 18 meses descartava em silencio — ver "Atualizacao 2026-08-14" no fim deste arquivo. Inclui as colunas de snapshot da 337 (`classification_snapshot_execution_date/number/unica/final`), usadas para posicionar e rotular essa etapa.
 - `fetchWorkCompletionCatalog`
   - Resolve label de exibicao do catalogo de Estado Trabalho.
 - `fetchTeams`
@@ -333,7 +334,7 @@ Servicos e integracoes externas
 
 Ajuda contextual
 - Use os cards de Estado Trabalho para acompanhar obras cujo ultimo Estado Trabalho valido ainda nao concluiu a execucao.
-- Use `Canceladas/adiadas` para localizar obras cuja ultima tentativa foi interrompida e nao teve continuidade posterior.
+- Use `Canceladas/adiadas` para localizar obras cuja ultima tentativa foi interrompida e nao teve continuidade posterior — inclui as obras `em espera` (adiadas sem data), que a coluna `Estado Trabalho` identifica como `Nao se aplica (em espera)`.
 - Use `Sem Estado Trabalho` para corrigir inconsistencias de apontamento: sao etapas ativas que venceram e ninguem apontou. Obra cancelada/adiada nao entra aqui — ela nunca poderia ser apontada.
 - Use `Nunca programadas` para localizar carteira que ainda nao entrou em nenhuma programacao.
 
@@ -615,3 +616,39 @@ Caminho sugerido quando for priorizado:
 - Decidir na mesma tarefa o que fazer com tipo sem classificacao: cair em
   `OBRAS` silenciosamente (comportamento de hoje) ou aparecer como pendencia de
   cadastro. A segunda opcao e a que evita o erro silencioso.
+
+Atualizacao 2026-08-14 - Etapa "em espera" passa a existir no Mapa:
+- Arquivos alterados: `src/server/modules/programacao-normalizada/queries.ts`
+  (`fetchProgrammingStagesForMap`, `MAP_STAGE_SELECT`, `ProgrammingMapStageRow`),
+  `src/app/api/mapa-programacao/route.ts` (`resolveRowTimelineDate` (nova),
+  `compareProgrammingRows`, `resolveStageLabel`, `resolveWorkCompletionLabel`,
+  `consolidateProjects`, descricao do card `INTERRUPTED`).
+- Problema (bug de dado, nao de exibicao): a consulta do Mapa filtrava
+  `.gte("execution_date", janela de 18 meses)`. Etapa "em espera" e ADIADA SEM
+  data, e em SQL `NULL >= data` e NULL, nao false — a linha era descartada em
+  silencio. Consequencias:
+  1. obra em espera nao aparecia em `Canceladas/adiadas`, apesar do nome do card;
+  2. obra cuja UNICA etapa estava em espera caia em `Nunca programadas`, porque o
+     projeto ficava sem nenhuma linha de programacao visivel;
+  3. obra com etapas antigas + uma em espera era julgada pela etapa anterior, como
+     se a espera nao existisse.
+- Depois:
+  1. a consulta passa a aceitar `execution_date is null` (sem data nao ha o que
+     recortar por periodo; o teto de 5000 linhas segue valendo);
+  2. a ordenacao usa `resolveRowTimelineDate` = `execution_date` ou, na falta, o
+     `classification_snapshot_execution_date` da 337 — mesma regra de exibicao da
+     tela de Programacao. Sem isso a etapa sem data virava string vazia, ordenava
+     ANTES de qualquer data real e nunca seria a ultima etapa da obra;
+  3. `resolveStageLabel` cai para o snapshot de classificacao e mostra
+     `Era N etapa`/`Era etapa final`/`Era etapa unica` em vez de `Sem etapa`;
+  4. o Estado Trabalho exibido distingue `Nao se aplica (em espera)` de
+     `Nao se aplica (adiada)` — a acao e diferente: adiada com data ja tem quando
+     acontecer, em espera espera alguem definir a data.
+- DECISAO DO USUARIO: "em espera" NAO ganhou card proprio. Entra no card
+  `Canceladas/adiadas`, cujo significado ja e "obra parada, sem continuidade
+  marcada"; a descricao do card passou a citar em espera explicitamente e o
+  detalhe de cada obra separa as duas situacoes pelo Estado Trabalho.
+- IMPACTO NOS NUMEROS (esperado, nao regressao): `Canceladas/adiadas` sobe,
+  `Nunca programadas` desce, e `Para reprogramar` pode subir (obra em espera tem
+  `actionRequired`, por nao ter programacao futura ativa). `Carteira valida` nao
+  muda: o total de obras e o mesmo, so a situacao de cada uma foi corrigida.
