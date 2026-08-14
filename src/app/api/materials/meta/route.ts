@@ -4,10 +4,12 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 
 type MaterialUmbRow = {
-  umb: string | null;
+  id: string | null;
 };
 
-const PAGE_SIZE = 1000;
+type MaterialUmbOptionRow = {
+  code: string;
+};
 
 function normalizeUmb(value: unknown) {
   return String(value ?? "").trim().toUpperCase();
@@ -36,41 +38,29 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const umbSet = new Set<string>();
-  let hasMaterialsWithoutUmb = false;
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await resolution.supabase
-      .from("materials")
-      .select("umb")
+  const [optionsResult, withoutUmbResult] = await Promise.all([
+    resolution.supabase
+      .from("material_umb_options")
+      .select("code")
       .eq("tenant_id", resolution.appUser.tenant_id)
-      .order("umb", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1)
-      .returns<MaterialUmbRow[]>();
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("code", { ascending: true })
+      .returns<MaterialUmbOptionRow[]>(),
+    resolution.supabase
+      .from("materials")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .or("umb.is.null,umb.eq.")
+      .returns<MaterialUmbRow[]>(),
+  ]);
 
-    if (error) {
-      return NextResponse.json({ message: "Falha ao carregar UMBs dos materiais." }, { status: 500 });
-    }
-
-    for (const item of data ?? []) {
-      const umb = normalizeUmb(item.umb);
-      if (umb) {
-        umbSet.add(umb);
-      } else {
-        hasMaterialsWithoutUmb = true;
-      }
-    }
-
-    if ((data ?? []).length < PAGE_SIZE) {
-      break;
-    }
-
-    from += PAGE_SIZE;
+  if (optionsResult.error || withoutUmbResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar UMBs dos materiais." }, { status: 500 });
   }
 
   return NextResponse.json({
-    umbOptions: Array.from(umbSet).sort((a, b) => a.localeCompare(b, "pt-BR")),
-    hasMaterialsWithoutUmb,
+    umbOptions: (optionsResult.data ?? []).map((item) => normalizeUmb(item.code)).filter(Boolean),
+    hasMaterialsWithoutUmb: Boolean(withoutUmbResult.count),
   });
 }

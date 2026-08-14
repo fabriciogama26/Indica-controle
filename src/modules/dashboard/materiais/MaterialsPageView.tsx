@@ -675,7 +675,7 @@ export function MaterialsPageView() {
         tipo: normalizeMaterialType(form.tipo),
         isTransformer: form.serialTrackingType === "TRAFO",
         serialTrackingType: form.serialTrackingType,
-        umb: normalizeText(form.umb) || null,
+        umb: normalizeCode(form.umb) || null,
         unitPrice: normalizeText(form.unitPrice),
         stockMinimum: normalizeText(form.stockMinimum),
         stockMaximum: normalizeText(form.stockMaximum) || null,
@@ -965,6 +965,7 @@ export function MaterialsPageView() {
         serialTrackingType: SerialTrackingType;
       }> = [];
       const seenCodes = new Set<string>();
+      const allowedUmbOptions = new Set(umbOptions);
 
       if (!importIssues.some((issue) => issue.rowNumber === 1 && issue.column !== "arquivo")) {
         for (let index = 1; index < lines.length; index += 1) {
@@ -978,7 +979,7 @@ export function MaterialsPageView() {
           const codigo = normalizeCode(resolveCsvValue(row, ["codigo", "cod"]));
           const descricao = normalizeText(resolveCsvValue(row, ["descricao", "description"]));
           const tipo = normalizeMaterialType(resolveCsvValue(row, ["tipo", "type"]));
-          const umb = normalizeText(resolveCsvValue(row, ["umb", "unidade", "unidade_medida"]));
+          const umb = normalizeCode(resolveCsvValue(row, ["umb", "unidade", "unidade_medida"]));
           const unitPriceRaw = resolveCsvValue(row, ["preco", "preco_unitario", "unit_price"]);
           const stockMinimumRaw = resolveCsvValue(row, ["estoque_minimo", "estoque_min", "stock_minimum"]);
           const stockMaximumRaw = resolveCsvValue(row, ["estoque_maximo", "estoque_max", "stock_maximum"]);
@@ -1005,6 +1006,8 @@ export function MaterialsPageView() {
 
           if (!umb) {
             importIssues.push({ rowNumber, column: "umb", value: umb, error: "UMB obrigatorio." });
+          } else if (!allowedUmbOptions.has(umb)) {
+            importIssues.push({ rowNumber, column: "umb", value: umb, error: "UMB invalida. Use M, KG ou UN." });
           }
 
           if (unitPrice === null) {
@@ -1085,7 +1088,7 @@ export function MaterialsPageView() {
 
         importIssues.push({
           rowNumber: result.rowNumber,
-          column: result.code === "DUPLICATE_MATERIAL_CODE" ? "codigo" : "salvamento",
+          column: result.code === "DUPLICATE_MATERIAL_CODE" ? "codigo" : result.code === "INVALID_UMB" ? "umb" : "salvamento",
           value: "",
           error: result.message || "Falha ao salvar material.",
         });
@@ -1278,13 +1281,10 @@ export function MaterialsPageView() {
             <span>
               UMB <span className="requiredMark">*</span>
             </span>
-            <input
-              type="text"
-              value={form.umb}
-              onChange={(event) => updateFormField("umb", event.target.value)}
-              placeholder="Ex.: UN"
-              required
-            />
+            <select value={form.umb} onChange={(event) => updateFormField("umb", event.target.value)} required>
+              <option value="">Selecione</option>
+              {umbOptions.map((umb) => <option key={umb} value={umb}>{umb}</option>)}
+            </select>
           </label>
 
           <div className={`${styles.actions} ${styles.formActions}`}>

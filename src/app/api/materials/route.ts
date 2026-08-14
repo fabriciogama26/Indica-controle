@@ -44,6 +44,10 @@ type SerialTrackingUsageRow = {
   material_id: string;
 };
 
+type MaterialUmbOptionRow = {
+  code: string;
+};
+
 type AppUserRow = {
   id: string;
   display: string | null;
@@ -207,7 +211,7 @@ function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialIn
   return {
     codigo: normalizeCode(payload.codigo),
     descricao: normalizeText(payload.descricao),
-    umb: normalizeNullableText(payload.umb),
+    umb: normalizeCode(payload.umb) || null,
     tipo: normalizeMaterialType(payload.tipo),
     unitPrice: normalizePrice(payload.unitPrice),
     stockMinimum: normalizeOptionalNonNegativeNumber(payload.stockMinimum) ?? 0,
@@ -240,6 +244,29 @@ function validateRequiredMaterialFields(input: MaterialInput) {
     || (input.stockMaximum !== null && (!Number.isFinite(input.stockMaximum) || input.stockMaximum < input.stockMinimum))
   ) {
     return "Limites de estoque invalidos. O maximo deve estar vazio ou ser maior/igual ao minimo.";
+  }
+
+  return null;
+}
+
+async function loadActiveMaterialUmbCodes(supabase: SupabaseClient, tenantId: string) {
+  const { data, error } = await supabase
+    .from("material_umb_options")
+    .select("code")
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true)
+    .returns<MaterialUmbOptionRow[]>();
+
+  if (error) {
+    return { ok: false, status: 500, message: "Falha ao validar UMB do material." } as const;
+  }
+
+  return { ok: true, codes: new Set((data ?? []).map((item) => normalizeCode(item.code)).filter(Boolean)) } as const;
+}
+
+function validateMaterialUmbOption(input: MaterialInput, allowedUmbCodes: Set<string>) {
+  if (input.umb && !allowedUmbCodes.has(input.umb)) {
+    return "UMB invalida. Selecione M, KG ou UN.";
   }
 
   return null;
@@ -480,6 +507,7 @@ async function importMaterialBatch(params: {
   supabase: SupabaseClient;
   tenantId: string;
   actorUserId: string;
+  allowedUmbCodes: Set<string>;
   rows: Array<CreateMaterialPayload & { rowNumber?: number }>;
 }) {
   const results: Array<{
@@ -496,12 +524,14 @@ async function importMaterialBatch(params: {
       : index + 2;
     const input = parseMaterialInput(row);
     const validationError = validateRequiredMaterialFields(input);
+    const umbValidationError = validationError ? null : validateMaterialUmbOption(input, params.allowedUmbCodes);
 
-    if (validationError) {
+    if (validationError || umbValidationError) {
       results.push({
         rowNumber,
         success: false,
-        message: validationError,
+        message: validationError ?? umbValidationError ?? "UMB invalida.",
+        code: umbValidationError ? "INVALID_UMB" : undefined,
       });
       continue;
     }
@@ -871,6 +901,11 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json().catch(() => ({}))) as Partial<CreateMaterialPayload> & MaterialBatchImportPayload;
     const { supabase, appUser } = resolution;
+    const umbOptions = await loadActiveMaterialUmbCodes(supabase, appUser.tenant_id);
+
+    if (!umbOptions.ok) {
+      return NextResponse.json({ message: umbOptions.message }, { status: umbOptions.status });
+    }
 
     if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
       const rows = Array.isArray(body.rows) ? body.rows : [];
@@ -887,6 +922,7 @@ export async function POST(request: NextRequest) {
         supabase,
         tenantId: appUser.tenant_id,
         actorUserId: appUser.id,
+        allowedUmbCodes: umbOptions.codes,
         rows,
       });
 
@@ -904,6 +940,11 @@ export async function POST(request: NextRequest) {
 
     if (validationError) {
       return NextResponse.json({ message: validationError }, { status: 400 });
+    }
+
+    const umbValidationError = validateMaterialUmbOption(input, umbOptions.codes);
+    if (umbValidationError) {
+      return NextResponse.json({ message: umbValidationError, code: "INVALID_UMB" }, { status: 400 });
     }
 
     const unitPrice = input.unitPrice;
@@ -980,6 +1021,15 @@ export async function PUT(request: NextRequest) {
     const unitPrice = input.unitPrice;
 
     const { supabase, appUser } = resolution;
+    const umbOptions = await loadActiveMaterialUmbCodes(supabase, appUser.tenant_id);
+    if (!umbOptions.ok) {
+      return NextResponse.json({ message: umbOptions.message }, { status: umbOptions.status });
+    }
+    const umbValidationError = validateMaterialUmbOption(input, umbOptions.codes);
+    if (umbValidationError) {
+      return NextResponse.json({ message: umbValidationError, code: "INVALID_UMB" }, { status: 400 });
+    }
+
     const currentMaterial = await fetchMaterialById(supabase, appUser.tenant_id, materialId);
 
     if (!currentMaterial) {
