@@ -143,9 +143,10 @@ Filtros, auto-complete e listagem
   - `Todos`
   - `Sim`
   - `Nao`
+- Filtro adicional de `Descricao do material`, aplicado junto com o filtro `Material (codigo)` no catalogo de materiais antes da listagem.
 - A lista aplica os filtros no nivel da linha retornada, nao apenas no cabecalho/lote da movimentacao.
 - Quando uma mesma movimentacao contem varios materiais, o filtro `Material (codigo)` retorna somente as linhas dos materiais cujo codigo corresponde ao filtro.
-- Os filtros de periodo, operacao, finalidade, projeto, material, tipo, CMD e estorno sao revalidados depois do enriquecimento da linha, evitando exibir itens associados ao mesmo lote que nao atendem ao filtro solicitado.
+- Os filtros de periodo, operacao, finalidade, projeto, material por codigo/descricao, tipo, CMD e estorno sao revalidados depois do enriquecimento da linha, evitando exibir itens associados ao mesmo lote que nao atendem ao filtro solicitado.
 - O filtro de estorno considera tanto vinculos integrais em `stock_transfer_reversals` quanto estornos por item em `stock_transfer_item_reversals`.
 - Ordem das colunas da lista:
   - Centro DE
@@ -824,3 +825,15 @@ Atualizacao 2026-08 - Saida direta
 - Comportamento antes/depois:
   - Antes: o checkbox so existia em `Entrada`; front, API e RPC recusavam a flag em `Saida`, e toda saida exigia projeto.
   - Depois: `Saida` aceita `Saida direta` e salva sem projeto, com o mesmo comportamento de saldo e de estorno da saida normal.
+
+Atualizacao 2026-08 - Filtro por descricao de material
+-------------------------------------------------------
+- O card `Filtros` recebeu o campo `Descricao do material`, com sugestoes pelo catalogo de materiais ja carregado na tela.
+- `GET /api/stock-transfers` aceita `materialDescription` e pre-resolve os materiais por `materials.descricao ilike`, sempre filtrando por `tenant_id`.
+- Quando `Material (codigo)` e `Descricao do material` sao preenchidos juntos, a API aplica os dois filtros no catalogo de materiais e retorna somente as linhas dos itens desses materiais.
+- Exportacao CSV reaproveita `buildHistoryListParams`, portanto respeita o novo filtro sem fluxo separado.
+- Arquivos alterados:
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `src/app/api/stock-transfers/route.ts`
+  - `docs/Tela_Entrada_SaaS.txt`
+  - `TASKS.md`
