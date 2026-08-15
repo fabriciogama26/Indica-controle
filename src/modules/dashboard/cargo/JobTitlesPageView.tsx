@@ -413,9 +413,9 @@ export function JobTitlesPageView() {
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; reason?: string };
       if (!response.ok || !data.success) {
-        if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
+        if (data.reason === "CONCURRENT_MODIFICATION" || data.reason === "RECORD_INACTIVE") {
           resetForm();
           await loadJobTitles(page, activeFilters);
         }
@@ -458,12 +458,12 @@ export function JobTitlesPageView() {
         }),
       });
 
-      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
+      const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; reason?: string };
       if (!response.ok || !data.success) {
         if (
-          data.code === "CONCURRENT_MODIFICATION"
-          || data.code === "RECORD_INACTIVE"
-          || data.code === "STATUS_ALREADY_CHANGED"
+          data.reason === "CONCURRENT_MODIFICATION"
+          || data.reason === "RECORD_INACTIVE"
+          || data.reason === "STATUS_ALREADY_CHANGED"
         ) {
           if (form.id === statusJobTitle.id) {
             resetForm();
