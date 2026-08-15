@@ -696,7 +696,6 @@ export function MaterialsPageView() {
 
       if (!response.ok) {
         if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
-          resetFormState();
           await loadMaterials(page, activeFilters);
         }
 
@@ -766,9 +765,6 @@ export function MaterialsPageView() {
           || data.code === "RECORD_INACTIVE"
           || data.code === "STATUS_ALREADY_CHANGED"
         ) {
-          if (editingMaterialId === statusMaterial.id) {
-            resetFormState();
-          }
           closeStatusModal();
           await loadMaterials(page, activeFilters);
         }
