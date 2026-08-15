@@ -1673,6 +1673,50 @@ export async function GET(request: NextRequest) {
     });
 }
 
+// Chamada quando a RPC de save/status devolve 409 (CONCURRENT_MODIFICATION /
+// MEASUREMENT_ORDER_LOCKED): devolve o estado atual da ordem (ja reconsultado pelo
+// chamador) para o cliente saber quem alterou e o que estava tentando mudar, em vez
+// de so uma mensagem generica.
+function buildMeasurementConflictResponse(params: {
+  detail: Awaited<ReturnType<typeof fetchMeasurementOrderDetail>>;
+  message: string;
+  reason: string | null;
+  status: number;
+  changedFields?: Record<string, { from: unknown; to: unknown }>;
+}) {
+  const { detail } = params;
+  return NextResponse.json(
+    {
+      message: params.message,
+      reason: params.reason,
+      currentRecord: detail,
+      currentUpdatedAt: detail?.updatedAt ?? null,
+      updatedBy: detail?.updatedByName ?? null,
+      ...(params.changedFields ? { changedFields: params.changedFields } : {}),
+    },
+    { status: params.status },
+  );
+}
+
+function buildMeasurementChangedFields(
+  payload: SaveMeasurementPayload | null,
+  current: Awaited<ReturnType<typeof fetchMeasurementOrderDetail>>,
+): Record<string, { from: unknown; to: unknown }> {
+  if (!payload || !current) return {};
+  const changes: Record<string, { from: unknown; to: unknown }> = {};
+  const add = (field: string, currentValue: unknown, attemptedValue: unknown) => {
+    if (attemptedValue === undefined) return;
+    if (String(currentValue ?? "") === String(attemptedValue ?? "")) return;
+    changes[field] = { from: currentValue, to: attemptedValue };
+  };
+  add("projectId", current.projectId, normalizeUuid(payload.projectId));
+  add("teamId", current.teamId, normalizeUuid(payload.teamId));
+  add("executionDate", current.executionDate, normalizeIsoDate(payload.executionDate));
+  add("measurementDate", current.measurementDate, normalizeIsoDate(payload.measurementDate));
+  add("notes", current.notes, normalizeText(payload.notes) || null);
+  return changes;
+}
+
 async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT") {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para salvar ordem de medicao.",
@@ -1771,7 +1815,22 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
 
   const result = (data ?? {}) as SaveMeasurementRpcResult;
   if (result.success !== true) {
-    return NextResponse.json({ message: result.message ?? "Falha ao salvar ordem de medicao.", reason: result.reason ?? null }, { status: Number(result.status ?? 400) });
+    const status = Number(result.status ?? 400);
+    if (status === 409 && orderId) {
+      const detail = await fetchMeasurementOrderDetail({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        orderId,
+      });
+      return buildMeasurementConflictResponse({
+        detail,
+        message: result.message ?? "Falha ao salvar ordem de medicao.",
+        reason: result.reason ?? null,
+        status,
+        changedFields: buildMeasurementChangedFields(payload, detail),
+      });
+    }
+    return NextResponse.json({ message: result.message ?? "Falha ao salvar ordem de medicao.", reason: result.reason ?? null }, { status });
   }
 
   const persistedOrderId = normalizeUuid(result.measurement_order_id ?? "");
@@ -1927,7 +1986,23 @@ export async function PATCH(request: NextRequest) {
 
   const result = (data ?? {}) as SetMeasurementStatusRpcResult;
   if (result.success !== true) {
-    return NextResponse.json({ message: result.message ?? "Falha ao alterar status da ordem de medicao.", reason: result.reason ?? null }, { status: Number(result.status ?? 400) });
+    const status = Number(result.status ?? 400);
+    if (status === 409) {
+      const detail = await fetchMeasurementOrderDetail({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        orderId,
+      });
+      const targetStatus: MeasurementOrderStatus = action === "FECHAR" ? "FECHADA" : action === "CANCELAR" ? "CANCELADA" : "ABERTA";
+      return buildMeasurementConflictResponse({
+        detail,
+        message: result.message ?? "Falha ao alterar status da ordem de medicao.",
+        reason: result.reason ?? null,
+        status,
+        changedFields: { status: { from: detail?.status ?? null, to: targetStatus } },
+      });
+    }
+    return NextResponse.json({ message: result.message ?? "Falha ao alterar status da ordem de medicao.", reason: result.reason ?? null }, { status });
   }
 
   const detail = await fetchMeasurementOrderDetail({

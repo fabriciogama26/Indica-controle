@@ -1447,3 +1447,39 @@ Atualizacao 2026-08-12 - C0 do corte da Programacao Normalizada na Medicao
 - Validado com `npx.cmd tsc --noEmit`, `npm.cmd run lint` (0 erros; 36 warnings legados),
   `npm.cmd run lint:size:update` e `npm.cmd run build` (aprovado fora do sandbox apos
   `spawn EPERM` no sandbox).
+
+Atualizacao 2026-08-15 - 409 de conflito enriquecido (edicao x cancelamento concorrentes)
+--------------------------------------------------------------------------------------------
+- Problema investigado: se dois usuarios agem ao mesmo tempo sobre a mesma ordem (ex.: um
+  edita enquanto outro cancela), o mecanismo de concorrencia ja existia e era seguro (RPCs
+  `save_project_measurement_order` / `set_project_measurement_order_status` fazem
+  `SELECT ... FOR UPDATE` + comparacao de `updated_at` contra `expectedUpdatedAt`, migrations
+  126/127) — quem perde a corrida recebe HTTP 409 `CONCURRENT_MODIFICATION`, sem sobrescrita
+  silenciosa. A lacuna era de UX: o 409 devolvia so `{ message, reason }`, sem dizer quem
+  alterou o registro nem o que mudou, na contramao da regra 14 do `guias/guia_backend.md`.
+- Nao existe (e nao foi criada) prioridade de negocio entre editar e cancelar — quem vence a
+  corrida no Postgres continua sendo quem commitar primeiro; o usuario que perde precisa
+  recarregar. Um lock de sessao (ex.: "editando agora, cancelamento espera") exigiria coluna
+  nova (`locked_by`/`locked_at`) que nao existe em nenhuma tabela do sistema hoje — fora do
+  escopo desta correcao.
+- Depois: no PUT (edicao) e no PATCH (troca de status), quando a RPC devolve 409, o handler
+  reconsulta a ordem via `fetchMeasurementOrderDetail` (mesma funcao usada no caminho de
+  sucesso, sem nova RPC/migration) e devolve tambem `currentRecord`, `currentUpdatedAt`,
+  `updatedBy` e `changedFields` (comparacao entre o payload enviado/acao tentada e o estado
+  atual). O frontend (`MeasurementPageView.tsx`, submit de edicao e de troca de status) anexa
+  `" (alterada por <nome>")` na mensagem de erro quando `reason === "CONCURRENT_MODIFICATION"`.
+- Arquivos alterados:
+  - `src/app/api/medicao/route.ts` (`buildMeasurementConflictResponse`,
+    `buildMeasurementChangedFields`, chamados nos 409 de `saveMeasurementOrder` e do `PATCH`)
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx` (mensagem de erro do submit de
+    edicao e do submit de troca de status)
+- Mesma auditoria mapeou o mesmo padrao (edicao/cancelamento concorrentes) em outras 17+
+  telas do backend; a unica realmente fragil (sem `FOR UPDATE`/`WHERE` condicional) era
+  Cronograma de Solicitacoes, corrigida na mesma tarefa — ver
+  `docs/Tela_Cronograma_Solicitacoes_SaaS.txt`, secao "Atualizacao 2026-08-15".
+- Validado com `npx tsc --noEmit` (sem erro nos arquivos tocados) e `npm run lint` (0 erros;
+  crescimento de `api/medicao/route.ts` e `MeasurementPageView.tsx` aceito via
+  `npm run lint:size:accept`, ambos ja acima do baseline antes desta tarefa). `npm run build`
+  falha neste ambiente por um erro pre-existente e nao relacionado (arquivos Deno em
+  `Backup/` sendo varridos pelo typecheck do Next) — confirmado com `git stash` antes desta
+  tarefa.

@@ -2616,9 +2616,11 @@ export function MeasurementPageView() {
         }),
       });
 
-      const data = (await response.json().catch(() => null)) as { message?: string } | null;
+      const data = (await response.json().catch(() => null)) as { message?: string; reason?: string; updatedBy?: string | null } | null;
       if (!response.ok) {
-        throw new Error(data?.message ?? "Falha ao salvar ordem de medicao.");
+        const base = data?.message ?? "Falha ao salvar ordem de medicao.";
+        const detail = data?.reason === "CONCURRENT_MODIFICATION" && data?.updatedBy ? ` (alterada por ${data.updatedBy})` : "";
+        throw new Error(`${base}${detail}`);
       }
 
       setFeedback({ type: "success", message: data?.message ?? "Ordem de medicao salva com sucesso." });
@@ -2719,9 +2721,11 @@ export function MeasurementPageView() {
         body: JSON.stringify({ id: order.id, action, reason: reason.trim(), expectedUpdatedAt: order.updatedAt }),
       });
 
-      const data = (await response.json().catch(() => null)) as { message?: string } | null;
+      const data = (await response.json().catch(() => null)) as { message?: string; reason?: string; updatedBy?: string | null } | null;
       if (!response.ok) {
-        throw new Error(data?.message ?? "Falha ao alterar status da ordem.");
+        const base = data?.message ?? "Falha ao alterar status da ordem.";
+        const detail = data?.reason === "CONCURRENT_MODIFICATION" && data?.updatedBy ? ` (alterada por ${data.updatedBy})` : "";
+        throw new Error(`${base}${detail}`);
       }
 
       setFeedback({ type: "success", message: data?.message ?? "Status atualizado com sucesso." });

@@ -43,7 +43,9 @@ Boas praticas
 - meta separado da lista, com cache 5 min; frontend carrega meta e lista em paralelo.
 - Escrita direta com o client service-role, sempre com escopo .eq(tenant_id) e ator explicito (created_by/updated_by).
 - Historico registrado em toda operacao (CREATE, UPDATE, VERIFY, CANCEL).
-- Lock otimista por updated_at (expectedUpdatedAt) em edicao/verificacao/cancelamento.
+- Lock otimista por updated_at (expectedUpdatedAt) em edicao/verificacao/cancelamento,
+  aplicado de forma atomica na propria clausula WHERE do UPDATE desde 2026-08-15 (ver
+  secao "Atualizacao 2026-08-15" abaixo) — antes disso a checagem era so em memoria.
 
 Cancelamento e conclusao
 - Verificado (Concluido): pelo criador do pedido ou admin/master; grava data_conclusao. So a partir de Pendente.
@@ -163,3 +165,49 @@ Atualizacao 2026-08-03 - `executionDate` agora e anulavel na fachada
 - Arquivos alterados:
   - `src/server/modules/programacao-normalizada/queries.ts`
   - `src/server/modules/cronograma-solicitacoes/queries.ts`
+
+Atualizacao 2026-08-15 - Escrita concorrente deixa de ter janela de corrida real
+--------------------------------------------------------------------------------------------
+- Problema encontrado (auditoria de concorrencia entre telas, disparada por duvida sobre a
+  tela de Medicao): `updateSolicitacao`, `verifySolicitacao` e `cancelSolicitacao` liam o
+  registro (`fetchSolicitacaoById`), decidiam em memoria JS se a acao era permitida
+  (`status === "PENDENTE"`, `expectedUpdatedAt` OPCIONAL — so validado se o cliente
+  mandasse) e so entao faziam `UPDATE ... WHERE tenant_id = X AND id = Y`, sem `status` nem
+  `updated_at` na clausula WHERE e sem `SELECT ... FOR UPDATE`. Cenario real: dois usuarios
+  agindo quase ao mesmo tempo sobre a mesma solicitacao PENDENTE (ex.: um edita, outro
+  cancela) passavam os dois na checagem em memoria; o UPDATE que chegasse por ultimo no
+  Postgres vencia (last-write-wins) sem retornar erro para nenhum dos dois e sem registrar o
+  conflito — unico modulo do sistema com essa lacuna (os demais ja usam RPC com
+  `FOR UPDATE` + `expectedUpdatedAt` obrigatorio).
+- Depois: as tres funcoes passam a condicionar o UPDATE final a
+  `.eq("status", "PENDENTE").eq("updated_at", current.updated_at)` (valor lido pelo proprio
+  handler no inicio da requisicao, nao o que o cliente mandou) e trocam `.single()` por
+  `.maybeSingle()`. Se nenhuma linha for afetada (outra escrita venceu a corrida entre a
+  leitura e este UPDATE), a funcao nova `buildConflictResponse` reconsulta o registro e
+  devolve 409 com `reason: "CONCURRENT_MODIFICATION"`, `currentRecord`, `currentUpdatedAt`,
+  `updatedBy` e `changedFields` (o que esta requisicao tentava mudar). Nao foi necessaria
+  migration nem RPC nova: o UPDATE ja roda pelo client service-role (fora de RLS) e o
+  Postgres resolve a corrida de forma atomica so com a clausula WHERE — mesma garantia
+  pratica de um `SELECT ... FOR UPDATE`, sem reescrever a regra de negocio em PL/pgSQL.
+- A checagem antiga de `expectedUpdatedAt` em memoria (regra 604/700/772 do handlers.ts) foi
+  mantida como falha-rapido opcional (feedback mais cedo quando o cliente envia o campo); a
+  protecao real agora vem do UPDATE condicional, que vale mesmo se o cliente nao enviar
+  `expectedUpdatedAt`.
+- Frontend: `src/modules/dashboard/cronograma-solicitacoes/api.ts`, `parseJson` (usado por
+  `saveSolicitacao`, `verifySolicitacao`, `cancelSolicitacao`) anexa
+  `" (alterada por <nome>")` na mensagem de erro quando `reason === "CONCURRENT_MODIFICATION"`.
+- Arquivos alterados:
+  - `src/server/modules/cronograma-solicitacoes/handlers.ts` (`buildConflictResponse` novo;
+    `updateSolicitacao`, `verifySolicitacao`, `cancelSolicitacao` com UPDATE condicional)
+  - `src/modules/dashboard/cronograma-solicitacoes/api.ts` (`parseJson`)
+- Mesma auditoria cobriu 20+ modulos de escrita do backend (`activities`, `materials`,
+  `people`, `job-titles`, `teams`, `composicao-equipe`, `controle-apr`, `faturamento`,
+  `medicao-asbuilt`, `projects`, `programacao-normalizada`, `stockRequisitions`,
+  `stockTransfers`, `teamStockOperations`, `warehouse-addressing`, `trafo-positions`) — todos
+  ja usam RPC com `FOR UPDATE`/`expectedUpdatedAt` obrigatorio; Cronograma de Solicitacoes
+  era o unico com janela de corrida real. Ver tambem `docs/Tela_Medicao_SaaS.txt`, secao
+  "Atualizacao 2026-08-15" (409 enriquecido, mesma tarefa).
+- Validado com `npx tsc --noEmit` (sem erro nos arquivos tocados) e `npm run lint` (0 erros).
+  `npm run build` falha neste ambiente por um erro pre-existente e nao relacionado (arquivos
+  Deno em `Backup/` sendo varridos pelo typecheck do Next) — confirmado com `git stash` antes
+  desta tarefa.

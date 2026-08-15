@@ -515,6 +515,43 @@ async function loadItemResponse(
   return NextResponse.json({ item: buildItem(row, { projectMap, peopleMap, userMap, estadoMap }, today) });
 }
 
+// Chamada quando o UPDATE condicionado (status='PENDENTE' AND updated_at=<lido>) nao afeta
+// nenhuma linha: outra requisicao already mudou o registro entre a leitura e a escrita desta.
+// Reconsulta o estado atual e devolve 409 com quem alterou e o que esta requisicao tentava mudar,
+// para o cliente decidir se recarrega ou reaplica a edicao.
+async function buildConflictResponse(
+  context: AuthenticatedAppUserContext,
+  solicitacaoId: string,
+  message: string,
+  changedFields: Record<string, { from: string | null; to: string | null }>,
+): Promise<NextResponse> {
+  const { supabase, appUser } = context;
+  const tenantId = appUser.tenant_id;
+  const today = businessToday();
+
+  const fresh = await fetchSolicitacaoById(supabase, tenantId, solicitacaoId);
+  if (!fresh) {
+    return jsonError(message, 409, { reason: "CONCURRENT_MODIFICATION" });
+  }
+
+  const [projectMap, peopleMap, userMap, estadoMap] = await Promise.all([
+    fetchProjectLookupMap(supabase, tenantId, [fresh.projeto_id]),
+    fetchPeopleNameMap(supabase, tenantId, [fresh.responsavel_id]),
+    fetchUserNameMap(supabase, tenantId, [fresh.solicitante_id, fresh.created_by ?? "", fresh.updated_by ?? ""].filter(Boolean)),
+    fetchLatestProgrammingStateMap(supabase, tenantId, [fresh.projeto_id]),
+  ]);
+
+  const currentRecord = buildItem(fresh, { projectMap, peopleMap, userMap, estadoMap }, today);
+
+  return jsonError(message, 409, {
+    reason: "CONCURRENT_MODIFICATION",
+    currentRecord,
+    currentUpdatedAt: currentRecord.updatedAt,
+    updatedBy: currentRecord.updatedByName,
+    changedFields,
+  });
+}
+
 export async function createSolicitacao(
   context: AuthenticatedAppUserContext,
   payload: CreatePayload,
@@ -652,11 +689,21 @@ export async function updateSolicitacao(
     })
     .eq("tenant_id", tenantId)
     .eq("id", current.id)
+    .eq("status", "PENDENTE")
+    .eq("updated_at", current.updated_at)
     .select(SOLICITACAO_SELECT)
-    .single<SolicitacaoRow>();
+    .maybeSingle<SolicitacaoRow>();
 
-  if (error || !updated) {
+  if (error) {
     return jsonError("Falha ao atualizar solicitacao.", 500);
+  }
+  if (!updated) {
+    return buildConflictResponse(
+      context,
+      current.id,
+      "Esta solicitacao foi alterada por outro usuario. Recarregue e tente novamente.",
+      changes,
+    );
   }
 
   if (Object.keys(changes).length > 0) {
@@ -724,11 +771,21 @@ export async function verifySolicitacao(
     })
     .eq("tenant_id", tenantId)
     .eq("id", current.id)
+    .eq("status", "PENDENTE")
+    .eq("updated_at", current.updated_at)
     .select(SOLICITACAO_SELECT)
-    .single<SolicitacaoRow>();
+    .maybeSingle<SolicitacaoRow>();
 
-  if (error || !updated) {
+  if (error) {
     return jsonError("Falha ao verificar solicitacao.", 500);
+  }
+  if (!updated) {
+    return buildConflictResponse(
+      context,
+      current.id,
+      "Esta solicitacao foi alterada por outro usuario. Recarregue e tente novamente.",
+      { status: { from: current.status, to: "CONCLUIDO" } },
+    );
   }
 
   await insertHistory(supabase, {
@@ -782,11 +839,21 @@ export async function cancelSolicitacao(
     })
     .eq("tenant_id", tenantId)
     .eq("id", current.id)
+    .eq("status", "PENDENTE")
+    .eq("updated_at", current.updated_at)
     .select(SOLICITACAO_SELECT)
-    .single<SolicitacaoRow>();
+    .maybeSingle<SolicitacaoRow>();
 
-  if (error || !updated) {
+  if (error) {
     return jsonError("Falha ao cancelar solicitacao.", 500);
+  }
+  if (!updated) {
+    return buildConflictResponse(
+      context,
+      current.id,
+      "Esta solicitacao foi alterada por outro usuario. Recarregue e tente novamente.",
+      { status: { from: current.status, to: "CANCELADO" } },
+    );
   }
 
   await insertHistory(supabase, {
