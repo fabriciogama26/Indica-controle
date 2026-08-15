@@ -2,11 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
-import {
-  buildConcurrencyConflictResponse,
-  hasUpdatedAtConflict,
-  normalizeExpectedUpdatedAt,
-} from "@/lib/server/concurrency";
+import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
 import { parsePagination } from "@/lib/server/apiHelpers";
 
 type JobTitleRow = {
@@ -117,10 +113,6 @@ function normalizeList(value: unknown) {
   return Array.from(new Map(items.map((item) => [item.toLocaleUpperCase("pt-BR"), item])).values());
 }
 
-function toPostgrestTextList(values: string[]) {
-  return `(${values.map((value) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`).join(",")})`;
-}
-
 function normalizeHistoryChanges(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return {} as Record<string, HistoryChange>;
@@ -155,20 +147,6 @@ function formatComparableValue(value: unknown) {
   return normalized || null;
 }
 
-function addChange(
-  changes: Record<string, HistoryChange>,
-  field: string,
-  previousValue: unknown,
-  nextValue: unknown,
-) {
-  const from = formatComparableValue(previousValue);
-  const to = formatComparableValue(nextValue);
-  if (from === to) {
-    return;
-  }
-  changes[field] = { from, to };
-}
-
 function buildUserDisplayMap(users: AppUserRow[]) {
   return new Map(
     users.map((user) => [
@@ -182,26 +160,6 @@ function buildUserLoginNameMap(users: AppUserRow[]) {
   return new Map(
     users.map((user) => [user.id, normalizeText(user.login_name) || "Nao identificado"]),
   );
-}
-
-function mapDbError(error: unknown, fallbackMessage: string) {
-  const details = [
-    (error as { message?: string | null })?.message,
-    (error as { hint?: string | null })?.hint,
-    (error as { details?: string | null })?.details,
-  ]
-    .map((item) => normalizeText(item))
-    .filter(Boolean)
-    .join(" | ");
-
-  const normalized = details.toLowerCase();
-  if (normalized.includes("duplicate key") || normalized.includes("job_titles_tenant_id_code_key")) {
-    return { status: 409, message: "Ja existe cargo com este codigo no tenant atual." } as const;
-  }
-  if (normalized.includes("job_title_types")) {
-    return { status: 409, message: "Ja existe tipo duplicado para este cargo." } as const;
-  }
-  return { status: 500, message: details ? `${fallbackMessage} ${details}` : fallbackMessage } as const;
 }
 
 async function fetchJobTitleById(
@@ -223,27 +181,6 @@ async function fetchJobTitleById(
   return data;
 }
 
-async function fetchActiveTypes(
-  supabase: SupabaseClient,
-  tenantId: string,
-  jobTitleId: string,
-) {
-  const { data, error } = await supabase
-    .from("job_title_types")
-    .select("id, job_title_id, code, name, ativo")
-    .eq("tenant_id", tenantId)
-    .eq("job_title_id", jobTitleId)
-    .eq("ativo", true)
-    .order("name", { ascending: true })
-    .returns<JobTitleTypeRow[]>();
-
-  if (error) {
-    return [] as JobTitleTypeRow[];
-  }
-
-  return data ?? [];
-}
-
 async function fetchActiveLevels(supabase: SupabaseClient, tenantId: string) {
   const { data, error } = await supabase
     .from("job_levels")
@@ -258,116 +195,6 @@ async function fetchActiveLevels(supabase: SupabaseClient, tenantId: string) {
   }
 
   return data ?? [];
-}
-
-async function syncJobTitleTypes(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  jobTitleId: string;
-  typeNames: string[];
-}) {
-  const { supabase, tenantId, actorUserId, jobTitleId, typeNames } = params;
-  const typeRows = typeNames.map((name) => ({
-    tenant_id: tenantId,
-    job_title_id: jobTitleId,
-    code: normalizeCode(name),
-    name,
-    ativo: true,
-    updated_by: actorUserId,
-  }));
-  const typeCodes = typeRows.map((item) => item.code);
-
-  if (typeRows.length > 0) {
-    const { error } = await supabase
-      .from("job_title_types")
-      .upsert(typeRows, { onConflict: "tenant_id,job_title_id,code" });
-    if (error) {
-      return { ok: false, error } as const;
-    }
-  }
-
-  let deactivateQuery = supabase
-    .from("job_title_types")
-    .update({ ativo: false, updated_by: actorUserId })
-    .eq("tenant_id", tenantId)
-    .eq("job_title_id", jobTitleId);
-
-  if (typeCodes.length > 0) {
-    deactivateQuery = deactivateQuery.not("code", "in", toPostgrestTextList(typeCodes));
-  }
-
-  const { error: deactivateError } = await deactivateQuery;
-  if (deactivateError) {
-    return { ok: false, error: deactivateError } as const;
-  }
-
-  return { ok: true } as const;
-}
-
-async function syncJobLevels(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  levelNames: string[];
-}) {
-  const { supabase, tenantId, actorUserId, levelNames } = params;
-  const levelRows = levelNames.map((level) => ({
-    tenant_id: tenantId,
-    level,
-    ativo: true,
-    updated_by: actorUserId,
-  }));
-
-  if (levelRows.length > 0) {
-    const { error } = await supabase
-      .from("job_levels")
-      .upsert(levelRows, { onConflict: "tenant_id,level" });
-    if (error) {
-      return { ok: false, error } as const;
-    }
-  }
-
-  let deactivateQuery = supabase
-    .from("job_levels")
-    .update({ ativo: false, updated_by: actorUserId })
-    .eq("tenant_id", tenantId);
-
-  if (levelNames.length > 0) {
-    deactivateQuery = deactivateQuery.not("level", "in", toPostgrestTextList(levelNames));
-  }
-
-  const { error: deactivateError } = await deactivateQuery;
-  if (deactivateError) {
-    return { ok: false, error: deactivateError } as const;
-  }
-
-  return { ok: true } as const;
-}
-
-async function insertHistory(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  jobTitleId: string;
-  entityCode: string;
-  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
-  reason?: string | null;
-  changes: Record<string, HistoryChange>;
-}) {
-  await params.supabase.from("app_entity_history").insert({
-    tenant_id: params.tenantId,
-    module_key: "cargo",
-    entity_table: "job_titles",
-    entity_id: params.jobTitleId,
-    entity_code: params.entityCode,
-    change_type: params.changeType,
-    reason: params.reason ?? null,
-    changes: params.changes,
-    metadata: {},
-    created_by: params.actorUserId,
-    updated_by: params.actorUserId,
-  });
 }
 
 export async function GET(request: NextRequest) {
@@ -573,10 +400,21 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+type SaveJobTitleRpcResult = {
+  success?: boolean;
+  status?: number;
+  reason?: string;
+  message?: string;
+  job_title_id?: string;
+  updated_at?: string;
+};
+
+type SetJobTitleStatusRpcResult = SaveJobTitleRpcResult;
+
+async function saveJobTitle(request: NextRequest, method: "POST" | "PUT") {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para cadastrar cargo.",
+      invalidSessionMessage: method === "POST" ? "Sessao invalida para cadastrar cargo." : "Sessao invalida para editar cargo.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -586,84 +424,7 @@ export async function POST(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as SaveJobTitlePayload;
-    const input = {
-      code: normalizeCode(body.code),
-      name: normalizeText(body.name),
-      typeNames: normalizeList(body.types),
-      levelNames: normalizeList(body.levels),
-    };
-
-    if (!input.code || !input.name || input.typeNames.length === 0) {
-      return NextResponse.json({ message: "Preencha codigo, nome e ao menos um tipo do cargo." }, { status: 400 });
-    }
-
-    const { data: insertedJobTitle, error: insertError } = await supabase
-      .from("job_titles")
-      .insert({
-        tenant_id: appUser.tenant_id,
-        code: input.code,
-        name: input.name,
-        ativo: true,
-        cancellation_reason: null,
-        canceled_at: null,
-        canceled_by: null,
-        created_by: appUser.id,
-        updated_by: appUser.id,
-      })
-      .select("id, updated_at")
-      .single<{ id: string; updated_at: string }>();
-
-    if (insertError || !insertedJobTitle) {
-      const mapped = mapDbError(insertError, "Falha ao cadastrar cargo.");
-      return NextResponse.json({ message: mapped.message }, { status: mapped.status });
-    }
-
-    const typeResult = await syncJobTitleTypes({
-      supabase,
-      tenantId: appUser.tenant_id,
-      actorUserId: appUser.id,
-      jobTitleId: insertedJobTitle.id,
-      typeNames: input.typeNames,
-    });
-    if (!typeResult.ok) {
-      const mapped = mapDbError(typeResult.error, "Falha ao salvar tipos do cargo.");
-      return NextResponse.json({ message: mapped.message }, { status: mapped.status });
-    }
-
-    const levelResult = await syncJobLevels({
-      supabase,
-      tenantId: appUser.tenant_id,
-      actorUserId: appUser.id,
-      levelNames: input.levelNames,
-    });
-    if (!levelResult.ok) {
-      const mapped = mapDbError(levelResult.error, "Falha ao salvar niveis do tenant.");
-      return NextResponse.json({ message: mapped.message }, { status: mapped.status });
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: `Cargo ${input.name} cadastrado com sucesso.`,
-    });
-  } catch {
-    return NextResponse.json({ message: "Falha ao cadastrar cargo." }, { status: 500 });
-  }
-}
-
-export async function PUT(request: NextRequest) {
-  try {
-    const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para editar cargo.",
-      inactiveMessage: "Usuario inativo.",
-    });
-
-    if ("error" in resolution) {
-      return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
-    }
-
-    const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as SaveJobTitlePayload;
-    const jobTitleId = normalizeText(body.id);
+    const jobTitleId = method === "PUT" ? normalizeText(body.id) : null;
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const input = {
       code: normalizeCode(body.code),
@@ -672,99 +433,55 @@ export async function PUT(request: NextRequest) {
       levelNames: normalizeList(body.levels),
     };
 
-    if (!jobTitleId) {
+    if (method === "PUT" && !jobTitleId) {
       return NextResponse.json({ message: "Cargo invalido para edicao." }, { status: 400 });
     }
-    if (!expectedUpdatedAt) {
+    if (method === "PUT" && !expectedUpdatedAt) {
       return NextResponse.json({ message: "Atualize a lista antes de editar o cargo." }, { status: 400 });
     }
     if (!input.code || !input.name || input.typeNames.length === 0) {
       return NextResponse.json({ message: "Preencha codigo, nome e ao menos um tipo do cargo." }, { status: 400 });
     }
 
-    const currentJobTitle = await fetchJobTitleById(supabase, appUser.tenant_id, jobTitleId);
-    if (!currentJobTitle) {
-      return NextResponse.json({ message: "Cargo nao encontrado." }, { status: 404 });
-    }
-    if (hasUpdatedAtConflict(expectedUpdatedAt, currentJobTitle.updated_at)) {
-      return buildConcurrencyConflictResponse(
-        `O cargo ${currentJobTitle.name} foi alterado por outro usuario. Recarregue os dados antes de salvar novamente.`,
-      );
-    }
-    if (!currentJobTitle.ativo) {
-      return buildConcurrencyConflictResponse("Ative o cargo antes de editar.", "RECORD_INACTIVE");
-    }
+    const types = input.typeNames.map((name) => ({ code: normalizeCode(name), name }));
 
-    const [currentTypes, currentLevels] = await Promise.all([
-      fetchActiveTypes(supabase, appUser.tenant_id, jobTitleId),
-      fetchActiveLevels(supabase, appUser.tenant_id),
-    ]);
-
-    const changes: Record<string, HistoryChange> = {};
-    addChange(changes, "code", currentJobTitle.code, input.code);
-    addChange(changes, "name", currentJobTitle.name, input.name);
-    addChange(changes, "types", currentTypes.map((item) => item.name), input.typeNames);
-    addChange(changes, "levels", currentLevels.map((item) => item.level), input.levelNames);
-
-    const { error: updateError } = await supabase
-      .from("job_titles")
-      .update({
-        code: input.code,
-        name: input.name,
-        updated_by: appUser.id,
-      })
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", jobTitleId);
-
-    if (updateError) {
-      const mapped = mapDbError(updateError, "Falha ao editar cargo.");
-      return NextResponse.json({ message: mapped.message }, { status: mapped.status });
-    }
-
-    const typeResult = await syncJobTitleTypes({
-      supabase,
-      tenantId: appUser.tenant_id,
-      actorUserId: appUser.id,
-      jobTitleId,
-      typeNames: input.typeNames,
+    const { data, error } = await supabase.rpc("save_job_title_record", {
+      p_tenant_id: appUser.tenant_id,
+      p_actor_user_id: appUser.id,
+      p_job_title_id: jobTitleId,
+      p_code: input.code,
+      p_name: input.name,
+      p_types: types,
+      p_levels: input.levelNames,
+      p_expected_updated_at: expectedUpdatedAt,
     });
-    if (!typeResult.ok) {
-      const mapped = mapDbError(typeResult.error, "Falha ao salvar tipos do cargo.");
-      return NextResponse.json({ message: mapped.message }, { status: mapped.status });
+
+    if (error) {
+      return NextResponse.json({ message: `Falha ao salvar cargo. ${error.message}`.trim() }, { status: 500 });
     }
 
-    const levelResult = await syncJobLevels({
-      supabase,
-      tenantId: appUser.tenant_id,
-      actorUserId: appUser.id,
-      levelNames: input.levelNames,
-    });
-    if (!levelResult.ok) {
-      const mapped = mapDbError(levelResult.error, "Falha ao salvar niveis do tenant.");
-      return NextResponse.json({ message: mapped.message }, { status: mapped.status });
-    }
-
-    if (Object.keys(changes).length > 0) {
-      await insertHistory({
-        supabase,
-        tenantId: appUser.tenant_id,
-        actorUserId: appUser.id,
-        jobTitleId,
-        entityCode: input.code,
-        changeType: "UPDATE",
-        changes,
-      });
+    const result = (data ?? {}) as SaveJobTitleRpcResult;
+    if (result.success !== true) {
+      return NextResponse.json({ message: result.message ?? "Falha ao salvar cargo.", reason: result.reason ?? null }, { status: Number(result.status ?? 400) });
     }
 
     return NextResponse.json({
       success: true,
-      message: Object.keys(changes).length > 0
-        ? `Cargo ${input.name} atualizado com sucesso.`
-        : `Nenhuma alteracao detectada para ${currentJobTitle.name}.`,
+      jobTitleId: result.job_title_id,
+      updatedAt: result.updated_at,
+      message: result.message ?? "Cargo salvo com sucesso.",
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao editar cargo." }, { status: 500 });
+    return NextResponse.json({ message: method === "POST" ? "Falha ao cadastrar cargo." : "Falha ao editar cargo." }, { status: 500 });
   }
+}
+
+export async function POST(request: NextRequest) {
+  return saveJobTitle(request, "POST");
+}
+
+export async function PUT(request: NextRequest) {
+  return saveJobTitle(request, "PUT");
 }
 
 export async function PATCH(request: NextRequest) {
@@ -798,65 +515,29 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const currentJobTitle = await fetchJobTitleById(supabase, appUser.tenant_id, jobTitleId);
-    if (!currentJobTitle) {
-      return NextResponse.json({ message: "Cargo nao encontrado." }, { status: 404 });
-    }
-    if (hasUpdatedAtConflict(expectedUpdatedAt, currentJobTitle.updated_at)) {
-      return buildConcurrencyConflictResponse(
-        `O cargo ${currentJobTitle.name} foi alterado por outro usuario. Recarregue os dados antes de alterar o status.`,
-      );
-    }
-    if (action === "CANCEL" && !currentJobTitle.ativo) {
-      return buildConcurrencyConflictResponse(`Cargo ${currentJobTitle.name} ja esta inativo.`, "STATUS_ALREADY_CHANGED");
-    }
-    if (action === "ACTIVATE" && currentJobTitle.ativo) {
-      return buildConcurrencyConflictResponse(`Cargo ${currentJobTitle.name} ja esta ativo.`, "STATUS_ALREADY_CHANGED");
-    }
-
-    const now = new Date().toISOString();
-    const nextIsActive = action === "ACTIVATE";
-    const { error: updateError } = await supabase
-      .from("job_titles")
-      .update({
-        ativo: nextIsActive,
-        cancellation_reason: nextIsActive ? null : reason,
-        canceled_at: nextIsActive ? null : now,
-        canceled_by: nextIsActive ? null : appUser.id,
-        updated_by: appUser.id,
-      })
-      .eq("tenant_id", appUser.tenant_id)
-      .eq("id", jobTitleId);
-
-    if (updateError) {
-      const mapped = mapDbError(updateError, "Falha ao atualizar status do cargo.");
-      return NextResponse.json({ message: mapped.message }, { status: mapped.status });
-    }
-
-    const changes: Record<string, HistoryChange> = {};
-    addChange(changes, "isActive", currentJobTitle.ativo, nextIsActive);
-    addChange(changes, "cancellationReason", currentJobTitle.cancellation_reason, nextIsActive ? null : reason);
-    addChange(changes, "canceledAt", currentJobTitle.canceled_at, nextIsActive ? null : now);
-    if (nextIsActive) {
-      addChange(changes, "activationReason", null, reason);
-    }
-
-    await insertHistory({
-      supabase,
-      tenantId: appUser.tenant_id,
-      actorUserId: appUser.id,
-      jobTitleId,
-      entityCode: currentJobTitle.code,
-      changeType: action,
-      reason,
-      changes,
+    const { data, error } = await supabase.rpc("set_job_title_record_status", {
+      p_tenant_id: appUser.tenant_id,
+      p_actor_user_id: appUser.id,
+      p_job_title_id: jobTitleId,
+      p_action: action,
+      p_reason: reason,
+      p_expected_updated_at: expectedUpdatedAt,
     });
+
+    if (error) {
+      return NextResponse.json({ message: "Falha ao atualizar status do cargo." }, { status: 500 });
+    }
+
+    const result = (data ?? {}) as SetJobTitleStatusRpcResult;
+    if (result.success !== true) {
+      return NextResponse.json({ message: result.message ?? "Falha ao atualizar status do cargo.", reason: result.reason ?? null }, { status: Number(result.status ?? 400) });
+    }
 
     return NextResponse.json({
       success: true,
-      message: nextIsActive
-        ? `Cargo ${currentJobTitle.name} ativado com sucesso.`
-        : `Cargo ${currentJobTitle.name} cancelado com sucesso.`,
+      jobTitleId: result.job_title_id,
+      updatedAt: result.updated_at,
+      message: result.message ?? "Status do cargo atualizado com sucesso.",
     });
   } catch {
     return NextResponse.json({ message: "Falha ao atualizar status do cargo." }, { status: 500 });

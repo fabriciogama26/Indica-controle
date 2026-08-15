@@ -97,6 +97,61 @@ Atualizacao 2026-05
 - Depois: a edicao e a troca de status passam a recusar dados stale em vez de aplicar `last-write-wins`.
 - Depois: erros de tela sao registrados com `useErrorLogger('cargo')`.
 
+Atualizacao 2026-08-15 - Migrado para RPC + niveis passam a ser por cargo (achados CRITICOS #1 e #2 da auditoria de concorrencia)
+--------------------------------------------------------------------------------------------
+- CORRECAO DE DIVERGENCIA (guia_backend.md secao 12): a linha acima ("recusa dados stale
+  em vez de last-write-wins") descrevia a INTENCAO, mas nao o que o codigo fazia de fato
+  ate esta migration. `PUT`/`PATCH /api/job-titles` liam o cargo, comparavam
+  `expectedUpdatedAt` EM MEMORIA (JS), e gravavam com `UPDATE ... WHERE id = X` sem
+  `.eq("updated_at", ...)` nem `SELECT ... FOR UPDATE` -- Cargos era o UNICO modulo do
+  sistema sem RPC. Duas edicoes quase simultaneas do mesmo cargo passavam as duas no
+  pre-check (nenhuma ainda tinha escrito) e a segunda sobrescrevia a primeira sem erro
+  para ninguem -- lost update real, nao so hipotetico (Auditoria-Concorrencia/2026-08-15-relatorio.md, achado CRITICO #1).
+- Achado CRITICO #2, mesma auditoria: o campo "Niveis" do formulario de QUALQUER cargo
+  editava `job_levels`, um catalogo UNICO POR TENANT (chave `(tenant_id, level)`, sem
+  `job_title_id`) -- salvar o Cargo A com uma lista de niveis podia desativar niveis que
+  o Cargo B tinha acabado de (re)ativar, porque a rotina reescrevia a lista inteira do
+  tenant a cada save de um cargo qualquer.
+- Correcao (`supabase/migrations/371_job_title_levels_and_concurrency_rpc.sql`):
+  * Nova tabela `job_title_levels` (`tenant_id, job_title_id, level`), mesmo padrao de
+    `job_title_types` (migration 047). Cada cargo agora so mexe nos proprios niveis.
+  * Backfill a partir de `people` (unica fonte confiavel de "qual cargo usa qual
+    nivel" -- o catalogo antigo nao registrava isso). Niveis do catalogo antigo sem
+    nenhuma pessoa usando ficam de fora do backfill automatico (sem `job_title_id`
+    conhecido) e sao listados via `raise notice` por tenant, para reconfiguracao manual
+    apos o deploy -- nao apagados silenciosamente, `job_levels` (tabela antiga)
+    permanece intacta nesta migration.
+  * `people.job_level` muda de FK simples `(tenant_id, level)` para FK composta
+    `(tenant_id, job_title_id, job_level)`.
+  * RPCs novas `save_job_title_record`/`set_job_title_record_status`: `SELECT ... FOR
+    UPDATE` + `expectedUpdatedAt` obrigatorio (RPC rejeita nulo, nao so o handler),
+    gravando cargo + tipos + niveis + historico (`app_entity_history`) na MESMA
+    transacao (guia_backend.md regra 11) -- antes eram 3 a 4 chamadas separadas do Node
+    (insert/update do cargo, upsert de tipos, upsert de niveis, insert de historico),
+    sem atomicidade entre elas.
+- `src/app/api/job-titles/route.ts`: `POST`/`PUT` agora chamam `save_job_title_record`;
+  `PATCH` chama `set_job_title_record_status`. Codigo morto removido:
+  `syncJobTitleTypes`, `syncJobLevels`, `insertHistory`, `mapDbError`, `addChange`,
+  `toPostgrestTextList`, `fetchActiveTypes` (logica movida para a RPC ou ja duplicada
+  em outro ponto do arquivo).
+- Mudanca de contrato do payload de erro: `{ message, code }` (do helper generico
+  `buildConcurrencyConflictResponse`) virou `{ message, reason }`, igual ao resto do
+  sistema (Medicao, Materiais, Faturamento, Projetos etc.). `JobTitlesPageView.tsx`
+  atualizado para ler `data.reason` em vez de `data.code` nos dois pontos (salvar e
+  trocar status).
+- Arquivos alterados: `supabase/migrations/371_job_title_levels_and_concurrency_rpc.sql`,
+  `src/app/api/job-titles/route.ts`, `src/modules/dashboard/cargo/JobTitlesPageView.tsx`.
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; arquivo de rota encolheu,
+  sem crescimento de baseline). SQL validado por leitura estrutural cuidadosa (mesmo
+  padrao ja usado em `save_material_record`/`set_material_record_status` e nas RPCs de
+  Projetos/APR/Programacao desta mesma tarefa) -- `db:lint`/`db:migration-list`
+  bloqueados pelo 403 conhecido do CLI. Migration pendente de aplicacao no Supabase.
+  Validacao manual pendente apos deploy: (1) duas abas editando o mesmo cargo
+  simultaneamente, confirmar 409 explicito para o perdedor; (2) editar Cargo A e Cargo B
+  com listas de niveis diferentes quase ao mesmo tempo, confirmar que os niveis de um
+  nao desaparecem por causa do outro; (3) conferir os `raise notice` da migration para
+  saber se algum tenant tem niveis orfaos a reconfigurar manualmente.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
