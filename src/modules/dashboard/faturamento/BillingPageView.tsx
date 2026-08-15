@@ -8,6 +8,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { BILLING_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   ActivityOption,
@@ -121,6 +122,7 @@ export function BillingPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("faturamento");
   const exportCooldown = useExportCooldown();
+  const createOrderIdempotency = useIdempotencyKey();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonOption[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityOption[]>([]);
@@ -437,7 +439,7 @@ export function BillingPageView() {
     try {
       const response = await fetch("/api/faturamento", {
         method: form.id ? "PUT" : "POST",
-        headers: authHeaders,
+        headers: form.id ? authHeaders : { ...authHeaders, "Idempotency-Key": createOrderIdempotency.getKey() },
         body: JSON.stringify({
           id: form.id,
           projectId: form.projectId,
@@ -454,6 +456,9 @@ export function BillingPageView() {
         throw createApiError(payload, "Falha ao salvar faturamento.");
       }
 
+      if (!form.id) {
+        createOrderIdempotency.reset();
+      }
       setSuccess(payload.message ?? "Faturamento salvo com sucesso.");
       resetForm();
       await loadOrders(1);

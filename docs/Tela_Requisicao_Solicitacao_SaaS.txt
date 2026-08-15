@@ -98,3 +98,22 @@ Atualizacao 2026-07
 - Permissoes: pagina `requisicao-solicitacao` (actions read/create/cancel), nasce bloqueada para nao-admin.
 - Hardening: migration 298 revoga EXECUTE de `public`/`anon`/`authenticated` nas RPCs SECURITY DEFINER
   de requisicao; chamadas continuam somente pelos Route Handlers com `service_role`.
+
+Atualizacao 2026-08-15 - Idempotencia na criacao (achado MEDIO da auditoria de concorrencia)
+--------------------------------------------------------------------------------------------
+- Problema (Auditoria-Concorrencia/2026-08-15-relatorio.md): `POST /api/stock-requisitions`
+  (criar solicitacao) nao usava `withIdempotency`, diferente de `claim`/`fulfill`/`cancel`
+  no mesmo dominio de estoque. A unica protecao contra duplicidade era um `EXISTS` sem
+  lock (`DUPLICATE_MATERIAL_IN_OPEN_REQUEST`, RPC `create_stock_requisition_request`),
+  que nao ve requisicoes de outra transacao ainda nao commitada — duplo clique/retry
+  verdadeiramente simultaneo podia criar 2 pedidos `PENDING` identicos.
+- Correcao: `src/app/api/stock-requisitions/route.ts` `POST` foi dividido num wrapper fino
+  (pre-auth + `withIdempotency(request, tenantId, actorUserId,
+  "/api/stock-requisitions:CREATE", ...)`) e `handleCreateStockRequisition` (mesmo corpo
+  de antes) — mesmo padrao ja usado em `claim/route.ts` no mesmo modulo.
+- Frontend: `src/modules/dashboard/requisicao-solicitacao/SolicitationPageView.tsx` ganha
+  `createIdempotency = useIdempotencyKey()` e envia `Idempotency-Key` na criacao (ja
+  existia so para `cancel`). Chave resetada apos sucesso.
+- Arquivos alterados: `src/app/api/stock-requisitions/route.ts`,
+  `src/modules/dashboard/requisicao-solicitacao/SolicitationPageView.tsx`.
+- Validado com `npx tsc --noEmit` (sem erro) e `npm run lint` (0 erros).

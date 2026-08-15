@@ -12,7 +12,7 @@
     "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1714,
     "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3697,
     "src/modules/dashboard/equipes/TeamsPageView.tsx": 1637,
-    "src/modules/dashboard/faturamento/BillingPageView.tsx": 1239,
+    "src/modules/dashboard/faturamento/BillingPageView.tsx": 1244,
     "src/modules/dashboard/locacao/LocationPageView.tsx": 1960,
     "src/modules/dashboard/materiais/MaterialsPageView.tsx": 1704,
     "src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx": 1250,

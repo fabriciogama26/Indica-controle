@@ -61,6 +61,7 @@ export function SolicitationPageView() {
     [token],
   );
   const cancelIdempotency = useIdempotencyKey();
+  const createIdempotency = useIdempotencyKey();
 
   const loadMeta = useCallback(async () => {
     if (!token) return;
@@ -191,7 +192,7 @@ export function SolicitationPageView() {
       try {
         const response = await fetch("/api/stock-requisitions", {
           method: "POST",
-          headers: authHeaders,
+          headers: { ...authHeaders, "Idempotency-Key": createIdempotency.getKey() },
           body: JSON.stringify({
             stockCenterId,
             teamId,
@@ -206,6 +207,7 @@ export function SolicitationPageView() {
           setFeedback({ type: "error", message: data.message ?? "Falha ao registrar a solicitacao." });
           return;
         }
+        createIdempotency.reset();
         setFeedback({ type: "ok", message: "Solicitacao registrada com sucesso." });
         setItems([]);
         setNotes("");
@@ -216,7 +218,7 @@ export function SolicitationPageView() {
         setIsSaving(false);
       }
     },
-    [authHeaders, items, loadList, notes, projectByCode, projectQuery, requestDate, stockCenterId, teamId],
+    [authHeaders, createIdempotency, items, loadList, notes, projectByCode, projectQuery, requestDate, stockCenterId, teamId],
   );
 
   const handleCancel = useCallback(

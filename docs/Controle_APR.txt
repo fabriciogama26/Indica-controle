@@ -178,3 +178,22 @@ Atualizacao 2026-07-31 - Fase 5a do corte: match lendo Programacao Normalizada
   ordem corrigida para DROP da constraint antiga -> UPDATE -> ADD da constraint
   nova. Ver TASKS.md para o detalhe (a 344/Cronograma tem a mesma ordem
   latente, sem sintoma so porque a remessa dela e 0 linhas hoje).
+
+Atualizacao 2026-08-15 - Lock canonico por projeto (achado MEDIO da auditoria de concorrencia)
+--------------------------------------------------------------------------------------------
+- Problema (Auditoria-Concorrencia/2026-08-15-relatorio.md): `save_project_apr_control`
+  lia `project.is_active` sem lock nenhum (nem `for update`, nem advisory lock) antes de
+  criar/editar uma APR. Se o cancelamento do projeto (via `set_project_record_status`,
+  que trava `project` com `for update`) commitasse entre essa leitura e o insert, a APR
+  ficava presa a um projeto ja inativo.
+- Correcao: `supabase/migrations/370_project_programming_apr_shared_lock.sql` adiciona
+  `perform pg_advisory_xact_lock(hashtextextended(p_tenant_id::text || ':' ||
+  p_project_id::text, 0))` no inicio de `save_project_apr_control`, antes da leitura de
+  `project.is_active` — o mesmo lock canonico ja usado pelas RPCs de Programacao
+  Normalizada e agora tambem por `set_project_record_status`. Criar/editar APR passa a
+  serializar corretamente contra cancelamento de projeto concorrente.
+- Sem mudanca de contrato, payload ou schema — so a linha do lock.
+- Arquivos alterados: `supabase/migrations/370_project_programming_apr_shared_lock.sql`.
+- Validado por leitura estrutural do SQL; `db:lint`/`db:migration-list` bloqueados pelo
+  mesmo 403 ja registrado acima. Validacao manual pendente: duas abas, cancelar o
+  projeto numa e criar/editar APR para o mesmo projeto na outra quase ao mesmo tempo.
