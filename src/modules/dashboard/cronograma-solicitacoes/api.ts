@@ -23,9 +23,15 @@ function authHeaders(token: string, json = false): HeadersInit {
 }
 
 async function parseJson<T>(response: Response, fallbackMessage: string): Promise<T> {
-  const data = (await response.json().catch(() => ({}))) as T & { message?: string };
+  const data = (await response.json().catch(() => ({}))) as T & {
+    message?: string;
+    reason?: string;
+    updatedBy?: string | null;
+  };
   if (!response.ok) {
-    throw new Error(data.message ?? fallbackMessage);
+    const base = data.message ?? fallbackMessage;
+    const detail = data.reason === "CONCURRENT_MODIFICATION" && data.updatedBy ? ` (alterada por ${data.updatedBy})` : "";
+    throw new Error(`${base}${detail}`);
   }
   return data;
 }
