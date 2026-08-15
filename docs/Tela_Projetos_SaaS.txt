@@ -788,3 +788,40 @@ IMPACTO MEDIDO EM PRODUCAO (2026-07-29)
   - `src/app/api/dash-operacional-faturamento/route.ts`
   - `src/server/modules/dashboard-measurement/controller.ts`
   - `src/server/modules/dashboard-portfolio/controller.ts`
+
+Atualizacao 2026-08-15 - Lock canonico por projeto (Cancelar x Programacao/APR)
+--------------------------------------------------------------------------------------------
+- Problema (Auditoria-Concorrencia/2026-08-15-relatorio.md, achado CRITICO #4 e MEDIO
+  #5): `set_project_record_status` (cancelar/ativar projeto) trava a linha de `project`
+  com `for update`, mas sua re-checagem interna de "programacao pendente" consultava
+  `public.project_programming` — a tabela LEGADA, sem escrita viva desde o corte Fase
+  3b/3a acima. O guard real era so o pre-check em JS (`countActiveStagesForProject`, ja
+  correto contra `programming`), que roda ANTES da RPC e sem lock nenhum — e as RPCs de
+  criar/reabrir etapa (Programacao Normalizada) so tomam um advisory lock com chave
+  diferente. As duas operacoes nao se bloqueavam: cancelar o projeto e criar/reabrir uma
+  etapa quase ao mesmo tempo podia terminar com projeto CANCELADO e etapa PROGRAMADA
+  ativa. `save_project_apr_control` tinha o mesmo problema pela outra ponta: lia
+  `project.is_active` sem lock nenhum antes de criar/editar APR.
+- Correcao: `supabase/migrations/370_project_programming_apr_shared_lock.sql` estende o
+  MESMO lock canonico ja usado pelas RPCs de Programacao Normalizada
+  (`pg_advisory_xact_lock(hashtextextended(tenant_id::text || ':' || project_id::text,
+  0))`, migrations 318/322/337/340/369) para `set_project_record_status` (acao CANCEL) e
+  `save_project_apr_control`, e troca a re-checagem interna de `set_project_record_status`
+  de `project_programming` para `programming`, incluindo o status `REPROGRAMADA` que
+  faltava. As 4 operacoes (cancelar projeto, criar/reabrir etapa, criar/editar APR) ficam
+  mutuamente exclusivas por `(tenant, project)`, sem RPC nova nem mudanca de contrato.
+- Achado registrado, NAO corrigido nesta migration: `233_harden_projects_programming_cross_flow.sql`
+  ja criou 2 triggers (`enforce_programming_active_project`,
+  `prevent_project_inactivation_with_active_programming`) com advisory lock proprio para
+  essa mesma fronteira, mas vigiando `project_programming` (legada) — continuam
+  instalados e ativos, so que sem efeito pratico hoje porque a tabela que vigiam nao
+  recebe mais escrita. Redirecionar ou remover esses triggers fica para uma investigacao
+  separada (confirmar antes que nada mais depende do comportamento atual sobre a tabela
+  legada).
+- Arquivos alterados: `supabase/migrations/370_project_programming_apr_shared_lock.sql`.
+- Validado por leitura estrutural do SQL (mesmo padrao ja usado nas migrations 318/322/
+  337/340/369/350); `npm run db:lint`/`db:migration-list` bloqueados neste ambiente por
+  403 de permissao de conta no CLI (limitacao pre-existente). Validacao manual pendente:
+  duas abas, cancelar projeto numa e criar/reabrir etapa (ou criar APR) na outra quase ao
+  mesmo tempo — confirmar que uma espera a outra e a que perde recebe erro de negocio
+  coerente, nunca as duas com sucesso.

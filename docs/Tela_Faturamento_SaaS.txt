@@ -302,3 +302,29 @@ Atualizacao 2026-08-10 - Mapeamento de tabelas Supabase:
 - Antes: a doc citava a migration e alguns catalogos, mas nao respondia explicitamente quais tabelas Supabase sustentam a tela.
 - Depois: incluida a secao `Banco/Supabase`, separando tabelas principais (`project_billing_orders`, `project_billing_order_items`, `project_billing_order_history`), tabelas auxiliares, RPCs e preservacao multi-tenant.
 - Multi-tenant: mudanca somente documental; nenhuma alteracao em schema, RLS, permissao, rota ou frontend.
+
+Atualizacao 2026-08-15 - Idempotencia na criacao (achado CRITICO da auditoria de concorrencia)
+--------------------------------------------------------------------------------------------
+- Problema (Auditoria-Concorrencia/2026-08-15-relatorio.md, achado CRITICO #3): `POST
+  /api/faturamento` nao usava `withIdempotency`; `save_project_billing_order` sempre
+  insere quando `p_billing_order_id` e nulo, sem `UNIQUE` semantico (`billing_number` e
+  sempre unico, gerado com timestamp+random, entao nunca colide). Duplo clique em
+  "Salvar" ou retry de rede apos timeout podia criar dois pedidos de faturamento
+  distintos e validos, ambos com HTTP 200 — duplicacao financeira silenciosa.
+- Correcao: `src/app/api/faturamento/route.ts` `POST` passa a envolver o handler com
+  `withIdempotency(request, tenantId, actorUserId, "/api/faturamento:CREATE", ...)`,
+  mesmo padrao ja usado em `stock-transfers`/`stock-requisitions`
+  (`src/lib/server/idempotency.ts`). O roteamento existente para `BATCH_IMPORT_PARTIAL`
+  continua dentro do mesmo handler, sem duplicar logica.
+- Frontend: `src/modules/dashboard/faturamento/BillingPageView.tsx` ganha
+  `createOrderIdempotency = useIdempotencyKey()` e envia o header `Idempotency-Key`
+  somente na criacao (`form.id` vazio); a edicao (`PUT`) continua sem o header, porque
+  ja e protegida por `expectedUpdatedAt`. Chave resetada apos sucesso.
+- Sem mudanca de contrato para quem ja envia a requisicao normalmente — cliente que nao
+  mandar `Idempotency-Key` continua funcionando igual a antes (o wrapper so age quando o
+  header esta presente).
+- Arquivos alterados: `src/app/api/faturamento/route.ts`,
+  `src/modules/dashboard/faturamento/BillingPageView.tsx`.
+- Validado com `npx tsc --noEmit` (sem erro) e `npm run lint` (0 erros; crescimento de
+  `BillingPageView.tsx` +5 linhas aceito via `npm run lint:size:accept`, arquivo ja
+  acima do baseline antes desta tarefa).

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { normalizeText, parsePagination } from "@/lib/server/apiHelpers";
+import { withIdempotency } from "@/lib/server/idempotency";
 
 type BillingStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type BillingKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
@@ -834,12 +835,18 @@ async function saveBillingOrderBatchPartial(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const preview = (await request.clone().json().catch(() => null)) as { action?: string } | null;
-  const action = normalizeText(preview?.action).toUpperCase();
-  if (action === "BATCH_IMPORT_PARTIAL") {
-    return saveBillingOrderBatchPartial(request);
-  }
-  return saveBillingOrder(request, "POST");
+  const preAuth = await resolveAuthenticatedAppUser(request);
+  const tenantId = "appUser" in preAuth ? preAuth.appUser.tenant_id : null;
+  const actorUserId = "appUser" in preAuth ? preAuth.appUser.id : null;
+
+  return withIdempotency(request, tenantId, actorUserId, "/api/faturamento:CREATE", async () => {
+    const preview = (await request.clone().json().catch(() => null)) as { action?: string } | null;
+    const action = normalizeText(preview?.action).toUpperCase();
+    if (action === "BATCH_IMPORT_PARTIAL") {
+      return saveBillingOrderBatchPartial(request);
+    }
+    return saveBillingOrder(request, "POST");
+  });
 }
 
 export async function PUT(request: NextRequest) {
