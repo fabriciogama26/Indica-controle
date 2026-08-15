@@ -250,3 +250,15 @@ Ajuda contextual
   - Antes: exportacao usava botao local sem o modal padrao.
   - Depois: exportacao usa `CsvExportButton`, herdando `ExportProgressModal`.
   - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-08-15 - Formulario nao e mais apagado em conflito de concorrencia
+--------------------------------------------------------------------------------------------
+- Achado transversal da Auditoria-Concorrencia/2026-08-15-relatorio.md (ponto 7, UX do
+  conflito): ao receber 409 `CONCURRENT_MODIFICATION`/`RECORD_INACTIVE`/`STATUS_ALREADY_CHANGED`,
+  `PeoplePageView.tsx` chamava `resetForm()` automaticamente antes do usuario decidir o
+  que fazer, apagando o que ele tinha digitado.
+- Depois: `resetForm()` so roda apos sucesso; a lista continua sendo recarregada, mas o
+  formulario fica preenchido e a mensagem de erro fica visivel para o usuario decidir.
+- Arquivos alterados: `src/modules/dashboard/pessoas/PeoplePageView.tsx`.
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; baseline reduzido via
+  `npm run lint:size:update`).

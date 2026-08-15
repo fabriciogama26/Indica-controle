@@ -2197,7 +2197,6 @@ export function ProjectsPageView() {
 
       if (!response.ok) {
         if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
-          resetFormState();
           await loadProjects(page, activeFilters);
         }
 
@@ -2267,9 +2266,6 @@ export function ProjectsPageView() {
           || data.code === "RECORD_INACTIVE"
           || data.code === "STATUS_ALREADY_CHANGED"
         ) {
-          if (editingProjectId === cancelProject.id) {
-            resetFormState();
-          }
           closeCancelModal();
           await loadProjects(page, activeFilters);
         }

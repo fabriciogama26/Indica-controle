@@ -738,7 +738,6 @@ export function PeoplePageView() {
 
       if (!response.ok || !data.success) {
         if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
-          resetForm();
           await loadPeople(page, activeFilters);
         }
 
@@ -801,9 +800,6 @@ export function PeoplePageView() {
           || data.code === "RECORD_INACTIVE"
           || data.code === "STATUS_ALREADY_CHANGED"
         ) {
-          if (form.id === statusPerson.id) {
-            resetForm();
-          }
           closeStatusModal();
           await loadPeople(page, activeFilters);
         }

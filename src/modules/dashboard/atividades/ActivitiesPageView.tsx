@@ -549,7 +549,6 @@ export function ActivitiesPageView() {
 
       if (!response.ok || !data.success) {
         if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
-          resetForm();
           await loadActivities(page, activeFilters);
         }
 
@@ -608,9 +607,6 @@ export function ActivitiesPageView() {
           || data.code === "RECORD_INACTIVE"
           || data.code === "STATUS_ALREADY_CHANGED"
         ) {
-          if (form.id === statusActivity.id) {
-            resetForm();
-          }
           closeStatusModal();
           await loadActivities(page, activeFilters);
         }

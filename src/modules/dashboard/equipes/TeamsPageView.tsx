@@ -642,7 +642,6 @@ export function TeamsPageView() {
 
       if (!response.ok || !data.success) {
         if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
-          resetForm();
           await loadTeams(page, activeFilters);
         }
 
@@ -711,9 +710,6 @@ export function TeamsPageView() {
           || data.code === "RECORD_INACTIVE"
           || data.code === "STATUS_ALREADY_CHANGED"
         ) {
-          if (form.id === statusTeam.id) {
-            resetForm();
-          }
           closeStatusModal();
           await loadTeams(page, activeFilters);
         }
@@ -781,9 +777,6 @@ export function TeamsPageView() {
           || data.code === "DUPLICATE_TEAM_FOREMAN"
           || data.code === "DUPLICATE_TEAM_COMBINATION"
         ) {
-          if (form.id === swapTeam.id || form.id === selectedSwapTargetTeam.id) {
-            resetForm();
-          }
           closeForemanSwapModal();
           await loadTeams(page, activeFilters);
         }

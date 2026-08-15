@@ -152,6 +152,15 @@ Atualizacao 2026-08-15 - Migrado para RPC + niveis passam a ser por cargo (achad
   nao desaparecem por causa do outro; (3) conferir os `raise notice` da migration para
   saber se algum tenant tem niveis orfaos a reconfigurar manualmente.
 
+Atualizacao 2026-08-15 (2) - Formulario nao e mais apagado em conflito de concorrencia
+--------------------------------------------------------------------------------------------
+- Mesmo achado transversal (ponto 7 da auditoria) corrigido nas outras 5 telas: ao
+  receber 409 de concorrencia, `JobTitlesPageView.tsx` chamava `resetForm()`
+  automaticamente nos 2 fluxos de escrita (salvar, trocar status) antes do usuario
+  decidir o que fazer. Depois: `resetForm()` so roda apos sucesso; a lista continua
+  sendo recarregada, mas o formulario fica preenchido.
+- Arquivos alterados: `src/modules/dashboard/cargo/JobTitlesPageView.tsx`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais

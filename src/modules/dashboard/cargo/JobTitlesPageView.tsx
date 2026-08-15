@@ -416,7 +416,6 @@ export function JobTitlesPageView() {
       const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; reason?: string };
       if (!response.ok || !data.success) {
         if (data.reason === "CONCURRENT_MODIFICATION" || data.reason === "RECORD_INACTIVE") {
-          resetForm();
           await loadJobTitles(page, activeFilters);
         }
         setFeedback({ type: "error", message: data.message ?? "Falha ao salvar cargo." });
@@ -465,9 +464,6 @@ export function JobTitlesPageView() {
           || data.reason === "RECORD_INACTIVE"
           || data.reason === "STATUS_ALREADY_CHANGED"
         ) {
-          if (form.id === statusJobTitle.id) {
-            resetForm();
-          }
           closeStatusModal();
           await loadJobTitles(page, activeFilters);
         }

@@ -825,3 +825,13 @@ Atualizacao 2026-08-15 - Lock canonico por projeto (Cancelar x Programacao/APR)
   duas abas, cancelar projeto numa e criar/reabrir etapa (ou criar APR) na outra quase ao
   mesmo tempo — confirmar que uma espera a outra e a que perde recebe erro de negocio
   coerente, nunca as duas com sucesso.
+
+Atualizacao 2026-08-15 (2) - Formulario nao e mais apagado em conflito de concorrencia
+--------------------------------------------------------------------------------------------
+- Mesmo achado transversal (ponto 7 da auditoria de concorrencia): ao receber 409
+  `CONCURRENT_MODIFICATION`/`RECORD_INACTIVE`/`STATUS_ALREADY_CHANGED`,
+  `ProjectsPageView.tsx` chamava `resetFormState()` automaticamente nos 2 fluxos de
+  escrita (salvar, cancelar/ativar) antes do usuario decidir o que fazer.
+- Depois: `resetFormState()` so roda apos sucesso; a lista continua sendo recarregada,
+  mas o formulario fica preenchido e a mensagem de erro fica visivel.
+- Arquivos alterados: `src/modules/dashboard/projetos/ProjectsPageView.tsx`.
