@@ -28,10 +28,14 @@ Cadastro
 - A conclusao do projeto e derivada da programacao (`project_programming.work_completion_status`) ate o fim do ciclo selecionado.
 
 Filtros, auto-complete e listagem
-- Filtros disponiveis: ciclo, carteira, projeto e centro de servico.
+- Filtros disponiveis: ciclo, carteira, tipo, projeto e centro de servico.
 - Ciclo segue a janela operacional das medicoes, com inicio no dia 21 e fim no dia 20.
 - O filtro de ciclo permite `Ciclo mais recente`, ciclos individuais e `Todos os ciclos`.
 - O filtro `Carteira` permite `Sem retirados`, `Somente retirados` e `Com retirados`.
+- O filtro `Tipo` permite `Todos` (padrao), `Obras` e `Manutencao`, com a MESMA classificacao do Mapa de Programacao: `Manutencao` casa por substring normalizada de `service_type_text` e agrupa emergencial + manutencao e suas variacoes (`MANUTENCAO PREVENTIVA`, `OBRA EMERGENCIAL`); `Obras` e o complemento exato, entao nenhum projeto fica sem escopo e nenhum aparece nos dois.
+- Diferenca proposital em relacao ao Mapa: aqui existe `Todos`, e ele e o padrao. O Mapa nasceu com escopo obrigatorio; a Carteira Operacional sempre foi lida com os dois tipos juntos, e adotar `Obras` por padrao mudaria em silencio todo indicador financeiro ja acompanhado na tela.
+- Como o Tipo de Servico e catalogo por tenant, editavel em `/tipo-servico`, tipo novo cadastrado depois cai em `Obras` por omissao. Parametrizar essa classificacao continua anotado como melhoria futura, igual no Mapa.
+- Todos os filtros, inclusive o `Tipo`, so valem apos o botao `Filtrar`. O Mapa aplica o Tipo na hora porque la ele redefine a tela inteira; aqui o formulario e unico e um campo com comportamento proprio geraria leitura errada dos outros quatro.
 - O carregamento inicial seleciona o ciclo mais recente com producao de projetos elegiveis; se nao houver historico, usa o ciclo corrente.
 - A tabela principal exibe projeto, regional, status, origem, primeira atuacao, ultima atuacao, idade, dias parado, ciclos sem producao, semana da ultima producao, valor previsto, valor acumulado, valor no ciclo, restante, percentual explorado e acao para consultar as atividades previstas.
 - A tabela e paginada no frontend para manter a leitura rapida.
@@ -94,6 +98,8 @@ Duas camadas de calculo
 - Efeito pratico: a cobertura da meta devolve o mesmo numero nos tres valores do filtro `Carteira`. O filtro deixou de alterar indicador financeiro.
 - Camada de recorte (Saude da carteira, Financeiro da carteira, Fluxo, Renovacao, Envelhecimento e tabela analitica): respeita o filtro `Carteira`, com desmembramento explicito entre ativo e retirado.
 - O filtro `Carteira` e recorte de leitura, nunca regra de calculo da meta.
+- `Tipo` NAO e recorte de leitura: ele fica na mesma camada de `Projeto` e `Regional`, ou seja, vale nas DUAS camadas, inclusive na cobertura da meta. Motivo: ele delimita quais obras compoem a carteira analisada. Se valesse so no recorte, o potencial restante viria de um conjunto de obras e a producao do ciclo de outro, dentro do mesmo bloco.
+- Efeito colateral herdado: assim como no filtro Regional, a meta em si continua global (ver PENDENCIAS REGISTRADAS). Filtrar `Obras` ou `Manutencao` reduz produzido e potencial mas mantem a meta inteira do tenant, entao a cobertura cai artificialmente.
 
 Tratamento de projeto concluido
 - Projeto concluido nao tem mais escopo operacional pendente. O saldo previsto que sobra nele e sobra contratual/fisica, nao trabalho em curso.
@@ -308,6 +314,11 @@ PENDENCIAS REGISTRADAS (assimetrias pre-existentes, fora do escopo desta entrega
   mantem a meta inteira, e a cobertura despenca artificialmente. Sugestao de UX
   registrada: exibir `N/A` ou aviso no bloco `Cobertura da meta` quando houver filtro
   regional aplicado.
+- Filtro Tipo contra meta global: mesma assimetria da Regional, pela mesma causa. A
+  meta nao tem dimensao de tipo de servico, entao escolher `Obras` ou `Manutencao`
+  corta o produzido e o potencial contra uma meta que continua inteira. O padrao
+  `Todos` mantem a leitura atual intacta, e o aviso sugerido para a Regional deveria
+  cobrir os dois filtros de uma vez.
 - Bloco `Fluxo da carteira`: a etapa `Em andamento` continua somando o potencial
   restante dos pendentes do recorte, incluindo retirados quando o filtro os inclui.
   Como fluxo e camada de recorte, ficou inalterado nesta entrega; se o valor de
@@ -365,3 +376,38 @@ MOEDA DA META CONFIRMADA COM O USUARIO
   - `src/modules/dashboard/dashboard-carteira-operacional/types.ts`
   - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.tsx`
   - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.module.css`
+
+
+Atualizacao 2026-08-17 - Filtro `Tipo` (Obras / Manutencao), espelhado do Mapa
+--------------------------------------------------------------------------
+O QUE FOI FEITO
+- Incluido o filtro `Tipo` no formulario de filtros da tela, com `Todos` (padrao),
+  `Obras` e `Manutencao`, reaproveitando a classificacao ja usada pelo Mapa de
+  Programacao: substring normalizada de `service_type_text`, onde `Manutencao` agrupa
+  emergencial + manutencao e `Obras` e o complemento exato.
+- `service_type_text` passou a ser lido no `select` de `project_with_labels` do
+  controller da carteira. Ele NAO entrou em `ProjectPortfolioRow`: nenhuma leitura da
+  tela exibe o tipo, entao ele fica num mapa lateral por `projectId` e serve so de
+  predicado, sem engordar o payload da tabela analitica.
+- O filtro entrou em `matchesAnalyticalFilters`, junto de `Projeto` e `Regional`, e
+  por isso vale nas duas camadas de calculo, inclusive na cobertura da meta.
+
+TRES DECISOES QUE DIVERGEM DO MAPA, DE PROPOSITO
+- Existe `Todos`, e ele e o padrao. O Mapa exige escolher escopo; adotar `Obras` por
+  padrao aqui mudaria em silencio todo indicador financeiro ja acompanhado.
+- O filtro passa pelo botao `Filtrar`, como os outros quatro campos, em vez de aplicar
+  na hora como no Mapa. La o Tipo redefine a tela inteira; aqui ele divide o mesmo
+  formulario com ciclo, carteira, projeto e regional.
+- O bloco `Fora da base` (card + modal de projetos sem atividade prevista) NAO respeita
+  o `Tipo`, e continua tenant/regional. Ele e servido pelas RPCs
+  `dashboard_portfolio_forecast_gap_summary` e `dashboard_portfolio_forecast_gaps`, que
+  nao recebem parametro de tipo de servico; incluir exigiria migration. Fica registrado
+  como escopo deixado de fora, na mesma linha da excecao ja documentada para o filtro
+  `Carteira` naquele bloco.
+
+- Arquivos alterados:
+  - `src/server/modules/dashboard-portfolio/controller.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/types.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/constants.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/api.ts`
+  - `src/modules/dashboard/dashboard-carteira-operacional/DashboardPortfolioPageView.tsx`

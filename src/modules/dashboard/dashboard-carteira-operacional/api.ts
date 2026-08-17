@@ -15,6 +15,7 @@ export async function fetchDashboardPortfolio(params: {
   if (params.filters.project.trim()) searchParams.set("project", params.filters.project.trim());
   if (params.filters.serviceCenterId) searchParams.set("serviceCenterId", params.filters.serviceCenterId);
   if (params.filters.portfolioScope) searchParams.set("portfolioScope", params.filters.portfolioScope);
+  if (params.filters.serviceScope) searchParams.set("serviceScope", params.filters.serviceScope);
 
   const response = await fetch(`${DASHBOARD_PORTFOLIO_ENDPOINT}?${searchParams.toString()}`, {
     cache: "no-store",
