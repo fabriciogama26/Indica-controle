@@ -18,6 +18,7 @@ Aplicacao web multi-tenant para operacao, almoxarifado, medicao, faturamento, pr
 - CSS Modules
 - Vercel
 - Vercel Web Analytics (`@vercel/analytics`)
+- Vercel Speed Insights (`@vercel/speed-insights`)
 - Supabase JS
 - Supabase Edge Functions
 - TanStack React Query
