@@ -15,6 +15,7 @@ import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE 
 type ActivityItem = {
   id: string;
   code: string;
+  codeIdd: string;
   description: string;
   teamTypeId: string;
   teamTypeName: string;
@@ -71,10 +72,7 @@ type TeamTypeOption = {
   name: string;
 };
 
-type CategoryOption = {
-  id: string;
-  name: string;
-};
+type CategoryOption = TeamTypeOption;
 
 type ActivitiesListResponse = {
   activities?: ActivityItem[];
@@ -94,9 +92,7 @@ type ActivitiesMetaResponse = {
   message?: string;
 };
 
-const PAGE_SIZE = DEFAULT_PAGE_SIZE;
-const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
-const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE, HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE, EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   code: "Codigo",
@@ -140,9 +136,7 @@ function normalizeText(value: string) {
   return String(value ?? "").trim();
 }
 
-function normalizeCode(value: string) {
-  return normalizeText(value).toUpperCase();
-}
+function normalizeCode(value: string) { return normalizeText(value).toUpperCase(); }
 
 function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
@@ -169,6 +163,7 @@ function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_
 function buildActivitiesCsv(activityItems: ActivityItem[]) {
   const header = [
     "Codigo",
+    "Cod. SAP",
     "Descricao",
     "Tipo",
     "Categoria",
@@ -185,6 +180,7 @@ function buildActivitiesCsv(activityItems: ActivityItem[]) {
   ];
   const rows = activityItems.map((activity) => [
     activity.code,
+    activity.codeIdd || "-",
     activity.description,
     activity.teamTypeName,
     activity.categoryName,
@@ -971,6 +967,7 @@ export function ActivitiesPageView() {
             <thead>
               <tr>
                 <th>Codigo</th>
+                <th>Cod. SAP</th>
                 <th>Descricao</th>
                 <th>Tipo</th>
                 <th>Categoria</th>
@@ -991,6 +988,7 @@ export function ActivitiesPageView() {
                         {!activity.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
+                    <td>{activity.codeIdd || "-"}</td>
                     <td>{activity.description}</td>
                     <td>{activity.teamTypeName}</td>
                     <td>{activity.categoryName}</td>
@@ -1089,7 +1087,7 @@ export function ActivitiesPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyRow}>
+                  <td colSpan={10} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando atividades..." : "Nenhuma atividade encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1128,6 +1126,7 @@ export function ActivitiesPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Status:</strong> {detailActivity.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Codigo:</strong> {detailActivity.code}</div>
+                <div><strong>Cod. SAP:</strong> {detailActivity.codeIdd || "-"}</div>
                 <div><strong>Descricao:</strong> {detailActivity.description}</div>
                 <div><strong>Tipo:</strong> {detailActivity.teamTypeName}</div>
                 <div><strong>Categoria:</strong> {detailActivity.categoryName}</div>
