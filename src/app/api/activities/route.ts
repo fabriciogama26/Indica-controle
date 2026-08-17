@@ -23,6 +23,7 @@ import {
 type ActivityRow = {
   id: string;
   code: string;
+  code_idd: string | null;
   description: string;
   team_type_id: string;
   type_service: string;
@@ -218,7 +219,7 @@ async function fetchActivityById(
   const { data, error } = await supabase
     .from("service_activities")
     .select(
-      "id, code, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, code, code_idd, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", activityId)
@@ -457,7 +458,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("service_activities")
       .select(
-        "id, code, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, code, code_idd, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -561,6 +562,7 @@ export async function GET(request: NextRequest) {
       activities: (data ?? []).map((row) => ({
         id: row.id,
         code: row.code,
+        codeIdd: row.code_idd ?? "",
         description: row.description,
         teamTypeId: row.team_type_id,
         teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
