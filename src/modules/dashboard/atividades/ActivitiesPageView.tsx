@@ -46,17 +46,8 @@ type ActivityHistoryEntry = {
 };
 
 type ActivityFormState = {
-  id: string | null;
-  code: string;
-  description: string;
-  teamTypeId: string;
-  categoryId: string;
-  group: string;
-  value: string;
-  voicePoint: string;
-  unit: string;
-  scope: string;
-  updatedAt: string;
+  id: string | null; code: string; codeIdd: string; description: string; teamTypeId: string; categoryId: string;
+  group: string; value: string; voicePoint: string; unit: string; scope: string; updatedAt: string;
 };
 
 type ActivityFilterState = {
@@ -96,6 +87,7 @@ const PAGE_SIZE = DEFAULT_PAGE_SIZE, HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SI
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   code: "Codigo",
+  codeIdd: "Cod. SAP",
   description: "Descricao",
   teamTypeName: "Tipo",
   categoryName: "Categoria",
@@ -111,17 +103,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 };
 
 const INITIAL_FORM: ActivityFormState = {
-  id: null,
-  code: "",
-  description: "",
-  teamTypeId: "",
-  categoryId: "",
-  group: "",
-  value: "",
-  voicePoint: "",
-  unit: "",
-  scope: "",
-  updatedAt: "",
+  id: null, code: "", codeIdd: "", description: "", teamTypeId: "", categoryId: "",
+  group: "", value: "", voicePoint: "", unit: "", scope: "", updatedAt: "",
 };
 
 const INITIAL_FILTERS: ActivityFilterState = {
@@ -462,6 +445,7 @@ export function ActivitiesPageView() {
     setForm({
       id: activity.id,
       code: activity.code,
+      codeIdd: activity.codeIdd,
       description: activity.description,
       teamTypeId: activity.teamTypeId,
       categoryId: activity.categoryId,
@@ -521,6 +505,7 @@ export function ActivitiesPageView() {
       const payload = {
         id: form.id,
         code: normalizeCode(form.code),
+        codeIdd: normalizeText(form.codeIdd) || null,
         description: normalizeText(form.description),
         teamTypeId: normalizeText(form.teamTypeId),
         categoryId: normalizeText(form.categoryId),
@@ -735,6 +720,16 @@ export function ActivitiesPageView() {
               onChange={(event) => setForm((current) => ({ ...current, code: event.target.value }))}
               placeholder="Ex.: ATV-001"
               required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Cod. SAP</span>
+            <input
+              type="text"
+              value={form.codeIdd}
+              onChange={(event) => setForm((current) => ({ ...current, codeIdd: event.target.value }))}
+              placeholder="Codigo SAP"
             />
           </label>
 

@@ -1080,3 +1080,10 @@ Observacao
 - `postpone_project_programming_team` (Adiar equipe) continua recusando etapa em espera de proposito: a operacao parte da data da etapa de origem, que a etapa em espera nao tem. A UI esconde essa opcao do menu do chip nesse caso.
 - `add_project_programming_team` tambem segue bloqueado (317): sem `execution_date`, `programming_team_schedule_conflict` nao casa nada e a alocacao entraria sem checagem nenhuma.
 - A guarda LAST_ACTIVE_TEAM vale igual para etapa em espera. Nao altera schema, RLS, policies nem indices; grants reaplicados para `service_role` apenas, com validacao pos-execucao.
+
+372_update_service_activity_code_idd_rpc.sql
+- Republica `save_service_activity_record` para receber `p_code_idd` e persistir `service_activities.code_idd` no cadastro/edicao de Atividades.
+- `code_idd` permanece opcional: texto vazio e normalizado para `NULL`.
+- Mantem escrita transacional, historico por `p_changes`, controle de concorrencia por `p_expected_updated_at` e validacoes existentes de categoria, grupo, pontos, status e codigo duplicado.
+- A coluna ja existe pela migration 353; esta migration nao altera RLS, policies, indices ou constraints.
+- Assinatura nova fica com EXECUTE apenas para `service_role`, pois a tela grava pela API backend.
