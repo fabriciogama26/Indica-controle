@@ -74,6 +74,7 @@ type HistoryChange = {
 
 type CreateActivityPayload = {
   code: string;
+  codeIdd?: string | null;
   description: string;
   teamTypeId: string;
   categoryId: string;
@@ -146,6 +147,7 @@ function normalizePositiveDecimal(value: unknown) {
 function parseActivityInput(payload: Partial<CreateActivityPayload>) {
   return {
     code: normalizeCode(payload.code),
+    codeIdd: normalizeNullableText(payload.codeIdd),
     description: normalizeText(payload.description),
     teamTypeId: normalizeText(payload.teamTypeId),
     categoryId: normalizeText(payload.categoryId),
@@ -284,6 +286,7 @@ async function saveActivityViaRpc(params: {
   actorUserId: string;
   activityId: string | null;
   code: string;
+  codeIdd: string | null;
   description: string;
   teamTypeId: string;
   categoryId: string;
@@ -300,6 +303,7 @@ async function saveActivityViaRpc(params: {
     p_actor_user_id: params.actorUserId,
     p_activity_id: params.activityId,
     p_code: params.code,
+    p_code_idd: params.codeIdd,
     p_description: params.description,
     p_team_type_id: params.teamTypeId,
     p_type_service: params.categoryId,
@@ -654,6 +658,7 @@ export async function POST(request: NextRequest) {
       actorUserId: appUser.id,
       activityId: null,
       code: input.code,
+      codeIdd: input.codeIdd,
       description: input.description,
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
@@ -763,6 +768,7 @@ export async function PUT(request: NextRequest) {
 
     const changes: Record<string, HistoryChange> = {};
     addChange(changes, "code", currentActivity.code, input.code);
+    addChange(changes, "codeIdd", currentActivity.code_idd, input.codeIdd);
     addChange(changes, "description", currentActivity.description, input.description);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "categoryName", currentTypeService?.name ?? null, nextTypeService.name);
@@ -782,6 +788,7 @@ export async function PUT(request: NextRequest) {
       actorUserId: appUser.id,
       activityId,
       code: input.code,
+      codeIdd: input.codeIdd,
       description: input.description,
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
