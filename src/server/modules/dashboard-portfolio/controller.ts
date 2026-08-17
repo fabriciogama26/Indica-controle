@@ -65,6 +65,7 @@ type ProjectRow = {
   sob: string | null;
   service_center: string | null;
   service_center_text: string | null;
+  service_type_text: string | null;
   is_active: boolean | null;
   is_test?: boolean | null;
   is_withdrawn?: boolean | null;
@@ -100,6 +101,13 @@ type Cycle = {
 };
 
 type PortfolioScope = "ACTIVE" | "WITHDRAWN" | "ALL";
+// Escopo por Tipo de Servico, com a mesma classificacao do Mapa de Programacao
+// (`src/app/api/mapa-programacao/route.ts`): `MANUTENCAO` agrupa emergencial +
+// manutencao e `OBRAS` e o complemento exato. Diferenca proposital em relacao ao
+// Mapa: aqui existe `ALL`, porque a Carteira Operacional ja era lida com os dois
+// tipos juntos e um padrao `OBRAS` mudaria em silencio todo indicador financeiro
+// da tela.
+type ServiceScope = "ALL" | "OBRAS" | "MANUTENCAO";
 type GoalCoverageStatus = "SAUDAVEL" | "ATENCAO" | "RISCO" | "SEM_META";
 
 type ProjectPortfolioRow = {
@@ -165,6 +173,26 @@ function normalizePortfolioScope(value: unknown): PortfolioScope {
   if (token === "WITHDRAWN" || token === "RETIRADA" || token === "RETIRADOS") return "WITHDRAWN";
   if (token === "ALL" || token === "TODOS") return "ALL";
   return "ACTIVE";
+}
+
+function normalizeServiceScope(value: unknown): ServiceScope {
+  const token = normalizeText(value).toUpperCase();
+  if (token === "MANUTENCAO") return "MANUTENCAO";
+  if (token === "OBRAS") return "OBRAS";
+  return "ALL";
+}
+
+// Casa por substring normalizada, entao pega tanto `EMERGENCIAL` quanto
+// `MANUTENCAO` e suas variacoes (`MANUTENCAO PREVENTIVA`, `OBRA EMERGENCIAL`).
+// Tudo que nao casa aqui e `OBRAS`. Mesma regra do Mapa de Programacao: o Tipo de
+// Servico e catalogo por tenant, editavel em `/tipo-servico`, entao tipo novo cai
+// em `OBRAS` por omissao.
+function isMaintenanceServiceType(value: unknown) {
+  const token = normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  return token.includes("EMERGENCIAL") || token.includes("MANUTENCAO");
 }
 
 function normalizeGoalCoverageStatus(value: unknown): GoalCoverageStatus {
@@ -438,7 +466,7 @@ async function loadProjects(params: {
   for (const projectIdChunk of chunk(params.projectIds, FILTER_CHUNK_SIZE)) {
     const { data, error } = await params.supabase
       .from("project_with_labels")
-      .select("id, sob, service_center, service_center_text, is_active, is_test, is_withdrawn, is_third_party")
+      .select("id, sob, service_center, service_center_text, service_type_text, is_active, is_test, is_withdrawn, is_third_party")
       .eq("tenant_id", params.tenantId)
       .in("id", projectIdChunk)
       .returns<ProjectRow[]>();
@@ -654,6 +682,7 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
   const portfolioScope = normalizePortfolioScope(request.nextUrl.searchParams.get("portfolioScope"));
   const projectQuery = normalizeText(request.nextUrl.searchParams.get("project")).toLowerCase();
   const serviceCenterIdFilter = normalizeUuid(request.nextUrl.searchParams.get("serviceCenterId"));
+  const serviceScope = normalizeServiceScope(request.nextUrl.searchParams.get("serviceScope"));
 
   const forecastPortfolioResult = await loadForecastPortfolioValues(resolution.supabase, tenantId);
   if (forecastPortfolioResult.error) {
@@ -673,6 +702,10 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     .filter((project) => project.is_active === true)
     .filter((project) => !project.is_test && !project.is_third_party);
   const baseProjectIds = baseProjects.map((project) => project.id);
+  // O Tipo de Servico nao vai para `ProjectPortfolioRow` porque nenhuma leitura da
+  // tela o exibe: ele so serve de predicado de filtro, entao fica num mapa lateral
+  // em vez de engordar o payload da tabela analitica.
+  const serviceTypeByProject = new Map(baseProjects.map((project) => [project.id, project.service_type_text]));
 
   // A base COMPLETA (com retirados) alimenta o pipeline inteiro. Producao medida de
   // projeto retirado e fato consumado: ela abate a meta do ciclo mesmo quando o
@@ -800,9 +833,19 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
     };
   });
 
+  // O Tipo entra aqui, junto de `Projeto` e `Regional`, e nao no recorte do filtro
+  // `Carteira`: ele delimita QUAIS obras compoem a carteira analisada, entao precisa
+  // valer tambem na camada canonica da cobertura da meta. Sem isso, o potencial
+  // restante viria de um conjunto de obras e a producao do ciclo de outro.
+  function matchesServiceScope(project: ProjectPortfolioRow) {
+    if (serviceScope === "ALL") return true;
+    return isMaintenanceServiceType(serviceTypeByProject.get(project.projectId)) === (serviceScope === "MANUTENCAO");
+  }
+
   function matchesAnalyticalFilters(project: ProjectPortfolioRow) {
     if (projectQuery && !project.projectCode.toLowerCase().includes(projectQuery)) return false;
     if (serviceCenterIdFilter && project.serviceCenterId !== serviceCenterIdFilter) return false;
+    if (!matchesServiceScope(project)) return false;
     return true;
   }
 
