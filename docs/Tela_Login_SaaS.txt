@@ -127,3 +127,20 @@ Ajuda contextual
 - Estado atual: a tela passa a mostrar feedback de `sessao expirada` e `expirada por inatividade` quando o `AuthContext` limpa a sessao.
 - Estado atual: a sessao frontend preserva `role` como `role_key` e `roleId` como referencia tecnica do perfil.
 - Estado atual: `TOKEN_EXPIRED` continua limpando a sessao local, mas agora tambem tenta registrar a saida no `login_audit` com base no `session_ref` salvo.
+
+Atualizacao 2026-08 - Estabilidade visual / CLS
+------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/auth/login/LoginPageView.tsx`
+  - `src/modules/auth/login/LoginPageView.module.css`
+- Funcoes/hooks/constantes tocadas:
+  - `LoginPageView`
+  - `.feedbackSlot`
+- Comportamento antes/depois:
+  - Antes: mensagens iniciais consumidas de `consumeAuthFeedback()` podiam ser
+    inseridas apos a primeira pintura e empurrar o botao `Entrar`.
+  - Depois: a tela reserva o slot do feedback no formulario, mantendo a posicao do
+    botao estavel quando aparece aviso de sessao expirada, inatividade ou erro de
+    login.
+- Impacto multi-tenant:
+  - Sem mudanca de API, banco, tenant_id, RLS, grants ou permissoes.

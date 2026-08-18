@@ -670,3 +670,25 @@ Atualizacao 2026-08 - Encarregado selecionavel na composicao
     Programacao e as operacoes de estoque continuam resolvendo o encarregado por
     `resolve_team_foreman_snapshot` (historico -> cadastro), sem enxergar o
     encarregado da composicao. Essa propagacao e a fase seguinte.
+
+Atualizacao 2026-08 - Estabilidade visual / CLS
+------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+- Funcoes/hooks/constantes tocadas:
+  - `TeamCompositionPageView`
+  - `.coverageMessageLoading`
+  - `.compositionsTableWrapper`
+- Comportamento antes/depois:
+  - Antes: o painel `Composicoes das Equipes` exibia apenas a mensagem
+    `Carregando equipes...` e depois inseria a grade completa de cards, empurrando
+    cadastro, filtros e lista para baixo.
+  - Depois: a mensagem de carregamento reserva altura equivalente ao painel
+    diario enquanto metadados e cobertura carregam.
+  - Antes: a tabela `Lista de Composicoes` podia nascer com uma linha curta de
+    loading/vazio e crescer bastante apos a resposta da API.
+  - Depois: a tabela principal possui altura minima para reduzir deslocamento
+    durante a troca para os registros reais.
+- Impacto multi-tenant:
+  - Sem mudanca de API, banco, tenant_id, RLS, grants ou permissoes.

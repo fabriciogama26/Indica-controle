@@ -355,6 +355,11 @@
   border-radius: 12px;
   overflow: hidden;
   background: var(--color-surface-strong);
+  min-height: 408px;
+}
+
+.listTableLoading {
+  pointer-events: none;
 }
 
 .listGroup {
@@ -383,6 +388,89 @@
   gap: 0.6rem;
   padding: 0.75rem 0.9rem;
   font-size: 0.88rem;
+  min-height: 56px;
+}
+
+.skeletonProjectRow {
+  color: transparent;
+}
+
+.skeletonDot,
+.skeletonLine,
+.skeletonLineStrong,
+.skeletonLineShort,
+.skeletonChip,
+.skeletonAction {
+  display: block;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #e6ebf4 0%, #f8fafc 50%, #e6ebf4 100%);
+  background-size: 220% 100%;
+  animation: listSkeletonPulse 1.4s ease-in-out infinite;
+}
+
+.skeletonDot {
+  justify-self: center;
+  width: 34px;
+  height: 34px;
+}
+
+.skeletonLine,
+.skeletonLineStrong,
+.skeletonLineShort {
+  height: 14px;
+}
+
+.skeletonLine {
+  width: 82%;
+}
+
+.skeletonLineStrong {
+  width: 64%;
+  height: 16px;
+}
+
+.skeletonLineShort {
+  width: 44%;
+}
+
+.skeletonChipRow {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.skeletonChip {
+  width: 76px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.skeletonAction {
+  justify-self: end;
+  width: 92px;
+  height: 34px;
+  border-radius: 12px;
+}
+
+@keyframes listSkeletonPulse {
+  0% {
+    background-position: 100% 0;
+  }
+
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeletonDot,
+  .skeletonLine,
+  .skeletonLineStrong,
+  .skeletonLineShort,
+  .skeletonChip,
+  .skeletonAction {
+    animation: none;
+  }
 }
 
 .projectIdText {

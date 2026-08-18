@@ -128,7 +128,9 @@ export function LoginPageView() {
               {recoveryMutation.isPending ? "Enviando recuperacao..." : "Esqueci minha senha"}
             </button>
 
-            {feedback ? <div className={styles.errorBox}>{feedback}</div> : null}
+            <div className={styles.feedbackSlot} aria-live="polite">
+              {feedback ? <div className={styles.errorBox}>{feedback}</div> : null}
+            </div>
 
             <button type="submit" className={styles.submitButton} disabled={loginMutation.isPending}>
               {loginMutation.isPending ? "Entrando..." : "Entrar"}
