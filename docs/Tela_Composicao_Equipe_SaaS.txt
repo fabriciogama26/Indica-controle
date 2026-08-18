@@ -665,6 +665,23 @@ Atualizacao 2026-08 - Encarregado selecionavel na composicao
     tenant da sessao.
   - EXECUTE da RPC continua restrito a `service_role`; a assinatura anterior foi
     removida com `drop function` para evitar sobrecarga ambigua no PostgREST.
+- Ajuste posterior (mesma Atualizacao): botao "Fazer medicao"
+  - Antes: `openMeasurement` usava `projectId ?? projectIds[0]` e abria o projeto
+    principal em silencio. Composicao com mais de um projeto (migration 266)
+    deixava os demais sem caminho pela tela.
+  - Depois: com mais de um projeto o botao abre `MeasurementProjectModal`, que
+    lista as obras da composicao com Centro de Servico e indicacao de quais ja tem
+    medicao registrada naquele contexto Projeto + Equipe + Data. Com um unico
+    projeto o comportamento continua direto, sem clique extra.
+  - Depois: a navegacao passa `foremanName` na query, e a Medicao usa esse valor
+    no campo somente-leitura de Encarregado. Antes a Medicao exibia o encarregado
+    do CADASTRO da equipe em ordem nova, enquanto o trigger da 374 gravava o da
+    composicao — o campo mostrava uma pessoa e salvava outra.
+  - Estrutura: os tipos da tela sairam do `PageView` para `types.ts` e o modal
+    novo ficou em `components/MeasurementProjectModal.tsx`. O `PageView` caiu de
+    1.409 para 1.308 linhas, primeiro passo do plano de modularizacao registrado
+    na secao de lacuna tecnica.
+
 - Escopo desta entrega:
   - Somente a tela Composicao de Equipe. Medicao, Controle APR, Mapa de
     Programacao e as operacoes de estoque continuam resolvendo o encarregado por

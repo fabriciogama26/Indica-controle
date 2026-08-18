@@ -1512,3 +1512,13 @@ Atualizacao 2026-08 - Encarregado resolvido pela Composicao de Equipe
 - Impacto multi-tenant:
   - A funcao de resolucao filtra por `tenant_id` em todas as tabelas envolvidas e
     passou a ter EXECUTE restrito a `service_role`.
+- Ajuste posterior (mesma Atualizacao): campo Encarregado do formulario
+  - Antes: em ordem NOVA o campo lia `teamMap`, ou seja, o encarregado do cadastro
+    da equipe, enquanto o trigger da migration 374 gravava o encarregado da
+    composicao daquela data. O campo exibia uma pessoa e salvava outra.
+  - Depois: o campo mostra `form.foremanNameSnapshot`, preenchido pela navegacao
+    vinda da Composicao de Equipe (query `foremanName`), e fica vazio com o texto
+    `Definido pela composicao da data ao salvar` quando a ordem nao veio de la.
+  - Depois: trocar equipe ou data de execucao em ordem nova limpa o valor, porque
+    o encarregado sera resolvido de novo no salvamento para o contexto novo.
+  - `readMeasurementPrefillParams` passou a ler `foremanName` da query.

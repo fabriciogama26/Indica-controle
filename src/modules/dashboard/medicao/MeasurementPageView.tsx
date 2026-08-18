@@ -408,6 +408,7 @@ type MeasurementPrefillParams = {
   teamId: string;
   executionDate: string;
   compositionId: string;
+  foremanName: string;
 };
 
 function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) {
@@ -453,7 +454,7 @@ function readMeasurementPrefillParams(): MeasurementPrefillParams | null {
     return null;
   }
 
-  return { projectId, teamId, executionDate, compositionId };
+  return { projectId, teamId, executionDate, compositionId, foremanName: params.get("foremanName")?.trim() ?? "" };
 }
 
 function monthRange(today: string) {
@@ -1506,6 +1507,7 @@ export function MeasurementPageView() {
         measurementDate: prefill.executionDate,
         programmingId: "",
         items: [],
+        foremanNameSnapshot: prefill.foremanName,
       };
     });
     setFeedback({ type: "success", message: "Cabecalho da medicao preenchido pela composicao de equipe." });
@@ -2842,11 +2844,9 @@ export function MeasurementPageView() {
     }
   }
 
-  const formForemanName = form.id
-    && form.teamId === form.originalTeamId
-    && form.executionDate === form.originalExecutionDate
-    ? form.foremanNameSnapshot
-    : (teamMap.get(form.teamId)?.foremanName ?? "");
+  const isForemanSnapshotCurrent = !form.id
+    || (form.teamId === form.originalTeamId && form.executionDate === form.originalExecutionDate);
+  const formForemanName = isForemanSnapshotCurrent ? form.foremanNameSnapshot : "";
 
   return (
     <section className={styles.wrapper}>
@@ -2907,7 +2907,7 @@ export function MeasurementPageView() {
             <span>Equipe <span className="requiredMark">*</span></span>
             <select
               value={form.teamId}
-              onChange={(event) => setForm((current) => ({ ...current, teamId: event.target.value, programmingId: "", items: current.id ? current.items : [] }))}
+              onChange={(event) => setForm((current) => ({ ...current, teamId: event.target.value, programmingId: "", items: current.id ? current.items : [], foremanNameSnapshot: current.id ? current.foremanNameSnapshot : "" }))}
             >
               <option value="">Selecione</option>
               {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
@@ -2918,7 +2918,7 @@ export function MeasurementPageView() {
             <input
               type="date"
               value={form.executionDate}
-              onChange={(event) => setForm((current) => ({ ...current, executionDate: event.target.value, programmingId: "", items: current.id ? current.items : [] }))}
+              onChange={(event) => setForm((current) => ({ ...current, executionDate: event.target.value, programmingId: "", items: current.id ? current.items : [], foremanNameSnapshot: current.id ? current.foremanNameSnapshot : "" }))}
             />
           </label>
           <label className={styles.field}>
@@ -2928,7 +2928,7 @@ export function MeasurementPageView() {
               <option value="SEM_PRODUCAO">Sem producao</option>
             </select>
           </label>
-          <label className={styles.field}><span>Encarregado</span><input value={formForemanName} readOnly /></label>
+          <label className={styles.field}><span>Encarregado</span><input value={formForemanName} readOnly placeholder="Definido pela composicao da data ao salvar" /></label>
           <label className={styles.field}>
             <span>Motivo sem producao{form.measurementKind === "SEM_PRODUCAO" ? " *" : ""}</span>
             <select
