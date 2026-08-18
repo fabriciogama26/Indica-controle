@@ -24,14 +24,44 @@ begin
 end;
 $$;
 
+-- Um encarregado nao responde por EQUIPES DIFERENTES na mesma data. Duas composicoes
+-- ativas da MESMA equipe na mesma data continuam permitidas (`ux_team_compositions_context_active`
+-- ja as autoriza por projeto principal distinto, e a operacao usa isso). A regra e escrita
+-- como EXCLUDE porque UNIQUE nao consegue expressar "iguais em tenant/data/encarregado E
+-- diferentes em equipe"; garante no banco, nao por checagem otimista, e mantem deterministica
+-- a resolucao inversa encarregado + data -> equipe.
+create extension if not exists btree_gist;
+
+alter table public.team_compositions
+  drop constraint if exists team_compositions_foreman_single_team_per_date;
+
+alter table public.team_compositions
+  add constraint team_compositions_foreman_single_team_per_date
+  exclude using gist (
+    tenant_id with =,
+    composition_date with =,
+    foreman_person_id with =,
+    team_id with <>
+  ) where (is_active = true and foreman_person_id is not null);
+
+-- O backfill escreve SOMENTE foreman_person_id, coluna que o constraint trigger da 354
+-- (trg_team_compositions_present_member_date_conflict) nao valida: ele revalida integrantes
+-- presentes por data. Como existem composicoes legadas anteriores a 354 que ja violam essa
+-- regra, deixar o trigger disparar aborta a migration inteira por um dado que ela nao criou
+-- nem altera. O trigger e desligado apenas durante o UPDATE e religado logo depois.
+alter table public.team_compositions
+  disable trigger trg_team_compositions_present_member_date_conflict;
+
 -- Backfill: encarregado vigente na data (team_foreman_history) com fallback para o cadastro da equipe.
--- Linhas ativas que gerariam conflito no indice unico novo ficam com NULL e continuam resolvendo
--- o encarregado pela cadeia atual (historico -> cadastro), sem perda de comportamento.
+-- Linhas ativas que gerariam conflito na constraint nova (mesmo encarregado, mesma data, equipes
+-- diferentes) ficam com NULL e continuam resolvendo o encarregado pela cadeia atual
+-- (historico -> cadastro), sem perda de comportamento.
 with candidate as (
   select
     tc.id,
     tc.tenant_id,
     tc.composition_date,
+    tc.team_id,
     tc.is_active,
     coalesce(h.foreman_person_id, t.foreman_person_id) as person_id
   from public.team_compositions tc
@@ -56,7 +86,7 @@ conflicting as (
   where c.is_active = true
     and c.person_id is not null
   group by c.tenant_id, c.composition_date, c.person_id
-  having count(*) > 1
+  having count(distinct c.team_id) > 1
 )
 update public.team_compositions tc
 set foreman_person_id = c.person_id
@@ -74,12 +104,8 @@ where tc.id = c.id
     )
   );
 
--- Um encarregado responde por no maximo uma composicao ativa por data.
--- Garante a unicidade no banco (nao por checagem otimista) e torna deterministica
--- a resolucao inversa encarregado + data -> equipe.
-create unique index if not exists ux_team_compositions_foreman_date_active
-  on public.team_compositions (tenant_id, composition_date, foreman_person_id)
-  where is_active = true and foreman_person_id is not null;
+alter table public.team_compositions
+  enable trigger trg_team_compositions_present_member_date_conflict;
 
 drop function if exists public.save_team_composition_record(
   uuid, uuid, uuid, date, uuid, jsonb, uuid, text, time, text, jsonb, text, timestamptz, text
@@ -131,7 +157,6 @@ declare
   v_primary_project_id uuid;
   v_project_codes text;
   v_project_centers text;
-  v_constraint_name text;
 begin
   if v_work_status not in ('WORKING', 'NOT_WORKING') then
     return jsonb_build_object(
@@ -789,18 +814,14 @@ begin
     end
   );
 exception
+  when exclusion_violation then
+    return jsonb_build_object(
+      'success', false,
+      'status', 409,
+      'reason', 'FOREMAN_DATE_CONFLICT',
+      'message', 'O encarregado selecionado ja responde por outra equipe nesta data.'
+    );
   when unique_violation then
-    get stacked diagnostics v_constraint_name = constraint_name;
-
-    if coalesce(v_constraint_name, '') = 'ux_team_compositions_foreman_date_active' then
-      return jsonb_build_object(
-        'success', false,
-        'status', 409,
-        'reason', 'FOREMAN_DATE_CONFLICT',
-        'message', 'O encarregado selecionado ja responde por outra composicao ativa nesta data.'
-      );
-    end if;
-
     return jsonb_build_object(
       'success', false,
       'status', 409,
