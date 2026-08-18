@@ -11,152 +11,29 @@ import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { notifyTeamCompositionUpdated } from "@/lib/events/teamComposition";
 import styles from "./TeamCompositionPageView.module.css";
+import { MeasurementProjectModal } from "./components/MeasurementProjectModal";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
-type ProjectOption = {
-  id: string;
-  code: string;
-  serviceCenter: string;
-  hasMeasurement?: boolean;
-};
-
-type TeamOption = {
-  id: string;
-  name: string;
-  vehiclePlate: string;
-  serviceCenterName: string;
-  foremanName: string;
-};
-
-type PersonOption = {
-  id: string;
-  name: string;
-  matriculation: string | null;
-  cpf: string | null;
-  phone: string | null;
-  jobTitleName: string;
-};
-
-type CompositionMember = {
-  id?: string;
-  personId: string;
-  name: string;
-  matriculation: string | null;
-  cpf: string | null;
-  phone: string | null;
-  jobTitleName: string | null;
-  isPresent: boolean;
-  sortOrder?: number;
-};
-
-type WorkStatus = "WORKING" | "NOT_WORKING";
-type WorkStatusFilter = "" | WorkStatus;
-
-type CompositionItem = {
-  id: string;
-  compositionDate: string;
-  projectId: string | null;
-  projectIds?: string[];
-  projects?: ProjectOption[];
-  teamId: string;
-  projectCode: string;
-  projectServiceCenter: string;
-  teamName: string;
-  vehiclePlate: string;
-  foremanId: string | null;
-  foremanName: string;
-  workStatus: WorkStatus;
-  sector: string;
-  yard: string;
-  startTime: string;
-  notes: string;
-  createdAt: string;
-  updatedAt: string;
-  createdByName: string;
-  updatedByName: string;
-  members: CompositionMember[];
-};
-
-type MetaResponse = {
-  projects?: ProjectOption[];
-  teams?: TeamOption[];
-  people?: PersonOption[];
-  message?: string;
-};
-
-type ListResponse = {
-  compositions?: CompositionItem[];
-  pagination?: { page: number; pageSize: number; total: number };
-  message?: string;
-};
-
-type DailyCoverageItem = {
-  teamId: string;
-  isCompleted: boolean;
-  workStatus: WorkStatus | null;
-};
-
-type DailyCoverageResponse = {
-  coverageDate?: string;
-  coverage?: DailyCoverageItem[];
-  summary?: {
-    total: number;
-    completed: number;
-    pending: number;
-    notWorking: number;
-  };
-  message?: string;
-};
-
-type SaveResponse = {
-  success?: boolean;
-  message?: string;
-  composition?: CompositionItem | null;
-  updatedAt?: string | null;
-};
-
-type HistoryEntry = {
-  id: string;
-  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
-  reason: string | null;
-  changes: Record<string, { from: string | null; to: string | null }>;
-  createdAt: string;
-  createdByName: string;
-};
-
-type HistoryResponse = {
-  history?: HistoryEntry[];
-  pagination?: { page: number; pageSize: number; total: number };
-  message?: string;
-};
-
-type FormState = {
-  id: string | null;
-  expectedUpdatedAt: string | null;
-  compositionDate: string;
-  projectCode: string;
-  projectIds: string[];
-  teamId: string;
-  foremanPersonId: string;
-  workStatus: WorkStatus;
-  sector: string;
-  yard: string;
-  startTime: string;
-  notes: string;
-  personSearch: string;
-  members: CompositionMember[];
-};
-
-type FilterState = {
-  startDate: string;
-  endDate: string;
-  projectCode: string;
-  teamId: string;
-  workStatus: WorkStatusFilter;
-  measurementStatus: "" | "UNMEASURED";
-};
+import type {
+  CompositionItem,
+  CompositionMember,
+  DailyCoverageItem,
+  DailyCoverageResponse,
+  FilterState,
+  FormState,
+  HistoryEntry,
+  HistoryResponse,
+  ListResponse,
+  MetaResponse,
+  PersonOption,
+  ProjectOption,
+  SaveResponse,
+  TeamOption,
+  WorkStatus,
+  WorkStatusFilter,
+} from "./types";
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
@@ -443,6 +320,7 @@ export function TeamCompositionPageView() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isNavigatingToMedicao, setIsNavigatingToMedicao] = useState(false);
+  const [measurementComposition, setMeasurementComposition] = useState<CompositionItem | null>(null);
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
@@ -961,22 +839,34 @@ export function TeamCompositionPageView() {
     setHistoryTotal(0);
   }
 
-  function openMeasurement(composition: CompositionItem) {
-    const projectId = composition.projectId ?? composition.projectIds?.[0] ?? "";
-    if (!projectId) {
-      setFeedback({ type: "error", message: "Composicao sem projeto nao permite iniciar medicao." });
-      return;
-    }
-
+  function startMeasurement(composition: CompositionItem, projectId: string) {
     const params = new URLSearchParams({
       projectId,
       teamId: composition.teamId,
       executionDate: composition.compositionDate,
       compositionId: composition.id,
+      foremanName: composition.foremanName,
     });
 
     setIsNavigatingToMedicao(true);
     router.push(`/medicao?${params.toString()}`);
+  }
+
+  function openMeasurement(composition: CompositionItem) {
+    const compositionProjects = composition.projects ?? [];
+    if (compositionProjects.length > 1) {
+      setMeasurementComposition(composition);
+      setFeedback(null);
+      return;
+    }
+
+    const projectId = compositionProjects[0]?.id ?? composition.projectId ?? composition.projectIds?.[0] ?? "";
+    if (!projectId) {
+      setFeedback({ type: "error", message: "Composicao sem projeto nao permite iniciar medicao." });
+      return;
+    }
+
+    startMeasurement(composition, projectId);
   }
 
   async function loadAllForExport() {
@@ -1056,7 +946,7 @@ export function TeamCompositionPageView() {
             <span>Nao atuaram: <strong>{coverageSummary.notWorking}</strong></span>
           </div>
         </div>
-        {isLoadingCoverage || isLoadingMeta ? <p className={styles.coverageMessage}>Carregando equipes...</p> : null}
+        {isLoadingCoverage || isLoadingMeta ? <p className={`${styles.coverageMessage} ${styles.coverageMessageLoading}`}>Carregando equipes...</p> : null}
         {!isLoadingCoverage && !isLoadingMeta && orderedCoverageTeams.length === 0 ? (
           <p className={styles.coverageMessage}>Nenhuma equipe ativa encontrada.</p>
         ) : null}
@@ -1267,7 +1157,7 @@ export function TeamCompositionPageView() {
             />
           </div>
         </div>
-        <div className={styles.tableWrapper}>
+        <div className={`${styles.tableWrapper} ${styles.compositionsTableWrapper}`}>
           <table className={styles.table}>
             <thead>
               <tr><th>Data</th><th>Projetos</th><th>Equipe</th><th>Situacao</th><th>Setor</th><th>Integrantes</th><th>Encarregado</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Acoes</th></tr>
@@ -1325,6 +1215,15 @@ export function TeamCompositionPageView() {
           buttonClassName={styles.ghostButton}
         />
       </article>
+
+      <MeasurementProjectModal
+        composition={measurementComposition}
+        isNavigating={isNavigatingToMedicao}
+        onSelect={(projectId) => {
+          if (measurementComposition) startMeasurement(measurementComposition, projectId);
+        }}
+        onClose={() => setMeasurementComposition(null)}
+      />
 
       {detailComposition ? (
         <div className={styles.modalOverlay} onClick={() => setDetailComposition(null)}>

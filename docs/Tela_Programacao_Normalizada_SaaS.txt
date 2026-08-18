@@ -1602,3 +1602,21 @@ Atualizacao 2026-08-12 - Fachada publica para fontes da Medicao (C0 do corte)
     Mapa ainda importa de `programacao-simples`.
 - Validado com `npx.cmd tsc --noEmit`, `npm.cmd run lint`, `npm.cmd run lint:size:update`
   e `npm.cmd run build`.
+
+Atualizacao 2026-08 - Estabilidade visual / CLS
+------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/programacao-normalizada/listComponents.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.module.css`
+- Funcoes/hooks/constantes tocadas:
+  - `StageListTable`
+  - `loadingRows`
+- Comportamento antes/depois:
+  - Antes: durante o carregamento inicial ou recarga da lista, o card
+    `Programacoes` exibia somente um texto curto (`Carregando lista...`) e depois
+    era substituido por uma tabela alta com linhas de projeto.
+  - Depois: o loading usa a mesma estrutura visual da tabela, com cabecalho e
+    linhas skeleton, preservando altura e grade entre carregamento e conteudo.
+  - Os skeletons respeitam `prefers-reduced-motion: reduce`.
+- Impacto multi-tenant:
+  - Sem mudanca de API, banco, tenant_id, RLS, grants ou permissoes.
