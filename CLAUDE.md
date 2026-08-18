@@ -166,6 +166,7 @@ Leia apenas os guias aplicáveis, mas não deixe de ler nenhum guia diretamente 
 | Proposta de commit, uso de comandos git | [`guias/guia_git.md`](guias/guia_git.md) |
 | Qualquer PR/entrega de código | [`guias/guia_validacao.md`](guias/guia_validacao.md) (sempre) |
 | Deploy de Edge Function | [`guias/runbook_deploy_edge_functions.md`](guias/runbook_deploy_edge_functions.md) |
+| Rollback de codigo, revert de PR mergeado, escolha de ponto para `git bisect` | [`guias/runbook_rollback.md`](guias/runbook_rollback.md) |
 | Gerar uma ordem de engenharia a partir de um pedido simples | [`prompts/gerar-prompt.md`](prompts/gerar-prompt.md) |
 
 **Exemplo real de combinação:** "Adiciona um filtro por status na listagem de Cronograma de Solicitações" aciona `guia_backend.md` (filtro no banco, não em memória), `guia_frontend.md` (estado do filtro, debounce se for texto) e `guia_validacao.md` (checklist antes do PR) — não aciona `guia_sql.md` a menos que o filtro exija coluna/índice novo.
