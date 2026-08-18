@@ -1115,3 +1115,9 @@ Observacao
 - Fixa `search_path = public` em `tg_programming_capture_anticipated_snapshot`, `tg_programming_clear_snapshot_source` e `tg_programming_set_updated_at`, e revoga EXECUTE externo dessas trigger functions.
 - Revoga EXECUTE de `public`, `anon` e `authenticated` nas RPCs `save_service_activity_record`, `save_project_measurement_order` e `save_project_measurement_order_batch_partial`; mantem somente `service_role`, compativel com os Route Handlers atuais que validam sessao/tenant/permissao antes de chamar as RPCs.
 - Inclui validacao pos-aplicacao para abortar se alguma funcao continuar executavel por `anon`/`authenticated`, sem EXECUTE para `service_role`, sem `search_path` fixo, ou se `btree_gist` continuar em `public`.
+
+376_fix_job_title_levels_rls_policies.sql
+- Corrige o warning `multiple_permissive_policies` em `public.job_title_levels` removendo `job_title_levels_tenant_write`, que foi criada como `FOR ALL` na 371 e tambem era avaliada em `SELECT`.
+- Mantem `job_title_levels_tenant_select` como unica policy permissiva de leitura para `authenticated`, preservando a leitura por tenant via `user_can_access_tenant`.
+- Nao cria policy direta de escrita: os niveis de cargo sao persistidos pela RPC `save_job_title_record` chamada pelos Route Handlers com `service_role`.
+- Inclui validacao pos-aplicacao para abortar se a policy de leitura sumir, se a policy antiga continuar existindo, ou se houver mais de uma policy permissiva `SELECT`/`ALL` para `authenticated`.
