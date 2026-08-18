@@ -2,22 +2,19 @@
 
 import styles from "../../entrada/StockTransfersPageView.module.css";
 import type { TeamOperationListItem } from "../types";
-import { formatDate, formatDateTime, operationDateLabel, operationKindLabel } from "../utils";
+import {
+  formatDate,
+  formatDateTime,
+  operationDateLabel,
+  operationKindLabel,
+  resolvePrimaryStockCenterName,
+  resolveSupportCenterName,
+} from "../utils";
 
 type OperationDetailModalProps = {
   item: TeamOperationListItem | null;
   onClose: () => void;
 };
-
-type StockCenterNames = Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">;
-
-export function resolvePrimaryStockCenterName(item: StockCenterNames) {
-  return item.operationKind === "REQUISITION" ? item.fromStockCenterName : item.toStockCenterName;
-}
-
-export function resolveSupportCenterName(item: StockCenterNames) {
-  return item.operationKind === "REQUISITION" ? item.toStockCenterName : item.fromStockCenterName;
-}
 
 export function OperationDetailModal({ item, onClose }: OperationDetailModalProps) {
   if (!item) return null;

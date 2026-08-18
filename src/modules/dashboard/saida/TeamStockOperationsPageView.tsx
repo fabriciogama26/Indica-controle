@@ -45,12 +45,14 @@ import {
   parseCsvContent,
   parsePositiveNumber,
   readCsvField,
+  resolvePrimaryStockCenterName,
+  resolveSupportCenterName,
   rowStatusLabel,
   toIsoDate,
 } from "./utils";
 import styles from "../entrada/StockTransfersPageView.module.css";
 import localStyles from "./TeamStockOperationsPageView.module.css";
-import { OperationDetailModal, resolvePrimaryStockCenterName, resolveSupportCenterName } from "./components/OperationDetailModal";
+import { OperationDetailModal } from "./components/OperationDetailModal";
 import { OperationHistoryModal } from "./components/OperationHistoryModal";
 import type { DayForeman } from "@/server/modules/composicao-equipe";
 
@@ -1972,9 +1974,7 @@ export function TeamStockOperationsPageView() {
               onChange={(event) => handleForemanChange(event.target.value)}
               disabled={isSubmitting || isLoadingMeta || dayForemen.length === 0}
             >
-              <option value="">
-                {dayForemen.length ? "Selecione para preencher a equipe" : "Sem composicao lancada nesta data"}
-              </option>
+              <option value="">{dayForemen.length ? "Selecione para preencher a equipe" : "Sem composicao lancada nesta data"}</option>
               {dayForemen.map((item) => (
                 <option key={item.foremanPersonId} value={item.foremanPersonId}>
                   {item.foremanName} - {item.teamName}

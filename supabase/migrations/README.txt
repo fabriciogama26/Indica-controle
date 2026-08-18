@@ -1121,3 +1121,13 @@ Observacao
 - Mantem `job_title_levels_tenant_select` como unica policy permissiva de leitura para `authenticated`, preservando a leitura por tenant via `user_can_access_tenant`.
 - Nao cria policy direta de escrita: os niveis de cargo sao persistidos pela RPC `save_job_title_record` chamada pelos Route Handlers com `service_role`.
 - Inclui validacao pos-aplicacao para abortar se a policy de leitura sumir, se a policy antiga continuar existindo, ou se houver mais de uma policy permissiva `SELECT`/`ALL` para `authenticated`.
+
+375_stock_operation_foreman_from_composition.sql
+- Fecha a decisao "o estoque segue a composicao do dia". A RPC `save_team_stock_operation_record` deixa de resolver o encarregado por join direto em `teams.foreman_person_id` e passa a usar a cadeia da 374 (composicao do dia -> `team_foreman_history` -> cadastro).
+- Achado que motivou: a Saida ganhou o atalho "Encarregado do dia", que lista quem respondeu por cada equipe segundo a Composicao. Com a RPC ainda lendo o cadastro, o usuario escolhia por um criterio e o registro — e a exportacao CSV, que tem coluna `encarregado` — saia com outra pessoa sempre que havia encarregado emprestado.
+- Nova funcao `resolve_team_foreman(tenant, equipe, data)` devolve tambem o `foreman_person_id`, que `resolve_team_foreman_snapshot` nao expoe e que as operacoes de estoque precisam para gravar `foreman_person_id_snapshot`. `resolve_team_foreman_snapshot` mantem assinatura e passa a DELEGAR para ela, entao a cadeia existe num lugar so e os consumidores atuais (triggers da Medicao e da APR) nao mudam.
+- Nao foi preciso trigger nem parametro novo vindo do cliente: a RPC ja recebia `p_entry_date`, entao a data da operacao ja estava disponivel dentro dela.
+- A resolucao do encarregado fica DEPOIS da checagem `TEAM_NOT_FOUND` de proposito: `FOUND` e por statement, e resolver antes sobrescreveria o resultado do `SELECT` em `teams`.
+- Hardening: a 308 concedia EXECUTE de `save_team_stock_operation_record` a `authenticated`. A RPC so e chamada de `src/lib/server/teamStockOperations.ts` (backend, service_role), entao o EXECUTE passou a ser apenas de `service_role`, junto com as duas funcoes de resolucao.
+- Auditoria de consumidores feita na mesma tarefa: Estornos e Posicao Trafo herdam esta correcao porque leem `stock_transfer_team_operations.foreman_name_snapshot`; Medicao, Controle de APR, Apuracao de Fator Minimo e Dashboard de Equipes ja herdavam a 374 pelo snapshot da ordem. `Saldo por Equipe` continua no cadastro (posicao de "agora", sem data). `Mapa de Programacao` e o unico caso em aberto: resolucao de leitura por linha, que exige RPC propria.
+- Registros ja gravados NAO mudam: a resolucao continua acontecendo na escrita.

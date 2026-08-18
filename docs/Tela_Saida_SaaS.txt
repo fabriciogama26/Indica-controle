@@ -777,3 +777,70 @@ Atualizacao 2026-07-27 (Correcao: Atendimento encerrado nao aparecia na lista)
   - `cmd /c npm run lint`
   - Consultar `/saida` sem filtros ou filtrando por `Equipe = MK-03` e `Projeto = RC0323050671`; devem aparecer
     os lancamentos de Requisicao com data de operacao `2026-07-23`.
+
+
+Atualizacao 2026-08 - Encarregado do dia pela Composicao de Equipe
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/375_stock_operation_foreman_from_composition.sql` (novo)
+  - `src/server/modules/composicao-equipe/dayForemen.ts` e `index.ts` (novos)
+  - `src/app/api/team-stock-operations/day-foremen/route.ts` (novo)
+  - `src/modules/dashboard/saida/components/OperationDetailModal.tsx` (novo)
+  - `src/modules/dashboard/saida/components/OperationHistoryModal.tsx` (novo)
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/modules/dashboard/saida/utils.ts`
+- Funcoes/hooks/constantes tocadas:
+  - `resolve_team_foreman` (nova) e `resolve_team_foreman_snapshot` (passa a delegar)
+  - RPC `save_team_stock_operation_record` (republicada)
+  - `fetchDayForemen` (novo modulo server)
+  - `handleForemanChange`, `dayForemanTeamId`, efeito de carga de `dayForemen`
+  - `resolvePrimaryStockCenterName`, `resolveSupportCenterName` (movidas para `utils.ts`)
+- Comportamento antes/depois:
+  - Antes: a equipe era escolhida direto no select, e a RPC gravava o encarregado
+    lido de `teams.foreman_person_id` — o encarregado do CADASTRO.
+  - Depois: novo campo `Encarregado do dia` acima de `Equipe`, alimentado pelas
+    composicoes ativas e `WORKING` daquela data. Escolher o encarregado preenche a
+    equipe; escolher a equipe direto continua funcionando; trocar a data recarrega
+    a lista.
+  - Depois: a RPC resolve o encarregado pela cadeia da migration 374 (composicao do
+    dia -> historico de nomeacao -> cadastro), usando o `p_entry_date` que ela ja
+    recebia. Sem isso a tela deixava escolher pelo encarregado do dia e gravava o do
+    cadastro, e a exportacao CSV saia com outra pessoa.
+  - Sem composicao lancada na data, o campo fica desabilitado com o texto
+    `Sem composicao lancada nesta data` e a selecao manual de equipe continua igual
+    ao comportamento anterior. Falha na consulta tambem nao bloqueia a tela.
+- Decisoes de estado:
+  - O formulario NAO ganhou um campo `foremanPersonId`. O select de encarregado
+    deriva de `form.teamId`, entao nao existe um segundo estado capaz de guardar
+    valor que a tela nao renderiza.
+  - O atalho passa pelo `handleTeamChange` existente, entao a regra de remover os
+    itens antes de trocar a equipe continua valendo — o atalho nao e um caminho
+    paralelo que fura validacao.
+  - Composicao apontando equipe inativa no cadastro e recusada com o nome da
+    equipe, em vez de preencher um valor que o select de Equipe nao lista.
+- Estrutura:
+  - Os modais de detalhe e de historico sairam do `PageView` para `components/`.
+    O arquivo caiu de 2.832 para 2.821 linhas mesmo com o campo novo.
+  - `resolvePrimaryStockCenterName` e `resolveSupportCenterName` foram para
+    `utils.ts`. Elas alimentam tanto o modal quanto a exportacao CSV; mante-las
+    dentro do componente de modal deixava a exportacao da tela dependendo de um
+    modal.
+- Auditoria de CSV (2026-08):
+  - As telas que exportam encarregado e leem SNAPSHOT herdaram a correcao sem
+    codigo novo: Estornos e Posicao Trafo pela 375; Medicao, Controle de APR,
+    Apuracao de Fator Minimo e Dashboard de Equipes pela 374.
+  - `Saldo por Equipe` continua no cadastro de proposito: saldo e uma posicao de
+    "agora", sem data para resolver.
+  - `Mapa de Programacao` segue no cadastro — unico caso em aberto. La a resolucao
+    e de LEITURA por linha (equipe + data da ultima etapa de cada obra), nao um
+    snapshot gravado, e exige RPC recebendo os pares (equipe, data).
+- Limite declarado:
+  - Snapshots ja gravados nao mudam. A correcao vale para o que for salvo daqui em
+    diante, consequencia da decisao de resolver o encarregado na ESCRITA.
+- Impacto multi-tenant:
+  - `fetchDayForemen` filtra por `tenant_id` da sessao; nenhum tenant vem do cliente.
+  - O endpoint valida `page_key` `saida` + acao `read` antes de qualquer consulta —
+    quem opera a Saida nao precisa de acesso a tela de Composicao de Equipe.
+  - `resolve_team_foreman`, `resolve_team_foreman_snapshot` e
+    `save_team_stock_operation_record` ficaram com EXECUTE apenas para
+    `service_role`.
