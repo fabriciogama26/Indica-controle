@@ -641,6 +641,12 @@ Atualizacao 2026-08 - Encarregado selecionavel na composicao
     garante no banco que o mesmo encarregado nao responde por EQUIPES DIFERENTES
     na mesma data. Isso torna deterministica a resolucao inversa
     encarregado + data -> equipe e substitui qualquer checagem otimista no Node.
+  - A constraint vale somente para composicao `WORKING` (ajuste da migration 374).
+    Equipe que nao atuou nao ocupa o dia do encarregado: o caso comum e o
+    encarregado oficial de uma MK ir para o CESTO no dia, com a MK registrando
+    "Nao atuou" com ele como unico integrante nao presente. Mesma decisao que a
+    migration 354 ja tinha tomado para integrantes (`is_present = false` nao
+    ocupa a pessoa).
   - Duas composicoes ativas da MESMA equipe na mesma data continuam permitidas,
     como hoje: `ux_team_compositions_context_active` as autoriza por projeto
     principal distinto e a operacao usa esse caminho. A resolucao inversa nao

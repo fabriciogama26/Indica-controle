@@ -6,12 +6,32 @@
 
 begin;
 
--- Determinismo da resolucao: uma equipe tem UM encarregado por data. Duas composicoes
--- ativas da mesma equipe na mesma data continuam permitidas (projeto principal distinto),
--- mas nao podem apontar para encarregados diferentes — senao "encarregado da equipe X em
--- D" teria duas respostas e o snapshot gravado seria arbitrario.
--- Complementa team_compositions_foreman_single_team_per_date (373), que fecha o sentido
--- inverso: um encarregado nao responde por equipes diferentes na mesma data.
+-- CORRECAO da constraint publicada na 373: ela nao podia valer para composicao
+-- NOT_WORKING. Caso real que a motivou (equipe CESTO, cujo encarregado muda de um dia
+-- para o outro): o encarregado oficial de uma MK vai para o CESTO no dia D, e a MK, sem
+-- ele, registra "Nao atuou" — que por regra exige o encarregado como unico integrante
+-- nao presente. A mesma pessoa fica em duas composicoes no dia D e a constraint recusava,
+-- travando justamente o fluxo que a feature existe para atender. Alem disso, a 354 ja
+-- tinha decidido que `is_present = false` NAO ocupa a pessoa; a versao anterior desta
+-- constraint contrariava essa decisao sem justificativa.
+-- Equipe que nao atuou tambem nao entra na resolucao inversa encarregado + data -> equipe:
+-- a resposta util e a equipe onde ele efetivamente trabalhou.
+alter table public.team_compositions
+  drop constraint if exists team_compositions_foreman_single_team_per_date;
+
+alter table public.team_compositions
+  add constraint team_compositions_foreman_single_team_per_date
+  exclude using gist (
+    tenant_id with =,
+    composition_date with =,
+    foreman_person_id with =,
+    team_id with <>
+  ) where (is_active = true and foreman_person_id is not null and work_status = 'WORKING');
+
+-- Determinismo da resolucao: uma equipe que atuou tem UM encarregado naquela data. Duas
+-- composicoes ativas da mesma equipe na mesma data continuam permitidas (projeto principal
+-- distinto), mas nao podem apontar para encarregados diferentes — senao "encarregado da
+-- equipe X em D" teria duas respostas e o snapshot gravado seria arbitrario.
 alter table public.team_compositions
   drop constraint if exists team_compositions_team_single_foreman_per_date;
 
@@ -22,7 +42,7 @@ alter table public.team_compositions
     composition_date with =,
     team_id with =,
     foreman_person_id with <>
-  ) where (is_active = true and foreman_person_id is not null);
+  ) where (is_active = true and foreman_person_id is not null and work_status = 'WORKING');
 
 create or replace function public.resolve_team_foreman_snapshot(
   p_tenant_id uuid,
@@ -57,6 +77,7 @@ as $$
       and tc.team_id = t.id
       and tc.composition_date = p_execution_date
       and tc.is_active = true
+      and tc.work_status = 'WORKING'
       and tc.foreman_person_id is not null
     limit 1
   ) c on true
@@ -78,7 +99,7 @@ $$;
 -- Indice que sustenta o nivel 1 da cadeia: a resolucao busca por tenant + equipe + data.
 create index if not exists idx_team_compositions_tenant_team_date_active
   on public.team_compositions (tenant_id, team_id, composition_date)
-  where is_active = true and foreman_person_id is not null;
+  where is_active = true and foreman_person_id is not null and work_status = 'WORKING';
 
 create or replace function public.apply_apr_team_snapshot()
 returns trigger
