@@ -7,6 +7,8 @@ Visao geral
 - Compara valor realizado contra a meta cadastrada na tela Meta.
 - Exibe valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias no ciclo completo.
 - Exibe `Visao geral por periodo` com Concluidos, Parciais, Parcial planejado beneficio atingido, Pendencias e Garantia de faturamento minimo no recorte `De/Para`.
+- A `Visao geral por periodo` possui filtro local de `Tipo` (`Todos`, `Obras`, `Manutencao`) no mesmo criterio da Carteira Operacional.
+- O card principal `Filtros` tambem possui `Tipo` (`Todos`, `Obras`, `Manutencao`) para recortar a tela inteira.
 - Exibe visao por encarregado no mesmo estilo de comparacao Valor x Meta.
 - Exibe `Supervisor no ciclo`, somando o valor produzido pelas equipes vinculadas ao supervisor no cadastro de Equipes e comparando contra meta por equipes com producao ou por todas as equipes vinculadas.
 - Obras marcadas como teste em Projetos nao entram nos indicadores.
@@ -48,6 +50,8 @@ Filtros, auto-complete e listagem
   - Encarregado
   - Supervisor
   - Status execucao (`Todos`, `Concluidos`, `Parciais`, `Parcial planejado beneficio atingido`, `Pendencias`)
+  - Tipo global (`Todos`, `Obras`, `Manutencao`)
+  - Tipo local da `Visao geral por periodo` (`Todos`, `Obras`, `Manutencao`)
 - Graficos:
   - Valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias no ciclo, com tabela acima, coluna de projetos e exibicao lado a lado com o grafico por periodo em desktop
   - `Visao geral por periodo` com valor de Concluidos, Parciais, Parcial planejado beneficio atingido, Pendencias e Garantia de faturamento minimo por periodo `De/Para`, cards acima da tabela organizados em linha no desktop, tabela com linha de total, coluna de projetos, cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, exibicao lado a lado em desktop e botao proprio `Filtrar periodo`
@@ -61,11 +65,14 @@ Filtros, auto-complete e listagem
 - Cada grafico possui botao circular de ampliacao, abrindo modal com o grafico em area maior.
 - No bloco de encarregados, cada visao possui seu proprio botao de ampliacao.
 - Cada visao de encarregados exibe o ciclo medido no cabecalho do grafico.
-- O periodo `De/Para` fica dentro do grafico `Visao geral por periodo` e restringe somente esse grafico por `Data execucao`, sem limitar o resultado ao ciclo selecionado.
+- O filtro `Tipo` global fica no card `Filtros` e restringe `Concluidos X parciais no ciclo`, `Visao geral por periodo`, `Ciclo da medicao` e `Evolucao anual por ciclo`.
+- O periodo `De/Para` e o filtro `Tipo` local ficam dentro do grafico `Visao geral por periodo` e restringem somente esse grafico por `Data execucao` e `Tipo de Servico`, sem limitar o resultado ao ciclo selecionado.
+- Os filtros `Tipo` seguem a mesma regra da Carteira Operacional: `Manutencao` casa por texto normalizado contendo `MANUTENCAO` ou `EMERGENCIAL`; `Obras` e o complemento; `Todos` preserva a leitura misturada.
 - A categoria `Garantia de faturamento minimo` soma `project_measurement_orders.minimum_billing_amount` das ordens `SEM_PRODUCAO`, ativas, nao canceladas e com valor positivo.
 - A garantia minima aparece somente quando o filtro `Status execucao` esta em `Todos`, pois nao representa um Estado Trabalho da Programacao.
 - O periodo `De/Para` abre preenchido com o ano calendario corrente, de `01/01` a `31/12`, acompanhando automaticamente a virada do ano.
 - O periodo nao atualiza automaticamente ao digitar; o usuario precisa clicar em `Filtrar periodo`.
+- O filtro `Tipo` local tambem passa pelo botao `Filtrar periodo`.
 - Os filtros gerais nao atualizam automaticamente ao selecionar/digitar; o usuario precisa clicar em `Filtrar`.
 - Ciclo, tabela/grafico do ciclo e tabela/grafico de encarregados usam o ciclo operacional completo com os filtros gerais selecionados.
 - Filtros gerais como Projeto, Equipe, Encarregado e Status execucao tambem sao respeitados no grafico por periodo.
@@ -175,6 +182,8 @@ Atalhos
   - `foreman`
   - `supervisorId`
   - `completionStatus`
+  - `serviceScope`
+  - `periodServiceScope`
 - Observacao: a semana dos blocos `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo` e filtro local de UI; nao altera query params nem os demais graficos.
 
 Atualizacao 2026-04
@@ -856,3 +865,30 @@ IMPACTO MEDIDO EM PRODUCAO (2026-07-29)
   - `src/app/api/dash-operacional-faturamento/route.ts`
   - `src/server/modules/dashboard-measurement/controller.ts`
   - `src/server/modules/dashboard-portfolio/controller.ts`
+
+Atualizacao 2026-08-18 - Tipo na Visao geral por periodo
+---------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/tipos tocados:
+  - `PeriodServiceScope`
+  - `loadDashboard`
+  - `applyPeriodFilter`
+  - `ProjectMeta.serviceTypeText`
+  - `normalizeServiceScope`
+  - `isMaintenanceServiceType`
+  - `fetchProjectMetaMap`
+  - `handleDashboardMeasurementGet`
+- Comportamento antes/depois:
+  - Antes: a `Visao geral por periodo` permitia filtrar somente por `De/Para`, herdando filtros gerais como Projeto e Status execucao.
+  - Depois: o bloco recebe o filtro local `Tipo` com `Todos`, `Obras` e `Manutencao`, no mesmo criterio da Carteira Operacional.
+  - Depois: o card principal `Filtros` tambem recebe `Tipo`, aplicado como recorte global da tela.
+  - Depois: o filtro `Tipo` restringe somente os indicadores, tabela, grafico e modal de detalhes da `Visao geral por periodo`.
+  - Depois: `Concluidos X parciais no ciclo`, `Ciclo da medicao` e `Evolucao anual por ciclo` respeitam o `Tipo` global e ignoram apenas o `Tipo` local do periodo.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS, grants ou permissoes.
+  - O backend continua derivando `tenant_id` da sessao e filtra projetos por `project_with_labels` dentro do tenant autenticado.

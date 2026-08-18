@@ -131,7 +131,7 @@ type DashboardResponse = {
 };
 
 type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | "annual" | null;
-type MetaMode = "cycle" | "standard" | "worked";
+type MetaMode = "cycle" | "standard" | "worked"; type ServiceScope = "ALL" | "OBRAS" | "MANUTENCAO";
 
 type ProjectDetailModal = {
   kind: "production";
@@ -298,6 +298,8 @@ export function DashboardMeasurementPageView() {
   const [endDate, setEndDate] = useState(() => getCurrentYearPeriod().end);
   const [periodStartDraft, setPeriodStartDraft] = useState(() => getCurrentYearPeriod().start);
   const [periodEndDraft, setPeriodEndDraft] = useState(() => getCurrentYearPeriod().end);
+  const [serviceScope, setServiceScope] = useState<ServiceScope>("ALL"), [serviceScopeDraft, setServiceScopeDraft] = useState<ServiceScope>("ALL");
+  const [periodServiceScope, setPeriodServiceScope] = useState<ServiceScope>("ALL"), [periodServiceScopeDraft, setPeriodServiceScopeDraft] = useState<ServiceScope>("ALL");
   const [selectedCycleStart, setSelectedCycleStart] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
   const [completionStatus, setCompletionStatus] = useState("TODOS");
@@ -328,6 +330,7 @@ export function DashboardMeasurementPageView() {
     if (endDate) params.set("endDate", endDate);
     if (selectedCycleStart) params.set("cycleStart", selectedCycleStart);
     params.set("year", String(annualYear));
+    if (serviceScope !== "ALL") params.set("serviceScope", serviceScope); if (periodServiceScope !== "ALL") params.set("periodServiceScope", periodServiceScope);
     if (projectSearch.trim()) params.set("project", projectSearch.trim());
     if (completionStatus !== "TODOS") params.set("completionStatus", completionStatus);
 
@@ -381,7 +384,7 @@ export function DashboardMeasurementPageView() {
     } finally {
       setIsLoading(false);
     }
-  }, [annualYear, completionStatus, endDate, logError, projectSearch, selectedCycleStart, session?.accessToken, startDate]);
+  }, [annualYear, completionStatus, endDate, logError, periodServiceScope, projectSearch, selectedCycleStart, serviceScope, session?.accessToken, startDate]);
 
   useEffect(() => {
     if (suppressNextAutoLoadRef.current) {
@@ -439,7 +442,8 @@ export function DashboardMeasurementPageView() {
     const filtersAreApplied =
       selectedCycleStart === cycleDraft &&
       projectSearch === nextProjectSearch &&
-      completionStatus === completionStatusDraft;
+      completionStatus === completionStatusDraft &&
+      serviceScope === serviceScopeDraft;
 
     if (filtersAreApplied) {
       void loadDashboard();
@@ -450,6 +454,7 @@ export function DashboardMeasurementPageView() {
     setProjectSearch(nextProjectSearch);
     setProjectSearchDraft(nextProjectSearch);
     setCompletionStatus(completionStatusDraft);
+    setServiceScope(serviceScopeDraft);
   }
 
   function applyAnnualYearFilter() {
@@ -462,12 +467,13 @@ export function DashboardMeasurementPageView() {
   }
 
   function applyPeriodFilter() {
-    if (periodStartDraft === startDate && periodEndDraft === endDate) {
+    if (periodStartDraft === startDate && periodEndDraft === endDate && periodServiceScopeDraft === periodServiceScope) {
       void loadDashboard();
       return;
     }
     setStartDate(periodStartDraft);
     setEndDate(periodEndDraft);
+    setPeriodServiceScope(periodServiceScopeDraft);
   }
 
   function openCompletionProjectDetails(row: CompletionChartItem, subtitle: string, filenamePrefix: string) {
@@ -936,17 +942,8 @@ export function DashboardMeasurementPageView() {
             ))}
           </datalist>
 
-          <label className={styles.field}>
-            <span>Status execucao</span>
-            <select value={completionStatusDraft} onChange={(event) => setCompletionStatusDraft(event.target.value)} disabled={isLoading}>
-                <option value="TODOS">Todos</option>
-                <option value="CONCLUIDO">Concluidos</option>
-                <option value="PARCIAL">Parciais</option>
-                <option value="PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO">Parcial planejado beneficio atingido</option>
-                <option value="PENDENCIA">Pendencias</option>
-              </select>
-            </label>
-
+          <label className={styles.field}><span>Status execucao</span><select value={completionStatusDraft} onChange={(event) => setCompletionStatusDraft(event.target.value)} disabled={isLoading}><option value="TODOS">Todos</option><option value="CONCLUIDO">Concluidos</option><option value="PARCIAL">Parciais</option><option value="PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO">Parcial planejado beneficio atingido</option><option value="PENDENCIA">Pendencias</option></select></label>
+          <label className={styles.field}><span>Tipo</span><select value={serviceScopeDraft} onChange={(event) => setServiceScopeDraft(event.target.value as ServiceScope)} disabled={isLoading}><option value="ALL">Todos</option><option value="OBRAS">Obras</option><option value="MANUTENCAO">Manutencao</option></select></label>
         </div>
       </article>
 
@@ -975,14 +972,9 @@ export function DashboardMeasurementPageView() {
           </div>
           <div className={styles.chartActions}>
             <div className={styles.periodFields}>
-              <label className={styles.inlineDate}>
-                <span>De</span>
-                <input type="date" value={periodStartDraft} onChange={(event) => setPeriodStartDraft(event.target.value)} disabled={isLoading} />
-              </label>
-              <label className={styles.inlineDate}>
-                <span>Para</span>
-                <input type="date" value={periodEndDraft} onChange={(event) => setPeriodEndDraft(event.target.value)} disabled={isLoading} />
-              </label>
+              <label className={styles.inlineDate}><span>De</span><input type="date" value={periodStartDraft} onChange={(event) => setPeriodStartDraft(event.target.value)} disabled={isLoading} /></label>
+              <label className={styles.inlineDate}><span>Para</span><input type="date" value={periodEndDraft} onChange={(event) => setPeriodEndDraft(event.target.value)} disabled={isLoading} /></label>
+              <label className={styles.inlineSelect}><span>Tipo</span><select value={periodServiceScopeDraft} onChange={(event) => setPeriodServiceScopeDraft(event.target.value as ServiceScope)} disabled={isLoading}><option value="ALL">Todos</option><option value="OBRAS">Obras</option><option value="MANUTENCAO">Manutencao</option></select></label>
             </div>
             <button type="button" className={styles.secondaryButton} onClick={applyPeriodFilter} disabled={isLoading}>
               Filtrar periodo
