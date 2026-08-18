@@ -976,8 +976,8 @@ export function DashboardMeasurementPageView() {
               <label className={styles.inlineDate}><span>Para</span><input type="date" value={periodEndDraft} onChange={(event) => setPeriodEndDraft(event.target.value)} disabled={isLoading} /></label>
               <label className={styles.inlineSelect}><span>Tipo</span><select value={periodServiceScopeDraft} onChange={(event) => setPeriodServiceScopeDraft(event.target.value as ServiceScope)} disabled={isLoading}><option value="ALL">Todos</option><option value="OBRAS">Obras</option><option value="MANUTENCAO">Manutencao</option></select></label>
             </div>
-            <button type="button" className={styles.secondaryButton} onClick={applyPeriodFilter} disabled={isLoading}>
-              Filtrar periodo
+            <button type="button" className={styles.primaryButton} onClick={applyPeriodFilter} disabled={isLoading}>
+              Filtrar
             </button>
             {renderExpandButton("completionPeriod", "Visao geral por periodo")}
           </div>
