@@ -1483,3 +1483,32 @@ Atualizacao 2026-08-15 - 409 de conflito enriquecido (edicao x cancelamento conc
   falha neste ambiente por um erro pre-existente e nao relacionado (arquivos Deno em
   `Backup/` sendo varridos pelo typecheck do Next) — confirmado com `git stash` antes desta
   tarefa.
+
+
+Atualizacao 2026-08 - Encarregado resolvido pela Composicao de Equipe
+---------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/374_resolve_team_foreman_from_composition.sql` (novo)
+- Funcoes/hooks/constantes tocadas:
+  - `resolve_team_foreman_snapshot` (nova cadeia de resolucao)
+- Comportamento antes/depois:
+  - Antes: `foreman_name_snapshot` da ordem era resolvido pela cadeia
+    `team_foreman_history` (encarregado vigente na data) -> `teams.foreman_person_id`.
+  - Depois: a Composicao de Equipe daquela data entrou como nivel 1 da cadeia.
+    Se existir composicao ativa da equipe na `execution_date` com encarregado
+    definido, e ele quem vai para o snapshot; sem composicao, o comportamento e
+    exatamente o anterior.
+  - Nenhum arquivo de aplicacao mudou: a Medicao ja resolvia por
+    `trg_apply_measurement_team_snapshot` (migration 161), entao herdou a cadeia
+    nova sem alteracao de RPC, rota ou tela.
+  - Ponto cosmetico conhecido: no cadastro de ordem nova, o campo somente-leitura
+    de encarregado mostra o encarregado do cadastro da equipe enquanto o
+    formulario esta aberto (`MeasurementPageView.tsx`, resolucao por `teamMap`);
+    depois de salvar, a ordem volta com o snapshot correto e a tela se corrige.
+- Regra de atualizacao:
+  - O snapshot continua sendo resolvido na ESCRITA e o trigger so re-resolve
+    quando `team_id` ou `execution_date` mudam. Ordem salva ANTES de a composicao
+    do dia existir mantem o encarregado que foi congelado.
+- Impacto multi-tenant:
+  - A funcao de resolucao filtra por `tenant_id` em todas as tabelas envolvidas e
+    passou a ter EXECUTE restrito a `service_role`.
