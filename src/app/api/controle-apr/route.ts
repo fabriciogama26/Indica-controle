@@ -47,6 +47,11 @@ type PersonRow = {
   nome: string;
 };
 
+type JobTitleRow = {
+  id: string;
+  name: string | null;
+};
+
 type HistoryRow = {
   id: string;
   action_type: string;
@@ -137,15 +142,27 @@ async function loadMeta(
   }
 
   const teams = teamsResult.data ?? [];
-  const foremanIds = Array.from(
-    new Set(teams.map((item) => item.foreman_person_id).filter((item): item is string => Boolean(item))),
-  );
-  const peopleResult = foremanIds.length
+
+  const foremanJobTitlesResult = await supabase
+    .from("job_titles")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .ilike("name", "%encarregado%")
+    .returns<JobTitleRow[]>();
+
+  if (foremanJobTitlesResult.error) {
+    return { error: "Falha ao carregar encarregados das equipes." } as const;
+  }
+
+  const foremanJobTitleIds = (foremanJobTitlesResult.data ?? []).map((item) => item.id).filter(Boolean);
+  const peopleResult = foremanJobTitleIds.length
     ? await supabase
         .from("people")
         .select("id, nome")
         .eq("tenant_id", tenantId)
-        .in("id", foremanIds)
+        .eq("ativo", true)
+        .in("job_title_id", foremanJobTitleIds)
+        .order("nome", { ascending: true })
         .returns<PersonRow[]>()
     : { data: [] as PersonRow[], error: null };
 
@@ -167,6 +184,7 @@ async function loadMeta(
       foremanId: item.foreman_person_id,
       foremanName: item.foreman_person_id ? foremanMap.get(item.foreman_person_id) ?? "Sem encarregado" : "Sem encarregado",
     })),
+    foremen: Array.from(new Set(foremanMap.values())).filter(Boolean).sort(),
   } as const;
 }
 
@@ -298,6 +316,7 @@ export async function GET(request: NextRequest) {
     }
     response.projects = meta.projects;
     response.teams = meta.teams;
+    response.foremen = meta.foremen;
   }
 
   return NextResponse.json(response);
