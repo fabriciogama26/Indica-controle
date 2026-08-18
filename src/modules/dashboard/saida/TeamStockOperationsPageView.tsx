@@ -9,7 +9,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { isSerialTrackedMaterial, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
-import { HISTORY_EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { HISTORY_EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   FilterState,
   FormState,
@@ -34,8 +34,6 @@ import {
   downloadMassImportErrorReport,
   formatDate,
   formatDateTime,
-  formatHistoryActionLabel,
-  formatHistoryValue,
   isTransformerQuantityValid,
   normalizeDateInput,
   normalizeHeaderName,
@@ -52,6 +50,9 @@ import {
 } from "./utils";
 import styles from "../entrada/StockTransfersPageView.module.css";
 import localStyles from "./TeamStockOperationsPageView.module.css";
+import { OperationDetailModal, resolvePrimaryStockCenterName, resolveSupportCenterName } from "./components/OperationDetailModal";
+import { OperationHistoryModal } from "./components/OperationHistoryModal";
+import type { DayForeman } from "@/server/modules/composicao-equipe";
 
 const LIST_PAGE_SIZE = 20;
 
@@ -92,14 +93,6 @@ function operationSignalClass(value: TeamOperationKind | string | null | undefin
   if (normalized === "RETURN") return styles.signalChipEntry;
   if (normalized === "FIELD_RETURN") return styles.signalChipEntry;
   return styles.signalChipTransfer;
-}
-
-function resolvePrimaryStockCenterName(item: Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">) {
-  return item.operationKind === "REQUISITION" ? item.fromStockCenterName : item.toStockCenterName;
-}
-
-function resolveSupportCenterName(item: Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">) {
-  return item.operationKind === "REQUISITION" ? item.toStockCenterName : item.fromStockCenterName;
 }
 
 function createRowId() {
@@ -185,6 +178,7 @@ export function TeamStockOperationsPageView() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [stockCenters, setStockCenters] = useState<MetaResponse["stockCenters"]>([]);
   const [teams, setTeams] = useState<MetaResponse["teams"]>([]);
+  const [dayForemen, setDayForemen] = useState<DayForeman[]>([]);
   const [projects, setProjects] = useState<MetaResponse["projects"]>([]);
   const [materials, setMaterials] = useState<MetaResponse["materials"]>([]);
   const [serialOptions, setSerialOptions] = useState<SerialOption[]>([]);
@@ -671,6 +665,55 @@ export function TeamStockOperationsPageView() {
       lotCode: "",
     }));
   }
+
+  const dayForemanTeamId = dayForemen.find((item) => item.teamId === form.teamId)?.foremanPersonId ?? "";
+
+  function handleForemanChange(foremanPersonId: string) {
+    if (!foremanPersonId) {
+      handleTeamChange("");
+      return;
+    }
+
+    const match = dayForemen.find((item) => item.foremanPersonId === foremanPersonId);
+    if (!match) return;
+
+    const isActiveTeam = activeTeams.some((team) => team.id === match.teamId);
+    if (!isActiveTeam) {
+      showError(`A equipe ${match.teamName} da composicao de ${form.entryDate} nao esta ativa.`);
+      return;
+    }
+
+    handleTeamChange(match.teamId);
+  }
+
+  useEffect(() => {
+    if (!accessToken || !form.entryDate) {
+      setDayForemen([]);
+      return;
+    }
+
+    let ignore = false;
+    async function loadDayForemen(entryDate: string) {
+      try {
+        const response = await fetch(`/api/team-stock-operations/day-foremen?date=${entryDate}`, {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const data = (await response.json().catch(() => ({}))) as { foremen?: DayForeman[] };
+        if (ignore) return;
+        setDayForemen(response.ok ? data.foremen ?? [] : []);
+      } catch (error) {
+        if (ignore) return;
+        setDayForemen([]);
+        await logError("Falha ao carregar encarregados do dia.", error, { entryDate });
+      }
+    }
+
+    void loadDayForemen(form.entryDate);
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, form.entryDate, logError]);
 
   function handleTeamChange(value: string) {
     if (form.items.length > 0) {
@@ -1923,6 +1966,24 @@ export function TeamStockOperationsPageView() {
           </label>
 
           <label className={styles.field}>
+            <span>Encarregado do dia</span>
+            <select
+              value={dayForemanTeamId}
+              onChange={(event) => handleForemanChange(event.target.value)}
+              disabled={isSubmitting || isLoadingMeta || dayForemen.length === 0}
+            >
+              <option value="">
+                {dayForemen.length ? "Selecione para preencher a equipe" : "Sem composicao lancada nesta data"}
+              </option>
+              {dayForemen.map((item) => (
+                <option key={item.foremanPersonId} value={item.foremanPersonId}>
+                  {item.foremanName} - {item.teamName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
             <span>
               Equipe <span className={styles.requiredMark}>*</span>
             </span>
@@ -2440,86 +2501,14 @@ export function TeamStockOperationsPageView() {
         </div>
       </article>
 
-      {detailItem ? (
-        <div className={styles.modalOverlay} onClick={() => setDetailItem(null)}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Detalhes da Operacao</h4>
-                <p className={styles.modalSubtitle}>Transferencia: {detailItem.transferId}</p>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailItem(null)}>
-                Fechar
-              </button>
-            </header>
+      <OperationDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
 
-            <div className={styles.modalBody}>
-              <div className={styles.detailGrid}>
-                <div><strong>Operacao:</strong> {operationKindLabel(detailItem.operationKind)}</div>
-                <div><strong>Equipe:</strong> {detailItem.teamName}</div>
-                <div><strong>Encarregado:</strong> {detailItem.foremanName ?? "-"}</div>
-                <div><strong>Centro estoque:</strong> {resolvePrimaryStockCenterName(detailItem)}</div>
-                <div><strong>Origem apoio:</strong> {resolveSupportCenterName(detailItem)}</div>
-                <div><strong>Projeto:</strong> {detailItem.projectCode}</div>
-                <div><strong>Material:</strong> {detailItem.materialCode}</div>
-                <div><strong>Descricao:</strong> {detailItem.description}</div>
-                <div><strong>Quantidade:</strong> {detailItem.quantity.toLocaleString("pt-BR")}</div>
-                <div><strong>Tipo:</strong> {detailItem.entryType}</div>
-                <div><strong>{operationDateLabel(detailItem.operationKind)}:</strong> {formatDate(detailItem.entryDate)}</div>
-                <div><strong>Serial:</strong> {detailItem.serialNumber ?? "-"}</div>
-                <div><strong>LP:</strong> {detailItem.lotCode ?? "-"}</div>
-                <div><strong>Atualizado em:</strong> {formatDateTime(detailItem.updatedAt)}</div>
-                <div><strong>Atualizado por:</strong> {detailItem.updatedByName}</div>
-                <div><strong>Transferencia original:</strong> {detailItem.originalTransferId ?? "-"}</div>
-                <div><strong>Transferencia de estorno:</strong> {detailItem.reversalTransferId ?? "-"}</div>
-                <div><strong>Motivo do estorno:</strong> {detailItem.reversalReason ?? "-"}</div>
-                <div><strong>Data do estorno:</strong> {formatDateTime(detailItem.reversedAt)}</div>
-                <div className={styles.detailWide}><strong>Observacao:</strong> {detailItem.notes ?? "-"}</div>
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {historyModalItem ? (
-        <div className={styles.modalOverlay} onClick={closeHistoryModal}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Historico da Operacao</h4>
-                <p className={styles.modalSubtitle}>Transferencia: {historyModalItem.transferId}</p>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={closeHistoryModal}>
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              {isLoadingHistoryModal ? <p>Carregando historico...</p> : null}
-              {!isLoadingHistoryModal && historyModalItems.length === 0 ? <p>Nenhum historico registrado.</p> : null}
-              {!isLoadingHistoryModal && historyModalItems.length > 0 ? historyModalItems.map((item) => (
-                <article key={item.id} className={styles.historyCard}>
-                  <header className={styles.historyCardHeader}>
-                    <strong>{formatHistoryActionLabel(item.action)}</strong>
-                    <span>{formatDateTime(item.changedAt)} | {item.changedByName}</span>
-                  </header>
-                  <div className={styles.historyChanges}>
-                    {Object.entries(item.changes ?? {}).length > 0
-                      ? Object.entries(item.changes ?? {}).map(([field, change]) => (
-                          <div key={field} className={styles.historyChangeItem}>
-                            <strong>{HISTORY_FIELD_LABELS[field] ?? field}</strong>
-                            <span>De: {formatHistoryValue(change.from)}</span>
-                            <span>Para: {formatHistoryValue(change.to)}</span>
-                          </div>
-                        ))
-                      : <div className={styles.historyChangeItem}><span>Sem alteracoes detalhadas.</span></div>}
-                  </div>
-                </article>
-              )) : null}
-            </div>
-          </article>
-        </div>
-      ) : null}
+      <OperationHistoryModal
+        item={historyModalItem}
+        entries={historyModalItems}
+        isLoading={isLoadingHistoryModal}
+        onClose={closeHistoryModal}
+      />
 
       {reversalModalItem ? (
         <div className={styles.modalOverlay} onClick={closeReversalModal}>
