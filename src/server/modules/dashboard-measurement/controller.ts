@@ -37,11 +37,8 @@ type ProjectTestRow = {
   is_test: boolean | null;
   is_third_party?: boolean | null;
   service_center: string | null;
-};
-
-type ProjectServiceCenterRow = {
-  id: string;
-  name: string | null;
+  service_center_text?: string | null;
+  service_type_text?: string | null;
 };
 
 type ProjectMeta = {
@@ -49,6 +46,7 @@ type ProjectMeta = {
   isThirdParty: boolean;
   serviceCenterId: string | null;
   serviceCenterName: string;
+  serviceTypeText: string;
 };
 
 type ProjectProductionDetail = {
@@ -178,8 +176,14 @@ type AnnualCycleComparison = {
   hasMeta: boolean;
 };
 
+type ServiceScope = "ALL" | "OBRAS" | "MANUTENCAO";
+
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
+}
+
+function normalizeToken(value: unknown) {
+  return normalizeText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
 function toTeamPerformanceOrder(order: MeasurementOrderRow): TeamPerformanceOrder {
@@ -215,10 +219,7 @@ function normalizeIsoDate(value: unknown) {
 }
 
 function normalizeCompletionStatus(value: unknown) {
-  const token = normalizeText(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
+  const token = normalizeToken(value)
     .replace(/\s+/g, "_");
 
   if (token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO")) return "CONCLUIDO";
@@ -228,6 +229,12 @@ function normalizeCompletionStatus(value: unknown) {
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) return "PARCIAL";
   if (token === "PENDENCIA" || token === "PENDENCIAS" || token.startsWith("PENDEN")) return "PENDENCIA";
   return "NAO_INFORMADO";
+}
+
+function normalizeServiceScope(value: unknown): ServiceScope { const token = normalizeToken(value); return token === "MANUTENCAO" ? "MANUTENCAO" : token === "OBRAS" ? "OBRAS" : "ALL"; }
+
+function isMaintenanceServiceType(value: unknown) {
+  return normalizeToken(value).includes("EMERGENCIAL") || normalizeToken(value).includes("MANUTENCAO");
 }
 
 function periodOverlaps(startDate: string, endDate: string | null, windowStart: string, windowEnd: string) {
@@ -403,24 +410,13 @@ async function fetchProjectMetaMap(params: {
   if (!projectIds.length) return new Map<string, ProjectMeta>();
 
   const { data, error } = await params.supabase
-    .from("project")
-    .select("id, is_test, is_third_party, service_center")
+    .from("project_with_labels")
+    .select("id, is_test, is_third_party, service_center, service_center_text, service_type_text")
     .eq("tenant_id", params.tenantId)
     .in("id", projectIds)
     .returns<ProjectTestRow[]>();
 
   if (error) return new Map<string, ProjectMeta>();
-
-  const serviceCenterIds = Array.from(new Set((data ?? []).map((item) => item.service_center).filter((id): id is string => Boolean(id))));
-  const serviceCentersResult = serviceCenterIds.length
-    ? await params.supabase
-        .from("project_service_centers")
-        .select("id, name")
-        .eq("tenant_id", params.tenantId)
-        .in("id", serviceCenterIds)
-        .returns<ProjectServiceCenterRow[]>()
-    : { data: [] as ProjectServiceCenterRow[], error: null };
-  const serviceCenterMap = new Map((serviceCentersResult.data ?? []).map((item) => [item.id, normalizeText(item.name)]));
 
   return new Map((data ?? []).map((item) => [
     item.id,
@@ -428,7 +424,8 @@ async function fetchProjectMetaMap(params: {
       isTest: Boolean(item.is_test),
       isThirdParty: Boolean(item.is_third_party),
       serviceCenterId: item.service_center,
-      serviceCenterName: item.service_center ? serviceCenterMap.get(item.service_center) || "Centro nao identificado" : "Centro nao informado",
+      serviceCenterName: normalizeText(item.service_center_text) || (item.service_center ? "Centro nao identificado" : "Centro nao informado"),
+      serviceTypeText: normalizeText(item.service_type_text),
     },
   ]));
 }
@@ -600,6 +597,7 @@ export async function handleDashboardMeasurementGet(
   const foremanFilter = normalizeText(request.nextUrl.searchParams.get("foreman"));
   const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
   const completionFilter = normalizeText(request.nextUrl.searchParams.get("completionStatus")).toUpperCase();
+  const serviceScopeFilter = normalizeServiceScope(request.nextUrl.searchParams.get("serviceScope")), periodServiceScopeFilter = normalizeServiceScope(request.nextUrl.searchParams.get("periodServiceScope"));
   const annualYear = normalizeYear(request.nextUrl.searchParams.get("year")) ?? new Date().getUTCFullYear();
   const annualCycles = buildAnnualCycles(annualYear);
   const annualRangeStart = annualCycles[0]?.cycleStart ?? `${annualYear}-01-01`;
@@ -745,19 +743,19 @@ export async function handleDashboardMeasurementGet(
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => {
       const projectMeta = projectMetaMap.get(order.project_id);
-      return !projectMeta?.isTest && !projectMeta?.isThirdParty;
+      return !projectMeta?.isTest && !projectMeta?.isThirdParty && (serviceScopeFilter === "ALL" || isMaintenanceServiceType(projectMeta?.serviceTypeText) === (serviceScopeFilter === "MANUTENCAO"));
     });
   const annualValidOrders = (annualOrdersResult.data ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => {
       const projectMeta = projectMetaMap.get(order.project_id);
-      return !projectMeta?.isTest && !projectMeta?.isThirdParty;
+      return !projectMeta?.isTest && !projectMeta?.isThirdParty && (serviceScopeFilter === "ALL" || isMaintenanceServiceType(projectMeta?.serviceTypeText) === (serviceScopeFilter === "MANUTENCAO"));
     });
   const validMinimumBillingGuaranteeOrders = (minimumBillingGuaranteeOrders ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => {
       const projectMeta = projectMetaMap.get(order.project_id);
-      return !projectMeta?.isTest && !projectMeta?.isThirdParty;
+      return !projectMeta?.isTest && !projectMeta?.isThirdParty && (serviceScopeFilter === "ALL" || isMaintenanceServiceType(projectMeta?.serviceTypeText) === (serviceScopeFilter === "MANUTENCAO"));
     });
 
   const cycleOrders = validOrders.filter((order) => {
@@ -1062,6 +1060,7 @@ export async function handleDashboardMeasurementGet(
   });
 
   const periodFilteredOrders = periodOrders.filter((order) => {
+    if (periodServiceScopeFilter !== "ALL" && isMaintenanceServiceType(projectMetaMap.get(order.project_id)?.serviceTypeText) !== (periodServiceScopeFilter === "MANUTENCAO")) return false;
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
@@ -1096,6 +1095,7 @@ export async function handleDashboardMeasurementGet(
     return true;
   });
   const periodFilteredMinimumBillingGuaranteeOrders = periodMinimumBillingGuaranteeOrders.filter((order) => {
+    if (periodServiceScopeFilter !== "ALL" && isMaintenanceServiceType(projectMetaMap.get(order.project_id)?.serviceTypeText) !== (periodServiceScopeFilter === "MANUTENCAO")) return false;
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
