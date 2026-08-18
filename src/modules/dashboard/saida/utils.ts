@@ -246,3 +246,13 @@ export function downloadMassImportErrorReport(report: MassImportErrorReportData 
   if (!report) return;
   downloadCsv(report.content, report.fileName);
 }
+
+type StockCenterNames = Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">;
+
+export function resolvePrimaryStockCenterName(item: StockCenterNames) {
+  return item.operationKind === "REQUISITION" ? item.fromStockCenterName : item.toStockCenterName;
+}
+
+export function resolveSupportCenterName(item: StockCenterNames) {
+  return item.operationKind === "REQUISITION" ? item.toStockCenterName : item.fromStockCenterName;
+}
