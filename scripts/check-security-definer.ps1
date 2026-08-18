@@ -18,6 +18,7 @@ $knownNoRevoke = @{
     262 = "Corrigida pelas migrations 278/298"
     263 = "Corrigida pelas migrations 278/298"
     269 = "Recria assinatura existente com grants preservados; sem alerta live"
+    338 = "Corrigida pela migration 375"
 }
 
 # Migrations que fizeram grant desnecessario a authenticated.

@@ -1108,3 +1108,10 @@ Observacao
 - Novo indice parcial `idx_team_compositions_tenant_team_date_active` sustenta a busca do nivel 1 por tenant + equipe + data.
 - Hardening de grant: `resolve_team_foreman_snapshot` tinha EXECUTE para `authenticated` desde a 161, contra a regra 16 de `guias/guia_sql.md`. Nenhum consumidor cliente existe (nenhuma chamada `.rpc()` em `src/` ou `supabase/functions/`) e todos os callers sao funcoes `SECURITY DEFINER`, que executam no contexto do dono — o EXECUTE passou a ser so de `service_role`. `apply_apr_team_snapshot` entra ja com revoke de `public`/`anon`/`authenticated`.
 - Fora do escopo: o Mapa de Programacao continua exibindo o encarregado do cadastro da equipe. Ali a resolucao e de LEITURA por linha (equipe + data da ultima etapa), nao de escrita, e fazer isso no Node viraria N+1 ou payload grande — exige RPC propria recebendo os pares (equipe, data).
+
+375_harden_supabase_advisor_security_warnings.sql
+- Fecha warnings de seguranca do Supabase Advisor, exceto Auth/Leaked Password Protection, que permanece manual no Dashboard Supabase.
+- Move `btree_gist` para o schema `extensions` (ou cria a extensao nesse schema se estiver ausente), preservando as constraints EXCLUDE que ja dependem da extensao.
+- Fixa `search_path = public` em `tg_programming_capture_anticipated_snapshot`, `tg_programming_clear_snapshot_source` e `tg_programming_set_updated_at`, e revoga EXECUTE externo dessas trigger functions.
+- Revoga EXECUTE de `public`, `anon` e `authenticated` nas RPCs `save_service_activity_record`, `save_project_measurement_order` e `save_project_measurement_order_batch_partial`; mantem somente `service_role`, compativel com os Route Handlers atuais que validam sessao/tenant/permissao antes de chamar as RPCs.
+- Inclui validacao pos-aplicacao para abortar se alguma funcao continuar executavel por `anon`/`authenticated`, sem EXECUTE para `service_role`, sem `search_path` fixo, ou se `btree_gist` continuar em `public`.
