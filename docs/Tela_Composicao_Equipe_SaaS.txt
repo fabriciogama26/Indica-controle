@@ -637,14 +637,17 @@ Atualizacao 2026-08 - Encarregado selecionavel na composicao
   - Mantido: `phone_snapshot` de todos os integrantes continua sendo o telefone
     do encarregado - agora o da composicao, nao o do cadastro da equipe.
 - Regras de integridade:
-  - `ux_team_compositions_foreman_date_active` garante no banco que um
-    encarregado responde por no maximo uma composicao ativa por data. Isso torna
-    deterministica a resolucao inversa encarregado + data -> equipe e substitui
-    qualquer checagem otimista no Node.
-  - Consequencia: uma mesma equipe deixa de poder ter duas composicoes ativas na
-    mesma data quando ambas apontam para o mesmo encarregado. Composicoes
-    legadas nessa situacao ficaram com `foreman_person_id` nulo no backfill e
-    continuam resolvendo o encarregado pela cadeia atual.
+  - `team_compositions_foreman_single_team_per_date` (EXCLUDE via btree_gist)
+    garante no banco que o mesmo encarregado nao responde por EQUIPES DIFERENTES
+    na mesma data. Isso torna deterministica a resolucao inversa
+    encarregado + data -> equipe e substitui qualquer checagem otimista no Node.
+  - Duas composicoes ativas da MESMA equipe na mesma data continuam permitidas,
+    como hoje: `ux_team_compositions_context_active` as autoriza por projeto
+    principal distinto e a operacao usa esse caminho. A resolucao inversa nao
+    fica ambigua porque a resposta e a mesma equipe.
+  - Composicoes legadas com o mesmo encarregado em equipes diferentes na mesma
+    data ficaram com `foreman_person_id` nulo no backfill e continuam
+    resolvendo o encarregado pela cadeia atual.
   - A RPC recusa encarregado inativo, de outro tenant, sem cargo de Encarregado,
     ou ausente da lista de integrantes.
   - Continua valendo o limite de um unico integrante com cargo de Encarregado por
