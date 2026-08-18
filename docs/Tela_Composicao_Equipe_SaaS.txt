@@ -603,3 +603,61 @@ Atualizacao 2026-08-12 - Filtro de projetos sem Medicao
   - `TeamCompositionPageView.tsx` permanece acima do limite recomendado pelo guia
     de frontend; a proxima melhoria estrutural deve extrair filtros/lista/modais
     para componentes/hooks do proprio modulo.
+
+
+Atualizacao 2026-08 - Encarregado selecionavel na composicao
+------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/373_team_composition_foreman_override.sql` (novo)
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+- Funcoes/hooks/constantes tocadas:
+  - RPC `save_team_composition_record` (novo parametro `p_foreman_person_id`)
+  - `fetchTeamById`, `saveComposition`, `mapComposition` (`route.ts`)
+  - `applyTeam`, `applyForeman` (nova), `applyWorkStatus`, `removeMember`,
+    `addMember`, `startEdit`, `handleSubmit`, `getFormForemanPhone`,
+    `foremanOptions`, `selectedForeman` (`TeamCompositionPageView.tsx`)
+- Comportamento antes/depois:
+  - Antes: o encarregado era derivado da equipe (`teams.foreman_person_id`),
+    exibido em campo travado e inserido automaticamente como integrante 1 ao
+    selecionar a equipe.
+  - Depois: `Encarregado` e um `select` obrigatorio, listando apenas pessoas
+    ativas com cargo contendo `ENCARREGADO`. A selecao da equipe nao insere mais
+    ninguem; quem entra como integrante e o encarregado escolhido.
+  - Depois: a composicao grava `foreman_person_id` alem do
+    `foreman_name_snapshot`, permitindo emprestar um encarregado para outra
+    equipe em um dia especifico sem alterar o cadastro de Equipes.
+  - Depois: `Nao atuou` exige exatamente o encarregado selecionado como unico
+    integrante, marcado como nao presente (antes exigia o encarregado do
+    cadastro da equipe).
+  - Depois: remover o encarregado pela lista de integrantes e bloqueado; a troca
+    acontece pelo campo `Encarregado`.
+  - Mantido: os cards do painel diario continuam exibindo o encarregado do
+    cadastro da equipe (`teams.foreman_person_id`), nao o da composicao.
+  - Mantido: `phone_snapshot` de todos os integrantes continua sendo o telefone
+    do encarregado - agora o da composicao, nao o do cadastro da equipe.
+- Regras de integridade:
+  - `ux_team_compositions_foreman_date_active` garante no banco que um
+    encarregado responde por no maximo uma composicao ativa por data. Isso torna
+    deterministica a resolucao inversa encarregado + data -> equipe e substitui
+    qualquer checagem otimista no Node.
+  - Consequencia: uma mesma equipe deixa de poder ter duas composicoes ativas na
+    mesma data quando ambas apontam para o mesmo encarregado. Composicoes
+    legadas nessa situacao ficaram com `foreman_person_id` nulo no backfill e
+    continuam resolvendo o encarregado pela cadeia atual.
+  - A RPC recusa encarregado inativo, de outro tenant, sem cargo de Encarregado,
+    ou ausente da lista de integrantes.
+  - Continua valendo o limite de um unico integrante com cargo de Encarregado por
+    composicao.
+- Impacto multi-tenant:
+  - `foreman_person_id` usa FK composta `(foreman_person_id, tenant_id)` para
+    `people(id, tenant_id)`.
+  - A rota nunca aceita `tenant_id` do payload; a RPC valida a pessoa dentro do
+    tenant da sessao.
+  - EXECUTE da RPC continua restrito a `service_role`; a assinatura anterior foi
+    removida com `drop function` para evitar sobrecarga ambigua no PostgREST.
+- Escopo desta entrega:
+  - Somente a tela Composicao de Equipe. Medicao, Controle APR, Mapa de
+    Programacao e as operacoes de estoque continuam resolvendo o encarregado por
+    `resolve_team_foreman_snapshot` (historico -> cadastro), sem enxergar o
+    encarregado da composicao. Essa propagacao e a fase seguinte.

@@ -7,7 +7,7 @@
     "src/app/api/projects/route.ts": 1728,
     "src/app/api/teams/route.ts": 1635,
     "src/modules/dashboard/atividades/ActivitiesPageView.tsx": 1287,
-    "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1422,
+    "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1409,
     "src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx": 2325,
     "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1714,
     "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3697,

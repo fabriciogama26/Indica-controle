@@ -27,9 +27,7 @@ type TeamOption = {
   name: string;
   vehiclePlate: string;
   serviceCenterName: string;
-  foremanId: string;
   foremanName: string;
-  foremanPhone: string | null;
 };
 
 type PersonOption = {
@@ -67,6 +65,7 @@ type CompositionItem = {
   projectServiceCenter: string;
   teamName: string;
   vehiclePlate: string;
+  foremanId: string | null;
   foremanName: string;
   workStatus: WorkStatus;
   sector: string;
@@ -140,6 +139,7 @@ type FormState = {
   projectCode: string;
   projectIds: string[];
   teamId: string;
+  foremanPersonId: string;
   workStatus: WorkStatus;
   sector: string;
   yard: string;
@@ -187,6 +187,7 @@ function createInitialForm(today: string): FormState {
     projectCode: "",
     projectIds: [],
     teamId: "",
+    foremanPersonId: "",
     workStatus: "WORKING",
     sector: "OBRA",
     yard: "",
@@ -329,8 +330,8 @@ function getCompositionMemberPhone(composition: CompositionItem, member: Composi
   return getCompositionForemanPhone(composition) ?? member.phone;
 }
 
-function getFormForemanPhone(team: TeamOption | null, members: CompositionMember[]) {
-  return team?.foremanPhone ?? members.find((member) => isForemanRole(member.jobTitleName))?.phone ?? null;
+function getFormForemanPhone(foreman: PersonOption | null, members: CompositionMember[]) {
+  return foreman?.phone ?? members.find((member) => isForemanRole(member.jobTitleName))?.phone ?? null;
 }
 
 function buildVisibleCsv(compositions: CompositionItem[]) {
@@ -454,7 +455,9 @@ export function TeamCompositionPageView() {
   const selectedTeam = teams.find((team) => team.id === form.teamId) ?? null;
   const selectedFormProjects = useMemo(() => form.projectIds.map((projectId) => projectById.get(projectId)).filter((project): project is ProjectOption => Boolean(project)), [form.projectIds, projectById]);
   const peopleById = useMemo(() => new Map(people.map((person) => [person.id, person])), [people]);
-  const formForemanPhone = getFormForemanPhone(selectedTeam, form.members);
+  const foremanOptions = useMemo(() => people.filter((person) => isForemanRole(person.jobTitleName)), [people]);
+  const selectedForeman = form.foremanPersonId ? peopleById.get(form.foremanPersonId) ?? null : null;
+  const formForemanPhone = getFormForemanPhone(selectedForeman, form.members);
   const dailyCoverageByTeam = useMemo(
     () => new Map(dailyCoverage.map((item) => [item.teamId, item])),
     [dailyCoverage],
@@ -607,68 +610,38 @@ export function TeamCompositionPageView() {
 
   function applyTeam(teamId: string) {
     const nextTeam = teams.find((team) => team.id === teamId) ?? null;
+    setForm((current) => ({
+      ...current,
+      teamId,
+      yard: nextTeam?.serviceCenterName ?? "",
+    }));
+  }
+
+  function applyForeman(personId: string) {
+    const nextForeman = personId ? peopleById.get(personId) ?? null : null;
     setForm((current) => {
-      if (current.workStatus === "NOT_WORKING") {
-        const foreman = nextTeam?.foremanId ? peopleById.get(nextTeam.foremanId) : null;
-        return {
-          ...current,
-          teamId,
-          yard: nextTeam?.serviceCenterName ?? "",
-          members: foreman && nextTeam
-            ? [{
-                personId: foreman.id,
-                name: foreman.name,
-                matriculation: foreman.matriculation,
-                cpf: foreman.cpf,
-                phone: nextTeam.foremanPhone,
-                jobTitleName: foreman.jobTitleName,
-                isPresent: false,
-              }]
-            : [],
-        };
+      const otherMembers = current.members.filter((member) => !isForemanRole(member.jobTitleName));
+      if (!nextForeman) {
+        return { ...current, foremanPersonId: "", members: otherMembers };
       }
-      if (!nextTeam?.foremanId || current.members.some((member) => member.personId === nextTeam.foremanId)) {
-        return {
-          ...current,
-          teamId,
-          yard: nextTeam?.serviceCenterName ?? "",
-          members: current.members.map((member) => ({ ...member, phone: nextTeam?.foremanPhone ?? null })),
-        };
-      }
-      const foreman = peopleById.get(nextTeam.foremanId);
-      if (!foreman) {
-        return {
-          ...current,
-          teamId,
-          yard: nextTeam.serviceCenterName,
-          members: current.members.map((member) => ({ ...member, phone: nextTeam.foremanPhone ?? null })),
-        };
-      }
-      if (countForemen(current.members) > 0 && !current.members.some((member) => member.personId === foreman.id)) {
-        setFeedback({
-          type: "error",
-          message: "A composicao nao pode conter mais de um encarregado. Remova o encarregado atual antes de trocar/adicionar outro.",
-        });
-        return { ...current, teamId, yard: nextTeam.serviceCenterName };
-      }
+      const foremanMember: CompositionMember = {
+        personId: nextForeman.id,
+        name: nextForeman.name,
+        matriculation: nextForeman.matriculation,
+        cpf: nextForeman.cpf,
+        phone: nextForeman.phone,
+        jobTitleName: nextForeman.jobTitleName,
+        isPresent: current.workStatus === "WORKING",
+      };
       return {
         ...current,
-        teamId,
-        yard: nextTeam.serviceCenterName,
-        members: [
-          {
-            personId: foreman.id,
-            name: foreman.name,
-            matriculation: foreman.matriculation,
-            cpf: foreman.cpf,
-            phone: nextTeam.foremanPhone,
-            jobTitleName: foreman.jobTitleName,
-            isPresent: true,
-          },
-          ...current.members.map((member) => ({ ...member, phone: nextTeam.foremanPhone ?? null })),
-        ],
+        foremanPersonId: nextForeman.id,
+        members: current.workStatus === "NOT_WORKING"
+          ? [foremanMember]
+          : [foremanMember, ...otherMembers.filter((member) => member.personId !== nextForeman.id)],
       };
     });
+    setFeedback(null);
   }
 
   function selectPendingTeam(teamId: string) {
@@ -684,24 +657,24 @@ export function TeamCompositionPageView() {
           ...current,
           workStatus,
           members: current.members.map((member) => (
-            member.personId === selectedTeam?.foremanId ? { ...member, isPresent: true } : member
+            member.personId === current.foremanPersonId ? { ...member, isPresent: true } : member
           )),
         };
       }
-      const foreman = selectedTeam?.foremanId ? peopleById.get(selectedTeam.foremanId) : null;
+      const foreman = current.foremanPersonId ? peopleById.get(current.foremanPersonId) ?? null : null;
       return {
         ...current,
         workStatus,
         projectCode: "",
         projectIds: [],
         personSearch: "",
-        members: foreman && selectedTeam
+        members: foreman
           ? [{
               personId: foreman.id,
               name: foreman.name,
               matriculation: foreman.matriculation,
               cpf: foreman.cpf,
-              phone: selectedTeam.foremanPhone,
+              phone: foreman.phone,
               jobTitleName: foreman.jobTitleName,
               isPresent: false,
             }]
@@ -790,7 +763,7 @@ export function TeamCompositionPageView() {
           name: person.name,
           matriculation: person.matriculation,
           cpf: person.cpf,
-          phone: selectedTeam?.foremanPhone ?? person.phone,
+          phone: selectedForeman?.phone ?? person.phone,
           jobTitleName: person.jobTitleName,
           isPresent: true,
         },
@@ -800,6 +773,10 @@ export function TeamCompositionPageView() {
   }
 
   function removeMember(personId: string) {
+    if (personId === form.foremanPersonId) {
+      setFeedback({ type: "error", message: "Troque o encarregado no campo Encarregado para remover esta pessoa." });
+      return;
+    }
     setForm((current) => ({ ...current, members: current.members.filter((member) => member.personId !== personId) }));
   }
 
@@ -822,6 +799,9 @@ export function TeamCompositionPageView() {
           ? [composition.projectId]
           : [],
       teamId: composition.teamId,
+      foremanPersonId: composition.foremanId
+        ?? composition.members.find((member) => isForemanRole(member.jobTitleName))?.personId
+        ?? "",
       workStatus: composition.workStatus,
       sector: composition.sector,
       yard: composition.yard,
@@ -845,6 +825,7 @@ export function TeamCompositionPageView() {
       !form.compositionDate ? "Data" : "",
       form.workStatus === "WORKING" && selectedProjects.length === 0 ? "Ao menos um Projeto valido" : "",
       !form.teamId || !selectedTeam ? "Equipe valida" : "",
+      !form.foremanPersonId ? "Encarregado" : "",
       !normalizeText(form.sector) ? "Setor" : "",
       !form.startTime ? "Hora inicial" : "",
       selectedTeam && !normalizeText(selectedTeam.serviceCenterName || form.yard) ? "Patio/Centro de Servico da equipe" : "",
@@ -879,13 +860,13 @@ export function TeamCompositionPageView() {
       form.workStatus === "NOT_WORKING"
       && (
         form.members.length !== 1
-        || form.members[0]?.personId !== selectedTeam.foremanId
+        || form.members[0]?.personId !== form.foremanPersonId
         || form.members[0]?.isPresent !== false
       )
     ) {
       setFeedback({
         type: "error",
-        message: "Equipe que nao atuou deve possuir somente o encarregado da equipe, marcado como nao presente.",
+        message: "Equipe que nao atuou deve possuir somente o encarregado selecionado, marcado como nao presente.",
       });
       return;
     }
@@ -907,6 +888,7 @@ export function TeamCompositionPageView() {
           projectId: selectedProjects[0]?.id ?? null,
           projectIds: selectedProjects.map((project) => project.id),
           teamId: form.teamId,
+          foremanPersonId: form.foremanPersonId,
           workStatus: form.workStatus,
           sector: form.sector,
           yard: resolvedYard,
@@ -1178,8 +1160,13 @@ export function TeamCompositionPageView() {
             <input value={selectedTeam?.vehiclePlate ?? ""} disabled />
           </label>
           <label className={styles.field}>
-            <span>Encarregado</span>
-            <input value={selectedTeam?.foremanName ?? ""} disabled />
+            <span>Encarregado <span className="requiredMark">*</span></span>
+            <select value={form.foremanPersonId} onChange={(event) => applyForeman(event.target.value)} required>
+              <option value="">Selecione o encarregado</option>
+              {foremanOptions.map((person) => (
+                <option key={person.id} value={person.id}>{person.name}</option>
+              ))}
+            </select>
           </label>
           <label className={`${styles.field} ${styles.fieldWide}`}>
             <span>Observacoes</span>
