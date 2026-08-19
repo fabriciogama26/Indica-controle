@@ -26,6 +26,45 @@ function normalizeUmb(value: unknown) {
   return String(value ?? "").trim().toUpperCase();
 }
 
+function logMetaLoadError(params: {
+  source: string;
+  tenantId: string;
+  userId: string;
+  error: unknown;
+}) {
+  console.error("[materials/meta] Failed to load material metadata", {
+    source: params.source,
+    tenantId: params.tenantId,
+    userId: params.userId,
+    error: params.error,
+  });
+}
+
+function getMetaLoadFailure(
+  optionsResult: { error: unknown },
+  categoriesResult: { error: unknown },
+  subcategoriesResult: { error: unknown },
+  withoutUmbResult: { error: unknown },
+) {
+  if (optionsResult.error) {
+    return { source: "material_umb_options", message: "Falha ao carregar UMBs dos materiais." };
+  }
+
+  if (categoriesResult.error) {
+    return { source: "material_categories", message: "Falha ao carregar categorias dos materiais." };
+  }
+
+  if (subcategoriesResult.error) {
+    return { source: "material_subcategories", message: "Falha ao carregar subcategorias dos materiais." };
+  }
+
+  if (withoutUmbResult.error) {
+    return { source: "materials_without_umb", message: "Falha ao verificar materiais sem UMB." };
+  }
+
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar UMBs dos materiais.",
@@ -82,8 +121,19 @@ export async function GET(request: NextRequest) {
       .returns<MaterialUmbRow[]>(),
   ]);
 
-  if (optionsResult.error || categoriesResult.error || subcategoriesResult.error || withoutUmbResult.error) {
-    return NextResponse.json({ message: "Falha ao carregar UMBs dos materiais." }, { status: 500 });
+  const failure = getMetaLoadFailure(optionsResult, categoriesResult, subcategoriesResult, withoutUmbResult);
+  if (failure) {
+    logMetaLoadError({
+      source: failure.source,
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
+      error:
+        optionsResult.error
+        ?? categoriesResult.error
+        ?? subcategoriesResult.error
+        ?? withoutUmbResult.error,
+    });
+    return NextResponse.json({ message: failure.message, code: "MATERIALS_META_LOAD_FAILED" }, { status: 500 });
   }
 
   const subcategoriesByCategoryId = new Map<string, Array<{ id: string; name: string }>>();

@@ -393,7 +393,7 @@ export function MaterialsPageView() {
         });
         const data = (await response.json().catch(() => ({}))) as MaterialsMetaResponse;
         if (!response.ok) {
-          throw new Error(data.message ?? "Falha ao carregar UMBs dos materiais.");
+          throw new Error(data.message ?? "Falha ao carregar dados de apoio dos materiais.");
         }
         if (!ignore) {
           setUmbOptions(data.umbOptions ?? []);
@@ -407,7 +407,7 @@ export function MaterialsPageView() {
           setHasMaterialsWithoutUmb(false);
           setFeedback({
             type: "error",
-            message: error instanceof Error ? error.message : "Falha ao carregar UMBs dos materiais.",
+            message: error instanceof Error ? error.message : "Falha ao carregar dados de apoio dos materiais.",
           });
         }
       }
