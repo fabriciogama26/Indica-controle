@@ -5,6 +5,7 @@ import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { authorizeMeasurementReadOrExportAction } from "@/server/modules/medicao/authorization";
+import { fetchMeasurementOrderDetailsForExport } from "@/server/modules/medicao";
 import { GET as listMeasurementOrders } from "../route";
 
 type ExportType = "summary" | "details" | "score";
@@ -80,18 +81,12 @@ type OrderListResponse = {
   message?: string;
 };
 
-type OrderDetailResponse = {
-  order?: OrderDetail;
-  message?: string;
-};
-
 type WorkCompletionCatalogRow = {
   code: string;
   label_pt: string | null;
 };
 
 const EXPORT_PAGE_SIZE = 500;
-const DETAIL_BATCH_SIZE = 20;
 
 function normalizeExportType(value: string | null): ExportType | null {
   if (value === "summary" || value === "details" || value === "score") {
@@ -210,22 +205,6 @@ async function loadOrdersForExport(request: NextRequest) {
   return orders;
 }
 
-async function loadOrderDetailForExport(request: NextRequest, orderId: string) {
-  const params = new URLSearchParams();
-  params.set("orderId", orderId);
-  const endDate = request.nextUrl.searchParams.get("endDate");
-  if (endDate) params.set("endDate", endDate);
-
-  const response = await listMeasurementOrders(buildInternalRequest(request, params));
-  const data = await readJsonResponse<OrderDetailResponse>(response);
-
-  if (!response.ok || !data.order) {
-    throw new Error(data.message ?? "Falha ao carregar detalhe da ordem para exportacao.");
-  }
-
-  return data.order;
-}
-
 async function fetchWorkCompletionLabelMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -289,17 +268,21 @@ function buildSummaryCsv(orders: OrderItem[], labelMap: Map<string, string>) {
   );
 }
 
-async function buildDetailsCsv(request: NextRequest, orders: OrderItem[], labelMap: Map<string, string>) {
-  const details: OrderDetail[] = [];
-  for (let index = 0; index < orders.length; index += DETAIL_BATCH_SIZE) {
-    const batch = orders.slice(index, index + DETAIL_BATCH_SIZE);
-    const results = await Promise.allSettled(batch.map((order) => loadOrderDetailForExport(request, order.id)));
-    for (const result of results) {
-      if (result.status === "fulfilled") {
-        details.push(result.value);
-      }
-    }
-  }
+async function buildDetailsCsv(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  windowEndDate: string | null;
+  orders: OrderItem[];
+  labelMap: Map<string, string>;
+}) {
+  const { orders, labelMap } = params;
+  // Uma passada para todas as ordens, em vez de uma chamada HTTP interna por ordem.
+  const details = (await fetchMeasurementOrderDetailsForExport({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    orderIds: orders.map((order) => order.id),
+    windowEndDate: params.windowEndDate,
+  })) as OrderDetail[];
 
   const orderMap = new Map(orders.map((order) => [order.id, order]));
   const rows = details.flatMap((detail) => {
@@ -455,7 +438,13 @@ export async function GET(request: NextRequest) {
     });
 
     const csv = exportType === "details"
-      ? await buildDetailsCsv(request, orders, workCompletionLabelMap)
+      ? await buildDetailsCsv({
+          supabase: resolution.supabase,
+          tenantId: resolution.appUser.tenant_id,
+          windowEndDate: request.nextUrl.searchParams.get("endDate"),
+          orders,
+          labelMap: workCompletionLabelMap,
+        })
       : exportType === "score"
         ? buildScoreCsv(orders)
         : buildSummaryCsv(orders, workCompletionLabelMap);
