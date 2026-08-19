@@ -80,7 +80,7 @@ Filtros, auto-complete e listagem
   - A lista e paginada no backend (`page`, `pageSize`, `total`).
   - O cabecalho exibe `Registros filtrados`, `Em estoque proprio`, `Com equipe`, `RET` e `Fora do estoque proprio`.
   - Os cards por situacao usam o resumo filtrado completo retornado pelo backend antes da paginacao da lista.
-  - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos e exporta todos os registros filtrados percorrendo as paginas da API.
+  - Botao `Exportar Excel (CSV)` reutiliza o componente padrao com cooldown de `10` segundos e exporta todos os registros filtrados por `GET /api/trafo-positions?mode=export`, evitando repetir a montagem/enriquecimento da lista por pagina.
   - Os filtros por `Material`, `Descricao`, `Rastreio`, `Tipo material`, `Serial`, `LP`, `CMD` e periodo de movimentacao sao aplicados na consulta base de `trafo_instances`/`materials`.
   - Os filtros por `Centro fisico`, `Situacao`, `Ultima operacao`, `Projeto ultimo`, `Equipe atual` e `Encarregado atual` sao aplicados apos a API resolver centro fisico de referencia, equipe e projeto.
   - O periodo `Mov. de`/`Mov. ate` usa `last_entry_date` e bloqueia no frontend a data inicial maior que a data final.
@@ -138,6 +138,7 @@ Atalhos
   - `POST /api/trafo-positions`
   - `GET /api/trafo-positions/meta`
   - `GET /api/trafo-positions?mode=history`
+  - `GET /api/trafo-positions?mode=export`
 - Exibida na secao `Almoxarifado` da sidebar.
 
 Atualizacao 2026-04
@@ -182,7 +183,7 @@ Atualizacao 2026-04
   - A migration `181_create_serial_retirement_flow.sql` adiciona colunas de RET em `trafo_instances`, cria `serial_retirements`, a RPC `retire_serial_tracked_unit` e wrapper de `save_stock_transfer_record` para movimentacao fisica de RET sem mexer novamente no saldo disponivel.
   - O historico da unidade passa a incluir eventos `RET` vindos de `serial_retirements`.
   - Os cards de situacao passaram a usar `summary` do `GET /api/trafo-positions`, calculado antes da paginacao, em vez de contar somente a pagina visivel.
-  - A exportacao CSV passou a usar lote de `100` registros, alinhado ao limite maximo do `GET /api/trafo-positions`, e o loop passou a respeitar o `pageSize` efetivo retornado pela API para nao interromper antes de exportar todos os registros filtrados.
+  - A exportacao CSV passou a usar `mode=export` no `GET /api/trafo-positions`, retornando os registros filtrados em uma unica chamada depois da montagem/enriquecimento feita pelo backend.
   - A area de filtros passou a incluir condicoes adicionais por rastreio, ultima operacao, tipo material, descricao, projeto ultimo, equipe atual, encarregado atual e periodo da ultima movimentacao.
 
 Atualizacao 2026-07:
@@ -206,7 +207,7 @@ Funcoes principais
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/posicao-trafo/constants.ts`
-  - Responsavel por: `PAGE_SIZE`, `EXPORT_PAGE_SIZE` alinhado ao limite da API, `EXPORT_COOLDOWN_MS` e filtros iniciais.
+  - Responsavel por: `PAGE_SIZE`, `EXPORT_COOLDOWN_MS`, `HISTORY_PAGE_SIZE` e filtros iniciais.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear a rota `/posicao-trafo` para `page_key = posicao-trafo` e incluir o acesso padrao por perfil.
 - Caminho: `supabase/migrations/138_add_trafo_position_page_permissions.sql`

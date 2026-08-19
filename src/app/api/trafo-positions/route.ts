@@ -906,6 +906,18 @@ export async function GET(request: NextRequest) {
 
     const from = (page - 1) * pageSize;
 
+    if (mode === "export") {
+      return NextResponse.json({
+        items: transformedItems,
+        summary,
+        pagination: {
+          page: 1,
+          pageSize: transformedItems.length,
+          total: transformedItems.length,
+        },
+      });
+    }
+
     return NextResponse.json({
       items: transformedItems.slice(from, from + pageSize),
       summary,

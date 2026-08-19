@@ -54,7 +54,7 @@ Filtros, auto-complete e listagem
 - Acoes:
   - Detalhes
   - Historico
-- A exportacao CSV percorre todas as paginas filtradas e possui cooldown de 10 segundos.
+- A exportacao CSV usa `GET /api/team-stock-balance?mode=export` para montar todos os registros filtrados em uma unica chamada e possui cooldown de 10 segundos.
 
 Boas praticas
 -------------
@@ -81,6 +81,7 @@ Atalhos
   - `GET /api/team-stock-balance`
   - `GET /api/team-stock-balance?mode=meta`
   - `GET /api/team-stock-balance?mode=history`
+  - `GET /api/team-stock-balance?mode=export`
 - Tela operacional relacionada: `/saida`
 - Consulta de estoque fisico relacionada: `/estoque`
 
@@ -117,11 +118,11 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/estoque-equipes/TeamStockPageView.tsx`
   - Responsavel por: metadados, filtros, lista paginada, cards, detalhes, historico e exportacao CSV.
 - Caminho: `src/app/api/team-stock-balance/route.ts`
-  - Responsavel por: validar sessao/permissao, resolver equipe e centro proprio, consultar saldo por tenant em blocos paginados e retornar metadados/historico, preservando multiplos seriais do mesmo material na mesma operacao.
+  - Responsavel por: validar sessao/permissao, resolver equipe e centro proprio, consultar saldo por tenant em blocos paginados, aplicar filtros de material/quantidade antes de carregar saldos sempre que possivel e retornar lista/metadados/historico/exportacao, preservando multiplos seriais do mesmo material na mesma operacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/estoque-equipes/constants.ts`
-  - Responsavel por: paginacao, cooldown e filtros iniciais.
+  - Responsavel por: paginacao da lista, cooldown de exportacao e filtros iniciais.
 - Caminho: `supabase/migrations/227_create_team_stock_balance_page.sql`
   - Responsavel por: cadastrar a pagina e preencher permissoes de role/usuario sem sobrescrever permissoes individuais existentes.
 
