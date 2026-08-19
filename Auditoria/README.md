@@ -25,6 +25,7 @@ Todo artefato `.md` de auditoria de performance vive aqui. Nada nesta pasta alte
 | [`10-cutover-programacao.md`](10-cutover-programacao.md) | A/D | O corte da Programação Normalizada — estado das fases e os passos C0 a C8 |
 | [`11-infraestrutura.md`](11-infraestrutura.md) | B | **Evidência de infraestrutura** — CPU/Disk I/O em 82–86% com banco de 90 MB; marco T0 do before/after |
 | [`12-nivel-b-ranking-custo.md`](12-nivel-b-ranking-custo.md) | B | **Ranking por custo — fecha o Nível B.** ~32% do banco é introspecção do Supabase Studio; o dash-estoque custa ~1% |
+| [`13-web-vitals.md`](13-web-vitals.md) | — | **Tempo de tela** (Vercel Speed Insights) — LCP e CLS por rota. CLS: causa corrigida (fase W1, 2026-08-19). LCP: causa confirmada no gate de sessao do `AppShell` — nao e banco nem numero de consultas |
 | [`baseline/`](baseline/) | B | Capturas brutas de `scripts/perf-baseline-capture.sql`, uma por arquivo |
 
 ### Auditorias anteriores nesta pasta
