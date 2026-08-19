@@ -80,6 +80,9 @@ Filtros, auto-complete e listagem
 - Acoes:
   - `Detalhes`
   - `Exportar Excel (CSV)`
+- Exportacao:
+  - `Exportar Excel (CSV)` chama `GET /api/estornos?mode=export`, sem usar `pageSize` gigante.
+  - A listagem comum continua paginada com teto baixo, enquanto o modo de exportacao retorna o conjunto filtrado montado pelo backend.
 - Modal `Detalhes`:
   - Exibe dados da operacao original.
   - Exibe dados do estorno.
@@ -109,6 +112,7 @@ Atalhos
 - Tela relacionada: `/entrada`
 - Tela relacionada: `/saida`
 - Endpoint: `GET /api/estornos`
+- Endpoint de exportacao: `GET /api/estornos?mode=export`
 
 Atualizacao 2026-05
 -------------------
@@ -134,6 +138,8 @@ Atualizacao 2026-06 (correcao de brechas de regra de negocio)
 - Corrigida exportacao CSV truncada em 100 registros: o limite de `pageSize` no `GET /api/estornos` foi
   elevado de 100 para `REVERSAL_QUERY_LIMIT * 2` (10000), permitindo que o cliente exporte todos os
   registros do periodo filtrado.
+- Atualizacao de performance: a exportacao deixou de depender de `pageSize` elevado e passou a usar
+  `mode=export`; a listagem comum voltou a limitar `pageSize` a 100.
 - Elevado limite de consulta no banco de 2000 para 5000 por tabela (`REVERSAL_QUERY_LIMIT`).
   Antes: queries com `.limit(2000)` podiam truncar silenciosamente resultados em tenants de alto volume.
 - Adicionado campo `isTruncated` na resposta do `GET /api/estornos`. Quando verdadeiro, a UI exibe aviso
@@ -150,7 +156,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/estornos/ReversalsPageView.tsx`
   - Responsavel por: filtros, cards de resumo, lista paginada, exportacao CSV e modal de detalhes dos estornos.
 - Caminho: `src/app/api/estornos/route.ts`
-  - Responsavel por: validar sessao/permissao, carregar estornos por item e integrais, resolver dados auxiliares e retornar a lista filtrada por tenant.
+  - Responsavel por: validar sessao/permissao, carregar estornos por item e integrais, resolver dados auxiliares e retornar a lista/exportacao filtrada por tenant.
 - Caminho: `src/components/layout/AppShell.tsx`
   - Responsavel por: incluir `Estornos` no menu `Almoxarifado` e no titulo/subtitulo da rota.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`

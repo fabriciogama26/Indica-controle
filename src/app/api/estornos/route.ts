@@ -519,8 +519,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: context.error.message }, { status: context.error.status });
   }
 
+  const mode = normalizeText(request.nextUrl.searchParams.get("mode")).toLowerCase();
+  const isExportRequest = mode === "export";
   const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
-    maxPageSize: REVERSAL_QUERY_LIMIT * 2,
+    maxPageSize: isExportRequest ? REVERSAL_QUERY_LIMIT * 2 : 100,
   });
   const reversalStartDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalStartDate"));
   const reversalEndDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalEndDate"));
@@ -629,7 +631,7 @@ export async function GET(request: NextRequest) {
     );
     const filteredRows = applyFilters(allRows, request);
     const from = (page - 1) * pageSize;
-    const pagedRows = filteredRows.slice(from, from + pageSize);
+    const responseRows = isExportRequest ? filteredRows : filteredRows.slice(from, from + pageSize);
 
     const users = Array.from(
       new Map(
@@ -649,11 +651,11 @@ export async function GET(request: NextRequest) {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     return NextResponse.json({
-      rows: pagedRows,
+      rows: responseRows,
       summary: buildSummary(filteredRows),
       pagination: {
-        page,
-        pageSize,
+        page: isExportRequest ? 1 : page,
+        pageSize: isExportRequest ? filteredRows.length : pageSize,
         total: filteredRows.length,
       },
       filters: {
