@@ -5,6 +5,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { isAdminRole } from "@/lib/auth/authorization";
 import { ActionIcon } from "@/components/ui/ActionIcon";
+import { FeedbackSlot } from "@/components/ui/FeedbackSlot";
+import { TableSkeletonRows } from "@/components/ui/TableSkeleton";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import styles from "./CronogramaSolicitacoesPageView.module.css";
@@ -472,11 +474,12 @@ export function CronogramaSolicitacoesPageView() {
         ))}
       </section>
 
-      {(error || feedback) && (
-        <div className={error ? styles.alertError : styles.alertOk} onClick={() => { setError(null); setFeedback(null); }}>
-          {error ?? feedback}
-        </div>
-      )}
+      <FeedbackSlot
+        as="div"
+        className={error ? styles.alertError : styles.alertOk}
+        message={error ?? feedback}
+        onClick={() => { setError(null); setFeedback(null); }}
+      />
 
       <section className={styles.filters}>
         <input
@@ -540,9 +543,7 @@ export function CronogramaSolicitacoesPageView() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
-              <tr><td colSpan={12} className={styles.emptyCell}>Carregando...</td></tr>
-            )}
+            {loading && <TableSkeletonRows columns={12} rows={20} />}
             {!loading && items.length === 0 && (
               <tr><td colSpan={12} className={styles.emptyCell}>Nenhuma solicitacao encontrada.</td></tr>
             )}

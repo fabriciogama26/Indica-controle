@@ -1,0 +1,10 @@
+/* Invisivel, mas ocupando a caixa inteira: e isso que reserva a altura. */
+.reserved {
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.reservedLine {
+  display: block;
+}

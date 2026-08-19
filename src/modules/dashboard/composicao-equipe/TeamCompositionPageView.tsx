@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 
 import { useAuth } from "@/hooks/useAuth";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { FeedbackSlot } from "@/components/ui/FeedbackSlot";
+import { TableSkeletonRows } from "@/components/ui/TableSkeleton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
@@ -1130,7 +1132,7 @@ export function TeamCompositionPageView() {
         </div>
       </article>
 
-      {feedback ? <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div> : null}
+      <FeedbackSlot as="div" className={feedback?.type === "error" ? styles.feedbackError : styles.feedbackSuccess} message={feedback?.message} />
 
       <article className={styles.card}>
         <div className={styles.tableHeader}>
@@ -1163,7 +1165,7 @@ export function TeamCompositionPageView() {
               <tr><th>Data</th><th>Projetos</th><th>Equipe</th><th>Situacao</th><th>Setor</th><th>Integrantes</th><th>Encarregado</th><th>Patio</th><th>Placa</th><th>Hora inicial</th><th>Acoes</th></tr>
             </thead>
             <tbody>
-              {compositions.length ? compositions.map((composition) => (
+              {isLoadingList ? <TableSkeletonRows columns={11} rows={20} /> : compositions.length ? compositions.map((composition) => (
                 <tr key={composition.id}>
                   <td>{formatDate(composition.compositionDate)}</td>
                   <td>{renderProjectCodes(composition)}</td>
@@ -1199,7 +1201,7 @@ export function TeamCompositionPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={11} className={styles.emptyRow}>{isLoadingList ? "Carregando composicoes..." : "Nenhuma composicao encontrada."}</td></tr>}
+              )) : <tr><td colSpan={11} className={styles.emptyRow}>Nenhuma composicao encontrada.</td></tr>}
             </tbody>
           </table>
         </div>
