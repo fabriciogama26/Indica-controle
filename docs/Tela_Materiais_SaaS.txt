@@ -27,6 +27,7 @@ Arquitetura
 - Banco (bloqueio de rastreio em uso): `supabase/migrations/243_block_material_serial_tracking_downgrade.sql`
 - Banco (catalogo de UMB): `supabase/migrations/366_create_material_umb_options.sql`
 - Banco (saneamento de UMB CJT): `supabase/migrations/367_update_materials_umb_cjt_to_un.sql`
+- Banco (classificacao por categoria/subcategoria): `supabase/migrations/378_backfill_material_categories_from_xlsx.sql`
 
 Cadastro
 --------
@@ -75,12 +76,18 @@ Cadastro
   - Em modo edicao, o bloco `Cadastro de Material` recebe borda amarela de destaque.
   - A rolagem para topo usa o container interno do dashboard (`mainContent`), nao `window`.
   - A edicao envia `expectedUpdatedAt` e bloqueia o save quando outro usuario altera ou inativa o material antes.
+- Classificacao tecnica:
+  - `materials.categoria` e `materials.subcategoria` guardam a classificacao gerada pela planilha `materiais_2026-08-11_categorizados.xlsx`.
+  - A migration 378 adiciona as colunas como opcionais, aplica backfill por `codigo`, registra diff em `material_history` e cria indices por `tenant_id + categoria/subcategoria`.
+  - Cadastro e edicao manual ainda nao alteram categoria/subcategoria; os campos ficam como leitura, filtro e exportacao.
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros implementados:
   - `Codigo` (texto)
   - `Descricao` (texto)
+  - `Categoria` (texto)
+  - `Subcategoria` (texto)
   - `UMB` (select com opcoes ativas de `material_umb_options` e opcao `Sem UMB` para registros legados)
   - `Tipo` (texto)
   - `Status` (`Ativo` / `Inativo`)
@@ -90,10 +97,14 @@ Filtros, auto-complete e listagem
 - Colunas da lista:
   - `Codigo`
   - `Descricao`
+  - `Categoria`
+  - `Subcategoria`
   - `Tipo`
   - `Rastreio`
   - `UMB`
   - `Preco`
+  - `Min.`
+  - `Max.`
   - `Registrado por`
   - `Registrado em`
   - `Acoes`

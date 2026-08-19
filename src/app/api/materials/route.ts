@@ -17,6 +17,8 @@ type MaterialRow = {
   id: string;
   codigo: string;
   descricao: string;
+  categoria: string | null;
+  subcategoria: string | null;
   umb: string | null;
   tipo: string;
   is_transformer: boolean;
@@ -387,7 +389,7 @@ async function fetchMaterialById(
   const { data, error } = await supabase
     .from("materials")
     .select(
-      "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, codigo, descricao, categoria, subcategoria, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", materialId)
@@ -712,6 +714,8 @@ export async function GET(request: NextRequest) {
 
     const codeFilter = normalizeText(request.nextUrl.searchParams.get("codigo"));
     const descriptionFilter = normalizeText(request.nextUrl.searchParams.get("descricao"));
+    const categoryFilter = normalizeText(request.nextUrl.searchParams.get("categoria"));
+    const subcategoryFilter = normalizeText(request.nextUrl.searchParams.get("subcategoria"));
     const umbFilter = normalizeText(request.nextUrl.searchParams.get("umb"));
     const typeFilter = normalizeType(request.nextUrl.searchParams.get("tipo"));
     const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toLowerCase();
@@ -719,7 +723,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("materials")
       .select(
-        "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, codigo, descricao, categoria, subcategoria, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id)
@@ -732,6 +736,12 @@ export async function GET(request: NextRequest) {
     }
     if (descriptionFilter) {
       query = query.ilike("descricao", `%${descriptionFilter}%`);
+    }
+    if (categoryFilter) {
+      query = query.ilike("categoria", `%${categoryFilter}%`);
+    }
+    if (subcategoryFilter) {
+      query = query.ilike("subcategoria", `%${subcategoryFilter}%`);
     }
     if (umbFilter) {
       query = umbFilter === WITHOUT_UMB_FILTER
@@ -853,6 +863,8 @@ export async function GET(request: NextRequest) {
         id: item.id,
         codigo: item.codigo,
         descricao: item.descricao,
+        categoria: normalizeNullableText(item.categoria),
+        subcategoria: normalizeNullableText(item.subcategoria),
         umb: umbFilter === WITHOUT_UMB_FILTER
           ? null
           : normalizeNullableText(item.umb) ?? umbFallbackByMaterialId.get(item.id) ?? null,
