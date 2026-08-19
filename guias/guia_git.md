@@ -33,6 +33,7 @@ Obrigatório ao final de toda tarefa que altera ou cria arquivos — define como
 3. Se a tarefa for apenas análise/relatório sem mudança de código, gerar o commit para os arquivos de documentação criados/alterados (nunca pular o texto do commit).
 4. Antes de considerar qualquer entrega finalizada, mostrar um resumo do que vai mudar (checklist) e perguntar explicitamente: **"Confirma que posso aplicar/fechar essas mudanças?"** — só finalizar depois da confirmação.
 5. `TASKS.md` é atualizado na mesma tarefa (ver [`guia_documentacao.md`](guia_documentacao.md) regra 9), antes de apresentar o texto do commit.
+6. **Tarefa que encolhe E depois faz crescer o mesmo arquivo não é dividida em PRs separadas.** O ratchet de tamanho compara sempre com o baseline imediato, não com o estado anterior à tarefa. Dividida, a primeira PR derruba o teto e a segunda vira crescimento sobre esse teto novo — falso positivo que trava a `main` e toda PR derivada. Manter numa PR só (ou squash), de modo que o ratchet veja apenas o delta líquido. Se a divisão já aconteceu, o conserto é `npm run lint:size:accept -- <caminho>` numa PR isolada em cima da `main`, com a justificativa explicando que o aumento é artefato de ordenação — nunca esperar a próxima PR de feature para consertar, porque a `main` fica vermelha nesse intervalo.
 
 ## 4. Fluxo recomendado
 
