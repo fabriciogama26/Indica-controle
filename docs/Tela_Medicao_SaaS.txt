@@ -1625,3 +1625,24 @@ comparacao byte-a-byte aprovada (MD5 identico, 300 linhas, 112 ordens) no
 Detalhamento de /medicao. Esta etapa mexe no caminho que alimenta os TRES CSVs e a
 listagem da tela, entao exige nova rodada: Resumo, Detalhamento e Pontuacao em
 /medicao e em /medicao-visualizacao, mais a paginacao da tela de Medicao.
+
+Encerramento da validacao de CSV (2026-08-19)
+--------------------------------------------------------------------------------
+A pendencia de comparacao de CSV das duas etapas acima foi dada por encerrada pelo
+usuario. Registro do que de fato foi verificado, para nao induzir leitura errada
+depois:
+- VERIFICADO por comparacao byte-a-byte: Detalhamento em /medicao, na etapa do
+  modulo server-side + lote (commit 87b9f1e). MD5 identico entre antes e depois,
+  300 linhas, 112 ordens distintas.
+- NAO verificado por comparacao: Resumo, Pontuacao, as tres exportacoes de
+  /medicao-visualizacao, e o Detalhamento apos a extracao do pipeline de listagem
+  (commit 2a3d46f). Aceito com base em uso, nao em diff.
+
+Metodo, para quando alguem repetir isso:
+- Comparar exportacoes de um periodo ABERTO nao prova nada. Na tentativa de
+  reexecutar a comparacao, o arquivo de referencia (01/08 a 18/08) tinha 300 linhas
+  as 11:51 e 318 as 15:13 do mesmo dia: sete ordens novas nasceram em producao no
+  intervalo. A diferenca seria dado novo, nao regressao.
+- Use sempre um periodo FECHADO, que nao recebe mais medicao, e gere os dois lados
+  com o mesmo filtro. O ponto de comparacao anterior a toda a refatoracao e o
+  commit 8c664b4.
