@@ -9,6 +9,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { isSerialTrackedMaterial, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { downloadBlobFile } from "@/lib/utils/csv";
 import { HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   FilterState,
@@ -1233,8 +1234,10 @@ export function TeamStockOperationsPageView() {
         },
       });
 
-      const data = (await response.json().catch(() => ({}))) as TeamOperationListResponse;
+      // A rota responde text/csv em stream: as linhas ja vem prontas da RPC, o navegador so
+      // salva o arquivo. Nao ha mais JSON completo trafegando nem montagem de CSV no cliente.
       if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
         showError(data.message ?? "Falha ao exportar operacoes de equipe.");
         await logError("Falha ao exportar operacoes de equipe.", undefined, {
           responseStatus: response.status,
@@ -1243,40 +1246,9 @@ export function TeamStockOperationsPageView() {
         });
         return;
       }
-      const exportedItems = data.history ?? [];
 
-      if (exportedItems.length === 0) {
-        showError("Nao ha registros para exportar com os filtros atuais.");
-        return;
-      }
-
-      const lines = [
-        "operacao;centro_estoque;equipe;encarregado;origem_apoio;projeto;material_codigo;descricao;quantidade;serial;lp;data_operacao;tipo;status;observacao",
-        ...exportedItems.map((item) => {
-          const stockCenterName = resolvePrimaryStockCenterName(item);
-          const supportCenterName = resolveSupportCenterName(item);
-
-          return [
-            item.isReversal ? "ESTORNO" : operationKindLabel(item.operationKind),
-            stockCenterName,
-            item.teamName,
-            item.foremanName ?? "",
-            supportCenterName,
-            item.projectCode,
-            item.materialCode,
-            item.description,
-            item.quantity,
-            item.serialNumber ?? "",
-            item.lotCode ?? "",
-            item.entryDate,
-            item.entryType,
-            rowStatusLabel(item) ?? "Ativa",
-            item.notes ?? "",
-          ].map((value) => String(value ?? "").replace(/;/g, ",")).join(";");
-        }),
-      ];
-
-      downloadCsv(`\uFEFF${lines.join("\n")}\n`, `operacoes_equipe_${toIsoDate(new Date())}.csv`);
+      const blob = await response.blob();
+      downloadBlobFile(blob, `operacoes_equipe_${toIsoDate(new Date())}.csv`);
       setFeedback({ type: "success", message: "Exportacao concluida com sucesso." });
     } catch (error) {
       showError("Falha ao exportar operacoes de equipe.");

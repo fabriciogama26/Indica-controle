@@ -20,7 +20,7 @@
     "src/modules/dashboard/pessoas/PeoplePageView.tsx": 1946,
     "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1065,
     "src/modules/dashboard/projetos/ProjectsPageView.tsx": 4053,
-    "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2809,
+    "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2781,
     "src/server/modules/dashboard-measurement/controller.ts": 1700
   }
 }

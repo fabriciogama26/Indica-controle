@@ -912,3 +912,82 @@ Atualizacao 2026-08-19 (Performance: join no banco e chunks paralelos na listage
     `(tenant_id, transfer_id)` em `stock_transfer_team_operations`) esta registrada em `TASKS.md`.
 - Impacto multi-tenant: nenhum. Todas as queries seguem filtrando `tenant_id` da sessao e a RLS
   permanece como ultima barreira.
+
+Atualizacao 2026-08-19b (Exportacao: RPC no Postgres e resposta text/csv em stream)
+------------------------------------------------------------------------------------
+- Problema que restava depois da 2026-08-19:
+  - O embed cortou os round trips de cabecalho, mas `mode=export` ainda percorria TODO o caminho da
+    listagem: itens e as duas tabelas de estorno lidas por chunk de ids, `flatMap`/`filter`/`sort`
+    em JS, e a rota devolvendo o dataset inteiro em JSON para o navegador montar o CSV linha a linha
+    em `handleExportHistory`. O custo continuava crescendo com o volume.
+- Migration `379_create_team_operations_export_rpc.sql`:
+  - Indice `idx_stock_transfer_team_operations_tenant_transfer (tenant_id, transfer_id)`. Os indices
+    que existiam eram `(tenant_id, team_id, created_at desc)` e `(tenant_id, operation_kind,
+    created_at desc)` — nenhum servia ao join real, que e por `transfer_id`.
+  - Indices `idx_stock_transfer_item_reversals_tenant_original_item` e
+    `..._tenant_reversal_item`, que sustentam os dois `EXISTS` de estorno por item.
+  - RPC `list_team_operations_export`: `language sql`, `stable`, `security definer`,
+    `set search_path = public`. Resolve os joins de material, centro de estoque, projeto, equipe e os
+    dois niveis de estorno, aplica todos os filtros da tela e devolve as 15 colunas do CSV ja
+    formatadas. Recebe `p_limit`/`p_offset` para a rota paginar e transmitir em pedacos.
+  - Grants: `revoke all` de `public`/`anon`/`authenticated`, `grant execute` apenas para
+    `service_role`. `p_tenant_id` vem SEMPRE da sessao resolvida no servidor.
+  - Ordenacao `sort_at desc, transfer_id, item_id`: sem ordem total, paginar por `p_offset`
+    duplicaria ou puliria linhas entre chamadas sucessivas.
+- Novo modulo `src/server/modules/saida/`:
+  - `teamOperationExport.ts` + fachada `index.ts`. Contem `buildTeamOperationExportStream`, que
+    chama a RPC pagina a pagina e monta um `ReadableStream`. A rota so decide o status HTTP e os
+    cabecalhos — regra de negocio saiu do `route.ts`, conforme CLAUDE.md secao 5.
+  - A extracao tambem foi necessaria pelo ratchet: com o export inline, `route.ts` chegou a 1.522
+    linhas e estourou o teto de 1.500. Com o modulo, ficou em 1.419.
+- Rota `GET /api/team-stock-operations?mode=export`:
+  - Passa a responder `text/csv; charset=utf-8` com `Content-Disposition: attachment`, em vez de
+    JSON. O BOM UTF-8 continua no inicio do arquivo (Excel pt-BR abre acentuacao corrompida sem ele).
+  - Lista vazia responde 404 com `{ message }` — o frontend ja tratava essa mensagem.
+  - Falha na PRIMEIRA pagina responde 500 em JSON. Falha numa pagina POSTERIOR nao pode virar erro
+    HTTP (status e cabecalhos ja foram enviados): o stream e abortado com `controller.error`, para o
+    navegador acusar download incompleto em vez de salvar um CSV truncado que parece integro.
+  - O ramo de export sai ANTES de `loadTeamOperationsWithHeaders` — nenhuma query do caminho de
+    listagem e executada numa exportacao.
+- `TeamStockOperationsPageView.handleExportHistory`:
+  - Deixou de montar as linhas do CSV. Agora le `response.blob()` e chama `downloadBlobFile` de
+    `src/lib/utils/csv.ts`. O tratamento de erro por `response.ok` + `{ message }` foi mantido.
+  - Cooldown de 10s preservado (`useExportCooldown`).
+- Divergencia assumida (registrar antes que alguem tropece):
+  - Os rotulos do CSV (`Requisicao`/`Devolucao`/`Retorno de campo`, `Estorno`/`Estornada`/`Ativa`,
+    e a regra de centro primario x centro de apoio) agora existem em DOIS lugares: na RPC, para a
+    exportacao, e em `src/modules/dashboard/saida/utils.ts`, para a tabela na tela. Sao consumos
+    diferentes (o CSV grava `Ativa`, a tabela nao renderiza rotulo nenhum nesse caso), mas a regra
+    de fundo e a mesma. Se um dia mudar o rotulo de uma operacao, os dois lados precisam mudar
+    juntos. A alternativa — RPC devolver dados crus e o Node formatar — foi descartada porque
+    reintroduziria o passo de transformacao linha a linha que esta tarefa existe para eliminar.
+- Autorizacao: sem mudanca. A exportacao continua exigindo `page_key` `saida` + acao `read`, como
+  antes. NAO foi promovida para a acao `export` porque isso tiraria a exportacao de quem hoje tem
+  apenas leitura — mudanca de permissao e decisao de produto, nao efeito colateral de performance.
+- Como validar:
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run db:security-check`.
+  - Aplicar a migration 379 e conferir em `npm run db:migration-list`.
+  - Exportar sem filtro e conferir que o arquivo baixa com cabecalho identico ao anterior:
+    `operacao;centro_estoque;equipe;encarregado;origem_apoio;projeto;material_codigo;descricao;quantidade;serial;lp;data_operacao;tipo;status;observacao`.
+  - Exportar com CADA filtro isolado (equipe, operacao, projeto, material, tipo, periodo, status de
+    estorno) e conferir que a contagem de linhas do CSV bate com `pagination.total` da listagem
+    equivalente. Esse e o teste que pega divergencia entre a RPC e o caminho da listagem.
+  - Exportar um recorte com observacao contendo `;` e conferir que as colunas nao deslocam.
+  - Exportar com filtro que nao retorna nada e conferir a mensagem "Nao ha registros para exportar
+    com os filtros atuais.".
+  - Abrir o CSV no Excel pt-BR e conferir acentuacao.
+  - Exportacao acima de 5.000 linhas: conferir que o arquivo tem TODAS as linhas (a rota pagina a
+    RPC de 5.000 em 5.000; um bug de offset apareceria como linha repetida ou faltando na virada).
+- Lacuna conhecida:
+  - A migration 379 NAO foi aplicada nesta maquina: `npm run db:check-link` reporta que o Supabase
+    CLI nao esta linkado, entao `db:migration-list`, `db:lint` e `db:security-check-live` nao
+    puderam rodar. So o check ESTATICO de `SECURITY DEFINER` foi executado (98 migrations, verde).
+    Enquanto a migration nao for aplicada, `mode=export` responde 500 e loga
+    `team-operations-export-rpc` — a listagem continua funcionando normalmente.
+- Impacto multi-tenant:
+  - `p_tenant_id` vem de `resolveAuthenticatedAppUser`, nunca do cliente. Todo join dentro da RPC
+    casa `tenant_id` nos dois lados (`stock_transfers`, `stock_transfer_items`, `teams`, `project`,
+    `materials` e as duas tabelas de estorno).
+  - A RPC e `SECURITY DEFINER` e so `service_role` pode executa-la, entao a RLS nao a protege por
+    si — o isolamento vem do `p_tenant_id` obrigatorio no corpo da funcao, e o acesso a rota
+    continua barrado por `requirePageAction`.
