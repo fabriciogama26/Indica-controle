@@ -846,3 +846,69 @@ Atualizacao 2026-08 - Encarregado do dia pela Composicao de Equipe
   - `resolve_team_foreman`, `resolve_team_foreman_snapshot` e
     `save_team_stock_operation_record` ficaram com EXECUTE apenas para
     `service_role`.
+
+Atualizacao 2026-08-19 (Performance: join no banco e chunks paralelos na listagem/exportacao)
+---------------------------------------------------------------------------------------------
+- Problema medido:
+  - `loadTeamOperationList` carregava TODAS as operacoes do tenant em `stock_transfer_team_operations`
+    (paginas de 1000, sequenciais) e so depois buscava os cabecalhos em `stock_transfers` em chunks de
+    100 ids, tambem sequenciais. Os filtros de data (`startDate`/`endDate`), `projectId` e `entryType`
+    so entravam na SEGUNDA etapa, entao filtrar por periodo nao reduzia o trabalho da primeira.
+  - `loadRowsInChunks` era um `for...of` com `await` dentro: zero paralelismo. Com chunk de 100, as
+    duas queries de `stock_transfer_item_reversals` (sobre ids de ITEM, nao de transfer) dominavam o
+    tempo — em uma base com ~30 mil operacoes e ~80 mil itens o caminho somava mais de 1.400
+    requisicoes HTTP sequenciais ao PostgREST.
+  - `mode=export` sofre o mesmo custo e ainda devolve todas as linhas (`route.ts`, retorno de
+    `loadTeamOperationList`), por isso a exportacao era a operacao mais lenta da tela.
+- O que mudou em `src/app/api/team-stock-operations/route.ts`:
+  - Nova `loadTeamOperationsWithHeaders`: um unico SELECT em `stock_transfer_team_operations` com
+    embed `stock_transfers!inner(...)` (a FK existe desde a migration 140: `transfer_id` e PK e
+    referencia `stock_transfers(id)`). Os filtros de cabecalho passam a ser aplicados NO BANCO
+    (`stock_transfers.entry_date`, `stock_transfers.project_id`, `stock_transfers.entry_type`),
+    junto com `team_id` e `operation_kind`. Isso elimina a etapa de chunks de `stock_transfers`.
+  - A funcao mantem FALLBACK explicito: se o embed falhar (relacionamento nao resolvido pelo
+    PostgREST, schema legado), ela loga `team-operations-embedded-select` com
+    `fallback: "two-step-select"` e executa exatamente o caminho antigo em duas etapas. Nenhuma
+    consulta perde comportamento; o pior caso e voltar ao desempenho anterior, nao quebrar.
+  - `loadRowsInChunks` passou a rodar em lotes paralelos: `RELATION_QUERY_CHUNK_SIZE` de 100 para
+    500 e `RELATION_QUERY_MAX_PARALLEL = 4`. Erro em qualquer chunk do lote continua abortando com
+    o mesmo contrato de retorno de antes.
+  - Novo helper `loadAllPages`: o loop de paginacao de 1000 em 1000 existia duplicado em tres
+    lugares (`loadTeamOperationRows` full, `loadTeamOperationRows` legado, e seria um terceiro no
+    caminho novo). Agora e um so.
+  - Nova constante `TRANSFER_HEADER_COLUMNS`: a lista de colunas do cabecalho era repetida entre o
+    embed e o fallback.
+- O que NAO mudou (de proposito):
+  - Contrato da rota, nomes de parametros, formato da resposta e `pagination`.
+  - `reversalStatus` e `materialCode` continuam como pos-filtro em memoria — dependem de dados de
+    estorno e do codigo do material ja resolvidos. A ordenacao final por `updatedAt` segue em JS.
+  - Autorizacao: `requirePageAction({ pageKey: "saida", action: "read" })` continua antes de
+    qualquer SELECT; nenhum `tenant_id` vem do cliente. O embed ainda aplica
+    `.eq("stock_transfers.tenant_id", tenantId)` como barreira redundante alem da RLS.
+- Funcoes e constantes:
+  - `loadTeamOperationsWithHeaders` (nova)
+  - `loadAllPages` (nova)
+  - `TRANSFER_HEADER_COLUMNS` (nova)
+  - `RELATION_QUERY_MAX_PARALLEL` (nova)
+  - `RELATION_QUERY_CHUNK_SIZE` (100 -> 500)
+  - `loadRowsInChunks` (sequencial -> lotes paralelos)
+  - `loadTeamOperationRows` (agora usa `loadAllPages`; assinatura inalterada)
+- Como validar:
+  - Abrir `/saida` sem filtros: a lista carrega e `pagination.total` bate com o volume esperado.
+  - Filtrar por Equipe, Operacao, Projeto, Material, Tipo e Status de estorno, um a um e combinados,
+    e conferir que o resultado e o mesmo de antes da mudanca.
+  - Filtrar por periodo curto (ex.: ultimos 7 dias) e comparar o tempo de resposta com o periodo
+    aberto: agora o periodo curto deve ser visivelmente mais rapido, o que antes nao acontecia.
+  - Exportar CSV com filtro de periodo e sem filtro, conferindo que a contagem de linhas do arquivo
+    bate com `pagination.total` da listagem equivalente.
+  - Conferir no log do servidor que NAO aparece `[team-stock-operations] load error` com
+    `step: "team-operations-embedded-select"`. Se aparecer, o embed nao foi aceito pelo PostgREST e a
+    rota esta rodando no fallback lento — o resultado continua correto, mas o ganho nao se aplica.
+- Limite declarado:
+  - Isto e otimizacao do caminho existente, nao a solucao final da exportacao. O custo continua
+    crescendo com o volume porque as tabelas de estorno e de itens ainda sao lidas por chunk e o
+    CSV ainda e montado no navegador a partir de JSON. A proxima etapa (RPC dedicada de export
+    resolvendo todos os joins no Postgres + resposta `text/csv` direto da rota + indice
+    `(tenant_id, transfer_id)` em `stock_transfer_team_operations`) esta registrada em `TASKS.md`.
+- Impacto multi-tenant: nenhum. Todas as queries seguem filtrando `tenant_id` da sessao e a RLS
+  permanece como ultima barreira.

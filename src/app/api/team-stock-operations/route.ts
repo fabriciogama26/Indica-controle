@@ -97,6 +97,19 @@ type LegacyTeamOperationMapRow = {
   created_at: string;
 };
 
+type TeamOperationEmbeddedRow = TeamOperationMapRow & {
+  stock_transfers: TransferHeaderRow | TransferHeaderRow[] | null;
+};
+
+type TeamOperationHeaderFilters = {
+  teamIdFilter: string;
+  operationKindFilter: TeamOperationKind | null;
+  startDate: string | null;
+  endDate: string | null;
+  projectIdFilter: string;
+  entryTypeFilter: "SUCATA" | "NOVO" | null;
+};
+
 type TeamRow = {
   id: string;
   stock_center_id: string | null;
@@ -143,7 +156,10 @@ type HistoryValueMaps = {
   projects: Map<string, string>;
 };
 
-const RELATION_QUERY_CHUNK_SIZE = 100;
+const TRANSFER_HEADER_COLUMNS =
+  "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by";
+const RELATION_QUERY_CHUNK_SIZE = 500;
+const RELATION_QUERY_MAX_PARALLEL = 4;
 const TEAM_OPERATION_PAGE_SIZE = 1000;
 
 function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
@@ -159,13 +175,42 @@ async function loadRowsInChunks<T>(
   loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
 ) {
   const rows: T[] = [];
+  const chunks = chunkValues(values);
 
-  for (const chunk of chunkValues(values)) {
-    const result = await loadChunk(chunk);
+  for (let index = 0; index < chunks.length; index += RELATION_QUERY_MAX_PARALLEL) {
+    const results = await Promise.all(
+      chunks.slice(index, index + RELATION_QUERY_MAX_PARALLEL).map((chunk) => loadChunk(chunk)),
+    );
+
+    for (const result of results) {
+      if (result.error) {
+        return { data: null, error: result.error };
+      }
+      rows.push(...(result.data ?? []));
+    }
+  }
+
+  return { data: rows, error: null };
+}
+
+async function loadAllPages<T>(
+  loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+) {
+  const rows: T[] = [];
+  let from = 0;
+
+  for (;;) {
+    const result = await loadPage(from, from + TEAM_OPERATION_PAGE_SIZE - 1);
     if (result.error) {
       return { data: null, error: result.error };
     }
-    rows.push(...(result.data ?? []));
+
+    const pageRows = result.data ?? [];
+    rows.push(...pageRows);
+    if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
+      break;
+    }
+    from += TEAM_OPERATION_PAGE_SIZE;
   }
 
   return { data: rows, error: null };
@@ -232,7 +277,7 @@ async function loadTeamOperationRows(
   teamIdFilter: string,
   operationKindFilter?: TeamOperationKind | null,
 ) {
-  const loadFullPage = (from: number, to: number) => {
+  const fullResult = await loadAllPages<TeamOperationMapRow>((from, to) => {
     let fullQuery = supabase
       .from("stock_transfer_team_operations")
       .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot, created_at")
@@ -249,37 +294,15 @@ async function loadTeamOperationRows(
       .order("created_at", { ascending: false })
       .range(from, to)
       .returns<TeamOperationMapRow[]>();
-  };
+  });
 
-  const firstFullResult = await loadFullPage(0, TEAM_OPERATION_PAGE_SIZE - 1);
-
-  if (!firstFullResult.error) {
-    const rows = [...(firstFullResult.data ?? [])];
-    let nextFrom = TEAM_OPERATION_PAGE_SIZE;
-
-    while ((rows.length % TEAM_OPERATION_PAGE_SIZE) === 0 && rows.length > 0) {
-      const pagedResult = await loadFullPage(nextFrom, nextFrom + TEAM_OPERATION_PAGE_SIZE - 1);
-      if (pagedResult.error) {
-        return { data: null, error: pagedResult.error };
-      }
-      const pageRows = pagedResult.data ?? [];
-      rows.push(...pageRows);
-      if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
-        break;
-      }
-      nextFrom += TEAM_OPERATION_PAGE_SIZE;
-    }
-
-    return { data: rows, error: null };
+  if (!fullResult.error || !shouldFallbackToLegacyTeamOperationSelect(fullResult.error)) {
+    return fullResult;
   }
 
-  if (!shouldFallbackToLegacyTeamOperationSelect(firstFullResult.error)) {
-    return firstFullResult;
-  }
+  logTeamOperationLoadError("team-operations-full-select", fullResult.error, { fallback: "legacy-select" });
 
-  logTeamOperationLoadError("team-operations-full-select", firstFullResult.error, { fallback: "legacy-select" });
-
-  const loadLegacyPage = (from: number, to: number) => {
+  const legacyResult = await loadAllPages<LegacyTeamOperationMapRow>((from, to) => {
     let legacyQuery = supabase
       .from("stock_transfer_team_operations")
       .select("transfer_id, team_id, created_at")
@@ -293,32 +316,128 @@ async function loadTeamOperationRows(
       .order("created_at", { ascending: false })
       .range(from, to)
       .returns<LegacyTeamOperationMapRow[]>();
-  };
+  });
 
-  const legacyRows: LegacyTeamOperationMapRow[] = [];
-  let nextLegacyFrom = 0;
-
-  while (true) {
-    const legacyResult = await loadLegacyPage(nextLegacyFrom, nextLegacyFrom + TEAM_OPERATION_PAGE_SIZE - 1);
-    if (legacyResult.error) {
-      return {
-        data: null,
-        error: legacyResult.error,
-      };
-    }
-
-    const pageRows = legacyResult.data ?? [];
-    legacyRows.push(...pageRows);
-    if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
-      break;
-    }
-    nextLegacyFrom += TEAM_OPERATION_PAGE_SIZE;
+  if (legacyResult.error) {
+    return { data: null, error: legacyResult.error };
   }
 
   return {
-    data: normalizeLegacyTeamOperationRows(legacyRows),
+    data: normalizeLegacyTeamOperationRows(legacyResult.data),
     error: null,
   };
+}
+
+// Caminho rapido: um unico SELECT com join em stock_transfers, empurrando os filtros de
+// cabecalho (data, projeto, tipo de entrada) para o banco. Evita carregar todas as operacoes
+// do tenant e buscar os cabecalhos em centenas de queries por chunk de ids.
+async function loadTeamOperationsWithHeaders(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: TeamOperationHeaderFilters,
+) {
+  const embeddedResult = await loadAllPages<TeamOperationEmbeddedRow>((from, to) => {
+    let query = supabase
+      .from("stock_transfer_team_operations")
+      .select(
+        `transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot, created_at, stock_transfers!inner(${TRANSFER_HEADER_COLUMNS})`,
+      )
+      .eq("tenant_id", tenantId)
+      .eq("stock_transfers.tenant_id", tenantId);
+
+    if (filters.teamIdFilter) {
+      query = query.eq("team_id", filters.teamIdFilter);
+    }
+    if (filters.operationKindFilter) {
+      query = query.eq("operation_kind", filters.operationKindFilter);
+    }
+    if (filters.startDate) {
+      query = query.gte("stock_transfers.entry_date", filters.startDate);
+    }
+    if (filters.endDate) {
+      query = query.lte("stock_transfers.entry_date", filters.endDate);
+    }
+    if (filters.projectIdFilter) {
+      query = query.eq("stock_transfers.project_id", filters.projectIdFilter);
+    }
+    if (filters.entryTypeFilter) {
+      query = query.eq("stock_transfers.entry_type", filters.entryTypeFilter);
+    }
+
+    return query
+      .order("created_at", { ascending: false })
+      .range(from, to)
+      .returns<TeamOperationEmbeddedRow[]>();
+  });
+
+  if (!embeddedResult.error) {
+    const operations: TeamOperationMapRow[] = [];
+    const headers: TransferHeaderRow[] = [];
+
+    for (const row of embeddedResult.data ?? []) {
+      const embedded = row.stock_transfers;
+      const header = Array.isArray(embedded) ? embedded[0] ?? null : embedded;
+      if (!header) {
+        continue;
+      }
+
+      headers.push(header);
+      operations.push({
+        transfer_id: row.transfer_id,
+        team_id: row.team_id,
+        operation_kind: row.operation_kind,
+        technical_origin_stock_center_id: row.technical_origin_stock_center_id,
+        team_name_snapshot: row.team_name_snapshot,
+        foreman_name_snapshot: row.foreman_name_snapshot,
+        created_at: row.created_at,
+      });
+    }
+
+    return { data: { operations, headers }, error: null };
+  }
+
+  logTeamOperationLoadError("team-operations-embedded-select", embeddedResult.error, {
+    tenantId,
+    fallback: "two-step-select",
+  });
+
+  const operationsResult = await loadTeamOperationRows(
+    supabase,
+    tenantId,
+    filters.teamIdFilter,
+    filters.operationKindFilter,
+  );
+
+  if (operationsResult.error) {
+    return { data: null, error: operationsResult.error };
+  }
+
+  const operations = operationsResult.data ?? [];
+  if (!operations.length) {
+    return { data: { operations, headers: [] as TransferHeaderRow[] }, error: null };
+  }
+
+  const headersResult = await loadRowsInChunks<TransferHeaderRow>(
+    operations.map((row) => row.transfer_id),
+    (chunk) => {
+      let q = supabase
+        .from("stock_transfers")
+        .select(TRANSFER_HEADER_COLUMNS)
+        .eq("tenant_id", tenantId)
+        .in("id", chunk);
+      if (filters.startDate) q = q.gte("entry_date", filters.startDate);
+      if (filters.endDate) q = q.lte("entry_date", filters.endDate);
+      if (filters.projectIdFilter) q = q.eq("project_id", filters.projectIdFilter);
+      if (filters.entryTypeFilter) q = q.eq("entry_type", filters.entryTypeFilter);
+      return q.returns<TransferHeaderRow[]>();
+    },
+  );
+
+  if (headersResult.error) {
+    return { data: null, error: headersResult.error };
+  }
+
+  return { data: { operations, headers: headersResult.data ?? [] }, error: null };
 }
 
 async function loadTeamOperationRowByTransfer(
@@ -568,7 +687,14 @@ async function loadTeamOperationList(request: NextRequest) {
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
 
   const [teamOperationsResult, matchingMaterialsResult] = await Promise.all([
-    loadTeamOperationRows(supabase, appUser.tenant_id, teamIdFilter, operationKindFilter),
+    loadTeamOperationsWithHeaders(supabase, appUser.tenant_id, {
+      teamIdFilter,
+      operationKindFilter,
+      startDate,
+      endDate,
+      projectIdFilter,
+      entryTypeFilter,
+    }),
     materialCodeFilter
       ? supabase
           .from("materials")
@@ -584,8 +710,9 @@ async function loadTeamOperationList(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
   }
 
-  const teamOperationRows = teamOperationsResult.data;
-  if (!teamOperationRows?.length) {
+  const teamOperationRows = teamOperationsResult.data?.operations ?? [];
+  const transferHeaders = teamOperationsResult.data?.headers ?? [];
+  if (!teamOperationRows.length || !transferHeaders.length) {
     return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
@@ -597,42 +724,8 @@ async function loadTeamOperationList(request: NextRequest) {
     return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
-  const transferIds = teamOperationRows.map((row) => row.transfer_id);
   const teamIds = Array.from(new Set(teamOperationRows.map((row) => row.team_id).filter(Boolean)));
-
-  const { data: transferHeaders, error: transfersError } = await loadRowsInChunks<TransferHeaderRow>(
-    transferIds,
-    (chunk) => {
-      let q = supabase
-        .from("stock_transfers")
-        .select(
-          "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by",
-        )
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", chunk);
-      if (startDate) q = q.gte("entry_date", startDate);
-      if (endDate) q = q.lte("entry_date", endDate);
-      if (projectIdFilter) q = q.eq("project_id", projectIdFilter);
-      if (entryTypeFilter) q = q.eq("entry_type", entryTypeFilter);
-      return q.returns<TransferHeaderRow[]>();
-    },
-  );
-  if (transfersError) {
-    logTeamOperationLoadError("stock-transfers", transfersError, {
-      tenantId: appUser.tenant_id,
-      transferCount: transferIds.length,
-    });
-    return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
-  }
-
-  if (!transferHeaders?.length) {
-    return NextResponse.json({
-      history: [],
-      pagination: { page, pageSize, total: 0 },
-    });
-  }
-
-  const currentTransferIds = (transferHeaders ?? []).map((row) => row.id);
+  const currentTransferIds = transferHeaders.map((row) => row.id);
   const { data: itemRows, error: itemsError } = await loadRowsInChunks<TransferItemRow>(
     currentTransferIds,
     (chunk) => {
