@@ -68,6 +68,36 @@ type TeamOperationRow = {
   operation_kind: "REQUISITION" | "RETURN" | "FIELD_RETURN" | null;
 };
 
+type TeamStockListFilters = {
+  teamId: string;
+  foreman: string;
+  serviceCenter: string;
+  materialCode: string;
+  description: string;
+  materialType: string;
+  unit: string;
+  teamStatus: string;
+  qtyMin: number | null;
+  qtyMax: number | null;
+  includeZero: boolean;
+};
+
+type TeamStockListItem = {
+  teamId: string;
+  teamName: string;
+  teamIsActive: boolean;
+  foremanName: string;
+  serviceCenterName: string;
+  stockCenterId: string;
+  materialId: string;
+  materialCode: string;
+  description: string;
+  unit: string;
+  materialType: string;
+  balanceQuantity: number;
+  lastMovementAt: string | null;
+};
+
 const CHUNK_SIZE = 100;
 const QUERY_PAGE_SIZE = 1000;
 
@@ -347,61 +377,67 @@ async function loadHistory(request: NextRequest, context: AuthenticatedAppUserCo
   });
 }
 
-async function loadList(request: NextRequest, context: AuthenticatedAppUserContext) {
-  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
-  const teamId = normalizeText(request.nextUrl.searchParams.get("teamId"));
-  const foreman = normalizeCode(request.nextUrl.searchParams.get("foreman"));
-  const serviceCenter = normalizeCode(request.nextUrl.searchParams.get("serviceCenter"));
-  const materialCode = normalizeCode(request.nextUrl.searchParams.get("materialCode"));
-  const description = normalizeCode(request.nextUrl.searchParams.get("description"));
-  const materialType = normalizeCode(request.nextUrl.searchParams.get("materialType"));
-  const unit = normalizeCode(request.nextUrl.searchParams.get("unit"));
-  const teamStatus = normalizeCode(request.nextUrl.searchParams.get("teamStatus")) || "ATIVAS";
-  const qtyMin = parseNonNegativeDecimal(request.nextUrl.searchParams.get("qtyMin"));
-  const qtyMax = parseNonNegativeDecimal(request.nextUrl.searchParams.get("qtyMax"));
-  const includeZero = normalizeText(request.nextUrl.searchParams.get("includeZero")) === "1";
+function parseListFilters(params: URLSearchParams): TeamStockListFilters {
+  return {
+    teamId: normalizeText(params.get("teamId")),
+    foreman: normalizeCode(params.get("foreman")),
+    serviceCenter: normalizeCode(params.get("serviceCenter")),
+    materialCode: normalizeCode(params.get("materialCode")),
+    description: normalizeCode(params.get("description")),
+    materialType: normalizeCode(params.get("materialType")),
+    unit: normalizeCode(params.get("unit")),
+    teamStatus: normalizeCode(params.get("teamStatus")) || "ATIVAS",
+    qtyMin: parseNonNegativeDecimal(params.get("qtyMin")),
+    qtyMax: parseNonNegativeDecimal(params.get("qtyMax")),
+    includeZero: normalizeText(params.get("includeZero")) === "1",
+  };
+}
 
-  if (qtyMin !== null && qtyMax !== null && qtyMin > qtyMax) {
-    return NextResponse.json({ message: "Saldo minimo nao pode ser maior que o saldo maximo." }, { status: 400 });
-  }
-
+async function buildListDataset(context: AuthenticatedAppUserContext, filters: TeamStockListFilters) {
   const teams = await loadTeams(context);
   const { foremanMap, serviceCenterMap } = await loadTeamLabels(context, teams);
   const filteredTeams = teams.filter((team) => {
     const foremanName = team.foreman_person_id ? foremanMap.get(team.foreman_person_id) ?? "" : "";
     const serviceCenterName = team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "" : "";
-    if (teamId && team.id !== teamId) return false;
-    if (teamStatus === "ATIVAS" && !team.ativo) return false;
-    if (teamStatus === "INATIVAS" && team.ativo) return false;
-    if (foreman && !normalizeCode(foremanName).includes(foreman)) return false;
-    if (serviceCenter && !normalizeCode(serviceCenterName).includes(serviceCenter)) return false;
+    if (filters.teamId && team.id !== filters.teamId) return false;
+    if (filters.teamStatus === "ATIVAS" && !team.ativo) return false;
+    if (filters.teamStatus === "INATIVAS" && team.ativo) return false;
+    if (filters.foreman && !normalizeCode(foremanName).includes(filters.foreman)) return false;
+    if (filters.serviceCenter && !normalizeCode(serviceCenterName).includes(filters.serviceCenter)) return false;
     return true;
   });
 
   const centerIds = filteredTeams.map((row) => row.stock_center_id).filter(Boolean) as string[];
   if (centerIds.length === 0) {
-    return NextResponse.json({
+    return {
       items: [],
       summary: { teamsWithStock: 0, distinctMaterials: 0, totalRows: 0 },
       summaryByUnit: [],
-      pagination: { page, pageSize, total: 0 },
-    });
+    };
   }
 
   const balances: BalanceRow[] = [];
   for (const centerIdChunk of chunks(centerIds)) {
     for (let from = 0; ; from += QUERY_PAGE_SIZE) {
-      const { data, error } = await context.supabase
+      let query = context.supabase
         .from("stock_center_balances")
         .select("stock_center_id, material_id, quantity, updated_at, materials!inner(id, codigo, descricao, umb, tipo, is_active)")
         .eq("tenant_id", context.appUser.tenant_id)
         .in("stock_center_id", centerIdChunk)
-        .eq("materials.is_active", true)
-        .range(from, from + QUERY_PAGE_SIZE - 1)
-        .returns<BalanceRow[]>();
+        .eq("materials.is_active", true);
+
+      if (!filters.includeZero) query = query.gt("quantity", 0);
+      if (filters.qtyMin !== null) query = query.gte("quantity", filters.qtyMin);
+      if (filters.qtyMax !== null) query = query.lte("quantity", filters.qtyMax);
+      if (filters.materialCode) query = query.ilike("materials.codigo", `%${filters.materialCode}%`);
+      if (filters.description) query = query.ilike("materials.descricao", `%${filters.description}%`);
+      if (filters.materialType) query = query.ilike("materials.tipo", filters.materialType);
+      if (filters.unit) query = query.ilike("materials.umb", filters.unit);
+
+      const { data, error } = await query.range(from, from + QUERY_PAGE_SIZE - 1).returns<BalanceRow[]>();
 
       if (error) {
-        return NextResponse.json({ message: "Falha ao carregar o estoque das equipes." }, { status: 500 });
+        throw new Error("Falha ao carregar o estoque das equipes.");
       }
 
       balances.push(...(data ?? []));
@@ -411,7 +447,7 @@ async function loadList(request: NextRequest, context: AuthenticatedAppUserConte
 
   const teamByCenter = new Map(filteredTeams.map((team) => [team.stock_center_id, team]));
   const items = balances
-    .flatMap((balance) => {
+    .flatMap<TeamStockListItem>((balance) => {
       const team = teamByCenter.get(balance.stock_center_id);
       const material = unwrapRelation(balance.materials);
       if (!team || !material) return [];
@@ -422,13 +458,13 @@ async function loadList(request: NextRequest, context: AuthenticatedAppUserConte
         ? serviceCenterMap.get(team.service_center_id) || "Nao informado"
         : "Sem base";
 
-      if (!includeZero && quantity <= 0) return [];
-      if (qtyMin !== null && quantity < qtyMin) return [];
-      if (qtyMax !== null && quantity > qtyMax) return [];
-      if (materialCode && !normalizeCode(material.codigo).includes(materialCode)) return [];
-      if (description && !normalizeCode(material.descricao).includes(description)) return [];
-      if (materialType && normalizeCode(material.tipo) !== materialType) return [];
-      if (unit && normalizeCode(material.umb) !== unit) return [];
+      if (!filters.includeZero && quantity <= 0) return [];
+      if (filters.qtyMin !== null && quantity < filters.qtyMin) return [];
+      if (filters.qtyMax !== null && quantity > filters.qtyMax) return [];
+      if (filters.materialCode && !normalizeCode(material.codigo).includes(filters.materialCode)) return [];
+      if (filters.description && !normalizeCode(material.descricao).includes(filters.description)) return [];
+      if (filters.materialType && normalizeCode(material.tipo) !== filters.materialType) return [];
+      if (filters.unit && normalizeCode(material.umb) !== filters.unit) return [];
 
       return [{
         teamId: team.id,
@@ -460,16 +496,48 @@ async function loadList(request: NextRequest, context: AuthenticatedAppUserConte
     ([summaryUnit, balanceQuantity]) => ({ unit: summaryUnit, balanceQuantity }),
   ).sort((left, right) => left.unit.localeCompare(right.unit, "pt-BR"));
 
-  const from = (page - 1) * pageSize;
-  return NextResponse.json({
-    items: items.slice(from, from + pageSize),
+  return {
+    items,
     summary: {
       teamsWithStock: new Set(items.filter((item) => item.balanceQuantity > 0).map((item) => item.teamId)).size,
       distinctMaterials: new Set(items.map((item) => item.materialId)).size,
       totalRows: items.length,
     },
     summaryByUnit,
-    pagination: { page, pageSize, total: items.length },
+  };
+}
+
+async function loadList(request: NextRequest, context: AuthenticatedAppUserContext) {
+  const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
+  const filters = parseListFilters(request.nextUrl.searchParams);
+
+  if (filters.qtyMin !== null && filters.qtyMax !== null && filters.qtyMin > filters.qtyMax) {
+    return NextResponse.json({ message: "Saldo minimo nao pode ser maior que o saldo maximo." }, { status: 400 });
+  }
+
+  const dataset = await buildListDataset(context, filters);
+  const from = (page - 1) * pageSize;
+  return NextResponse.json({
+    items: dataset.items.slice(from, from + pageSize),
+    summary: dataset.summary,
+    summaryByUnit: dataset.summaryByUnit,
+    pagination: { page, pageSize, total: dataset.items.length },
+  });
+}
+
+async function loadExport(request: NextRequest, context: AuthenticatedAppUserContext) {
+  const filters = parseListFilters(request.nextUrl.searchParams);
+
+  if (filters.qtyMin !== null && filters.qtyMax !== null && filters.qtyMin > filters.qtyMax) {
+    return NextResponse.json({ message: "Saldo minimo nao pode ser maior que o saldo maximo." }, { status: 400 });
+  }
+
+  const dataset = await buildListDataset(context, filters);
+  return NextResponse.json({
+    items: dataset.items,
+    summary: dataset.summary,
+    summaryByUnit: dataset.summaryByUnit,
+    pagination: { page: 1, pageSize: dataset.items.length, total: dataset.items.length },
   });
 }
 
@@ -483,6 +551,7 @@ export async function GET(request: NextRequest) {
     const mode = normalizeText(request.nextUrl.searchParams.get("mode")).toLowerCase();
     if (mode === "meta") return await loadMeta(context);
     if (mode === "history") return await loadHistory(request, context);
+    if (mode === "export") return await loadExport(request, context);
     return await loadList(request, context);
   } catch (error) {
     console.error("[team-stock-balance] load error", error);
