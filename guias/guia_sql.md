@@ -9,6 +9,7 @@ Obrigatório sempre que a tarefa cria ou altera: migration, função PL/pgSQL, t
 - `supabase/migrations/*` — histórico real aplicado (numeração sequencial).
 - `docs/arquitetura/plpgsql-null-boolean-armadilha.md` — este guia resume a regra; o arquivo mantém o incidente completo (migrations 279-282) e o script de diagnóstico.
 - `scripts/check-security-definer.ps1` / `npm run db:security-check` — validação de grants de RPC `SECURITY DEFINER`.
+- `scripts/check-view-security-invoker.ps1` / `npm run db:view-check` — validação estática de `security_invoker` nas views declaradas em migrations.
 
 ## 3. Regras obrigatórias
 
@@ -51,11 +52,19 @@ Obrigatório sempre que a tarefa cria ou altera: migration, função PL/pgSQL, t
 21. Expressões booleanas dependentes de valor obtido por `SELECT INTO` (que pode retornar `NULL` por `NOT FOUND`) são protegidas pela mesma regra.
 22. Checklist obrigatório antes de merge de função de trigger: (a) toda variável booleana composta tem `COALESCE`/guard; (b) todo `IF` sobre variável nulável usa `COALESCE`/`= TRUE`; (c) valores vindos de `SELECT INTO` estão protegidos; (d) existe ao menos um caso de teste com todos os campos nuláveis como `NULL`.
 
+### Views e materialized views
+23. Toda view em `public` é criada com `with (security_invoker = true)`. Sem essa opção a view executa com privilégio do owner e **ignora a RLS das tabelas base** — o isolamento por tenant deixa de existir para quem consulta a view.
+24. View de entidade de negócio expõe `tenant_id` na projeção, e todo `LEFT JOIN` de lookup casa `tenant_id` nos dois lados (padrão de `project_with_labels`). View não é barreira de tenant: a API continua filtrando por `tenant_id` derivado da sessão, nunca vindo do cliente.
+25. `MATERIALIZED VIEW` não aplica RLS em hipótese alguma — `security_invoker` não existe para matview. Só usar para agregado sem dado sensível por tenant; caso contrário, `revoke` de `anon`/`authenticated` e leitura apenas pelo backend com filtro explícito. Toda matview declara na migration quem dispara o `REFRESH` e com que frequência.
+26. Correção aplicada direto no Dashboard/SQL editor **vira migration na mesma tarefa**. Banco vivo correto com migration errada é falha de reprodutibilidade: `db reset`, branch de preview ou projeto novo recriam o objeto errado. Foi o caso de `v_stock_conflicts`/`v_stock_conflict_items` (criadas sem `security_invoker` na 007, corrigidas à mão em produção, removidas pela 377).
+27. View não é otimização por si só — ela não armazena resultado, é consulta salva. Criar view para centralizar JOIN e contrato de leitura; se a justificativa for performance, exigir `EXPLAIN (ANALYZE, BUFFERS)` antes e depois, e considerar RPC de agregação quando houver `GROUP BY`/parâmetro condicional (ver `docs/arquitetura/padrao-performance-backend.md`, seção 5).
+
 ## 4. Fluxo recomendado
 
 1. Antes de criar tabela/coluna, mapear entidades relacionadas (regra 3) e confirmar `tenant_id`/RLS (regra 11-12).
 2. Escrever a migration com constraint/índice já incluído (não como etapa separada depois).
 3. Se a migration cria função `SECURITY DEFINER`, aplicar revoke/grant explícito (regra 16) e rodar `npm run db:security-check`.
+3.1. Se a migration cria ou recria view, declarar `security_invoker = true` (regra 23) e rodar `npm run db:view-check`. Validar em banco reconstruído das migrations, não só em produção — o check live passa mesmo com migration errada.
 4. Se a migration cria/altera trigger, aplicar o checklist de NULL boolean (regra 22).
 5. Rodar `npm run db:check-link` antes de qualquer `db:migration-list`/`db:lint`/deploy.
 
@@ -75,10 +84,15 @@ Nunca:
 - Atribuir uma expressão booleana composta a uma variável PL/pgSQL sem `COALESCE`/guard `IS NOT NULL`.
 - Remover um índice só porque o advisor do Supabase o marcou como "unused", sem checar workload sazonal.
 - Criar FK simples por `id` quando a tabela filha tem `tenant_id` próprio.
+- Criar view em `public` sem `security_invoker = true`.
+- Corrigir schema direto no Dashboard/SQL editor sem versionar a correção como migration.
+- Justificar a criação de uma view com ganho de performance sem `EXPLAIN` antes e depois.
 
 ## 7. Validação
 
 - `npm run db:check-link` antes de qualquer comando linked.
 - `npm run db:migration-list` / `npm run db:lint` (somente com o link confirmado).
 - `npm run db:security-check` (estático) e, quando aplicável, `npm run db:security-check-live`.
+- `npm run db:view-check` (estático) e, quando aplicável, `npm run db:view-check-live` — obrigatórios em toda migration que cria/altera view.
+- `npm run db:drift-check` quando houver suspeita de correção manual em produção (compara o banco linkado com um shadow montado das migrations; exige Docker).
 - Teste manual de insert/update com tenant/parent divergente para toda FK composta nova.

@@ -19,6 +19,9 @@
     "db:lint": "npm run db:check-link && npx supabase db lint --linked",
     "db:security-check": "powershell -ExecutionPolicy Bypass -File scripts/check-security-definer.ps1",
     "db:security-check-live": "npm run db:check-link && npx supabase db query --file scripts/check-security-definer-live.sql --linked",
+    "db:view-check": "powershell -ExecutionPolicy Bypass -File scripts/check-view-security-invoker.ps1",
+    "db:view-check-live": "npm run db:check-link && npx supabase db query --file scripts/check-view-security-invoker-live.sql --linked",
+    "db:drift-check": "npm run db:check-link && npx supabase db diff --linked --schema public",
     "fn:deploy": "npm run db:check-link && npx supabase functions deploy --project-ref lcusxnhhrjosxqgiphgp",
     "fn:deploy:forecast": "npm run db:check-link && npx supabase functions deploy import_project_forecast --project-ref lcusxnhhrjosxqgiphgp",
     "fn:deploy:activity-forecast": "npm run db:check-link && npx supabase functions deploy import_project_activity_forecast --project-ref lcusxnhhrjosxqgiphgp"
