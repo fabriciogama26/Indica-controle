@@ -14,6 +14,10 @@ import {
   StockTransferItemInput,
 } from "@/lib/server/stockTransfers";
 import {
+  buildTeamOperationExportStream,
+  type TeamOperationExportFilters,
+} from "@/server/modules/saida";
+import {
   normalizeTeamOperationKind,
   saveTeamStockOperationViaRpc,
   TeamOperationKind,
@@ -655,6 +659,37 @@ function resolveOperationKind(
   return "RETURN";
 }
 
+async function respondTeamOperationExport(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: TeamOperationExportFilters,
+) {
+  const result = await buildTeamOperationExportStream(supabase, tenantId, filters, (step, error, context) =>
+    logTeamOperationLoadError(step, error, context),
+  );
+
+  if (result.kind === "error") {
+    logTeamOperationLoadError("team-operations-export-rpc", result.error, { tenantId });
+    return NextResponse.json({ message: "Falha ao exportar operacoes de equipe." }, { status: 500 });
+  }
+
+  if (result.kind === "empty") {
+    return NextResponse.json(
+      { message: "Nao ha registros para exportar com os filtros atuais." },
+      { status: 404 },
+    );
+  }
+
+  return new NextResponse(result.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${result.fileName}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 async function loadTeamOperationList(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar operacoes de equipe.",
@@ -685,6 +720,19 @@ async function loadTeamOperationList(request: NextRequest) {
       ? null
       : normalizeEntryType(request.nextUrl.searchParams.get("entryType"));
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
+
+  if (isExportRequest) {
+    return respondTeamOperationExport(supabase, appUser.tenant_id, {
+      teamIdFilter,
+      operationKindFilter,
+      startDate,
+      endDate,
+      projectIdFilter,
+      entryTypeFilter,
+      materialCodeFilter,
+      reversalStatus,
+    });
+  }
 
   const [teamOperationsResult, matchingMaterialsResult] = await Promise.all([
     loadTeamOperationsWithHeaders(supabase, appUser.tenant_id, {
@@ -1027,10 +1075,10 @@ async function loadTeamOperationList(request: NextRequest) {
   const from = (page - 1) * pageSize;
 
   return NextResponse.json({
-    history: isExportRequest ? filteredRows : filteredRows.slice(from, from + pageSize),
+    history: filteredRows.slice(from, from + pageSize),
     pagination: {
-      page: isExportRequest ? 1 : page,
-      pageSize: isExportRequest ? filteredRows.length : pageSize,
+      page,
+      pageSize,
       total: filteredRows.length,
     },
   });
