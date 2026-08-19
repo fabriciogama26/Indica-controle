@@ -552,6 +552,8 @@ async function loadTeamOperationList(request: NextRequest) {
   }
 
   const { supabase, appUser } = resolution;
+  const mode = normalizeText(request.nextUrl.searchParams.get("mode")).toLowerCase();
+  const isExportRequest = mode === "export";
   const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
   const startDate = normalizeDateInput(request.nextUrl.searchParams.get("startDate"));
   const endDate = normalizeDateInput(request.nextUrl.searchParams.get("endDate"));
@@ -932,10 +934,10 @@ async function loadTeamOperationList(request: NextRequest) {
   const from = (page - 1) * pageSize;
 
   return NextResponse.json({
-    history: filteredRows.slice(from, from + pageSize),
+    history: isExportRequest ? filteredRows : filteredRows.slice(from, from + pageSize),
     pagination: {
-      page,
-      pageSize,
+      page: isExportRequest ? 1 : page,
+      pageSize: isExportRequest ? filteredRows.length : pageSize,
       total: filteredRows.length,
     },
   });

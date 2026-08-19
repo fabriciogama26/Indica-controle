@@ -9,7 +9,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { isSerialTrackedMaterial, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
-import { HISTORY_EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   FilterState,
   FormState,
@@ -1221,41 +1221,29 @@ export function TeamStockOperationsPageView() {
     setFeedback(null);
 
     try {
-      const exportedItems: TeamOperationListItem[] = [];
-      let page = 1;
-      let total = 0;
+      const params = buildHistoryListParams(1, LIST_PAGE_SIZE, filters);
+      params.set("mode", "export");
+      params.delete("page");
+      params.delete("pageSize");
 
-      while (true) {
-        const params = buildHistoryListParams(page, HISTORY_EXPORT_PAGE_SIZE, filters);
-        const response = await fetch(`/api/team-stock-operations?${params.toString()}`, {
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+      const response = await fetch(`/api/team-stock-operations?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as TeamOperationListResponse;
+      if (!response.ok) {
+        showError(data.message ?? "Falha ao exportar operacoes de equipe.");
+        await logError("Falha ao exportar operacoes de equipe.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          filters,
         });
-
-        const data = (await response.json().catch(() => ({}))) as TeamOperationListResponse;
-        if (!response.ok) {
-          showError(data.message ?? "Falha ao exportar operacoes de equipe.");
-          await logError("Falha ao exportar operacoes de equipe.", undefined, {
-            responseStatus: response.status,
-            responseMessage: data.message ?? null,
-            filters,
-            page,
-          });
-          return;
-        }
-
-        const pageItems = data.history ?? [];
-        total = data.pagination?.total ?? total;
-        exportedItems.push(...pageItems);
-
-        if (pageItems.length === 0 || exportedItems.length >= total || pageItems.length < HISTORY_EXPORT_PAGE_SIZE) {
-          break;
-        }
-
-        page += 1;
+        return;
       }
+      const exportedItems = data.history ?? [];
 
       if (exportedItems.length === 0) {
         showError("Nao ha registros para exportar com os filtros atuais.");

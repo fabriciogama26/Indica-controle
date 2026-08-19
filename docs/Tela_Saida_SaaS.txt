@@ -157,6 +157,7 @@ Boas praticas
 - Usar `stock_transfer_team_operations` apenas como mapeamento funcional `transfer -> team`, sem duplicar o ledger principal.
 - Registrar erros da tela com `useErrorLogger("operacoes_equipe")`.
 - Respeitar cooldown de `10` segundos na exportacao.
+- A exportacao CSV da lista chama `GET /api/team-stock-operations?mode=export`, sem percorrer paginas no frontend.
 - No submit manual, consolidar todos os materiais com saldo zerado ou insuficiente antes de bloquear a operacao, informando codigo, saldo atual, quantidade solicitada e falta.
 - Preservar os detalhes de `INSUFFICIENT_STOCK` retornados pela RPC quando o saldo muda entre a pre-validacao da tela e o save transacional.
 
@@ -187,6 +188,7 @@ Atalhos
 - Endpoints:
   - `GET/POST /api/team-stock-operations`
   - `GET /api/team-stock-operations?mode=history`
+  - `GET /api/team-stock-operations?mode=export`
   - `GET /api/team-stock-operations/serial-options`
   - `POST /api/team-stock-operations/import`
   - `POST /api/team-stock-operations/reversal`
@@ -381,7 +383,7 @@ Atualizacao 2026-06 - Filtro funcional de Projeto
   - bloqueia codigo inexistente com a mensagem `Projeto invalido no filtro. Selecione um projeto da lista.`;
   - normaliza o texto exibido para o codigo oficial do projeto.
 - A API recebe `projectId` e compara por igualdade, removendo a busca parcial por texto em `projectCode`.
-- A exportacao CSV reutiliza o mesmo filtro efetivo por `projectId`.
+- A exportacao CSV reutiliza o mesmo filtro efetivo por `projectId` e usa `mode=export` para retornar todos os registros filtrados em uma unica chamada.
 - `Limpar` remove tanto o texto pesquisado quanto o identificador aplicado.
 - Arquivos alterados:
   - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
