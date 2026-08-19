@@ -10,8 +10,9 @@ import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./MaterialsPageView.module.css";
-import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
-import { formatAuditActor, formatCurrency, formatDateTime } from "@/lib/utils/formatters";
+import { buildMaterialsCsv, createMassImportErrorReport, type MassImportErrorReportData, type MassImportIssue } from "./csv";
+import { downloadCsvFile } from "@/lib/utils/csv";
+import { formatCurrency, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import { parseCsvLine } from "@/lib/utils/parsers";
 
@@ -19,6 +20,8 @@ type MaterialItem = {
   id: string;
   codigo: string;
   descricao: string;
+  categoria: string | null;
+  subcategoria: string | null;
   umb: string | null;
   tipo: string;
   isTransformer: boolean;
@@ -61,6 +64,8 @@ type FormState = {
 type FilterState = {
   codigo: string;
   descricao: string;
+  categoria: string;
+  subcategoria: string;
   umb: string;
   tipo: "" | "NOVO" | "SUCATA";
   status: "" | "ativo" | "inativo";
@@ -82,20 +87,6 @@ type MaterialHistoryResponse = {
   history?: MaterialHistoryEntry[];
   pagination?: { page: number; pageSize: number; total: number };
   message?: string;
-};
-
-type MassImportIssue = {
-  rowNumber: number;
-  column: string;
-  value: string;
-  error: string;
-};
-
-type MassImportErrorReportData = {
-  fileName: string;
-  content: string;
-  errorRows: number;
-  totalIssues: number;
 };
 
 type MassImportResultSummary = {
@@ -140,6 +131,8 @@ const INITIAL_FORM: FormState = {
 const INITIAL_FILTERS: FilterState = {
   codigo: "",
   descricao: "",
+  categoria: "",
+  subcategoria: "",
   umb: "",
   tipo: "",
   status: "",
@@ -148,6 +141,8 @@ const INITIAL_FILTERS: FilterState = {
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   codigo: "Codigo",
   descricao: "Descricao",
+  categoria: "Categoria",
+  subcategoria: "Subcategoria",
   tipo: "Tipo",
   isTransformer: "Trafo",
   serialTrackingType: "Rastreio por serial",
@@ -186,6 +181,8 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
   if (filters.codigo.trim()) params.set("codigo", filters.codigo.trim());
   if (filters.descricao.trim()) params.set("descricao", filters.descricao.trim());
+  if (filters.categoria.trim()) params.set("categoria", filters.categoria.trim());
+  if (filters.subcategoria.trim()) params.set("subcategoria", filters.subcategoria.trim());
   if (filters.umb.trim()) params.set("umb", filters.umb.trim());
   if (filters.tipo.trim()) params.set("tipo", filters.tipo.trim());
   if (filters.status) params.set("status", filters.status);
@@ -258,68 +255,6 @@ function parseNonNegativeCurrency(value: string) {
   }
 
   return Number(parsed.toFixed(2));
-}
-
-function buildMaterialsCsv(materialItems: MaterialItem[]) {
-  const header = [
-    "Codigo",
-    "Descricao",
-    "Tipo",
-    "Rastreio por serial",
-    "UMB",
-    "Preco",
-    "Estoque minimo",
-    "Estoque maximo",
-    "Status",
-    "Registrado por",
-    "Registrado em",
-    "Atualizado por",
-    "Atualizado em",
-  ];
-  const rows = materialItems.map((material) => [
-    material.codigo,
-    material.descricao,
-    material.tipo,
-    serialTrackingLabel(material.serialTrackingType),
-    material.umb ?? "",
-    material.unitPrice.toFixed(2),
-    material.stockMinimum.toFixed(2),
-    material.stockMaximum === null ? "" : material.stockMaximum.toFixed(2),
-    material.isActive ? "Ativo" : "Inativo",
-    formatAuditActor(material.createdByName),
-    formatDateTime(material.createdAt),
-    formatAuditActor(material.updatedByName),
-    formatDateTime(material.updatedAt),
-  ]);
-
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function buildMassImportErrorCsv(issues: MassImportIssue[]) {
-  const header = ["linha", "coluna", "valor", "erro"];
-  const rows = issues.map((issue) => [
-    issue.rowNumber,
-    issue.column,
-    issue.value,
-    issue.error,
-  ]);
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function createMassImportErrorReport(issues: MassImportIssue[]) {
-  if (!issues.length) {
-    return null;
-  }
-
-  const errorRows = new Set(issues.map((issue) => issue.rowNumber)).size;
-  return {
-    fileName: `materiais_erros_${new Date().toISOString().slice(0, 10)}.csv`,
-    content: buildMassImportErrorCsv(issues),
-    errorRows,
-    totalIssues: issues.length,
-  };
 }
 
 function formatOptionalText(value: string | null | undefined, fallback = "-") {
@@ -1326,6 +1261,26 @@ export function MaterialsPageView() {
           </label>
 
           <label className={styles.field}>
+            <span>Categoria</span>
+            <input
+              type="text"
+              value={filterDraft.categoria}
+              onChange={(event) => updateFilterField("categoria", event.target.value)}
+              placeholder="Filtrar por categoria"
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>Subcategoria</span>
+            <input
+              type="text"
+              value={filterDraft.subcategoria}
+              onChange={(event) => updateFilterField("subcategoria", event.target.value)}
+              placeholder="Filtrar por subcategoria"
+            />
+          </label>
+
+          <label className={styles.field}>
             <span>UMB</span>
             <select
               value={filterDraft.umb}
@@ -1390,6 +1345,8 @@ export function MaterialsPageView() {
               <tr>
                 <th>Codigo</th>
                 <th>Descricao</th>
+                <th>Categoria</th>
+                <th>Subcategoria</th>
                 <th>Tipo</th>
                 <th>Rastreio</th>
                 <th>UMB</th>
@@ -1412,6 +1369,8 @@ export function MaterialsPageView() {
                         </div>
                       </td>
                       <td>{material.descricao}</td>
+                      <td>{formatOptionalText(material.categoria)}</td>
+                      <td>{formatOptionalText(material.subcategoria)}</td>
                       <td>{material.tipo}</td>
                       <td>{serialTrackingLabel(material.serialTrackingType)}</td>
                       <td>{formatOptionalText(material.umb)}</td>
@@ -1458,7 +1417,7 @@ export function MaterialsPageView() {
                   ))
                 : (
                   <tr>
-                    <td colSpan={11} className={styles.emptyRow}>
+                    <td colSpan={13} className={styles.emptyRow}>
                       {isLoadingList ? "Carregando materiais..." : "Nenhum material encontrado para os filtros informados."}
                     </td>
                   </tr>
