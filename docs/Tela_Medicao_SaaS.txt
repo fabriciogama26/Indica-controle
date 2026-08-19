@@ -1522,3 +1522,68 @@ Atualizacao 2026-08 - Encarregado resolvido pela Composicao de Equipe
   - Depois: trocar equipe ou data de execucao em ordem nova limpa o valor, porque
     o encarregado sera resolvido de novo no salvamento para o contexto novo.
   - `readMeasurementPrefillParams` passou a ler `foremanName` da query.
+
+
+Atualizacao 2026-08-19 - Modulo server-side de Medicao e exportacao sem HTTP interno
+--------------------------------------------------------------------------------
+Motivacao: `src/app/api/medicao/route.ts` tinha 2.022 linhas e concentrava TODA a
+leitura do dominio. Como `route.ts` do Next so pode exportar handlers HTTP, a rota
+de exportacao nao tinha como reusar nada e chamava a PROPRIA rota de listagem por
+HTTP interno: paginas de 500 para montar a lista e, no detalhamento, uma chamada
+por ordem em lotes de 20. Cada chamada refazia resolucao de sessao e rodava
+`loadProgrammingMatchMap` para UMA ordem -- um N+1 sobre a funcao mais cara do
+modulo.
+
+O que mudou (estrutura):
+- Novo modulo `src/server/modules/medicao/`, no padrao ja usado por
+  `programacao-normalizada`:
+  - `types.ts` (278 linhas) - tipos de linha do dominio.
+  - `normalizers.ts` (214) - funcoes puras, sem acesso a banco.
+  - `programmingMatch.ts` (312) - match ordem x Programacao e Estado do Trabalho
+    na janela consultada. Separado por ser a parte mais cara e mais autocontida.
+  - `queries.ts` (705) - acesso a dados.
+  - `index.ts` - fachada publica (regra de arquitetura do CLAUDE.md).
+- `src/app/api/medicao/route.ts` caiu de 2.022 para 733 linhas e saiu do baseline
+  de tamanho (teto de 1.500 para `route.ts`).
+- A extracao foi MECANICA: o diff da rota e de 3 insercoes (as 3 linhas de import)
+  e 1.286 delecoes. Nenhuma linha de logica foi reescrita.
+
+O que mudou (exportacao de detalhamento):
+- `buildDetailsCsv` deixou de chamar a rota por HTTP e passou a usar
+  `fetchMeasurementOrderDetailsForExport`, que resolve as colecoes UMA vez para
+  todas as ordens: ordens e itens em chunks de 200 por `in()`, e depois
+  `fetchAppUserMap`, `fetchProjectServiceCenterMap`, `fetchTeamCompositionContextSet`
+  e `fetchServiceActivityIddMap` uma vez cada.
+- Para 3.000 ordens, o detalhamento sai de ~150 chamadas HTTP internas (e ~3.000
+  execucoes de `loadProgrammingMatchMap`) para ~30 consultas.
+
+Fidelidade do CSV (o que garante que a planilha nao muda):
+- O objeto por ordem vem de `buildMeasurementOrderDetail`, funcao pura extraida de
+  `fetchMeasurementOrderDetail` e usada pelos DOIS caminhos. Cabecalho, ordem das
+  colunas e formatacao nao foram tocados.
+- Ordem das linhas preservada: o lote reordena o resultado pela ordem de entrada.
+- Ordem dos itens dentro da ordem preservada: a consulta em lote mantem
+  `order(activity_code)`, que preserva o ordenamento relativo dentro de cada ordem.
+- Janela de match agrupada, nao unificada: quando a exportacao NAO envia `endDate`,
+  cada ordem usa a propria `execution_date` como janela. O lote agrupa por janela
+  efetiva e chama `loadProgrammingMatchMap` uma vez por janela distinta. Unificar
+  numa janela so teria mudado o status de programacao das ordens.
+
+Mudanca de comportamento consciente (unica):
+- Antes, `Promise.allSettled` descartava em silencio a ordem cujo detalhe falhasse:
+  o usuario recebia um CSV incompleto sem qualquer aviso. Agora um erro de consulta
+  interrompe a exportacao com mensagem. Ordem que simplesmente nao existe mais
+  continua sendo ignorada, como antes.
+
+O que NAO mudou e continua pendente:
+- `loadOrdersForExport` ainda pagina a LISTAGEM por HTTP interno (500 por pagina).
+  O pipeline de listagem continua dentro do handler `GET`, misturado com o parse
+  dos filtros, e extrai-lo e uma tarefa propria.
+- O parametro `_export=1` que a rota de exportacao envia NAO existe na rota de
+  listagem -- e um no-op. Mantido para nao alterar comportamento nesta tarefa.
+
+Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+NAO executada: comparacao byte-a-byte do CSV antes/depois, que exige app rodando
+com banco real. Como o projeto nao tem suite automatizada, essa comparacao e o
+teste manual obrigatorio antes do merge -- exportar Resumo, Detalhamento e
+Pontuacao com o mesmo filtro, em versao antiga e nova, e comparar os arquivos.
