@@ -1,37 +1,128 @@
 -- 378_backfill_material_categories_from_xlsx.sql
--- Adiciona classificacao tecnica ao catalogo de materiais e aplica o backfill
--- gerado de C:/Users/operador/Downloads/Materiais/materiais_2026-08-11_categorizados.xlsx.
+-- Cria catalogos multi-tenant de categoria/subcategoria de materiais e aplica
+-- backfill gerado de C:/Users/operador/Downloads/Materiais/materiais_2026-08-11_categorizados.xlsx.
 
 begin;
 
-alter table if exists public.materials
-  add column if not exists categoria text,
-  add column if not exists subcategoria text;
+create table if not exists public.material_categories (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  name text not null,
+  is_active boolean not null default true,
+  sort_order integer not null default 100,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references public.app_users(id),
+  updated_by uuid references public.app_users(id),
+  constraint material_categories_name_not_blank_check
+    check (nullif(btrim(coalesce(name, '')), '') is not null),
+  constraint material_categories_sort_order_check
+    check (sort_order >= 0),
+  constraint material_categories_tenant_name_key
+    unique (tenant_id, name),
+  constraint material_categories_id_tenant_key
+    unique (id, tenant_id)
+);
+
+create index if not exists idx_material_categories_tenant_active_order
+  on public.material_categories (tenant_id, is_active, sort_order, name);
+
+alter table if exists public.material_categories enable row level security;
+
+drop policy if exists material_categories_tenant_select on public.material_categories;
+create policy material_categories_tenant_select on public.material_categories
+for select
+to authenticated
+using (public.user_can_access_tenant(material_categories.tenant_id));
+
+grant select on public.material_categories to authenticated;
+
+drop trigger if exists trg_material_categories_audit on public.material_categories;
+create trigger trg_material_categories_audit
+before insert or update on public.material_categories
+for each row execute function public.apply_audit_fields();
+
+create table if not exists public.material_subcategories (
+  id uuid primary key default gen_random_uuid(),
+  tenant_id uuid not null references public.tenants(id) on delete cascade,
+  category_id uuid not null,
+  name text not null,
+  is_active boolean not null default true,
+  sort_order integer not null default 100,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  created_by uuid references public.app_users(id),
+  updated_by uuid references public.app_users(id),
+  constraint material_subcategories_name_not_blank_check
+    check (nullif(btrim(coalesce(name, '')), '') is not null),
+  constraint material_subcategories_sort_order_check
+    check (sort_order >= 0),
+  constraint material_subcategories_category_tenant_fk
+    foreign key (category_id, tenant_id)
+    references public.material_categories(id, tenant_id)
+    on delete cascade,
+  constraint material_subcategories_tenant_category_name_key
+    unique (tenant_id, category_id, name),
+  constraint material_subcategories_id_tenant_key
+    unique (id, tenant_id),
+  constraint material_subcategories_id_tenant_category_key
+    unique (id, tenant_id, category_id)
+);
+
+create index if not exists idx_material_subcategories_tenant_category_active_order
+  on public.material_subcategories (tenant_id, category_id, is_active, sort_order, name);
+
+alter table if exists public.material_subcategories enable row level security;
+
+drop policy if exists material_subcategories_tenant_select on public.material_subcategories;
+create policy material_subcategories_tenant_select on public.material_subcategories
+for select
+to authenticated
+using (public.user_can_access_tenant(material_subcategories.tenant_id));
+
+grant select on public.material_subcategories to authenticated;
+
+drop trigger if exists trg_material_subcategories_audit on public.material_subcategories;
+create trigger trg_material_subcategories_audit
+before insert or update on public.material_subcategories
+for each row execute function public.apply_audit_fields();
 
 alter table if exists public.materials
-  drop constraint if exists materials_categoria_not_blank_check,
-  drop constraint if exists materials_subcategoria_not_blank_check,
-  add constraint materials_categoria_not_blank_check
-    check (categoria is null or nullif(btrim(categoria), '') is not null),
-  add constraint materials_subcategoria_not_blank_check
-    check (subcategoria is null or nullif(btrim(subcategoria), '') is not null);
+  add column if not exists category_id uuid,
+  add column if not exists subcategory_id uuid;
 
-create index if not exists idx_materials_tenant_categoria
-  on public.materials (tenant_id, categoria)
-  where categoria is not null;
+alter table if exists public.materials
+  drop constraint if exists materials_subcategory_requires_category_check,
+  add constraint materials_subcategory_requires_category_check
+    check (subcategory_id is null or category_id is not null) not valid;
 
-create index if not exists idx_materials_tenant_categoria_subcategoria
-  on public.materials (tenant_id, categoria, subcategoria)
-  where categoria is not null
-    and subcategoria is not null;
+alter table if exists public.materials
+  drop constraint if exists materials_category_tenant_fk,
+  drop constraint if exists materials_subcategory_tenant_category_fk;
+
+alter table if exists public.materials
+  add constraint materials_category_tenant_fk
+    foreign key (category_id, tenant_id)
+    references public.material_categories(id, tenant_id) not valid,
+  add constraint materials_subcategory_tenant_category_fk
+    foreign key (subcategory_id, tenant_id, category_id)
+    references public.material_subcategories(id, tenant_id, category_id) not valid;
+
+create index if not exists idx_materials_tenant_category
+  on public.materials (tenant_id, category_id)
+  where category_id is not null;
+
+create index if not exists idx_materials_tenant_subcategory
+  on public.materials (tenant_id, subcategory_id)
+  where subcategory_id is not null;
 
 create temp table material_category_backfill (
   codigo text not null,
-  categoria text not null,
-  subcategoria text not null
+  category_name text not null,
+  subcategory_name text not null
 ) on commit drop;
 
-insert into material_category_backfill (codigo, categoria, subcategoria)
+insert into material_category_backfill (codigo, category_name, subcategory_name)
 values
   ('99901', 'Transformadores', 'Transformador monofásico'),
   ('110569', 'Transformadores', 'Transformador monofásico'),
@@ -1209,7 +1300,7 @@ begin
     select codigo
     from material_category_backfill
     group by codigo
-    having count(distinct categoria || '|' || subcategoria) > 1
+    having count(distinct category_name || '|' || subcategory_name) > 1
   ) conflicts;
 
   if v_conflicting_codes is not null then
@@ -1218,41 +1309,105 @@ begin
 end
 $$;
 
+with source_categories as (
+  select distinct category_name
+  from material_category_backfill
+), ranked_categories as (
+  select
+    category_name,
+    row_number() over (order by category_name) * 10 as sort_order
+  from source_categories
+)
+insert into public.material_categories (tenant_id, name, is_active, sort_order)
+select
+  tenants.id,
+  ranked_categories.category_name,
+  true,
+  ranked_categories.sort_order
+from public.tenants tenants
+cross join ranked_categories
+on conflict (tenant_id, name) do update
+set
+  is_active = excluded.is_active,
+  sort_order = excluded.sort_order,
+  updated_at = now();
+
+with source_subcategories as (
+  select distinct category_name, subcategory_name
+  from material_category_backfill
+), ranked_subcategories as (
+  select
+    category_name,
+    subcategory_name,
+    row_number() over (partition by category_name order by subcategory_name) * 10 as sort_order
+  from source_subcategories
+)
+insert into public.material_subcategories (tenant_id, category_id, name, is_active, sort_order)
+select
+  categories.tenant_id,
+  categories.id,
+  ranked_subcategories.subcategory_name,
+  true,
+  ranked_subcategories.sort_order
+from ranked_subcategories
+join public.material_categories categories
+  on categories.name = ranked_subcategories.category_name
+on conflict (tenant_id, category_id, name) do update
+set
+  is_active = excluded.is_active,
+  sort_order = excluded.sort_order,
+  updated_at = now();
+
 with source_rows as (
   select
     upper(btrim(codigo)) as codigo,
-    max(categoria) as categoria,
-    max(subcategoria) as subcategoria
+    max(category_name) as category_name,
+    max(subcategory_name) as subcategory_name
   from material_category_backfill
   group by upper(btrim(codigo))
 ), target_rows as (
   select
     materials.id,
     materials.tenant_id,
-    materials.categoria as previous_categoria,
-    materials.subcategoria as previous_subcategoria,
-    source_rows.categoria,
-    source_rows.subcategoria
+    previous_categories.name as previous_category_name,
+    previous_subcategories.name as previous_subcategory_name,
+    categories.id as category_id,
+    categories.name as category_name,
+    subcategories.id as subcategory_id,
+    subcategories.name as subcategory_name
   from public.materials materials
   join source_rows
     on upper(btrim(materials.codigo)) = source_rows.codigo
-  where materials.categoria is distinct from source_rows.categoria
-     or materials.subcategoria is distinct from source_rows.subcategoria
+  join public.material_categories categories
+    on categories.tenant_id = materials.tenant_id
+   and categories.name = source_rows.category_name
+  join public.material_subcategories subcategories
+    on subcategories.tenant_id = materials.tenant_id
+   and subcategories.category_id = categories.id
+   and subcategories.name = source_rows.subcategory_name
+  left join public.material_categories previous_categories
+    on previous_categories.id = materials.category_id
+   and previous_categories.tenant_id = materials.tenant_id
+  left join public.material_subcategories previous_subcategories
+    on previous_subcategories.id = materials.subcategory_id
+   and previous_subcategories.tenant_id = materials.tenant_id
+  where materials.category_id is distinct from categories.id
+     or materials.subcategory_id is distinct from subcategories.id
 ), updated_materials as (
   update public.materials materials
   set
-    categoria = target_rows.categoria,
-    subcategoria = target_rows.subcategoria
+    category_id = target_rows.category_id,
+    subcategory_id = target_rows.subcategory_id
   from target_rows
   where materials.id = target_rows.id
     and materials.tenant_id = target_rows.tenant_id
   returning
     materials.id,
     materials.tenant_id,
-    target_rows.previous_categoria,
-    target_rows.previous_subcategoria,
-    materials.categoria,
-    materials.subcategoria
+    target_rows.previous_category_name,
+    target_rows.previous_subcategory_name,
+    target_rows.category_name,
+    target_rows.subcategory_name
 )
 insert into public.material_history (
   tenant_id,
@@ -1265,10 +1420,272 @@ select
   id,
   'UPDATE',
   jsonb_build_object(
-    'categoria', jsonb_build_object('from', previous_categoria, 'to', categoria),
-    'subcategoria', jsonb_build_object('from', previous_subcategoria, 'to', subcategoria)
+    'categoryId', jsonb_build_object('from', previous_category_name, 'to', category_name),
+    'subcategoryId', jsonb_build_object('from', previous_subcategory_name, 'to', subcategory_name)
   )
 from updated_materials;
+
+alter table if exists public.materials validate constraint materials_subcategory_requires_category_check;
+alter table if exists public.materials validate constraint materials_category_tenant_fk;
+alter table if exists public.materials validate constraint materials_subcategory_tenant_category_fk;
+
+drop function if exists public.save_material_record(
+  uuid,
+  uuid,
+  uuid,
+  text,
+  text,
+  text,
+  text,
+  boolean,
+  numeric,
+  text,
+  jsonb,
+  timestamptz,
+  numeric,
+  numeric
+);
+
+create or replace function public.save_material_record(
+  p_tenant_id uuid,
+  p_actor_user_id uuid,
+  p_material_id uuid default null,
+  p_codigo text default null,
+  p_descricao text default null,
+  p_category_id uuid default null,
+  p_subcategory_id uuid default null,
+  p_umb text default null,
+  p_tipo text default null,
+  p_is_transformer boolean default false,
+  p_unit_price numeric default null,
+  p_serial_tracking_type text default null,
+  p_changes jsonb default '{}'::jsonb,
+  p_expected_updated_at timestamptz default null,
+  p_stock_minimum numeric default 0,
+  p_stock_maximum numeric default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_current public.materials%rowtype;
+  v_material_id uuid;
+  v_updated_at timestamptz;
+  v_tipo text := upper(btrim(coalesce(p_tipo, '')));
+  v_umb text := upper(btrim(coalesce(p_umb, '')));
+  v_unit_price numeric := coalesce(p_unit_price, 0);
+  v_stock_minimum numeric := coalesce(p_stock_minimum, 0);
+  v_stock_maximum numeric := p_stock_maximum;
+  v_serial_tracking_type text := upper(btrim(coalesce(
+    p_serial_tracking_type,
+    case when coalesce(p_is_transformer, false) then 'TRAFO' else 'NONE' end
+  )));
+  v_current_serial_tracking_type text;
+  v_is_transformer boolean;
+  v_has_serial_tracking_usage boolean := false;
+begin
+  if p_category_id is null or p_subcategory_id is null then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'CATEGORY_REQUIRED', 'message', 'Categoria e subcategoria sao obrigatorias para cadastro de material.');
+  end if;
+
+  if not exists (
+    select 1
+    from public.material_subcategories subcategories
+    join public.material_categories categories
+      on categories.id = subcategories.category_id
+     and categories.tenant_id = subcategories.tenant_id
+    where categories.tenant_id = p_tenant_id
+      and categories.id = p_category_id
+      and categories.is_active = true
+      and subcategories.id = p_subcategory_id
+      and subcategories.is_active = true
+  ) then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_CATEGORY', 'message', 'Categoria ou subcategoria invalida para o tenant atual.');
+  end if;
+
+  if v_umb = '' then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'UMB_REQUIRED', 'message', 'UMB obrigatorio para cadastro de material.');
+  end if;
+
+  if not exists (
+    select 1
+    from public.material_umb_options options
+    where options.tenant_id = p_tenant_id
+      and options.code = v_umb
+      and options.is_active = true
+  ) then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_UMB', 'message', 'UMB invalida. Selecione M, KG ou UN.');
+  end if;
+
+  if v_tipo not in ('NOVO', 'SUCATA') then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_TYPE', 'message', 'Tipo invalido. Selecione NOVO ou SUCATA.');
+  end if;
+
+  if v_unit_price < 0 then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_UNIT_PRICE', 'message', 'Preco invalido. Informe valor maior ou igual a zero.');
+  end if;
+
+  if v_stock_minimum < 0 or (v_stock_maximum is not null and v_stock_maximum < v_stock_minimum) then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_STOCK_LIMITS', 'message', 'Limites de estoque invalidos. O maximo deve ser vazio ou maior/igual ao minimo.');
+  end if;
+
+  if v_serial_tracking_type not in ('NONE', 'TRAFO', 'RELIGADOR', 'CHAVE') then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_SERIAL_TRACKING_TYPE', 'message', 'Tipo de rastreio por serial invalido.');
+  end if;
+
+  v_is_transformer := v_serial_tracking_type = 'TRAFO';
+
+  if p_material_id is null then
+    insert into public.materials (
+      tenant_id,
+      codigo,
+      descricao,
+      category_id,
+      subcategory_id,
+      umb,
+      tipo,
+      is_transformer,
+      serial_tracking_type,
+      unit_price,
+      stock_minimum,
+      stock_maximum,
+      is_active,
+      cancellation_reason,
+      canceled_at,
+      canceled_by,
+      created_by,
+      updated_by
+    ) values (
+      p_tenant_id,
+      p_codigo,
+      p_descricao,
+      p_category_id,
+      p_subcategory_id,
+      v_umb,
+      v_tipo,
+      v_is_transformer,
+      v_serial_tracking_type,
+      v_unit_price,
+      v_stock_minimum,
+      v_stock_maximum,
+      true,
+      null,
+      null,
+      null,
+      p_actor_user_id,
+      p_actor_user_id
+    )
+    returning id, updated_at
+    into v_material_id, v_updated_at;
+
+    return jsonb_build_object('success', true, 'status', 200, 'material_id', v_material_id, 'updated_at', v_updated_at);
+  end if;
+
+  select *
+  into v_current
+  from public.materials
+  where id = p_material_id
+    and tenant_id = p_tenant_id
+  for update;
+
+  if not found then
+    return jsonb_build_object('success', false, 'status', 404, 'reason', 'MATERIAL_NOT_FOUND', 'message', 'Material nao encontrado para edicao.');
+  end if;
+
+  if p_expected_updated_at is null then
+    return jsonb_build_object('success', false, 'status', 400, 'reason', 'EXPECTED_UPDATED_AT_REQUIRED', 'message', 'Atualize a lista antes de editar o material.');
+  end if;
+
+  if v_current.updated_at <> p_expected_updated_at then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'CONCURRENT_MODIFICATION', 'message', format('O material %s foi alterado por outro usuario. Recarregue os dados antes de salvar novamente.', v_current.codigo));
+  end if;
+
+  if not v_current.is_active then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'RECORD_INACTIVE', 'message', 'Ative o material antes de editar.');
+  end if;
+
+  v_current_serial_tracking_type := upper(btrim(coalesce(
+    v_current.serial_tracking_type,
+    case when coalesce(v_current.is_transformer, false) then 'TRAFO' else 'NONE' end
+  )));
+
+  if v_current_serial_tracking_type in ('TRAFO', 'RELIGADOR', 'CHAVE')
+    and v_current_serial_tracking_type <> v_serial_tracking_type
+  then
+    select (
+      exists (
+        select 1
+        from public.trafo_instances ti
+        where ti.tenant_id = p_tenant_id
+          and ti.material_id = p_material_id
+        limit 1
+      )
+      or exists (
+        select 1
+        from public.stock_transfer_items sti
+        where sti.tenant_id = p_tenant_id
+          and sti.material_id = p_material_id
+          and nullif(btrim(coalesce(sti.serial_number, '')), '') is not null
+        limit 1
+      )
+    )
+    into v_has_serial_tracking_usage;
+
+    if coalesce(v_has_serial_tracking_usage, false) then
+      return jsonb_build_object('success', false, 'status', 409, 'reason', 'SERIAL_TRACKING_IN_USE', 'message', 'Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.');
+    end if;
+  end if;
+
+  update public.materials
+  set
+    codigo = p_codigo,
+    descricao = p_descricao,
+    category_id = p_category_id,
+    subcategory_id = p_subcategory_id,
+    umb = v_umb,
+    tipo = v_tipo,
+    is_transformer = v_is_transformer,
+    serial_tracking_type = v_serial_tracking_type,
+    unit_price = v_unit_price,
+    stock_minimum = v_stock_minimum,
+    stock_maximum = v_stock_maximum,
+    updated_by = p_actor_user_id
+  where id = p_material_id
+    and tenant_id = p_tenant_id
+  returning id, updated_at
+  into v_material_id, v_updated_at;
+
+  if coalesce(jsonb_object_length(coalesce(p_changes, '{}'::jsonb)), 0) > 0 then
+    insert into public.material_history (
+      tenant_id,
+      material_id,
+      change_type,
+      changes,
+      created_by,
+      updated_by
+    ) values (
+      p_tenant_id,
+      p_material_id,
+      'UPDATE',
+      coalesce(p_changes, '{}'::jsonb),
+      p_actor_user_id,
+      p_actor_user_id
+    );
+  end if;
+
+  return jsonb_build_object('success', true, 'status', 200, 'material_id', v_material_id, 'updated_at', v_updated_at);
+exception
+  when unique_violation then
+    return jsonb_build_object('success', false, 'status', 409, 'reason', 'DUPLICATE_MATERIAL_CODE', 'message', 'Ja existe material com este codigo no tenant atual.');
+end;
+$$;
+
+revoke all on function public.save_material_record(uuid, uuid, uuid, text, text, uuid, uuid, text, text, boolean, numeric, text, jsonb, timestamptz, numeric, numeric) from public;
+revoke all on function public.save_material_record(uuid, uuid, uuid, text, text, uuid, uuid, text, text, boolean, numeric, text, jsonb, timestamptz, numeric, numeric) from anon;
+revoke all on function public.save_material_record(uuid, uuid, uuid, text, text, uuid, uuid, text, text, boolean, numeric, text, jsonb, timestamptz, numeric, numeric) from authenticated;
+grant execute on function public.save_material_record(uuid, uuid, uuid, text, text, uuid, uuid, text, text, boolean, numeric, text, jsonb, timestamptz, numeric, numeric) to service_role;
 
 do $$
 declare

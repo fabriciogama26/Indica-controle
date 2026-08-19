@@ -10,7 +10,7 @@ import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import styles from "./MaterialsPageView.module.css";
-import { buildMaterialsCsv, createMassImportErrorReport, type MassImportErrorReportData, type MassImportIssue } from "./csv";
+import { buildMassImportTemplateCsv, buildMaterialsCsv, createMassImportErrorReport, normalizeCsvHeader, normalizeLookupText, normalizeSerialTrackingInput, parseNonNegativeCurrency, resolveCsvValue, type MassImportErrorReportData, type MassImportIssue } from "./csv";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatCurrency, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
@@ -20,8 +20,10 @@ type MaterialItem = {
   id: string;
   codigo: string;
   descricao: string;
-  categoria: string | null;
-  subcategoria: string | null;
+  categoryId: string | null;
+  subcategoryId: string | null;
+  categoryName: string | null;
+  subcategoryName: string | null;
   umb: string | null;
   tipo: string;
   isTransformer: boolean;
@@ -51,6 +53,8 @@ type MaterialHistoryEntry = {
 type FormState = {
   codigo: string;
   descricao: string;
+  categoryId: string;
+  subcategoryId: string;
   tipo: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
@@ -64,8 +68,8 @@ type FormState = {
 type FilterState = {
   codigo: string;
   descricao: string;
-  categoria: string;
-  subcategoria: string;
+  categoryId: string;
+  subcategoryId: string;
   umb: string;
   tipo: "" | "NOVO" | "SUCATA";
   status: "" | "ativo" | "inativo";
@@ -79,8 +83,20 @@ type MaterialsResponse = {
 
 type MaterialsMetaResponse = {
   umbOptions?: string[];
+  categoryOptions?: MaterialCategoryOption[];
   hasMaterialsWithoutUmb?: boolean;
   message?: string;
+};
+
+type MaterialSubcategoryOption = {
+  id: string;
+  name: string;
+};
+
+type MaterialCategoryOption = {
+  id: string;
+  name: string;
+  subcategories: MaterialSubcategoryOption[];
 };
 
 type MaterialHistoryResponse = {
@@ -118,6 +134,8 @@ const WITHOUT_UMB_FILTER = "__SEM_UMB__";
 const INITIAL_FORM: FormState = {
   codigo: "",
   descricao: "",
+  categoryId: "",
+  subcategoryId: "",
   tipo: "",
   isTransformer: false,
   serialTrackingType: "NONE",
@@ -131,8 +149,8 @@ const INITIAL_FORM: FormState = {
 const INITIAL_FILTERS: FilterState = {
   codigo: "",
   descricao: "",
-  categoria: "",
-  subcategoria: "",
+  categoryId: "",
+  subcategoryId: "",
   umb: "",
   tipo: "",
   status: "",
@@ -141,8 +159,8 @@ const INITIAL_FILTERS: FilterState = {
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   codigo: "Codigo",
   descricao: "Descricao",
-  categoria: "Categoria",
-  subcategoria: "Subcategoria",
+  categoryId: "Categoria",
+  subcategoryId: "Subcategoria",
   tipo: "Tipo",
   isTransformer: "Trafo",
   serialTrackingType: "Rastreio por serial",
@@ -181,80 +199,14 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
   if (filters.codigo.trim()) params.set("codigo", filters.codigo.trim());
   if (filters.descricao.trim()) params.set("descricao", filters.descricao.trim());
-  if (filters.categoria.trim()) params.set("categoria", filters.categoria.trim());
-  if (filters.subcategoria.trim()) params.set("subcategoria", filters.subcategoria.trim());
+  if (filters.categoryId.trim()) params.set("categoryId", filters.categoryId.trim());
+  if (filters.subcategoryId.trim()) params.set("subcategoryId", filters.subcategoryId.trim());
   if (filters.umb.trim()) params.set("umb", filters.umb.trim());
   if (filters.tipo.trim()) params.set("tipo", filters.tipo.trim());
   if (filters.status) params.set("status", filters.status);
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
-}
-
-function normalizeCsvHeader(value: string) {
-  return normalizeText(value)
-    .replace(/^\uFEFF/, "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function resolveCsvValue(row: Record<string, string>, aliases: string[]) {
-  for (const alias of aliases) {
-    const value = row[alias];
-    if (value !== undefined) {
-      return value;
-    }
-  }
-
-  return "";
-}
-
-function normalizeSerialTrackingInput(value: string): SerialTrackingType | null {
-  const normalized = normalizeCsvHeader(value);
-  if (!normalized || normalized === "nao" || normalized === "none" || normalized === "sem_rastreio") {
-    return "NONE";
-  }
-
-  if (normalized === "trafo" || normalized === "transformador") {
-    return "TRAFO";
-  }
-
-  if (normalized === "religador") {
-    return "RELIGADOR";
-  }
-
-  if (normalized === "chave" || normalized === "chaves") {
-    return "CHAVE";
-  }
-
-  return null;
-}
-
-function parseNonNegativeCurrency(value: string) {
-  const raw = normalizeText(value);
-  if (!raw) {
-    return 0;
-  }
-
-  const withoutSpaces = raw.replace(/\s+/g, "");
-  const lastComma = withoutSpaces.lastIndexOf(",");
-  const lastDot = withoutSpaces.lastIndexOf(".");
-  const decimalSeparator = lastComma > lastDot ? "," : lastDot > -1 ? "." : "";
-  const normalized = decimalSeparator
-    ? withoutSpaces
-        .replace(new RegExp(`\\${decimalSeparator === "," ? "." : ","}`, "g"), "")
-        .replace(decimalSeparator, ".")
-    : withoutSpaces;
-  const parsed = Number(normalized);
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return null;
-  }
-
-  return Number(parsed.toFixed(2));
 }
 
 function formatOptionalText(value: string | null | undefined, fallback = "-") {
@@ -309,6 +261,8 @@ function toFormState(material: MaterialItem): FormState {
   return {
     codigo: material.codigo,
     descricao: material.descricao,
+    categoryId: material.categoryId ?? "",
+    subcategoryId: material.subcategoryId ?? "",
     tipo: material.tipo,
     isTransformer: Boolean(material.isTransformer),
     serialTrackingType: material.serialTrackingType,
@@ -340,6 +294,7 @@ export function MaterialsPageView() {
   const [filterDraft, setFilterDraft] = useState<FilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<FilterState>(INITIAL_FILTERS);
   const [umbOptions, setUmbOptions] = useState<string[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<MaterialCategoryOption[]>([]);
   const [hasMaterialsWithoutUmb, setHasMaterialsWithoutUmb] = useState(false);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -373,6 +328,8 @@ export function MaterialsPageView() {
   );
   const statusAction = statusMaterial?.isActive ? "cancel" : "activate";
   const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
+  const formSubcategoryOptions = categoryOptions.find((category) => category.id === form.categoryId)?.subcategories ?? [];
+  const filterSubcategoryOptions = categoryOptions.find((category) => category.id === filterDraft.categoryId)?.subcategories ?? [];
 
   const loadMaterials = useCallback(
     async (targetPage: number, filters: FilterState) => {
@@ -419,6 +376,7 @@ export function MaterialsPageView() {
   useEffect(() => {
     if (!session?.accessToken) {
       setUmbOptions([]);
+      setCategoryOptions([]);
       setHasMaterialsWithoutUmb(false);
       return;
     }
@@ -439,11 +397,13 @@ export function MaterialsPageView() {
         }
         if (!ignore) {
           setUmbOptions(data.umbOptions ?? []);
+          setCategoryOptions(data.categoryOptions ?? []);
           setHasMaterialsWithoutUmb(Boolean(data.hasMaterialsWithoutUmb));
         }
       } catch (error) {
         if (!ignore) {
           setUmbOptions([]);
+          setCategoryOptions([]);
           setHasMaterialsWithoutUmb(false);
           setFeedback({
             type: "error",
@@ -468,6 +428,14 @@ export function MaterialsPageView() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
+  function updateFormCategory(categoryId: string) {
+    setForm((current) => ({
+      ...current,
+      categoryId,
+      subcategoryId: "",
+    }));
+  }
+
   function updateSerialTrackingType(value: SerialTrackingType, checked: boolean) {
     if (serialTrackingChangeBlocked) {
       setFeedback({
@@ -490,6 +458,14 @@ export function MaterialsPageView() {
 
   function updateFilterField<Key extends keyof FilterState>(field: Key, value: FilterState[Key]) {
     setFilterDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateFilterCategory(categoryId: string) {
+    setFilterDraft((current) => ({
+      ...current,
+      categoryId,
+      subcategoryId: "",
+    }));
   }
 
   function applyFilters() {
@@ -607,6 +583,8 @@ export function MaterialsPageView() {
         ...(isEditing ? { id: editingMaterialId } : {}),
         codigo: normalizeCode(form.codigo),
         descricao: normalizeText(form.descricao),
+        categoryId: form.categoryId || null,
+        subcategoryId: form.subcategoryId || null,
         tipo: normalizeMaterialType(form.tipo),
         isTransformer: form.serialTrackingType === "TRAFO",
         serialTrackingType: form.serialTrackingType,
@@ -817,8 +795,7 @@ export function MaterialsPageView() {
   }
 
   function downloadMassTemplate() {
-    const model = "\uFEFFcodigo;descricao;tipo;umb;preco;estoque_minimo;estoque_maximo;rastreio_por_serial\nMAT-001;Cabo multiplexado;NOVO;M;12,50;10;100;NAO\nMAT-002;Religador automatico;NOVO;UN;0;1;;RELIGADOR\nMAT-003;Chave faca;SUCATA;UN;;0;;CHAVE\n";
-    downloadCsvFile(model, "modelo_materiais_cadastro_em_massa.csv");
+    downloadCsvFile(buildMassImportTemplateCsv(), "modelo_materiais_cadastro_em_massa.csv");
   }
 
   function downloadLastMassImportErrorReport() {
@@ -872,7 +849,7 @@ export function MaterialsPageView() {
       }
 
       const headers = parseCsvLine(lines[0] ?? "").map(normalizeCsvHeader);
-      const requiredHeaders = ["codigo", "descricao", "tipo", "umb"];
+      const requiredHeaders = ["codigo", "descricao", "categoria", "subcategoria", "tipo", "umb"];
       for (const header of requiredHeaders) {
         if (!headers.includes(header)) {
           importIssues.push({
@@ -888,6 +865,8 @@ export function MaterialsPageView() {
         rowNumber: number;
         codigo: string;
         descricao: string;
+        categoryId: string;
+        subcategoryId: string;
         tipo: string;
         umb: string;
         unitPrice: number;
@@ -897,6 +876,7 @@ export function MaterialsPageView() {
       }> = [];
       const seenCodes = new Set<string>();
       const allowedUmbOptions = new Set(umbOptions);
+      const categoryByName = new Map(categoryOptions.map((category) => [normalizeLookupText(category.name), category]));
 
       if (!importIssues.some((issue) => issue.rowNumber === 1 && issue.column !== "arquivo")) {
         for (let index = 1; index < lines.length; index += 1) {
@@ -909,6 +889,12 @@ export function MaterialsPageView() {
 
           const codigo = normalizeCode(resolveCsvValue(row, ["codigo", "cod"]));
           const descricao = normalizeText(resolveCsvValue(row, ["descricao", "description"]));
+          const categoryRaw = resolveCsvValue(row, ["categoria", "category"]);
+          const subcategoryRaw = resolveCsvValue(row, ["subcategoria", "subcategory"]);
+          const category = categoryByName.get(normalizeLookupText(categoryRaw)) ?? null;
+          const subcategory = category?.subcategories.find(
+            (item) => normalizeLookupText(item.name) === normalizeLookupText(subcategoryRaw),
+          ) ?? null;
           const tipo = normalizeMaterialType(resolveCsvValue(row, ["tipo", "type"]));
           const umb = normalizeCode(resolveCsvValue(row, ["umb", "unidade", "unidade_medida"]));
           const unitPriceRaw = resolveCsvValue(row, ["preco", "preco_unitario", "unit_price"]);
@@ -929,6 +915,14 @@ export function MaterialsPageView() {
 
           if (!descricao) {
             importIssues.push({ rowNumber, column: "descricao", value: descricao, error: "Descricao obrigatoria." });
+          }
+
+          if (!category) {
+            importIssues.push({ rowNumber, column: "categoria", value: categoryRaw, error: "Categoria invalida ou obrigatoria." });
+          }
+
+          if (!subcategory) {
+            importIssues.push({ rowNumber, column: "subcategoria", value: subcategoryRaw, error: "Subcategoria invalida para a categoria informada." });
           }
 
           if (!tipo) {
@@ -962,6 +956,8 @@ export function MaterialsPageView() {
               rowNumber,
               codigo,
               descricao,
+              categoryId: category?.id ?? "",
+              subcategoryId: subcategory?.id ?? "",
               tipo,
               umb,
               unitPrice: unitPrice ?? 0,
@@ -1019,7 +1015,14 @@ export function MaterialsPageView() {
 
         importIssues.push({
           rowNumber: result.rowNumber,
-          column: result.code === "DUPLICATE_MATERIAL_CODE" ? "codigo" : result.code === "INVALID_UMB" ? "umb" : "salvamento",
+          column:
+            result.code === "DUPLICATE_MATERIAL_CODE"
+              ? "codigo"
+              : result.code === "INVALID_UMB"
+                ? "umb"
+                : result.code === "INVALID_CATEGORY"
+                  ? "categoria"
+                  : "salvamento",
           value: "",
           error: result.message || "Falha ao salvar material.",
         });
@@ -1119,6 +1122,35 @@ export function MaterialsPageView() {
               placeholder="Digite a descricao"
               required
             />
+          </label>
+
+          <label className={styles.field}>
+            <span>
+              Categoria <span className="requiredMark">*</span>
+            </span>
+            <select value={form.categoryId} onChange={(event) => updateFormCategory(event.target.value)} required>
+              <option value="">Selecione</option>
+              {categoryOptions.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
+              Subcategoria <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={form.subcategoryId}
+              onChange={(event) => updateFormField("subcategoryId", event.target.value)}
+              disabled={!form.categoryId}
+              required
+            >
+              <option value="">Selecione</option>
+              {formSubcategoryOptions.map((subcategory) => (
+                <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
@@ -1262,22 +1294,26 @@ export function MaterialsPageView() {
 
           <label className={styles.field}>
             <span>Categoria</span>
-            <input
-              type="text"
-              value={filterDraft.categoria}
-              onChange={(event) => updateFilterField("categoria", event.target.value)}
-              placeholder="Filtrar por categoria"
-            />
+            <select value={filterDraft.categoryId} onChange={(event) => updateFilterCategory(event.target.value)}>
+              <option value="">Todas</option>
+              {categoryOptions.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
             <span>Subcategoria</span>
-            <input
-              type="text"
-              value={filterDraft.subcategoria}
-              onChange={(event) => updateFilterField("subcategoria", event.target.value)}
-              placeholder="Filtrar por subcategoria"
-            />
+            <select
+              value={filterDraft.subcategoryId}
+              onChange={(event) => updateFilterField("subcategoryId", event.target.value)}
+              disabled={!filterDraft.categoryId}
+            >
+              <option value="">Todas</option>
+              {filterSubcategoryOptions.map((subcategory) => (
+                <option key={subcategory.id} value={subcategory.id}>{subcategory.name}</option>
+              ))}
+            </select>
           </label>
 
           <label className={styles.field}>
@@ -1369,8 +1405,8 @@ export function MaterialsPageView() {
                         </div>
                       </td>
                       <td>{material.descricao}</td>
-                      <td>{formatOptionalText(material.categoria)}</td>
-                      <td>{formatOptionalText(material.subcategoria)}</td>
+                      <td>{formatOptionalText(material.categoryName)}</td>
+                      <td>{formatOptionalText(material.subcategoryName)}</td>
                       <td>{material.tipo}</td>
                       <td>{serialTrackingLabel(material.serialTrackingType)}</td>
                       <td>{formatOptionalText(material.umb)}</td>
