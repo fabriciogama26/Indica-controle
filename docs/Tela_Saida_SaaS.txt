@@ -929,7 +929,8 @@ Atualizacao 2026-08-19b (Exportacao: RPC no Postgres e resposta text/csv em stre
   - RPC `list_team_operations_export`: `language sql`, `stable`, `security definer`,
     `set search_path = public`. Resolve os joins de material, centro de estoque, projeto, equipe e os
     dois niveis de estorno, aplica todos os filtros da tela e devolve as 15 colunas do CSV ja
-    formatadas. Recebe `p_limit`/`p_offset` para a rota paginar e transmitir em pedacos.
+    formatadas. Recebe `p_limit`/`p_offset` para a rota paginar e transmitir em pedacos, com default
+    de 1.000 — o teto de linhas por resposta do PostgREST deste projeto.
   - Grants: `revoke all` de `public`/`anon`/`authenticated`, `grant execute` apenas para
     `service_role`. `p_tenant_id` vem SEMPRE da sessao resolvida no servidor.
   - Ordenacao `sort_at desc, transfer_id, item_id`: sem ordem total, paginar por `p_offset`
@@ -976,8 +977,8 @@ Atualizacao 2026-08-19b (Exportacao: RPC no Postgres e resposta text/csv em stre
   - Exportar com filtro que nao retorna nada e conferir a mensagem "Nao ha registros para exportar
     com os filtros atuais.".
   - Abrir o CSV no Excel pt-BR e conferir acentuacao.
-  - Exportacao acima de 5.000 linhas: conferir que o arquivo tem TODAS as linhas (a rota pagina a
-    RPC de 5.000 em 5.000; um bug de offset apareceria como linha repetida ou faltando na virada).
+  - Exportacao acima de 1.000 linhas: conferir que o arquivo tem TODAS as linhas (a rota pagina a
+    RPC de 1.000 em 1.000; um bug de offset apareceria como linha repetida ou faltando na virada).
 - Lacuna conhecida:
   - A migration 379 NAO foi aplicada nesta maquina: `npm run db:check-link` reporta que o Supabase
     CLI nao esta linkado, entao `db:migration-list`, `db:lint` e `db:security-check-live` nao
@@ -991,3 +992,30 @@ Atualizacao 2026-08-19b (Exportacao: RPC no Postgres e resposta text/csv em stre
   - A RPC e `SECURITY DEFINER` e so `service_role` pode executa-la, entao a RLS nao a protege por
     si — o isolamento vem do `p_tenant_id` obrigatorio no corpo da funcao, e o acesso a rota
     continua barrado por `requirePageAction`.
+
+Correcao 2026-08-19c (Exportacao truncava em 1.000 linhas em silencio)
+------------------------------------------------------------------------
+- Sintoma que teria ido para producao:
+  - A entrega 2026-08-19b pedia `p_limit: 5000` a RPC. O PostgREST deste projeto entrega no maximo
+    1.000 linhas por resposta (`db-max-rows`) e NAO sinaliza o corte: devolve 200 com menos linhas
+    do que o SQL produziu. A condicao de parada do laco em `buildTeamOperationExportStream` era
+    `pageRowCount === EXPORT_RPC_PAGE_SIZE`, ou seja, `1000 === 5000` -> falso na primeira volta.
+  - Resultado: o laco nunca rodava, o CSV saia com exatamente 1.000 linhas e nada acusava o
+    problema — nem erro, nem aviso, nem log. Num tenant com 4.046 registros o arquivo pareceria
+    completo e teria perdido 3.046 linhas.
+- Este e o MESMO erro ja cometido no Dashboard Estoque (`TASKS.md`, item do `loadTransfers` com
+  `.limit(5000)`), e o mesmo motivo do commit `98783c9`, que tirou `loadTeamOperationRows` da
+  "janela implicita de 1000 linhas do PostgREST". A regra do repositorio ja era paginar de 1.000
+  em 1.000; a entrega anterior a ignorou.
+- Correcao:
+  - `EXPORT_RPC_PAGE_SIZE` de 5000 para 1000, com o motivo escrito no proprio arquivo.
+  - Default de `p_limit` na RPC de 5000 para 1000 (a migration 379 ainda nao havia sido aplicada
+    em nenhum banco, entao foi corrigida no lugar em vez de virar uma 380 para consertar um
+    default que nunca rodou).
+  - A condicao de parada deixou de comparar com o limite pedido: agora o laco para so em pagina
+    VAZIA e avanca o offset pelo numero de linhas REALMENTE recebidas. Assim a exportacao continua
+    correta mesmo se o teto do PostgREST for alterado, para mais ou para menos. Custa uma chamada
+    extra no fim de cada exportacao, o que e barato perto de truncar sem avisar.
+- Licao para as proximas telas:
+  - Nunca usar "a pagina veio menor que a pedida" como fim de resultado quando existe um teto de
+    linhas imposto pelo servidor no meio do caminho. O unico sinal confiavel de fim e pagina vazia.

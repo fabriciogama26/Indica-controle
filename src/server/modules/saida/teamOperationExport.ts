@@ -9,7 +9,11 @@ import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
  * arquivo inteiro em memoria.
  */
 
-export const EXPORT_RPC_PAGE_SIZE = 5000;
+// O PostgREST deste projeto trunca qualquer resposta em 1000 linhas (`db-max-rows`), e essa
+// janela nao aparece como erro: a resposta volta 200 com menos linhas do que o SQL produziu.
+// Por isso todo o repositorio pagina de 1000 em 1000. Pedir mais do que isso aqui nao traria
+// mais linhas, so faria o Postgres calcular resultado que seria descartado no caminho.
+export const EXPORT_RPC_PAGE_SIZE = 1000;
 
 const EXPORT_CSV_FIELDS = [
   "operacao",
@@ -109,7 +113,12 @@ export async function buildTeamOperationExportStream(
       let offset = firstRows.length;
       let pageRowCount = firstRows.length;
 
-      while (pageRowCount === EXPORT_RPC_PAGE_SIZE) {
+      // Para em pagina VAZIA, nunca em pagina menor que a pedida, e avanca o offset pelo numero
+      // de linhas realmente recebidas. Comparar com o limite pedido quebra silenciosamente se o
+      // teto do PostgREST for menor que ele: a primeira pagina volta truncada, a condicao da
+      // como fim do resultado e o CSV sai cortado parecendo completo. Custa uma chamada extra
+      // no fim de cada exportacao.
+      while (pageRowCount > 0) {
         const nextPage = await loadExportPage(supabase, tenantId, filters, offset);
 
         if (nextPage.error) {
