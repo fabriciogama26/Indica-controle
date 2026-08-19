@@ -1019,3 +1019,37 @@ Correcao 2026-08-19c (Exportacao truncava em 1.000 linhas em silencio)
 - Licao para as proximas telas:
   - Nunca usar "a pagina veio menor que a pedida" como fim de resultado quando existe um teto de
     linhas imposto pelo servidor no meio do caminho. O unico sinal confiavel de fim e pagina vazia.
+
+Atualizacao 2026-08-19d (Migration 380: realinhar o default de p_limit)
+--------------------------------------------------------------------------
+- Fato novo: a migration 379 ja havia sido aplicada MANUALMENTE no banco (Dashboard/SQL editor),
+  com o default original `p_limit integer default 5000`, antes de a correcao 2026-08-19c ser feita.
+  A correcao alterou o arquivo da 379 no lugar, sob a premissa — errada — de que ela nunca tinha
+  rodado em lugar nenhum. Resultado: o arquivo em git e o banco vivo passaram a divergir.
+- Por que isso importa mesmo sem efeito visivel: `guia_sql.md` regra 2 — migration aplicada e
+  historico do banco. Arquivo corrigido no lugar significa que `db reset`, branch de preview ou
+  projeto novo nascem com um estado diferente do de producao. Foi exatamente o caso de
+  `v_stock_conflicts` (migrations 007 -> 377).
+- Correcao: nova migration `380_realign_team_operations_export_default_limit.sql`, que redeclara
+  `list_team_operations_export` com o default 1000. Ela foi GERADA por script a partir do corpo real
+  da 379, para nao transcrever a funcao a mao (mesmo padrao da 324 gerada a partir da 318). O corpo
+  e identico exceto pelo default, e o bloco revoke/grant e repetido conforme `guia_sql.md` regra 17.
+- A 380 converge os dois cenarios possiveis sem depender de saber qual versao da 379 foi executada
+  em cada ambiente:
+  - banco com default 5000 -> passa a 1000;
+  - banco com default 1000 -> redeclaracao sem efeito;
+  - banco novo montado das migrations -> 379 cria, 380 redeclara, estado final igual ao de producao.
+- Efeito no caminho da aplicacao: nenhum. A rota sempre passa `p_limit` explicito
+  (`EXPORT_RPC_PAGE_SIZE = 1000`), entao o default nunca e exercido pela tela. O que a 380 remove e
+  a armadilha para o proximo chamador — humano no SQL editor ou codigo novo — que invoque a RPC sem
+  `p_limit`, peca 5000 e receba 1000 achando que recebeu tudo. E a mesma armadilha da 2026-08-19c,
+  so que um nivel abaixo.
+- Como conferir o estado real do banco antes de aplicar:
+  `select pg_get_function_arguments(oid) from pg_proc where proname = 'list_team_operations_export';`
+- Situacao do CLI: o link do Supabase continua pendente nesta maquina, entao `db:migration-list`,
+  `db:lint` e `db:security-check-live` seguem sem rodar. O check ESTATICO de `SECURITY DEFINER`
+  passou com 99 migrations (era 98 antes da 380).
+- Licao: antes de corrigir uma migration no lugar, confirmar se ela ja foi aplicada em ALGUM
+  ambiente — inclusive manualmente pelo Dashboard, que nao aparece em `db:migration-list`. Na duvida,
+  migration nova; ela e barata e sempre converge, enquanto a edicao no lugar so e segura no caso em
+  que a migration comprovadamente nunca rodou.
