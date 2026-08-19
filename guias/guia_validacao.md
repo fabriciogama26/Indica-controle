@@ -85,6 +85,7 @@ Obrigatório antes de qualquer PR ou entrega de código. Substitui o protocolo a
 - [ ] Backup e rollback preparados antes de mudança estrutural.
 - [ ] Validação local (`npx tsc --noEmit`, `npm run lint`) executada antes de qualquer deploy.
 - [ ] Ratchet de tamanho de arquivo verde; se o baseline **aumentou** para algum arquivo, o aceite foi explícito (`lint:size:accept`) e está justificado na descrição do PR.
+- [ ] Se a entrega foi dividida em mais de uma PR e alguma delas mexe no tamanho do mesmo arquivo, conferir o delta **líquido** entre o estado anterior à tarefa e o final (ver [`guia_git.md`](guia_git.md) regra 6). Uma PR que só encolhe seguida de outra que faz crescer quebra a `main` entre os dois merges.
 - [ ] `npm run db:check-link` confirmado antes de `db:migration-list`/`db:lint`/deploy.
 - [ ] Migration que cria/altera view: `npm run db:view-check` verde e a view validada em **banco reconstruído das migrations**, não só em produção. O check live passa mesmo com a migration errada — produção pode estar correta por conserto manual enquanto qualquer ambiente novo nasce sem RLS (caso `v_stock_conflicts`, migrations 007→377).
 - [ ] Correção feita direto no Dashboard/SQL editor foi versionada como migration na mesma tarefa; em caso de dúvida, `npm run db:drift-check`.
