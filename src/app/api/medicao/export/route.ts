@@ -6,7 +6,8 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { authorizeMeasurementReadOrExportAction } from "@/server/modules/medicao/authorization";
 import { fetchMeasurementOrderDetailsForExport } from "@/server/modules/medicao";
-import { GET as listMeasurementOrders } from "../route";
+import { parseMeasurementOrderListFilters } from "@/server/modules/medicao/normalizers";
+import { listMeasurementOrdersPage } from "@/server/modules/medicao/list";
 
 type ExportType = "summary" | "details" | "score";
 type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
@@ -73,12 +74,6 @@ type OrderDetail = {
   updatedAt: string;
   notes: string;
   items: OrderDetailItem[];
-};
-
-type OrderListResponse = {
-  orders?: OrderItem[];
-  pagination?: { page: number; pageSize: number; total: number };
-  message?: string;
 };
 
 type WorkCompletionCatalogRow = {
@@ -158,46 +153,42 @@ function getFilename(type: ExportType) {
   return `ordens_medicao_${today}.csv`;
 }
 
-function buildInternalRequest(request: NextRequest, params: URLSearchParams) {
-  const url = new URL("/api/medicao", request.nextUrl.origin);
-  url.search = params.toString();
-  const headers = new Headers();
-  const authorization = request.headers.get("authorization");
-  const tenantHeader = request.headers.get("x-tenant-id");
-  if (authorization) headers.set("authorization", authorization);
-  if (tenantHeader) headers.set("x-tenant-id", tenantHeader);
-  return new NextRequest(url, {
-    headers,
-  });
-}
+// Carrega todas as ordens que batem no filtro, pagina a pagina.
+//
+// O laco de paginas foi mantido de proposito: o pipeline aplica tres filtros em
+// memoria DEPOIS da pagina do banco, e `total` e aproximado por causa disso.
+// Buscar tudo numa consulta so mudaria a semantica. O que sumiu foi o HTTP: antes
+// cada pagina forjava um NextRequest e chamava GET /api/medicao, refazendo
+// resolucao de sessao a cada volta.
+async function loadOrdersForExport(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  searchParams: URLSearchParams;
+}) {
+  const parsed = parseMeasurementOrderListFilters(params.searchParams);
+  if (!parsed.ok) {
+    throw new Error(parsed.message);
+  }
 
-async function readJsonResponse<T>(response: Response): Promise<T> {
-  return (await response.json().catch(() => ({}))) as T;
-}
-
-async function loadOrdersForExport(request: NextRequest) {
   const orders: OrderItem[] = [];
   let page = 1;
   let totalPages = 1;
 
   do {
-    const params = new URLSearchParams(request.nextUrl.searchParams);
-    params.delete("type");
-    params.delete("kind");
-    params.set("page", String(page));
-    params.set("pageSize", String(EXPORT_PAGE_SIZE));
-    params.set("_export", "1");
+    const result = await listMeasurementOrdersPage({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      ...parsed.filters,
+      page,
+      pageSize: EXPORT_PAGE_SIZE,
+    });
 
-    const response = await listMeasurementOrders(buildInternalRequest(request, params));
-    const data = await readJsonResponse<OrderListResponse>(response);
-
-    if (!response.ok) {
-      throw new Error(data.message ?? "Falha ao carregar ordens para exportacao.");
+    if (!result.ok) {
+      throw new Error(result.message);
     }
 
-    const pageOrders = data.orders ?? [];
-    orders.push(...pageOrders);
-    const total = data.pagination?.total ?? orders.length;
+    orders.push(...(result.orders as OrderItem[]));
+    const total = result.total || orders.length;
     totalPages = Math.max(1, Math.ceil(total / EXPORT_PAGE_SIZE));
     page += 1;
   } while (page <= totalPages);
@@ -427,7 +418,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const orders = await loadOrdersForExport(request);
+    const orders = await loadOrdersForExport({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      searchParams: request.nextUrl.searchParams,
+    });
     if (!orders.length) {
       return NextResponse.json({ message: "Nenhuma ordem encontrada para exportar com os filtros atuais." }, { status: 404 });
     }

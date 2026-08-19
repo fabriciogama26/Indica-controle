@@ -212,3 +212,59 @@ export function buildProgrammingProjectDateKey(projectId: string, executionDate:
   return `${projectId}|${executionDate}`;
 }
 
+
+// Parse + validacao dos filtros da listagem de ordens de Medicao.
+//
+// Puro: recebe URLSearchParams e devolve filtros normalizados ou a mensagem de
+// 400. Extraido do handler GET para que a exportacao use EXATAMENTE o mesmo
+// parse -- antes ela repassava a query string crua para a propria rota por HTTP,
+// e qualquer divergencia de normalizacao passaria despercebida.
+export function parseMeasurementOrderListFilters(searchParams: URLSearchParams) {
+  const startDate = normalizeIsoDate(searchParams.get("startDate"));
+  const endDate = normalizeIsoDate(searchParams.get("endDate"));
+  const projectId = normalizeUuid(searchParams.get("projectId"));
+  const teamId = normalizeUuid(searchParams.get("teamId"));
+  const serviceTypeIdRaw = normalizeText(searchParams.get("serviceTypeId"));
+  const serviceTypeId = normalizeUuid(serviceTypeIdRaw);
+  const activityIdRaw = normalizeText(searchParams.get("activityId"));
+  const activityId = normalizeUuid(activityIdRaw);
+  const statusFilter = normalizeText(searchParams.get("status")).toUpperCase();
+  const measurementKindFilter = normalizeText(searchParams.get("measurementKind")).toUpperCase();
+  const noProductionReasonIdFilter = normalizeUuid(searchParams.get("noProductionReasonId"));
+  const programmingMatchFilter = normalizeText(searchParams.get("programmingMatch")).toUpperCase();
+  const workCompletionStatusFilterRaw = normalizeText(searchParams.get("workCompletionStatus")).toUpperCase();
+  const workCompletionStatusFilter = workCompletionStatusFilterRaw === "NAO_INFORMADO"
+    ? workCompletionStatusFilterRaw
+    : resolveMeasurementWorkCompletionStatus(workCompletionStatusFilterRaw) ?? workCompletionStatusFilterRaw;
+  const completionAlertFilter = normalizeText(searchParams.get("completionAlert")).toUpperCase();
+
+  if (!startDate || !endDate) {
+    return { ok: false as const, message: "startDate e endDate sao obrigatorios." };
+  }
+
+  if (serviceTypeIdRaw && !serviceTypeId) {
+    return { ok: false as const, message: "Tipo de Servico invalido." };
+  }
+
+  if (activityIdRaw && !activityId) {
+    return { ok: false as const, message: "Atividade invalida." };
+  }
+
+  return {
+    ok: true as const,
+    filters: {
+      startDate,
+      endDate,
+      projectId,
+      teamId,
+      serviceTypeId,
+      activityId,
+      statusFilter,
+      measurementKindFilter,
+      noProductionReasonIdFilter,
+      programmingMatchFilter,
+      workCompletionStatusFilter,
+      completionAlertFilter,
+    },
+  };
+}

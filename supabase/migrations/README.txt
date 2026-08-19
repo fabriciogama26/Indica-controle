@@ -1140,3 +1140,11 @@ Observacao
 - Escolha de remover em vez de corrigir: nenhuma referencia a `v_stock_conflict%` em `src/`. Versionar a correcao de um objeto sem consumidor manteria superficie exposta e mais um objeto para governar. Se a tela de conflitos precisar, recriar seguindo a regra 23 de `guias/guia_sql.md`.
 - Inclui validacao pos-aplicacao (padrao da 375) para abortar se sobrar qualquer view de `public` acessivel por `anon`/`authenticated` sem `security_invoker = true`.
 - Governanca criada na mesma tarefa: regras 23-27 em `guias/guia_sql.md`, check estatico `npm run db:view-check` (roda sem link, pega o defeito na origem — um check que so le o banco vivo teria passado), `npm run db:view-check-live`, `npm run db:drift-check` e `guias/runbook_drift_schema.md`.
+
+378_backfill_material_categories_from_xlsx.sql
+- Cria os catalogos multi-tenant `material_categories` e `material_subcategories`, com RLS de leitura por tenant, auditoria, nomes unicos e FK composta entre subcategoria e categoria.
+- Adiciona `materials.category_id` e `materials.subcategory_id`, com FKs compostas por `tenant_id` para impedir classificacao cruzada entre tenants e subcategoria fora da categoria selecionada.
+- Aplica backfill idempotente gerado da planilha `materiais_2026-08-11_categorizados.xlsx`, deduplicando 1.165 codigos por `codigo` e abortando se algum codigo tiver classificacao divergente.
+- Registra `material_history` com diff de Categoria/Subcategoria por nome para cada material alterado.
+- Republica `save_material_record` para exigir e validar categoria/subcategoria ativa no tenant.
+- A tela `/materiais` passa a cadastrar, editar, filtrar, listar e exportar Categoria/Subcategoria consumindo os catalogos.
