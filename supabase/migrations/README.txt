@@ -1131,3 +1131,12 @@ Observacao
 - Hardening: a 308 concedia EXECUTE de `save_team_stock_operation_record` a `authenticated`. A RPC so e chamada de `src/lib/server/teamStockOperations.ts` (backend, service_role), entao o EXECUTE passou a ser apenas de `service_role`, junto com as duas funcoes de resolucao.
 - Auditoria de consumidores feita na mesma tarefa: Estornos e Posicao Trafo herdam esta correcao porque leem `stock_transfer_team_operations.foreman_name_snapshot`; Medicao, Controle de APR, Apuracao de Fator Minimo e Dashboard de Equipes ja herdavam a 374 pelo snapshot da ordem. `Saldo por Equipe` continua no cadastro (posicao de "agora", sem data). `Mapa de Programacao` e o unico caso em aberto: resolucao de leitura por linha, que exige RPC propria.
 - Registros ja gravados NAO mudam: a resolucao continua acontecendo na escrita.
+
+
+377_drop_unused_stock_conflict_views.sql
+- Remove as views `v_stock_conflict_items` e `v_stock_conflicts`, criadas pela 007 SEM `security_invoker = true`.
+- Por que importa: view sem essa opcao executa com privilegio do owner e ignora a RLS das tabelas base. `stock_conflicts` tem RLS por tenant desde a 006 (endurecida na 020/021), e as views a contornavam.
+- Achado que motivou: consulta ao banco vivo mostrava `security_invoker=true` nas tres views de `public` — ou seja, SEM risco ativo em producao. Mas nenhum arquivo do repositorio aplica a opcao nas duas views de conflito: a correcao foi feita a mao, fora do versionamento, provavelmente na leva de remediacao do Advisor que originou a 375. Producao correta, receita errada: `db reset`, branch de preview ou projeto novo recriariam as views vulneraveis.
+- Escolha de remover em vez de corrigir: nenhuma referencia a `v_stock_conflict%` em `src/`. Versionar a correcao de um objeto sem consumidor manteria superficie exposta e mais um objeto para governar. Se a tela de conflitos precisar, recriar seguindo a regra 23 de `guias/guia_sql.md`.
+- Inclui validacao pos-aplicacao (padrao da 375) para abortar se sobrar qualquer view de `public` acessivel por `anon`/`authenticated` sem `security_invoker = true`.
+- Governanca criada na mesma tarefa: regras 23-27 em `guias/guia_sql.md`, check estatico `npm run db:view-check` (roda sem link, pega o defeito na origem — um check que so le o banco vivo teria passado), `npm run db:view-check-live`, `npm run db:drift-check` e `guias/runbook_drift_schema.md`.
