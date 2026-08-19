@@ -119,6 +119,7 @@ type QueryError = {
 };
 
 const RELATION_QUERY_CHUNK_SIZE = 100;
+const QUERY_PAGE_SIZE = 1000;
 
 function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
   const chunks: string[][] = [];
@@ -533,6 +534,7 @@ export async function GET(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
 
+    const isExportRequest = mode === "export";
     const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
     const stockCenterId = normalizeText(request.nextUrl.searchParams.get("stockCenterId"));
     const materialCode = normalizeCode(request.nextUrl.searchParams.get("materialCode"));
@@ -620,17 +622,20 @@ export async function GET(request: NextRequest) {
         "materials!inner(id, codigo, descricao, umb, tipo, is_active)",
       ].join(", ");
 
-      let pageQuery = supabase
-        .from("stock_center_balances")
-        .select(baseSelect, { count: "exact" })
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("materials.is_active", true)
-        .in("stock_center_id", availableStockCenterIds);
-      if (onlyPositive === "SIM") pageQuery = pageQuery.gt("quantity", 0);
-      if (qtyMin !== null) pageQuery = pageQuery.gte("quantity", qtyMin);
-      if (qtyMax !== null) pageQuery = pageQuery.lte("quantity", qtyMax);
-      if (materialCode) pageQuery = pageQuery.ilike("materials.codigo", `%${materialCode}%`);
-      if (description) pageQuery = pageQuery.ilike("materials.descricao", `%${description}%`);
+      const buildBalanceQuery = (withCount = false) => {
+        let query = supabase
+          .from("stock_center_balances")
+          .select(baseSelect, withCount ? { count: "exact" } : undefined)
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("materials.is_active", true)
+          .in("stock_center_id", availableStockCenterIds);
+        if (onlyPositive === "SIM") query = query.gt("quantity", 0);
+        if (qtyMin !== null) query = query.gte("quantity", qtyMin);
+        if (qtyMax !== null) query = query.lte("quantity", qtyMax);
+        if (materialCode) query = query.ilike("materials.codigo", `%${materialCode}%`);
+        if (description) query = query.ilike("materials.descricao", `%${description}%`);
+        return query;
+      };
 
       let summaryQuery = supabase
         .from("stock_center_balances")
@@ -644,11 +649,62 @@ export async function GET(request: NextRequest) {
       if (materialCode) summaryQuery = summaryQuery.ilike("materials.codigo", `%${materialCode}%`);
       if (description) summaryQuery = summaryQuery.ilike("materials.descricao", `%${description}%`);
 
+      if (isExportRequest) {
+        const exportRows: BalanceQueryRow[] = [];
+
+        for (let exportFrom = 0; ; exportFrom += QUERY_PAGE_SIZE) {
+          const { data, error } = await buildBalanceQuery()
+            .order("updated_at", { ascending: false, nullsFirst: false })
+            .order("material_id", { ascending: true })
+            .range(exportFrom, exportFrom + QUERY_PAGE_SIZE - 1)
+            .returns<BalanceQueryRow[]>();
+
+          if (error) {
+            return NextResponse.json({ message: "Falha ao carregar o estoque atual." }, { status: 500 });
+          }
+
+          exportRows.push(...(data ?? []));
+          if ((data ?? []).length < QUERY_PAGE_SIZE) break;
+        }
+
+        const exportItems = (exportRows ?? []).flatMap((row) => {
+          const material = unwrapRelation(row.materials);
+          const stockCenterName = stockCenterMap.get(row.stock_center_id);
+          if (!material || !stockCenterName) return [];
+          return [{
+            stockCenterId: row.stock_center_id,
+            stockCenterName,
+            materialId: row.material_id,
+            materialCode: material.codigo,
+            description: material.descricao,
+            unit: String(material.umb ?? "").trim(),
+            materialType: String(material.tipo ?? "").trim().toUpperCase(),
+            balanceQuantity: Number(row.quantity ?? 0),
+            lastMovementAt: row.updated_at,
+          }];
+        });
+
+        const summaryByUnit = Array.from(
+          exportItems.reduce((summary, item) => {
+            const unit = item.unit.trim().toUpperCase() || "SEM UMB";
+            summary.set(unit, (summary.get(unit) ?? 0) + item.balanceQuantity);
+            return summary;
+          }, new Map<string, number>()),
+          ([unit, balanceQuantity]) => ({ unit, balanceQuantity }),
+        ).sort((left, right) => left.unit.localeCompare(right.unit, "pt-BR"));
+
+        return NextResponse.json({
+          items: exportItems,
+          summaryByUnit,
+          pagination: { page: 1, pageSize: exportItems.length, total: exportItems.length },
+        });
+      }
+
       const [
         { data: pageData, count: pageCount, error: pageError },
         { data: summaryData, error: summaryError },
       ] = await Promise.all([
-        pageQuery
+        buildBalanceQuery(true)
           .order("updated_at", { ascending: false, nullsFirst: false })
           .order("material_id", { ascending: true })
           .range(from, from + pageSize - 1)
@@ -884,11 +940,11 @@ export async function GET(request: NextRequest) {
     ).sort((left, right) => left.unit.localeCompare(right.unit, "pt-BR"));
 
     return NextResponse.json({
-      items: filteredItems.slice(from, from + pageSize),
+      items: isExportRequest ? filteredItems : filteredItems.slice(from, from + pageSize),
       summaryByUnit,
       pagination: {
-        page,
-        pageSize,
+        page: isExportRequest ? 1 : page,
+        pageSize: isExportRequest ? filteredItems.length : pageSize,
         total: filteredItems.length,
       },
     });

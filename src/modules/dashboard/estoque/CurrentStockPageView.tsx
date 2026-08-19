@@ -8,7 +8,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { usePagination } from "@/hooks/usePagination";
-import { EXPORT_COOLDOWN_MS, EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
+import { EXPORT_COOLDOWN_MS, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
 import type {
   CurrentStockFilters,
   CurrentStockHistoryFilters,
@@ -387,52 +387,33 @@ export function CurrentStockPageView() {
     setFeedback(null);
 
     try {
-      const exportedItems: CurrentStockListItem[] = [];
-      let exportPage = 1;
-      let exportTotal = 0;
+      const params = new URLSearchParams(buildCurrentStockQuery(filters, 1, PAGE_SIZE));
+      params.set("mode", "export");
+      params.delete("page");
+      params.delete("pageSize");
 
-      while (true) {
-        const response = await fetch(
-          `/api/stock-balance?${buildCurrentStockQuery(filters, exportPage, EXPORT_PAGE_SIZE)}`,
-          {
-            cache: "no-store",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          },
-        );
+      const response = await fetch(`/api/stock-balance?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
 
-        const data = (await response.json().catch(() => ({}))) as CurrentStockListResponse;
-        if (!response.ok) {
-          setFeedback({
-            type: "error",
-            message: data.message ?? "Falha ao exportar o estoque atual.",
-          });
+      const data = (await response.json().catch(() => ({}))) as CurrentStockListResponse;
+      if (!response.ok) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao exportar o estoque atual.",
+        });
 
-          await logError("Falha ao exportar o estoque atual.", undefined, {
-            responseStatus: response.status,
-            responseMessage: data.message ?? null,
-            filters,
-            exportPage,
-          });
-          return;
-        }
-
-        const pageItems = data.items ?? [];
-        exportTotal = data.pagination?.total ?? exportTotal;
-        const responsePageSize = data.pagination?.pageSize ?? EXPORT_PAGE_SIZE;
-        exportedItems.push(...pageItems);
-
-        if (
-          pageItems.length === 0
-          || exportedItems.length >= exportTotal
-          || pageItems.length < responsePageSize
-        ) {
-          break;
-        }
-
-        exportPage += 1;
+        await logError("Falha ao exportar o estoque atual.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          filters,
+        });
+        return;
       }
+      const exportedItems = data.items ?? [];
 
       if (exportedItems.length === 0) {
         setFeedback({
