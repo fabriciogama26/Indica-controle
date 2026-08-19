@@ -13,6 +13,9 @@
 --   2. RPC list_team_operations_export, que aplica todos os filtros da tela, resolve os joins de
 --      material, centro de estoque, projeto e os dois niveis de estorno, e devolve as 15 colunas
 --      do CSV ja prontas, paginadas por p_limit/p_offset para permitir streaming pela rota.
+--
+-- A rota chama esta funcao em paginas de 1000 e avanca o offset pelo numero de linhas realmente
+-- recebidas, parando so em pagina vazia. Isso a mantem correta mesmo se o teto do PostgREST mudar.
 
 create index if not exists idx_stock_transfer_team_operations_tenant_transfer
   on public.stock_transfer_team_operations (tenant_id, transfer_id);
@@ -37,7 +40,9 @@ create or replace function public.list_team_operations_export(
   p_material_code text default null,
   p_entry_type text default null,
   p_reversal_status text default null,
-  p_limit integer default 5000,
+  -- 1000 e o teto de linhas que o PostgREST deste projeto entrega por resposta (db-max-rows).
+  -- Pedir mais nao traz mais linhas: a resposta volta truncada, com status 200 e sem aviso.
+  p_limit integer default 1000,
   p_offset integer default 0
 )
 returns table (
@@ -200,7 +205,7 @@ as $$
   -- transfer_id/item_id como desempate: sem ordem total, paginar por p_offset duplicaria
   -- ou puliria linhas entre as chamadas sucessivas da rota.
   order by b.sort_at desc, b.transfer_id, b.item_id
-  limit greatest(coalesce(p_limit, 5000), 0)
+  limit greatest(coalesce(p_limit, 1000), 0)
   offset greatest(coalesce(p_offset, 0), 0);
 $$;
 
