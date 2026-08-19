@@ -11,7 +11,9 @@
 // e depois uma vez por ordem para o detalhamento.
 //
 // O que NAO entra nesta fachada: normalizadores internos (`normalizers.ts`) e o
-// pipeline de listagem, que continua dentro do handler da rota.
+// pipeline de listagem (`list.ts`). Ambos sao consumidos DIRETO pelas rotas do
+// proprio dominio de Medicao (`/api/medicao` e `/api/medicao/export`), que sao a
+// mesma feature -- a fachada existe para feature IRMA, nao para uso interno.
 export {
   fetchMeasurementOrderDetail,
   fetchMeasurementOrderDetailsForExport,

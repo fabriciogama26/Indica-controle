@@ -1587,3 +1587,41 @@ NAO executada: comparacao byte-a-byte do CSV antes/depois, que exige app rodando
 com banco real. Como o projeto nao tem suite automatizada, essa comparacao e o
 teste manual obrigatorio antes do merge -- exportar Resumo, Detalhamento e
 Pontuacao com o mesmo filtro, em versao antiga e nova, e comparar os arquivos.
+
+Atualizacao 2026-08-19 (2) - Exportacao sem nenhuma chamada HTTP interna
+--------------------------------------------------------------------------------
+Fecha a pendencia registrada na atualizacao anterior: `loadOrdersForExport` ainda
+paginava a LISTAGEM chamando `GET /api/medicao` por HTTP, 500 por pagina.
+
+O que mudou:
+- O pipeline de listagem saiu do handler `GET` para `src/server/modules/medicao/
+  list.ts` como `listMeasurementOrdersPage`, recebendo filtros JA normalizados.
+- O parse dos filtros virou `parseMeasurementOrderListFilters` em `normalizers.ts`
+  (puro, recebe `URLSearchParams`). Handler e exportacao usam o MESMO parse. Antes
+  a exportacao repassava a query string crua para a rota, entao qualquer divergencia
+  de normalizacao passaria despercebida.
+- `src/app/api/medicao/route.ts` foi de 733 para 429 linhas.
+- `src/app/api/medicao/export/route.ts` perdeu `buildInternalRequest`,
+  `readJsonResponse`, o tipo `OrderListResponse` e o import `GET as
+  listMeasurementOrders` da propria rota.
+- `queries.ts` passou de 1.026 para 699 linhas com a saida do pipeline; nenhum
+  arquivo do modulo ficou perto do teto.
+
+Decisao de desenho: o LACO DE PAGINAS foi mantido.
+- O pipeline aplica tres filtros em memoria DEPOIS da pagina do banco
+  (`programmingMatch`, `workCompletionStatus`, `completionAlert`) e descarta projeto
+  de teste. Por isso `total` e aproximado e a pagina pode vir com menos itens que
+  `pageSize`.
+- Trocar o laco por uma unica consulta "traz tudo" mudaria essa semantica. O ganho
+  buscado aqui era remover o HTTP e a re-resolucao de sessao por pagina, nao alterar
+  o contrato da listagem.
+
+Resto removido: o parametro `_export=1` que a exportacao enviava nao existia na rota
+de listagem -- era no-op. Saiu junto com o `buildInternalRequest`.
+
+Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+NAO executada: comparacao de CSV antes/depois desta etapa. A etapa anterior teve
+comparacao byte-a-byte aprovada (MD5 identico, 300 linhas, 112 ordens) no
+Detalhamento de /medicao. Esta etapa mexe no caminho que alimenta os TRES CSVs e a
+listagem da tela, entao exige nova rodada: Resumo, Detalhamento e Pontuacao em
+/medicao e em /medicao-visualizacao, mais a paginacao da tela de Medicao.
