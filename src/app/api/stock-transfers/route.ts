@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { parsePositiveInteger } from "@/lib/server/apiHelpers";
+import { loadAllRows, parsePositiveInteger, SUPABASE_RESPONSE_ROW_CAP } from "@/lib/server/apiHelpers";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import {
   normalizeDateInput,
@@ -243,7 +243,10 @@ async function preloadMaterialTransferIds(
       .select("stock_transfer_id")
       .eq("tenant_id", tenantId)
       .in("material_id", chunk)
-      .limit(5000)
+      // Nao vira leitura completa de proposito: o retorno ja e cortado em 200 ids logo abaixo, este
+      // preload e um filtro de busca best-effort, nao uma fonte de verdade. O teto de 5 mil que
+      // estava declarado aqui era so uma promessa falsa: o PostgREST nunca entregou mais que 1000.
+      .limit(SUPABASE_RESPONSE_ROW_CAP)
       .returns<{ stock_transfer_id: string }[]>(),
   );
 
@@ -273,19 +276,26 @@ async function preloadTransferReversalSets(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<{ originalIds: Set<string>; reversalIds: Set<string> }> {
+  // Estes dois Sets classificam TODA linha da listagem como estornada / estorno. Truncar aqui nao
+  // some com linhas: faz movimentacao estornada aparecer como ativa, que e pior do que faltar dado.
+  // Por isso a leitura e paginada ate o fim, e nao um `.limit()` alto que o PostgREST corta em 1000.
   const [transferReversalsResult, itemReversalsResult] = await Promise.all([
-    supabase
-      .from("stock_transfer_reversals")
-      .select("original_stock_transfer_id, reversal_stock_transfer_id")
-      .eq("tenant_id", tenantId)
-      .limit(10000)
-      .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>(),
-    supabase
-      .from("stock_transfer_item_reversals")
-      .select("original_stock_transfer_id, reversal_stock_transfer_id")
-      .eq("tenant_id", tenantId)
-      .limit(10000)
-      .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>(),
+    loadAllRows<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }>((from, to) =>
+      supabase
+        .from("stock_transfer_reversals")
+        .select("original_stock_transfer_id, reversal_stock_transfer_id")
+        .eq("tenant_id", tenantId)
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>()),
+    loadAllRows<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }>((from, to) =>
+      supabase
+        .from("stock_transfer_item_reversals")
+        .select("original_stock_transfer_id, reversal_stock_transfer_id")
+        .eq("tenant_id", tenantId)
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>()),
   ]);
 
   const rows = [
@@ -303,12 +313,16 @@ async function preloadTeamOpTransferIds(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<Set<string>> {
-  const { data } = await supabase
-    .from("stock_transfer_team_operations")
-    .select("transfer_id")
-    .eq("tenant_id", tenantId)
-    .limit(10000)
-    .returns<{ transfer_id: string }[]>();
+  // Mesmo raciocinio de preloadTransferReversalSets: este Set decide se a linha e operacao de
+  // equipe. Truncado, a listagem classifica errado em vez de mostrar a menos.
+  const { data } = await loadAllRows<{ transfer_id: string }>((from, to) =>
+    supabase
+      .from("stock_transfer_team_operations")
+      .select("transfer_id")
+      .eq("tenant_id", tenantId)
+      .order("transfer_id", { ascending: true })
+      .range(from, to)
+      .returns<{ transfer_id: string }[]>());
 
   return new Set((data ?? []).map((r) => r.transfer_id));
 }

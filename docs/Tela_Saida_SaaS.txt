@@ -1065,8 +1065,9 @@ Atualizacao 2026-08-20 (Categoria/Subcategoria em filtros e CSV)
   - `Subcategoria`: select dependente da categoria, carregado de `material_subcategories`.
 - Listagem:
   - `GET /api/team-stock-operations` aceita `categoryId` e `subcategoryId`.
-  - A API pre-resolve os materiais elegiveis em `materials` usando `tenant_id`, `category_id`,
-    `subcategory_id` e `codigo` quando combinados, e aplica o recorte nos itens de transferencia.
+  - A API aplica o recorte na query de `stock_transfer_items` por join `materials!inner`, usando
+    `tenant_id`, `category_id`, `subcategory_id` e `codigo` quando combinados. Isso evita montar
+    uma lista grande de IDs de material em `.in("material_id", ...)` para categorias volumosas.
   - O modal de detalhes exibe Categoria/Subcategoria do material.
 - Exportacao:
   - Migration `381_team_operations_category_filters_export.sql` republica
