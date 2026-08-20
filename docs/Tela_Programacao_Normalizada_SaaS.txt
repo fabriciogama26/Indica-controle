@@ -1620,3 +1620,50 @@ Atualizacao 2026-08 - Estabilidade visual / CLS
   - Os skeletons respeitam `prefers-reduced-motion: reduce`.
 - Impacto multi-tenant:
   - Sem mudanca de API, banco, tenant_id, RLS, grants ou permissoes.
+
+Atualizacao 2026-08-20 (Correcao: tres leituras truncavam em 1.000 linhas)
+-----------------------------------------------------------------------------
+- Origem: varredura do novo ratchet `npm run lint:rowlimit`. O PostgREST deste projeto entrega no
+  maximo 1.000 linhas por resposta (`db-max-rows`) e NAO sinaliza o corte — devolve 200 com menos
+  linhas do que o SQL produziu. Tres consultas deste modulo pediam 5.000 numa resposta unica.
+- 1) Exportacao de etapas (`fetchProgrammingStageList`, ramo `forExport`):
+  - `filters.pageSize` chega como `STAGE_LIST_EXPORT_MAX_ROWS = 5000`
+    (`src/app/api/programacao-normalizada/route.ts`), mas o `.limit()` unico entregava 1.000.
+  - Ponto importante: o aviso de exportacao parcial da tela NAO estava quebrado. Ele e
+    `truncated = isExportRequest && total > list.length`, comparando com o `count: "exact"` do
+    banco, entao sempre disse a verdade. O defeito era o teto efetivo: o usuario era avisado a
+    partir de 1.000 quando deveria receber ate 5.000 antes de qualquer aviso.
+  - Contraste util com `/estornos`, corrigida no mesmo dia: la o guard comparava com um valor que
+    a resposta nunca podia atingir, entao o aviso era codigo morto. Mesmo teto, gravidades
+    diferentes — vale conferir a formula do guard, nao so a existencia dele.
+  - Correcao: `loadAllRows(..., { maxRows: filters.pageSize })`. O `count: "exact"` passou a ser
+    pedido SO na primeira pagina, porque repetir a contagem a cada bloco custaria um `count(*)` por
+    chamada sem mudar o resultado.
+- 2) `fetchWorkCompletionByProject`:
+  - Lia `programming` com teto de 5.000 para montar o Map de Estado do Trabalho por projeto.
+    Truncada, ela nao "mostrava menos linhas": os projetos alem do corte simplesmente nao ganhavam
+    entrada no Map, e a tela exibia Estado do Trabalho vazio para eles.
+  - Correcao: leitura paginada ate o mesmo teto, agora real.
+- 3) `fetchProgrammingStagesForMap`:
+  - Alem de cortada em 1.000, esta consulta NAO tinha `ORDER BY` nenhum. Era incompleta E nao
+    deterministica: quais 1.000 etapas o Mapa recebia podia mudar entre duas chamadas identicas,
+    com os mesmos filtros e os mesmos dados.
+  - Correcao: leitura paginada com `.order("id")`.
+- Desempate de ordenacao (as tres):
+  - Toda leitura paginada por offset ganhou `id` como ultima chave. Sem ordem TOTAL o Postgres nao
+    garante a mesma sequencia entre chamadas, e a paginacao repete ou perde linhas na virada de
+    bloco. Em (2) isso seria especialmente traicoeiro: `project_id`, `execution_date` e
+    `updated_at` repetem entre etapas do mesmo projeto, e e justamente a primeira linha de cada
+    projeto que vence o Map.
+- Como validar:
+  - Exportar um recorte com mais de 1.000 etapas e conferir que o CSV traz todas, ate o teto de
+    5.000, e que o aviso de exportacao parcial so aparece acima disso.
+  - Conferir que o Estado do Trabalho aparece preenchido em projetos que antes vinham vazios em
+    bases grandes.
+  - Abrir o Mapa duas vezes seguidas com o mesmo filtro e conferir que os numeros batem — antes,
+    sem `ORDER BY`, podiam divergir.
+  - `npx tsc --noEmit`, `npm run lint` (o ratchet de teto de linhas cobre este arquivo), `npm run build`.
+- Impacto multi-tenant: nenhum. As tres consultas seguem filtrando `tenant_id` da sessao.
+- Efeito no ratchet: `row-limit-baseline.json` caiu de 20 para 18 violacoes; este arquivo saiu do
+  baseline. O aviso de `.limit()` dinamico caiu de 5 para 4 ocorrencias, e as 4 restantes ja foram
+  conferidas a mao como seguras.

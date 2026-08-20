@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAppUserName } from "./normalizers";
 import { PROGRAMMING_STAGE_SELECT_WITH_CHILDREN } from "./selects";
 import type {
@@ -176,17 +177,27 @@ export async function fetchWorkCompletionByProject(params: {
   const uniqueIds = Array.from(new Set(params.projectIds.filter(Boolean)));
   if (!uniqueIds.length) return result;
 
-  const { data } = await params.supabase
-    .from("programming")
-    .select(PROJECT_WORK_COMPLETION_SELECT)
-    .eq("tenant_id", params.tenantId)
-    .in("project_id", uniqueIds)
-    .neq("status", "CANCELADA")
-    .order("project_id", { ascending: true })
-    .order("execution_date", { ascending: false })
-    .order("updated_at", { ascending: false })
-    .limit(PROJECT_WORK_COMPLETION_ROW_LIMIT)
-    .returns<ProjectWorkCompletionRow[]>();
+  // Truncar aqui nao some com linhas da tela: some com o Estado do Trabalho dos projetos que
+  // ficarem alem do corte, porque o Map abaixo simplesmente nao ganha entrada para eles. Por isso
+  // a leitura pagina ate o teto proposital em vez de pedir tudo numa resposta so.
+  const { data } = await loadAllRows<ProjectWorkCompletionRow>(
+    (from, to) =>
+      params.supabase
+        .from("programming")
+        .select(PROJECT_WORK_COMPLETION_SELECT)
+        .eq("tenant_id", params.tenantId)
+        .in("project_id", uniqueIds)
+        .neq("status", "CANCELADA")
+        .order("project_id", { ascending: true })
+        .order("execution_date", { ascending: false })
+        .order("updated_at", { ascending: false })
+        // Desempate obrigatorio: os tres campos acima repetem entre etapas do mesmo projeto, e sem
+        // ordem total a paginacao por offset embaralharia justamente a linha que vence o Map.
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<ProjectWorkCompletionRow[]>(),
+    { maxRows: PROJECT_WORK_COMPLETION_ROW_LIMIT },
+  );
 
   // Reordena em JS (o query builder do PostgREST nao expressa "status ativo
   // primeiro" num ORDER BY): mesma execution_date -> PROGRAMADA/REPROGRAMADA
@@ -492,46 +503,72 @@ export async function fetchProgrammingStageList(params: {
 
   // Export: consulta plana por ETAPA, com total exato de etapas e teto por etapa.
   if (forExport) {
-    let exportQuery = supabase
-      .from("programming")
-      .select(PROGRAMMING_STAGE_SELECT_WITH_CHILDREN, { count: "exact" })
-      .eq("tenant_id", filters.tenantId);
+    // `filters.pageSize` chega aqui como STAGE_LIST_EXPORT_MAX_ROWS (5000) vindo da rota. Um
+    // `.limit(5000)` unico nunca entregou isso: o PostgREST corta em 1.000 por resposta sem
+    // sinalizar, entao a exportacao saia com 1.000 etapas. O aviso de exportacao parcial na tela
+    // continuava correto (`total > list.length` compara com o count exato do banco), mas disparava
+    // a partir de 1.000 em vez dos 5.000 pretendidos.
+    const buildExportQuery = (withCount: boolean) => {
+      let exportQuery = supabase
+        .from("programming")
+        .select(
+          PROGRAMMING_STAGE_SELECT_WITH_CHILDREN,
+          withCount ? { count: "exact" } : undefined,
+        )
+        .eq("tenant_id", filters.tenantId);
 
-    if (projectIdsFromSearch !== null) {
-      exportQuery = exportQuery.in("project_id", projectIdsFromSearch);
-    }
+      if (projectIdsFromSearch !== null) {
+        exportQuery = exportQuery.in("project_id", projectIdsFromSearch);
+      }
 
-    if (stageIdsFromTeamFilter !== null) {
-      exportQuery = exportQuery.in("id", stageIdsFromTeamFilter);
-    }
+      if (stageIdsFromTeamFilter !== null) {
+        exportQuery = exportQuery.in("id", stageIdsFromTeamFilter);
+      }
 
-    if (isEmEsperaChip) {
-      exportQuery = exportQuery.eq("status", "ADIADA").is("execution_date", null);
-    } else if (isSemRetornoChip) {
-      exportQuery = exportQuery
-        .eq("is_pendencia", true)
-        .in("status", ["PROGRAMADA", "REPROGRAMADA"])
-        .lt("execution_date", todayIso)
-        .is("work_completion_status", null);
-    } else {
-      exportQuery = exportQuery.gte("execution_date", filters.dateFrom).lte("execution_date", filters.dateTo);
-      exportQuery = applyStatusChipToStageQuery(exportQuery, filters.statusChip, todayIso);
-    }
+      if (isEmEsperaChip) {
+        exportQuery = exportQuery.eq("status", "ADIADA").is("execution_date", null);
+      } else if (isSemRetornoChip) {
+        exportQuery = exportQuery
+          .eq("is_pendencia", true)
+          .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+          .lt("execution_date", todayIso)
+          .is("work_completion_status", null);
+      } else {
+        exportQuery = exportQuery.gte("execution_date", filters.dateFrom).lte("execution_date", filters.dateTo);
+        exportQuery = applyStatusChipToStageQuery(exportQuery, filters.statusChip, todayIso);
+      }
 
-    exportQuery = applyWorkCompletionFilterToStageQuery(exportQuery, filters.workCompletionStatuses);
+      return applyWorkCompletionFilterToStageQuery(exportQuery, filters.workCompletionStatuses);
+    };
 
-    const { data: exportRows, error: exportError, count: exportCount } = await exportQuery
-      .order("project_id", { ascending: true })
-      .order("execution_date", { ascending: true })
-      .limit(filters.pageSize)
-      .returns<ProgrammingStageRow[]>();
+    let exportCount = 0;
+
+    const { data: exportRows, error: exportError } = await loadAllRows<ProgrammingStageRow>(
+      (from, to) =>
+        buildExportQuery(from === 0)
+          .order("project_id", { ascending: true })
+          .order("execution_date", { ascending: true })
+          // `id` como desempate: sem ordem total, paginar por offset repete ou perde etapas na
+          // virada. Varias etapas do mesmo projeto compartilham `execution_date`.
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<ProgrammingStageRow[]>()
+          .then((result) => {
+            // O count exato so e pedido na primeira pagina — repetir a contagem a cada bloco
+            // custaria um count(*) por chamada sem mudar o resultado.
+            if (typeof result.count === "number") exportCount = result.count;
+            return result;
+          }),
+      { maxRows: filters.pageSize },
+    );
 
     if (exportError) {
       throw new Error(`Falha ao carregar etapas para exportacao: ${exportError.message}`);
     }
 
-    // total = total de ETAPAS que batem no filtro (nao so as devolvidas).
-    return { rows: exportRows ?? [], total: exportCount ?? 0 };
+    // total = total de ETAPAS que batem no filtro (nao so as devolvidas). E o que sustenta o aviso
+    // de exportacao parcial na tela quando o filtro rende mais que o teto.
+    return { rows: exportRows ?? [], total: exportCount };
   }
 
   // Passo 1: projetos distintos (paginados) + total de projetos.
@@ -823,13 +860,21 @@ export async function fetchProgrammingStagesForMap(params: {
   // via essas obras. Efeito colateral do bug: obra cuja UNICA etapa estava em
   // espera caia em "Nunca programadas". Sem data nao ha o que recortar por
   // periodo, entao elas vem sempre; o teto de MAP_STAGE_ROW_LIMIT segue valendo.
-  const { data, error } = await params.supabase
-    .from("programming")
-    .select(MAP_STAGE_SELECT)
-    .eq("tenant_id", params.tenantId)
-    .or(`execution_date.is.null,execution_date.gte.${params.sinceDate}`)
-    .limit(MAP_STAGE_ROW_LIMIT)
-    .returns<ProgrammingMapStageRow[]>();
+  const { data, error } = await loadAllRows<ProgrammingMapStageRow>(
+    (from, to) =>
+      params.supabase
+        .from("programming")
+        .select(MAP_STAGE_SELECT)
+        .eq("tenant_id", params.tenantId)
+        .or(`execution_date.is.null,execution_date.gte.${params.sinceDate}`)
+        // Antes desta correcao a consulta nao tinha ORDER BY nenhum e ainda era cortada em 1.000
+        // pelo servidor: alem de incompleta, ela era NAO DETERMINISTICA — quais 1.000 etapas o
+        // Mapa recebia podia mudar entre duas chamadas identicas.
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<ProgrammingMapStageRow[]>(),
+    { maxRows: MAP_STAGE_ROW_LIMIT },
+  );
 
   if (error) {
     throw new Error(`Falha ao carregar historico geral de Programacao: ${error.message}`);

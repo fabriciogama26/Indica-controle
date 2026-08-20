@@ -12,7 +12,6 @@
     "src/lib/server/locationPlanning.ts": 1,
     "src/server/modules/cronograma-solicitacoes/handlers.ts": 1,
     "src/server/modules/cronograma-solicitacoes/queries.ts": 1,
-    "src/server/modules/dashboard-measurement/controller.ts": 4,
-    "src/server/modules/programacao-normalizada/queries.ts": 2
+    "src/server/modules/dashboard-measurement/controller.ts": 4
   }
 }
