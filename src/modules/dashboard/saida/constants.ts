@@ -67,6 +67,8 @@ export const INITIAL_FILTERS: FilterState = {
   teamId: "",
   projectId: "",
   materialCode: "",
+  categoryId: "",
+  subcategoryId: "",
   entryType: "TODOS",
   reversalStatus: "TODOS",
 };

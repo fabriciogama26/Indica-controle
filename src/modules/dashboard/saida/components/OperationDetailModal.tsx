@@ -41,6 +41,8 @@ export function OperationDetailModal({ item, onClose }: OperationDetailModalProp
             <div><strong>Origem apoio:</strong> {resolveSupportCenterName(item)}</div>
             <div><strong>Material:</strong> {item.materialCode}</div>
             <div><strong>Descricao:</strong> {item.description}</div>
+            <div><strong>Categoria:</strong> {item.categoryName ?? "-"}</div>
+            <div><strong>Subcategoria:</strong> {item.subcategoryName ?? "-"}</div>
             <div><strong>Quantidade:</strong> {item.quantity.toLocaleString("pt-BR")}</div>
             <div><strong>Tipo:</strong> {item.entryType}</div>
             <div><strong>{operationDateLabel(item.operationKind)}:</strong> {formatDate(item.entryDate)}</div>

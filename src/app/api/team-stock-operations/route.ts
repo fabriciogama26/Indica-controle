@@ -34,8 +34,20 @@ type MaterialRow = {
   id: string;
   codigo: string;
   descricao: string;
+  category_id?: string | null;
+  subcategory_id?: string | null;
   is_transformer?: boolean | null;
   serial_tracking_type?: string | null;
+};
+
+type MaterialCategoryRow = {
+  id: string;
+  name: string;
+};
+
+type MaterialSubcategoryRow = {
+  id: string;
+  name: string;
 };
 
 type MaterialEntryTypeRow = {
@@ -715,6 +727,8 @@ async function loadTeamOperationList(request: NextRequest) {
   const teamIdFilter = normalizeText(request.nextUrl.searchParams.get("teamId"));
   const projectIdFilter = normalizeText(request.nextUrl.searchParams.get("projectId"));
   const materialCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("materialCode"));
+  const categoryIdFilter = normalizeText(request.nextUrl.searchParams.get("categoryId"));
+  const subcategoryIdFilter = normalizeText(request.nextUrl.searchParams.get("subcategoryId"));
   const entryTypeFilter =
     String(request.nextUrl.searchParams.get("entryType") ?? "").trim().toUpperCase() === "TODOS"
       ? null
@@ -730,10 +744,13 @@ async function loadTeamOperationList(request: NextRequest) {
       projectIdFilter,
       entryTypeFilter,
       materialCodeFilter,
+      categoryIdFilter,
+      subcategoryIdFilter,
       reversalStatus,
     });
   }
 
+  const hasMaterialFilters = Boolean(materialCodeFilter || categoryIdFilter || subcategoryIdFilter);
   const [teamOperationsResult, matchingMaterialsResult] = await Promise.all([
     loadTeamOperationsWithHeaders(supabase, appUser.tenant_id, {
       teamIdFilter,
@@ -743,13 +760,25 @@ async function loadTeamOperationList(request: NextRequest) {
       projectIdFilter,
       entryTypeFilter,
     }),
-    materialCodeFilter
-      ? supabase
-          .from("materials")
-          .select("id")
-          .eq("tenant_id", appUser.tenant_id)
-          .ilike("codigo", `%${materialCodeFilter}%`)
-          .returns<{ id: string }[]>()
+    hasMaterialFilters
+      ? (() => {
+          let query = supabase
+            .from("materials")
+            .select("id")
+            .eq("tenant_id", appUser.tenant_id);
+
+          if (materialCodeFilter) {
+            query = query.ilike("codigo", `%${materialCodeFilter}%`);
+          }
+          if (categoryIdFilter) {
+            query = query.eq("category_id", categoryIdFilter);
+          }
+          if (subcategoryIdFilter) {
+            query = query.eq("subcategory_id", subcategoryIdFilter);
+          }
+
+          return query.returns<{ id: string }[]>();
+        })()
       : Promise.resolve({ data: null as { id: string }[] | null, error: null }),
   ]);
 
@@ -758,13 +787,23 @@ async function loadTeamOperationList(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
   }
 
+  if (matchingMaterialsResult.error) {
+    logTeamOperationLoadError("team-operations-material-filter", matchingMaterialsResult.error, {
+      tenantId: appUser.tenant_id,
+      materialCodeFilter,
+      categoryIdFilter,
+      subcategoryIdFilter,
+    });
+    return NextResponse.json({ message: "Falha ao filtrar materiais das operacoes de equipe." }, { status: 500 });
+  }
+
   const teamOperationRows = teamOperationsResult.data?.operations ?? [];
   const transferHeaders = teamOperationsResult.data?.headers ?? [];
   if (!teamOperationRows.length || !transferHeaders.length) {
     return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
-  const materialIdFilter: string[] | null = materialCodeFilter
+  const materialIdFilter: string[] | null = hasMaterialFilters
     ? (matchingMaterialsResult.data ?? []).map((r) => r.id)
     : null;
 
@@ -819,7 +858,7 @@ async function loadTeamOperationList(request: NextRequest) {
     materialIds.length
       ? supabase
           .from("materials")
-          .select("id, codigo, descricao, is_transformer, serial_tracking_type")
+          .select("id, codigo, descricao, category_id, subcategory_id, is_transformer, serial_tracking_type")
           .eq("tenant_id", appUser.tenant_id)
           .in("id", materialIds)
           .returns<MaterialRow[]>()
@@ -939,9 +978,48 @@ async function loadTeamOperationList(request: NextRequest) {
     materialsData = legacyMaterialsResult.data ?? [];
   }
 
+  const materialCategoryIds = Array.from(
+    new Set(materialsData.map((row) => row.category_id).filter((value): value is string => Boolean(value))),
+  );
+  const materialSubcategoryIds = Array.from(
+    new Set(materialsData.map((row) => row.subcategory_id).filter((value): value is string => Boolean(value))),
+  );
+  const [materialCategoriesResult, materialSubcategoriesResult] = await Promise.all([
+    materialCategoryIds.length
+      ? supabase
+          .from("material_categories")
+          .select("id, name")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", materialCategoryIds)
+          .returns<MaterialCategoryRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: MaterialCategoryRow[]; error: null }),
+    materialSubcategoryIds.length
+      ? supabase
+          .from("material_subcategories")
+          .select("id, name")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", materialSubcategoryIds)
+          .returns<MaterialSubcategoryRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: MaterialSubcategoryRow[]; error: null }),
+  ]);
+
+  if (materialCategoriesResult.error || materialSubcategoriesResult.error) {
+    logTeamOperationLoadError(
+      "material-classification",
+      materialCategoriesResult.error ?? materialSubcategoriesResult.error,
+      { tenantId: appUser.tenant_id, materialCount: materialsData.length },
+    );
+    return NextResponse.json(
+      { message: "Falha ao carregar categorias dos materiais das operacoes de equipe." },
+      { status: 500 },
+    );
+  }
+
   const teamByTransferId = new Map(teamOperationRows.map((row) => [row.transfer_id, row.team_id]));
   const transferMap = new Map((transferHeaders ?? []).map((row) => [row.id, row]));
   const materialMap = new Map(materialsData.map((row) => [row.id, row]));
+  const materialCategoryMap = new Map((materialCategoriesResult.data ?? []).map((row) => [row.id, row.name]));
+  const materialSubcategoryMap = new Map((materialSubcategoriesResult.data ?? []).map((row) => [row.id, row.name]));
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map((usersResult.data ?? []).map((row) => [
@@ -1019,6 +1097,10 @@ async function loadTeamOperationList(request: NextRequest) {
         materialId: item.material_id,
         materialCode: material?.codigo ?? "-",
         description: material?.descricao ?? "-",
+        categoryId: material?.category_id ?? null,
+        subcategoryId: material?.subcategory_id ?? null,
+        categoryName: materialCategoryMap.get(material?.category_id ?? "") ?? null,
+        subcategoryName: materialSubcategoryMap.get(material?.subcategory_id ?? "") ?? null,
         isTransformer: isSerialTrackedMaterial(normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE"))),
         serialTrackingType: normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE")),
         quantity: Number(item.quantity ?? 0),
