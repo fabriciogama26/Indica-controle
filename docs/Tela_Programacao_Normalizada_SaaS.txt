@@ -1667,3 +1667,21 @@ Atualizacao 2026-08-20 (Correcao: tres leituras truncavam em 1.000 linhas)
 - Efeito no ratchet: `row-limit-baseline.json` caiu de 20 para 18 violacoes; este arquivo saiu do
   baseline. O aviso de `.limit()` dinamico caiu de 5 para 4 ocorrencias, e as 4 restantes ja foram
   conferidas a mao como seguras.
+
+Atualizacao 2026-08-20 - Nome de equipe cancelada na listagem
+-------------------------------------------------------------
+- Antes: a API da Programacao Normalizada montava o nome das equipes da lista/detalhe/plano a
+  partir de `fetchTeams()`, que e o catalogo de equipes ativas usado pelo filtro e pelo modal
+  `Adicionar equipe`. Quando uma equipe era cancelada na tela Equipes, ela deixava de entrar no
+  catalogo ativo e a tela caia no fallback de exibicao do UUID (`team_id`).
+- Depois: a listagem, os detalhes e o plano resolvem as equipes ja vinculadas por
+  `fetchTeamsByIds()`, que busca os IDs presentes em `programming_team` sem filtrar `ativo`.
+  Assim, uma participacao historica continua exibindo `MK-xx`/nome da equipe mesmo depois de a
+  equipe ser cancelada no cadastro.
+- O catalogo de selecao continua usando somente equipes ativas. Equipe cancelada nao volta a
+  aparecer como opcao para nova alocacao; a mudanca e apenas de leitura/exibicao historica.
+- Como validar:
+  - Cancelar uma equipe em `/equipes` que ja esteja vinculada a uma etapa de Programacao.
+  - Abrir `/programacao-normalizada` no periodo da etapa e conferir que o chip exibe o nome da
+    equipe, nao o UUID.
+  - Abrir o plano do projeto e o modal Detalhes da etapa e conferir o mesmo comportamento.

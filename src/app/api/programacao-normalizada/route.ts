@@ -6,7 +6,7 @@ import {
   fetchProgrammingWorkCompletionCatalog,
   fetchProjects,
   fetchServiceActivitiesByIds,
-  fetchTeams,
+  fetchTeamsByIds,
   type BoardTeamEntry,
 } from "@/server/modules/programacao-normalizada/catalogs";
 import {
@@ -116,7 +116,7 @@ async function getProgrammingStageListResponse(request: NextRequest, resolution:
   const allActivityIds = Array.from(new Set(rows.flatMap((row) => (row.programming_activity ?? []).map((activity) => activity.service_activity_id))));
   const allUserIds = rows.flatMap((row) => [row.created_by, row.updated_by]);
   const [teams, activities, users] = await Promise.all([
-    fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
+    fetchTeamsByIds(resolution.supabase, resolution.appUser.tenant_id, allTeamIds),
     fetchServiceActivitiesByIds(resolution.supabase, resolution.appUser.tenant_id, allActivityIds),
     fetchAppUsersByIds({ supabase: resolution.supabase, tenantId: resolution.appUser.tenant_id, ids: allUserIds }),
   ]);
@@ -238,7 +238,7 @@ async function getProgrammingStageDetailsResponse(request: NextRequest, resoluti
   const activityIds = (stage.programming_activity ?? []).map((activity) => activity.service_activity_id);
 
   const [teams, activities, users] = await Promise.all([
-    fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
+    fetchTeamsByIds(resolution.supabase, resolution.appUser.tenant_id, teamIds),
     fetchServiceActivitiesByIds(resolution.supabase, resolution.appUser.tenant_id, activityIds),
     fetchAppUsersByIds({ supabase: resolution.supabase, tenantId: resolution.appUser.tenant_id, ids: [stage.created_by, stage.updated_by] }),
   ]);
@@ -300,7 +300,7 @@ export async function GET(request: NextRequest) {
 
   const allUserIds = stages.flatMap((stage) => [stage.created_by, stage.updated_by]);
   const [teams, activities, users] = await Promise.all([
-    fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
+    fetchTeamsByIds(resolution.supabase, resolution.appUser.tenant_id, teamIds),
     fetchServiceActivitiesByIds(resolution.supabase, resolution.appUser.tenant_id, activityIds),
     fetchAppUsersByIds({ supabase: resolution.supabase, tenantId: resolution.appUser.tenant_id, ids: allUserIds }),
   ]);
