@@ -7,9 +7,10 @@ import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
-import styles from "./OperationalBillingDashboardPageView.module.css";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDate } from "@/lib/utils/formatters";
+import { exportAllProjectCategorySummaryCsv, exportProjectValuesCsv } from "./allProjectCategoryExport";
+import styles from "./OperationalBillingDashboardPageView.module.css";
 
 type Option = {
   id: string;
@@ -918,13 +919,13 @@ export function OperationalBillingDashboardPageView() {
     }
   }
 
-  async function runCsvExport(exporter: () => void) {
+  async function runCsvExport(exporter: () => void | Promise<void>) {
     if (isExporting) return;
 
     setIsExporting(true);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
-      exporter();
+      await exporter();
     } finally {
       setIsExporting(false);
     }
@@ -1010,47 +1011,32 @@ export function OperationalBillingDashboardPageView() {
     ]);
   }
 
-  function exportProjectValues() {
-    if (!filteredProjectValueRows.length) {
-      setFeedback({ type: "error", message: "Nenhum projeto para exportar." });
-      return;
-    }
+  async function exportAllProjectCategorySummary() {
+    if (!session?.accessToken) return;
 
-    downloadCsv("dash_operacional_faturamento_projetos_por_valor.csv", [
-      [
-        "projeto",
-        "centro_servico",
-        "estado_trabalho",
-        "tipo_servico",
-        "medicao_valor",
-        "asbuilt_valor",
-        "faturamento_valor",
-        "dif_valor_asbuilt_medicao",
-        "dif_valor_faturamento_asbuilt",
-      ],
-      ...filteredProjectValueRows.map((row) => [
-        row.projectCode,
-        row.serviceCenter,
-        row.workCompletionStatusLabel,
-        row.serviceTypeName || "Nao informado",
-        formatCsvCurrencyValue(row.measurementValue),
-        formatCsvCurrencyValue(row.asbuiltValue),
-        formatCsvCurrencyValue(row.billingValue),
-        formatCsvCurrencyValue(row.asbuiltMeasurementDiff),
-        formatCsvCurrencyValue(row.billingAsbuiltDiff),
-      ]),
-      [
-        "TOTAL",
-        "",
-        "",
-        "",
-        formatCsvCurrencyValue(projectValueTotals.measurementValue),
-        formatCsvCurrencyValue(projectValueTotals.asbuiltValue),
-        formatCsvCurrencyValue(projectValueTotals.billingValue),
-        formatCsvCurrencyValue(projectValueTotals.asbuiltMeasurementDiff),
-        formatCsvCurrencyValue(projectValueTotals.billingAsbuiltDiff),
-      ],
-    ]);
+    try {
+      const result = await exportAllProjectCategorySummaryCsv({
+        accessToken: session.accessToken,
+        projects,
+        serviceCenters,
+        filters: { serviceCenterId, activityCode, activityStatus, onlyDivergences, onlyMissing },
+      });
+      if (!result.exported) setFeedback({ type: "error", message: result.message });
+    } catch (error) {
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar categorias de todos os projetos." });
+      await logError("Falha ao exportar categorias de todos os projetos", error, {
+        serviceCenterId,
+        activityCode,
+        activityStatus,
+        onlyDivergences,
+        onlyMissing,
+      });
+    }
+  }
+
+  function exportProjectValues() {
+    const result = exportProjectValuesCsv(filteredProjectValueRows, projectValueTotals);
+    if (!result.exported) setFeedback({ type: "error", message: result.message });
   }
 
   const currentOperationalMeasurementRows = operationalCategoryDetailTab === "measurementAsbuilt"
@@ -1588,6 +1574,14 @@ export function OperationalBillingDashboardPageView() {
               isLoading={isExporting}
               className={styles.secondaryButton}
               idleLabel="Exportar CSV"
+              showProgressModal={false}
+            />
+            <CsvExportButton
+              onClick={() => void runCsvExport(exportAllProjectCategorySummary)}
+              disabled={isLoading}
+              isLoading={isExporting}
+              className={styles.secondaryButton}
+              idleLabel="Extrair todos Projetos CSV"
               showProgressModal={false}
             />
           </div>

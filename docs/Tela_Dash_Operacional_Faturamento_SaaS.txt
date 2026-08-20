@@ -77,6 +77,8 @@ Filtros, auto-complete e listagem
 - A tabela de categorias usa `service_activities.type_service` e `types_service_activities.name` para agrupar os codigos exibidos no resultado filtrado.
 - A tabela de categorias e calculada a partir das mesmas linhas finais exibidas em `Codigos por origem`.
 - A tabela `Resumo por categoria` possui exportacao CSV propria.
+- O bloco `Resumo por categoria` possui o botao `Extrair todos Projetos CSV`, que exporta o resumo por categoria de todos os projetos ativos validos do tenant, respeitando Centro de servico, Codigo de atividade, Status da atividade, Somente divergencias e Somente ausentes do filtro comparativo.
+- O botao `Extrair todos Projetos CSV` nao renderiza todos os projetos na tela para evitar poluir visualmente `Resumo por categoria` e `Codigos por origem`.
 - O subtitulo do bloco `Resumo por categoria` exibe `Projeto | Centro de servico` do projeto selecionado, no mesmo formato de `Codigos por origem`, e exibe `Selecione Centro de servico e Projeto.` quando nao ha projeto selecionado.
 - As exportacoes CSV incluem o numero do Projeto (SOB) e o Centro de servico em todas as linhas.
 - As colunas de valor nas exportacoes CSV saem como numero decimal sem simbolo de moeda, usando virgula decimal, para permitir soma direta em planilhas brasileiras.
@@ -390,7 +392,9 @@ Funcoes utilitarias relacionadas
   - Comportamento ajustado: `buildProjectValueRows` passa a somar valores por projeto a partir dos itens ja carregados em blocos, evitando falha na query generica de soma por projeto.
   - Comportamento ajustado: `buildChartItems` e os tickets operacionais passam a somar valores a partir dos itens carregados em blocos, evitando falha na query generica de soma do grafico.
 - Caminho: `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
-  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `currentMonthValue`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `projectValueServiceTypeOptions`, `hideZeroMeasurementValues`, `hideZeroAsbuiltValues`, `onlyZeroMeasurementValues`, `onlyZeroAsbuiltValues`, `filteredProjectValueRows`, `projectValueTotals`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportProjectValues`.
+  - Responsavel por: `formatNumber`, `formatCurrency`, `formatSignedCurrency`, `formatPercent`, `chartDisplayLabel`, `currentMonthValue`, `filenameToken`, `downloadCsv`, `PROJECT_VALUE_PAGE_SIZE`, `loadDashboard`, `loadChart`, `loadProjectValues`, `projectValueProjectOptions`, `projectValueWorkCompletionOptions`, `projectValueServiceTypeOptions`, `hideZeroMeasurementValues`, `hideZeroAsbuiltValues`, `onlyZeroMeasurementValues`, `onlyZeroAsbuiltValues`, `filteredProjectValueRows`, `projectValueTotals`, `paginatedProjectValueRows`, `handleServiceCenterChange`, `handleProjectSearchChange`, `handleChartServiceCenterChange`, `handleChartProjectSearchChange`, `exportRows`, `exportCategorySummary`, `exportAllProjectCategorySummary`, `exportProjectValues`.
+- Caminho: `src/modules/dashboard/dash-operacional-faturamento/allProjectCategoryExport.ts`
+  - Responsavel por: buscar em lotes o resumo por categoria de cada projeto elegivel usando o endpoint existente da tela, consolidar colunas dinamicas por categoria, baixar o CSV `dash_operacional_faturamento_todos_projetos_categorias_<centro>.csv` e centralizar o CSV de `Projetos por valor`.
 
 Servicos e integracoes externas
 - `resolveAuthenticatedAppUser` para contexto de seguranca e tenant na API.
@@ -574,3 +578,27 @@ Atualizacao 2026-08-03 - Tela quebrava com etapa em espera na Programacao
   - Deixar uma etapa em espera em `/programacao-normalizada` (`Adiar` ->
     "Deixar em espera") e abrir `/dash-operacional-faturamento`: a tela carrega
     e o Estado do Trabalho do projeto vem da etapa COM data.
+
+Atualizacao 2026-08-20 - CSV de todos os projetos por categoria
+----------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx`
+  - `src/modules/dashboard/dash-operacional-faturamento/allProjectCategoryExport.ts`
+  - `docs/Tela_Dash_Operacional_Faturamento_SaaS.txt`
+  - `TASKS.md`
+  - `file-size-baseline.json`
+- Funcoes/hooks/constantes tocadas:
+  - `exportAllProjectCategorySummaryCsv`
+  - `exportProjectValuesCsv`
+  - `exportAllProjectCategorySummary`
+  - `runCsvExport`
+- Comportamento antes/depois:
+  - Antes: `Resumo por categoria` e `Codigos por origem` eram montados somente para o projeto selecionado no filtro comparativo; mostrar todos os projetos nesses blocos deixaria a tela visualmente poluida.
+  - Depois: o card `Resumo por categoria` tem o botao `Extrair todos Projetos CSV`, que gera um CSV com uma linha por `Projeto + Origem`, colunas dinamicas por categoria e `total_valor`.
+  - O CSV respeita Centro de servico, Codigo de atividade, Status da atividade, Somente divergencias e Somente ausentes do filtro comparativo; o helper percorre todos os projetos do recorte em lotes e usa o endpoint existente de cada projeto.
+  - A tela continua exibindo o resumo visual somente do projeto selecionado.
+- Impacto multi-tenant:
+  - Sem API nova, schema, RLS, migration ou permissao nova; a rota existente continua autenticada, autorizada por `dash-operacional-faturamento` e filtra dados pelo `tenant_id` derivado da sessao.
+- Como validar:
+  - Em `/dash-operacional-faturamento`, selecionar um Centro de servico, aplicar filtros opcionais do comparativo e clicar em `Extrair todos Projetos CSV`.
+  - Conferir que o arquivo `dash_operacional_faturamento_todos_projetos_categorias_<centro>.csv` contem varias obras do recorte, com colunas de categorias e valores numericos com virgula decimal.
