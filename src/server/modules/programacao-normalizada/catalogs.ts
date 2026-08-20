@@ -36,6 +36,39 @@ export type BoardTeamEntry = {
   serviceCenterName: string;
 };
 
+async function buildBoardTeamEntries(supabase: SupabaseClient, tenantId: string, teams: TeamRow[]) {
+  if (!teams.length) return [] as BoardTeamEntry[];
+
+  const teamTypeIds = Array.from(new Set(teams.map((item) => item.team_type_id).filter(Boolean)));
+  const foremanIds = Array.from(new Set(teams.map((item) => item.foreman_person_id).filter(Boolean)));
+  const serviceCenterIds = Array.from(new Set(teams.map((item) => item.service_center_id).filter((id): id is string => Boolean(id))));
+
+  const [{ data: teamTypes }, { data: people }, { data: serviceCenters }] = await Promise.all([
+    teamTypeIds.length
+      ? supabase.from("team_types").select("id, name").eq("tenant_id", tenantId).in("id", teamTypeIds).returns<TeamTypeRow[]>()
+      : Promise.resolve({ data: [] as TeamTypeRow[] }),
+    foremanIds.length
+      ? supabase.from("people").select("id, nome").eq("tenant_id", tenantId).in("id", foremanIds).returns<PersonRow[]>()
+      : Promise.resolve({ data: [] as PersonRow[] }),
+    serviceCenterIds.length
+      ? supabase.from("project_service_centers").select("id, name").eq("tenant_id", tenantId).in("id", serviceCenterIds).returns<ServiceCenterRow[]>()
+      : Promise.resolve({ data: [] as ServiceCenterRow[] }),
+  ]);
+
+  const teamTypeMap = new Map((teamTypes ?? []).map((item) => [item.id, normalizeText(item.name)]));
+  const foremanMap = new Map((people ?? []).map((item) => [item.id, normalizeText(item.nome)]));
+  const serviceCenterMap = new Map((serviceCenters ?? []).map((item) => [item.id, normalizeText(item.name)]));
+
+  return teams.map((team) => ({
+    id: team.id,
+    name: normalizeText(team.name),
+    vehiclePlate: normalizeText(team.vehicle_plate),
+    teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
+    foremanName: foremanMap.get(team.foreman_person_id) ?? "Sem encarregado",
+    serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
+  }));
+}
+
 // project.city/service_center/etc. sao FK uuid (migration 038) — o texto exibivel
 // vem da view project_with_labels (mesma fonte que o modulo programacao legado usa).
 export async function fetchProjects(supabase: SupabaseClient, tenantId: string) {
@@ -73,37 +106,27 @@ export async function fetchTeams(supabase: SupabaseClient, tenantId: string) {
 
   if (error || !teams?.length) return [] as BoardTeamEntry[];
 
-  const teamTypeIds = Array.from(new Set(teams.map((item) => item.team_type_id).filter(Boolean)));
-  const foremanIds = Array.from(new Set(teams.map((item) => item.foreman_person_id).filter(Boolean)));
-  const serviceCenterIds = Array.from(new Set(teams.map((item) => item.service_center_id).filter((id): id is string => Boolean(id))));
-
-  const [{ data: teamTypes }, { data: people }, { data: serviceCenters }] = await Promise.all([
-    teamTypeIds.length
-      ? supabase.from("team_types").select("id, name").eq("tenant_id", tenantId).in("id", teamTypeIds).returns<TeamTypeRow[]>()
-      : Promise.resolve({ data: [] as TeamTypeRow[] }),
-    foremanIds.length
-      ? supabase.from("people").select("id, nome").eq("tenant_id", tenantId).in("id", foremanIds).returns<PersonRow[]>()
-      : Promise.resolve({ data: [] as PersonRow[] }),
-    serviceCenterIds.length
-      ? supabase.from("project_service_centers").select("id, name").eq("tenant_id", tenantId).in("id", serviceCenterIds).returns<ServiceCenterRow[]>()
-      : Promise.resolve({ data: [] as ServiceCenterRow[] }),
-  ]);
-
-  const teamTypeMap = new Map((teamTypes ?? []).map((item) => [item.id, normalizeText(item.name)]));
-  const foremanMap = new Map((people ?? []).map((item) => [item.id, normalizeText(item.nome)]));
-  const serviceCenterMap = new Map((serviceCenters ?? []).map((item) => [item.id, normalizeText(item.name)]));
-
-  const result = teams.map((team) => ({
-    id: team.id,
-    name: normalizeText(team.name),
-    vehiclePlate: normalizeText(team.vehicle_plate),
-    teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
-    foremanName: foremanMap.get(team.foreman_person_id) ?? "Sem encarregado",
-    serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
-  }));
+  const result = await buildBoardTeamEntries(supabase, tenantId, teams);
 
   _teamsCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
   return result;
+}
+
+export async function fetchTeamsByIds(supabase: SupabaseClient, tenantId: string, ids: string[]) {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (!uniqueIds.length) return [] as BoardTeamEntry[];
+
+  const { data: teams, error } = await supabase
+    .from("teams")
+    .select("id, name, vehicle_plate, team_type_id, foreman_person_id, service_center_id, ativo")
+    .eq("tenant_id", tenantId)
+    .in("id", uniqueIds)
+    .order("name", { ascending: true })
+    .returns<TeamRow[]>();
+
+  if (error || !teams?.length) return [] as BoardTeamEntry[];
+
+  return buildBoardTeamEntries(supabase, tenantId, teams);
 }
 
 export async function fetchProgrammingSgdTypes(supabase: SupabaseClient, tenantId: string) {
