@@ -181,8 +181,10 @@ Nenhum servidor MCP configurado no momento (sem `.mcp.json` no repositório e se
 
 Comandos reais do projeto (`package.json`):
 - `npx tsc --noEmit` — typecheck.
-- `npm run lint` — ESLint + ratchet de tamanho de arquivo (roda `lint:eslint` e `lint:size`).
+- `npm run lint` — ESLint + ratchet de tamanho de arquivo + ratchet do teto de linhas (roda `lint:eslint`, `lint:size` e `lint:rowlimit`).
 - `npm run lint:size` — só o ratchet de tamanho (`scripts/check-file-size.mjs`); falha com exit code 1.
+- `npm run lint:rowlimit` — só o ratchet do teto de linhas (`scripts/check-row-limit.mjs` + `row-limit-baseline.json`); falha com exit code 1 em qualquer `.limit()` novo acima de 1.000. O PostgREST entrega no máximo 1.000 linhas por resposta e não sinaliza o corte, então pedir mais devolve resultado incompleto com status 200 — dado errado, não erro. Resolve constantes além de literais e ignora ocorrências em comentário/string. **Não existe `--accept`**: aumento não tem justificativa possível, porque o servidor não entrega. Leitura completa se faz com `loadAllRows` de `src/lib/server/apiHelpers.ts`.
+- `npm run lint:rowlimit:update` — **só reduz** o baseline do teto de linhas, quando um arquivo deixa de violar.
 - `npm run lint:size:update` — **só reduz** o baseline (arquivo encolheu, foi removido ou voltou ao limite). Recusa e não escreve nada se houver crescimento pendente.
 - `npm run lint:size:accept -- <caminho>` — única forma de aumentar um baseline; exige o caminho de cada arquivo, não existe aceite em lote. O diff do baseline é a evidência; a justificativa vai na descrição do PR.
 - `npm run build` — build de produção, para mudanças que afetam rota/build.
