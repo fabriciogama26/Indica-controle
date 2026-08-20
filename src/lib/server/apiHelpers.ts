@@ -50,15 +50,32 @@ export function parsePagination(params: URLSearchParams, options: ParsePaginatio
  *
  * `loadPage` deve aplicar um `.order()` estavel; sem ordem definida o Postgres nao garante a mesma
  * sequencia entre chamadas e a paginacao por offset pode repetir ou perder linhas.
+ *
+ * `maxRows` define um teto INTENCIONAL de leitura, para rotas que cruzam tudo em memoria e nao
+ * podem crescer sem limite. Diferente de um `.limit()` alto, este teto e real: a leitura para
+ * exatamente nele, e o chamador consegue detectar que bateu no teto comparando o total lido com o
+ * valor pedido — que e o aviso de resultado parcial que o `.limit()` acima do teto do servidor
+ * tornava impossivel de disparar. Sem `maxRows`, le ate o fim.
  */
 export async function loadAllRows<T>(
   loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+  options: { maxRows?: number } = {},
 ): Promise<{ data: T[] | null; error: PostgrestError | null }> {
+  const { maxRows } = options;
   const rows: T[] = [];
   let from = 0;
 
   for (;;) {
-    const { data, error } = await loadPage(from, from + SUPABASE_RESPONSE_ROW_CAP - 1);
+    const blockSize =
+      maxRows === undefined
+        ? SUPABASE_RESPONSE_ROW_CAP
+        : Math.min(SUPABASE_RESPONSE_ROW_CAP, maxRows - rows.length);
+
+    if (blockSize <= 0) {
+      return { data: rows, error: null };
+    }
+
+    const { data, error } = await loadPage(from, from + blockSize - 1);
     if (error) {
       return { data: null, error };
     }

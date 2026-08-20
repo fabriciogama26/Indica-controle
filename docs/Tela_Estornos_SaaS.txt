@@ -238,3 +238,46 @@ Ajuda contextual
   - Antes: exportacao usava `CsvExportButton` sem estado de modal ativo.
   - Depois: `exportRows` controla `isExporting`, exibindo `ExportProgressModal` pelo `CsvExportButton`.
   - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-08-20 (Correcao: aviso de resultado parcial era codigo morto)
+--------------------------------------------------------------------------------
+- Problema:
+  - `loadItemReversals` e `loadFullReversals` liam com `.limit(REVERSAL_QUERY_LIMIT)` (5000) numa
+    consulta unica, sem `.range()`. O PostgREST deste projeto entrega no maximo 1.000 linhas por
+    resposta (`db-max-rows`) e NAO sinaliza o corte, entao o teto real sempre foi 1.000.
+  - O guard era `const isTruncated = itemReversals.length >= REVERSAL_QUERY_LIMIT`, ou seja,
+    comparava com 5000 um valor que nunca podia passar de 1.000. A condicao era matematicamente
+    impossivel: o banner "O volume de estornos no periodo excede o limite de consulta. Refine o
+    filtro por data de estorno..." existia em `ReversalsPageView`, estava bem escrito, e NUNCA
+    disparou.
+  - Efeito combinado: acima de 1.000 estornos no periodo a tela mostrava um recorte silencioso E
+    afirmava implicitamente que estava completa. Rede de protecao morta e pior que ausencia de
+    rede, porque produz confianca que os dados nao sustentam.
+- Correcao:
+  - As duas leituras passaram a usar `loadAllRows(..., { maxRows: REVERSAL_QUERY_LIMIT })` de
+    `src/lib/server/apiHelpers.ts`, que pagina por `.range()` respeitando um teto intencional.
+  - Ordenacao ganhou desempate por `id`: `created_at` repete entre estornos gravados no mesmo
+    lote, e sem chave de desempate a ordem entre chamadas nao e determinada — paginacao por offset
+    repetiria ou perderia linhas.
+  - O helper ganhou a opcao `maxRows` justamente para este caso: teto que o chamador quer, aplicado
+    de verdade, e detectavel comparando o total lido com o valor pedido. E o que torna
+    `isTruncated` capaz de disparar.
+- Decisao consciente — por que NAO virou leitura ilimitada:
+  - Esta rota cruza estornos, transferencias, itens e operacoes de equipe em memoria antes de
+    paginar. Remover o teto trocaria um bug de dado por um risco de memoria, o que nao e progresso.
+  - O teto continua 5000, agora real. Acima disso o usuario finalmente ve o aviso e refina o filtro
+    por data, que e exatamente o comportamento que o codigo original pretendia ter.
+  - `isTruncated` usa `>=`, entao um resultado de exatamente 5000 linhas dispara o aviso mesmo
+    estando completo. Falso positivo conservador, herdado do codigo original e mantido de proposito:
+    avisar a mais e barato, avisar a menos foi o bug.
+- O que esta correcao NAO resolve:
+  - A exportacao desta tela continua montando tudo em memoria, sem RPC dedicada nem resposta
+    `text/csv` em stream, diferente do que foi feito em `/saida`. Segue como pendencia propria.
+- Como validar:
+  - Num tenant com mais de 1.000 estornos no periodo, abrir `/estornos` sem filtro de data e
+    conferir que a contagem cresce alem de 1.000.
+  - Acima de 5.000, conferir que o banner de volume excedido aparece — antes era inalcancavel.
+  - Conferir que nao ha linha repetida entre paginas, especialmente em lotes de estorno gravados no
+    mesmo segundo (era o risco de ordenar so por `created_at`).
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+- Impacto multi-tenant: nenhum. As consultas seguem filtrando `tenant_id` da sessao.
