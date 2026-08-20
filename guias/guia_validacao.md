@@ -54,7 +54,8 @@ Obrigatório antes de qualquer PR ou entrega de código. Substitui o protocolo a
 
 **Performance e tráfego**
 - [ ] Nenhum `.select("*")`.
-- [ ] Nenhum `.limit()` acima de 1.000 sem paginação ou RPC de agregação.
+- [ ] Nenhum `.limit()` acima de 1.000 — nem com justificativa. O PostgREST corta em 1.000 sem avisar, então o valor pedido acima disso nunca é entregue. Leitura completa usa `loadAllRows`; teto proposital usa `loadAllRows(..., { maxRows })`. Verificado por `npm run lint:rowlimit`.
+- [ ] `.limit()` com valor dinâmico (variável/campo) conferido à mão: o ratchet lista essas ocorrências como aviso porque não consegue resolvê-las estaticamente, e foi exatamente numa delas (`filters.pageSize` = 5.000 no export da Programação Normalizada) que um truncamento passou despercebido.
 - [ ] Filtros aplicados no banco, não no JavaScript.
 - [ ] Queries independentes são paralelas (`Promise.all`).
 - [ ] Colunas de filtro frequente têm índice documentado.
@@ -117,7 +118,8 @@ Nunca:
 ## 7. Validação
 
 - `npx tsc --noEmit`
-- `npm run lint` (ESLint + ratchet de tamanho de arquivo)
+- `npm run lint` (ESLint + ratchet de tamanho de arquivo + ratchet do teto de linhas)
+- `npm run lint:rowlimit` isolado quando só o teto de linhas estiver em questão; `npm run lint:rowlimit:update` quando um arquivo deixar de violar (só reduz, e não existe aceite de aumento)
 - `npm run lint:size` isolado quando só o tamanho de arquivo estiver em questão; `npm run lint:size:update` quando um arquivo do baseline encolher ou for removido (só reduz); `npm run lint:size:accept -- <caminho>` para aceitar crescimento excepcional, sempre nomeando cada arquivo
 - `npm run build` (mudanças que afetam rota/build)
 - `npm run db:lint` / `npm run db:security-check` (mudanças de schema/RPC)
