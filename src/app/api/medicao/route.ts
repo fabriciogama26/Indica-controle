@@ -152,12 +152,12 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     return NextResponse.json({ message: "Ordem de medicao invalida para edicao." }, { status: 400 });
   }
 
-  if (method === "PUT" && (!projectId || !teamId || !executionDate)) {
-    return NextResponse.json({ message: "Na edicao, Projeto, Equipe e Data de execucao sao obrigatorios." }, { status: 400 });
+  if (method === "PUT" && (!teamId || !executionDate)) {
+    return NextResponse.json({ message: "Na edicao, Equipe e Data de execucao sao obrigatorios." }, { status: 400 });
   }
 
-  if (method === "POST" && !programmingId && (!projectId || !teamId || !executionDate)) {
-    return NextResponse.json({ message: "Informe Projeto, Equipe e Data de execucao para cadastrar a medicao sem programacao." }, { status: 400 });
+  if (method === "POST" && !programmingId && (!teamId || !executionDate)) {
+    return NextResponse.json({ message: "Informe Equipe e Data de execucao para cadastrar a medicao sem programacao." }, { status: 400 });
   }
 
   if (!measurementDate) {
@@ -167,6 +167,10 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
   const items = normalizeMeasurementItems(payload?.items);
 
   if (measurementKind === "COM_PRODUCAO") {
+    if (!projectId) {
+      return NextResponse.json({ message: "Projeto e obrigatorio para medicao com producao." }, { status: 400 });
+    }
+
     if (noProductionReasonId) {
       return NextResponse.json({ message: "Motivo sem producao so pode ser informado para tipo Sem producao." }, { status: 400 });
     }

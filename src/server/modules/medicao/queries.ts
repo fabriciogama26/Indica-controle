@@ -21,7 +21,10 @@ export async function fetchTeamCompositionContextSet(params: {
     return { data: new Set<string>(), error: null };
   }
 
-  const projectIds = Array.from(new Set(params.orders.map((item) => item.project_id)));
+  const projectIds = Array.from(new Set(params.orders.map((item) => item.project_id).filter((item): item is string => Boolean(item))));
+  if (!projectIds.length) {
+    return { data: new Set<string>(), error: null };
+  }
   const teamIds = Array.from(new Set(params.orders.map((item) => item.team_id)));
   const executionDates = params.orders.map((item) => item.execution_date).sort();
   const result = await fetchPagedSupabaseRows<TeamCompositionContextRow>((from, to) =>
@@ -397,7 +400,7 @@ export function buildMeasurementOrderDetail(params: {
     status: order.status,
     notes: normalizeText(order.notes),
     projectCode: normalizeText(order.project_code_snapshot),
-    projectServiceCenter: projectServiceCenterMap.get(order.project_id) ?? "Sem base",
+    projectServiceCenter: order.project_id ? (projectServiceCenterMap.get(order.project_id) ?? "Sem base") : "Sem projeto",
     teamName: normalizeText(order.team_name_snapshot),
     foremanName: normalizeText(order.foreman_name_snapshot),
     isActive: Boolean(order.is_active),
@@ -473,7 +476,7 @@ export async function fetchMeasurementOrderDetail(params: {
     fetchProjectServiceCenterMap({
       supabase: params.supabase,
       tenantId: params.tenantId,
-      projectIds: [order.project_id],
+      projectIds: order.project_id ? [order.project_id] : [],
     }),
     fetchTeamCompositionContextSet({
       supabase: params.supabase,
@@ -618,7 +621,7 @@ export async function fetchMeasurementOrderDetailsForExport(params: {
     fetchProjectServiceCenterMap({
       supabase: params.supabase,
       tenantId: params.tenantId,
-      projectIds: Array.from(new Set(orderRows.map((order) => order.project_id))),
+      projectIds: Array.from(new Set(orderRows.map((order) => order.project_id).filter((item): item is string => Boolean(item)))),
     }),
     fetchTeamCompositionContextSet({
       supabase: params.supabase,
