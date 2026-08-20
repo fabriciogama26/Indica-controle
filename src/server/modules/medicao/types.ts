@@ -10,7 +10,7 @@ export type MeasurementOrderRow = {
   id: string;
   order_number: string;
   programming_id: string | null;
-  project_id: string;
+  project_id: string | null;
   team_id: string;
   execution_date: string;
   measurement_date: string;
@@ -21,7 +21,7 @@ export type MeasurementOrderRow = {
   no_production_reason_name_snapshot: string | null;
   status: MeasurementOrderStatus;
   notes: string | null;
-  project_code_snapshot: string;
+  project_code_snapshot: string | null;
   team_name_snapshot: string;
   foreman_name_snapshot: string | null;
   is_active: boolean;

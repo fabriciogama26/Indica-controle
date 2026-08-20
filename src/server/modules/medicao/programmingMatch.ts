@@ -50,11 +50,11 @@ export function buildProjectWorkCompletionTimeline(
 
 export function resolveProjectWorkCompletionAtWindowEnd(
   timeline: Map<string, Array<{ executionDate: string; completionStatus: ProgrammingWorkCompletionStatus; updatedAt: string }>>,
-  projectId: string,
+  projectId: string | null | undefined,
   windowEndDate: string,
 ) {
   const normalizedWindowEndDate = normalizeIsoDate(windowEndDate);
-  if (!normalizedWindowEndDate) {
+  if (!projectId || !normalizedWindowEndDate) {
     return null;
   }
 
@@ -116,7 +116,7 @@ export async function loadProgrammingMatchMap(params: {
     }>();
   }
 
-  const projectIds = Array.from(new Set(params.orders.map((item) => item.project_id)));
+  const projectIds = Array.from(new Set(params.orders.map((item) => item.project_id).filter((item): item is string => Boolean(item))));
   const executionDates = params.orders.map((item) => item.execution_date).sort();
   const startDate = executionDates[0];
   const endDate = executionDates[executionDates.length - 1];

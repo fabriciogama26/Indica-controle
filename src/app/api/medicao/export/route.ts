@@ -56,7 +56,7 @@ type OrderDetailItem = {
 type OrderDetail = {
   id: string;
   orderNumber: string;
-  projectId: string;
+  projectId: string | null;
   teamId: string;
   executionDate: string;
   measurementKind: MeasurementKind;
@@ -241,7 +241,7 @@ function buildSummaryCsv(orders: OrderItem[], labelMap: Map<string, string>) {
     ],
     orders.map((order) => [
       order.orderNumber,
-      order.projectCode,
+      order.projectCode || "Sem projeto",
       order.projectServiceCenter || "Sem base",
       formatDate(order.executionDate),
       order.teamName,
@@ -299,7 +299,7 @@ async function buildDetailsCsv(params: {
       const observation = itemIndex === 0 ? (detail.notes || item.observation || "-") : "-";
       return [
         detail.orderNumber,
-        summary?.projectCode ?? detail.projectId,
+        summary?.projectCode || detail.projectId || "Sem projeto",
         summary?.projectServiceCenter ?? detail.projectServiceCenter ?? "Sem base",
         formatDate(detail.executionDate),
         summary?.teamName ?? detail.teamId,
@@ -371,7 +371,7 @@ function buildScoreCsv(orders: OrderItem[]) {
         order.teamTypeName || "Nao identificado",
         order.foremanName || order.teamName || "Nao identificado",
         formatDate(order.executionDate),
-        order.projectCode,
+        order.projectCode || "Sem projeto",
         formatDecimal(points),
         formatMoneyCsvValue(totalAmount),
         scoreStatus,

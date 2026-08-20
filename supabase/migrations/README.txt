@@ -1163,3 +1163,9 @@ Observacao
 - Republica `list_team_operations_export` com `p_category_id` e `p_subcategory_id`, consumindo `materials.category_id/subcategory_id` criados na 378.
 - Inclui as colunas `categoria` e `subcategoria` no CSV de Operacoes de Equipe, logo apos `descricao`.
 - Remove a assinatura anterior da RPC para evitar sobrecarga ambigua e reaplica EXECUTE apenas para `service_role`.
+
+382_allow_no_project_no_production_measurement.sql
+- Permite `project_measurement_orders.project_id` e `project_code_snapshot` nulos exclusivamente para ordens `SEM_PRODUCAO` sem vinculo de Programacao.
+- Mantem Projeto obrigatorio para `COM_PRODUCAO` por constraint e pela RPC `save_project_measurement_order`.
+- Republica `enforce_project_measurement_order_context_unique` para bloquear duplicidade por `Projeto + Equipe + Data` quando ha Projeto e por `Equipe + Data` quando a ordem `SEM_PRODUCAO` nao tem Projeto.
+- Aplica patch dinamico em `save_project_measurement_order` para aceitar `SEM_PRODUCAO` sem Projeto, sem tentar resolver Programacao/Centro/Projeto nesse caso, e preserva EXECUTE apenas para `service_role`.

@@ -204,12 +204,12 @@ export function isCanceledProgrammingStatus(status: unknown) {
   return normalizeText(status).toUpperCase() === "CANCELADA";
 }
 
-export function buildProgrammingMatchKey(projectId: string, teamId: string, executionDate: string) {
-  return `${projectId}|${teamId}|${executionDate}`;
+export function buildProgrammingMatchKey(projectId: string | null | undefined, teamId: string, executionDate: string) {
+  return `${projectId ?? ""}|${teamId}|${executionDate}`;
 }
 
-export function buildProgrammingProjectDateKey(projectId: string, executionDate: string) {
-  return `${projectId}|${executionDate}`;
+export function buildProgrammingProjectDateKey(projectId: string | null | undefined, executionDate: string) {
+  return `${projectId ?? ""}|${executionDate}`;
 }
 
 

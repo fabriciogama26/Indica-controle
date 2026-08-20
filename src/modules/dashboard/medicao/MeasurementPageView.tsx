@@ -153,7 +153,7 @@ type OrderItem = {
   id: string;
   orderNumber: string;
   programmingId: string | null;
-  projectId: string;
+  projectId: string | null;
   teamId: string;
   executionDate: string;
   measurementDate: string;
@@ -220,7 +220,7 @@ type OrderDetail = {
   id: string;
   orderNumber: string;
   programmingId: string | null;
-  projectId: string;
+  projectId: string | null;
   teamId: string;
   teamName: string;
   foremanName: string;
@@ -2447,6 +2447,7 @@ export function MeasurementPageView() {
       if (!order) return;
       hasManualRateUserOverrideRef.current = true;
       setRateSuggestionSource(null);
+      setFormProjectSearch(order.projectId ? (projectMap.get(order.projectId)?.code ?? "") : "");
       setForm({
         id: order.id,
         expectedUpdatedAt: order.updatedAt,
@@ -2457,7 +2458,7 @@ export function MeasurementPageView() {
         teamNameSnapshot: order.teamName,
         foremanNameSnapshot: order.foremanName,
         programmingId: order.programmingId ?? "",
-        projectId: order.projectId,
+        projectId: order.projectId ?? "",
         teamId: order.teamId,
         executionDate: order.executionDate,
         measurementDate: order.measurementDate,
@@ -2497,18 +2498,17 @@ export function MeasurementPageView() {
     }
   }
 
-
   async function submitOrder(event: FormEvent) {
     event.preventDefault();
     if (!accessToken) return;
 
     const matchedProject = findProjectOption(formProjectSearch, projects);
-    if (!matchedProject) {
-      setFeedback({ type: "error", message: "Projeto invalido. Selecione um projeto da lista." });
+    const requiresProject = form.measurementKind === "COM_PRODUCAO";
+    const invalidProject = !matchedProject && (requiresProject || formProjectSearch.trim());
+    if (invalidProject) {
+      setFeedback({ type: "error", message: requiresProject ? "Projeto invalido. Selecione um projeto da lista." : "Projeto invalido. Selecione um projeto da lista ou deixe o campo vazio." });
       return;
     }
-
-    const selectedProjectId = matchedProject.id;
     const manualRate = parsePositiveNumber(form.manualRate);
     if (form.measurementKind === "COM_PRODUCAO" && !manualRate) {
       setFeedback({ type: "error", message: "Taxa manual e obrigatoria." });
@@ -2584,8 +2584,8 @@ export function MeasurementPageView() {
       return;
     }
 
-    if (!selectedProjectId || !form.teamId || !form.executionDate) {
-      setFeedback({ type: "error", message: "Projeto, Equipe e Data de execucao sao obrigatorios." });
+    if (!form.teamId || !form.executionDate) {
+      setFeedback({ type: "error", message: requiresProject ? "Projeto, Equipe e Data de execucao sao obrigatorios." : "Equipe e Data de execucao sao obrigatorios." });
       return;
     }
 
@@ -2604,7 +2604,7 @@ export function MeasurementPageView() {
         body: JSON.stringify({
           id: form.id,
           programmingId: form.id ? undefined : form.programmingId,
-          projectId: selectedProjectId || undefined,
+          projectId: matchedProject?.id || undefined,
           teamId: form.teamId || undefined,
           executionDate: form.executionDate || undefined,
           measurementDate: measurementDateToSave,
@@ -2863,7 +2863,7 @@ export function MeasurementPageView() {
         <h2 className={styles.cardTitle}>Cadastro de Ordem de Medicao</h2>
         <form id="measurement-order-form" className={styles.formGrid} onSubmit={submitOrder}>
           <label className={styles.field}>
-            <span>Projeto <span className="requiredMark">*</span></span>
+            <span>Projeto {form.measurementKind === "COM_PRODUCAO" ? <span className="requiredMark">*</span> : null}</span>
             <input
               value={formProjectSearch}
               onChange={(event) => {
@@ -3212,7 +3212,7 @@ export function MeasurementPageView() {
               {orders.length ? orders.map((order) => (
                 <tr key={order.id} className={order.status === "CANCELADA" ? styles.inactiveRow : ""}>
                   <td>{order.orderNumber}</td>
-                  <td>{order.projectCode}</td>
+                  <td>{order.projectCode || "Sem projeto"}</td>
                   <td>{formatDate(order.executionDate)}</td>
                   <td>{order.teamName}</td>
                   <td>{order.hasTeamComposition ? "Sim" : "Nao"}</td>
@@ -3379,7 +3379,7 @@ export function MeasurementPageView() {
 
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
-                <div><strong>Projeto:</strong> {projectMap.get(detailOrder.projectId)?.code ?? "-"}</div>
+                <div><strong>Projeto:</strong> {detailOrder.projectId ? (projectMap.get(detailOrder.projectId)?.code ?? "-") : "Sem projeto"}</div>
                 <div><strong>Equipe:</strong> {detailOrder.teamName || teamMap.get(detailOrder.teamId)?.name || "-"}</div>
                 <div><strong>Composicao equipe:</strong> {detailOrder.hasTeamComposition ? "Sim" : "Nao"}</div>
                 <div><strong>Encarregado:</strong> {detailOrder.foremanName || teamMap.get(detailOrder.teamId)?.foremanName || "-"}</div>

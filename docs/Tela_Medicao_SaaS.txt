@@ -49,10 +49,11 @@ Arquitetura
 Cadastro
 --------
 - Origem obrigatoria:
-  - `Projeto + Equipe + Data de execucao`
+  - `Com producao`: `Projeto + Equipe + Data de execucao`
+  - `Sem producao`: `Equipe + Data de execucao`; `Projeto` e opcional.
   - A tela aceita pre-preenchimento do cabecalho via `/medicao?projectId=<id>&teamId=<id>&executionDate=<YYYY-MM-DD>&compositionId=<id>`, aplicado somente quando projeto e equipe existem nos metadados autenticados do tenant.
 - Campos principais:
-  - Projeto (padrao `input + datalist`, igual ao filtro)
+  - Projeto (padrao `input + datalist`, igual ao filtro; obrigatorio somente em `Com producao`)
   - Equipe
   - Data execucao
   - Tipo da medicao (`Com producao` ou `Sem producao`)
@@ -69,8 +70,8 @@ Cadastro
   - Observacao
 - Regras:
   - Toda ordem exige `Tipo da medicao`.
-  - `Com producao` exige ao menos uma atividade valida na ordem.
-  - `Sem producao` exige `Motivo sem producao` e salva a ordem sem itens.
+  - `Com producao` exige Projeto e ao menos uma atividade valida na ordem.
+  - `Sem producao` exige `Motivo sem producao` e salva a ordem sem itens; pode ser salva sem Projeto.
   - `Motivo sem producao` nao pode ser informado em ordens `Com producao` (regra reforcada na API).
   - `Sem producao` nao permite atividades na ordem e registra total `0`.
   - O motivo de `Sem producao` vem do catalogo `measurement_no_production_reasons` segregado por tenant.
@@ -78,6 +79,7 @@ Cadastro
   - Quando existir match por `Projeto + Equipe + Data de execucao`, a ordem vincula automaticamente a melhor programacao candidata.
   - O resultado do match de Programacao e exibido somente apos salvar a medicao (na lista e em detalhes).
   - Nao e permitido cadastrar mais de uma ordem para o mesmo `Projeto + Equipe + Data de execucao` dentro do mesmo tenant, mesmo quando o vinculo de `Programacao` for diferente ou nulo.
+  - Para `Sem producao` sem Projeto, nao e permitido cadastrar mais de uma ordem para a mesma `Equipe + Data de execucao` dentro do mesmo tenant.
   - A inclusao de atividades e independente da lista de atividades da Programacao.
   - A mesma atividade nao pode se repetir dentro da mesma ordem (`tenant + Projeto + Equipe + Data de execucao` no contexto operacional da medicao).
   - A regra de nao repetir atividade vale no frontend, na API, na RPC `save_project_measurement_order` e no indice unico parcial de `project_measurement_order_items`, cobrindo tambem o cadastro em massa.
@@ -219,6 +221,41 @@ Atalhos
 - Modelo cadastro em massa:
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
+
+Atualizacao 2026-08-20 - Projeto opcional para Sem producao
+------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/app/api/medicao/route.ts`
+  - `src/app/api/medicao/export/route.ts`
+  - `src/server/modules/medicao/types.ts`
+  - `src/server/modules/medicao/normalizers.ts`
+  - `src/server/modules/medicao/queries.ts`
+  - `src/server/modules/medicao/list.ts`
+  - `src/server/modules/medicao/programmingMatch.ts`
+  - `supabase/migrations/382_allow_no_project_no_production_measurement.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `submitOrder`, `startEdit` e renderizacao do campo `Projeto`
+  - `saveMeasurementOrder`
+  - `buildSummaryCsv`, `buildDetailsCsv`, `buildScoreCsv`
+  - `buildMeasurementOrderDetail`, `fetchMeasurementOrderDetail`, `fetchMeasurementOrderDetailsForExport`
+  - `listMeasurementOrdersPage`
+  - `loadProgrammingMatchMap`, `resolveProjectWorkCompletionAtWindowEnd`
+  - RPC `save_project_measurement_order`
+  - Trigger function `enforce_project_measurement_order_context_unique`
+- Comportamento antes/depois:
+  - Antes: `Projeto` era obrigatorio para qualquer ordem, inclusive `Sem producao`, no formulario, na API, na RPC e no schema (`project_id not null`).
+  - Depois: `Projeto` permanece obrigatorio para `Com producao`, mas fica opcional para `Sem producao`.
+  - Depois: quando `Sem producao` e salva sem Projeto, a listagem, detalhes e CSVs exibem `Sem projeto`, nao uma celula vazia.
+  - Depois: ordens `Sem producao` sem Projeto nao tentam resolver Programacao, Centro de Servicos nem Composicao de Equipe.
+  - Depois: a duplicidade continua bloqueada por `Projeto + Equipe + Data` quando existe Projeto; sem Projeto, o bloqueio passa a ser `Equipe + Data` para `SEM_PRODUCAO`.
+- Multi-tenant:
+  - `tenant_id` continua derivado da sessao no Route Handler e repassado para a RPC.
+  - RLS/policies da tabela nao foram relaxadas.
+  - A RPC `SECURITY DEFINER` permanece executavel somente por `service_role`, conforme hardening da migration 375.
 
 Atualizacao 2026-08-12 (2) - Validacao de equipe ATIVA saiu do estado dormente
 --------------------------------------------------------------------------------

@@ -139,7 +139,7 @@ export async function listMeasurementOrdersPage(params: {
     const simpleOrders = pagedData ?? [];
     const simpleTotal = pagedCount ?? 0;
 
-    const simpleProjectIds = Array.from(new Set(simpleOrders.map((item) => item.project_id)));
+    const simpleProjectIds = Array.from(new Set(simpleOrders.map((item) => item.project_id).filter((item): item is string => Boolean(item))));
     const simpleUserIds = Array.from(
       new Set(
         simpleOrders
@@ -211,7 +211,7 @@ export async function listMeasurementOrdersPage(params: {
         status: item.status,
         notes: normalizeText(item.notes),
         projectCode: normalizeText(item.project_code_snapshot),
-        projectServiceCenter: simpleProjectServiceCenterMap.get(item.project_id) ?? "Sem base",
+        projectServiceCenter: item.project_id ? (simpleProjectServiceCenterMap.get(item.project_id) ?? "Sem base") : "Sem projeto",
         teamName: normalizeText(item.team_name_snapshot),
         foremanName: normalizeText(item.foreman_name_snapshot),
         cancellationReason: normalizeText(item.cancellation_reason),
@@ -220,7 +220,7 @@ export async function listMeasurementOrdersPage(params: {
         updatedAt: item.updated_at,
         createdByName: resolveAppUserName(simpleUserMap.get(item.created_by ?? "")),
         updatedByName: resolveAppUserName(simpleUserMap.get(item.updated_by ?? "")),
-        projectIsTest: Boolean(simpleProjectIsTestMap.get(item.project_id)),
+        projectIsTest: item.project_id ? Boolean(simpleProjectIsTestMap.get(item.project_id)) : false,
         hasTeamComposition: simpleTeamCompositionContexts.data.has(
           buildProgrammingMatchKey(item.project_id, item.team_id, item.execution_date),
         ),
