@@ -1148,3 +1148,18 @@ Observacao
 - Registra `material_history` com diff de Categoria/Subcategoria por nome para cada material alterado.
 - Republica `save_material_record` para exigir e validar categoria/subcategoria ativa no tenant.
 - A tela `/materiais` passa a cadastrar, editar, filtrar, listar e exportar Categoria/Subcategoria consumindo os catalogos.
+
+379_create_team_operations_export_rpc.sql
+- Cria a RPC `list_team_operations_export` para exportar Operacoes de Equipe por stream, aplicando filtros no banco e devolvendo as colunas do CSV prontas.
+- Adiciona indices de suporte em `stock_transfer_team_operations(tenant_id, transfer_id)` e nos vinculos de estorno por item.
+- A RPC e `SECURITY DEFINER`, fixa `search_path = public` e fica executavel apenas por `service_role`.
+
+380_realign_team_operations_export_default_limit.sql
+- Republica `list_team_operations_export` para realinhar o default de `p_limit` para 1000, o teto efetivo de linhas por resposta do PostgREST neste projeto.
+- Sem efeito no caminho da aplicacao, que passa `p_limit` explicitamente; corrige a divergencia entre banco vivo e migrations apos aplicacao manual da 379.
+- Reaplica revoke/grant explicitos para manter EXECUTE apenas em `service_role`.
+
+381_team_operations_category_filters_export.sql
+- Republica `list_team_operations_export` com `p_category_id` e `p_subcategory_id`, consumindo `materials.category_id/subcategory_id` criados na 378.
+- Inclui as colunas `categoria` e `subcategoria` no CSV de Operacoes de Equipe, logo apos `descricao`.
+- Remove a assinatura anterior da RPC para evitar sobrecarga ambigua e reaplica EXECUTE apenas para `service_role`.

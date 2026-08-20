@@ -6,6 +6,8 @@ export type OperationalMaterialRow = {
   id: string;
   codigo: string;
   descricao: string;
+  category_id?: string | null;
+  subcategory_id?: string | null;
   tipo: string;
   is_transformer?: boolean | null;
   serial_tracking_type?: SerialTrackingType | string | null;
@@ -16,6 +18,8 @@ export type OperationalMaterialOption = {
   id: string;
   materialCode: string;
   description: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
   materialType: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
@@ -74,7 +78,7 @@ export async function fetchActiveOperationalMaterials(supabase: SupabaseClient, 
   const fullResult = await fetchMaterialPages(
     supabase,
     tenantId,
-    "id, codigo, descricao, tipo, is_transformer, serial_tracking_type, allow_pending_serial_identification",
+    "id, codigo, descricao, category_id, subcategory_id, tipo, is_transformer, serial_tracking_type, allow_pending_serial_identification",
   );
 
   if (!fullResult.error) {
@@ -88,7 +92,7 @@ export async function fetchActiveOperationalMaterials(supabase: SupabaseClient, 
   const serialTrackingResult = await fetchMaterialPages(
     supabase,
     tenantId,
-    "id, codigo, descricao, tipo, is_transformer, serial_tracking_type",
+    "id, codigo, descricao, category_id, subcategory_id, tipo, is_transformer, serial_tracking_type",
   );
 
   if (!serialTrackingResult.error) {
@@ -102,7 +106,7 @@ export async function fetchActiveOperationalMaterials(supabase: SupabaseClient, 
   return fetchMaterialPages(
     supabase,
     tenantId,
-    "id, codigo, descricao, tipo, is_transformer",
+    "id, codigo, descricao, category_id, subcategory_id, tipo, is_transformer",
   );
 }
 
@@ -115,6 +119,8 @@ export function toOperationalMaterialOption(row: OperationalMaterialRow): Operat
     id: row.id,
     materialCode: row.codigo,
     description: row.descricao,
+    categoryId: row.category_id ?? null,
+    subcategoryId: row.subcategory_id ?? null,
     materialType: String(row.tipo ?? "").trim().toUpperCase(),
     isTransformer: isSerialTrackedMaterial(serialTrackingType),
     serialTrackingType,

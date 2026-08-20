@@ -24,6 +24,8 @@ const EXPORT_CSV_FIELDS = [
   "projeto",
   "material_codigo",
   "descricao",
+  "categoria",
+  "subcategoria",
   "quantidade",
   "serial",
   "lp",
@@ -43,6 +45,8 @@ export type TeamOperationExportFilters = {
   projectIdFilter: string;
   entryTypeFilter: "SUCATA" | "NOVO" | null;
   materialCodeFilter: string;
+  categoryIdFilter: string;
+  subcategoryIdFilter: string;
   reversalStatus: "TODOS" | "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
 };
 
@@ -73,6 +77,8 @@ async function loadExportPage(
     p_operation_kind: filters.operationKindFilter,
     p_project_id: filters.projectIdFilter || null,
     p_material_code: filters.materialCodeFilter || null,
+    p_category_id: filters.categoryIdFilter || null,
+    p_subcategory_id: filters.subcategoryIdFilter || null,
     p_entry_type: filters.entryTypeFilter,
     p_reversal_status: filters.reversalStatus,
     p_limit: EXPORT_RPC_PAGE_SIZE,

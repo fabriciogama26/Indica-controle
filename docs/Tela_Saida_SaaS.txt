@@ -108,6 +108,8 @@ Filtros, auto-complete e listagem
   - `Equipe`
   - `Projeto`
   - `Material (codigo)`
+  - `Categoria`
+  - `Subcategoria` (dependente da categoria)
   - `Tipo`
   - `Status de estorno`
 - Lista:
@@ -158,6 +160,8 @@ Boas praticas
 - Registrar erros da tela com `useErrorLogger("operacoes_equipe")`.
 - Respeitar cooldown de `10` segundos na exportacao.
 - A exportacao CSV da lista chama `GET /api/team-stock-operations?mode=export`, sem percorrer paginas no frontend.
+- A exportacao CSV da lista inclui `categoria` e `subcategoria` apos `descricao`, consumindo
+  `materials.category_id/subcategory_id` e os catalogos `material_categories/material_subcategories`.
 - No submit manual, consolidar todos os materiais com saldo zerado ou insuficiente antes de bloquear a operacao, informando codigo, saldo atual, quantidade solicitada e falta.
 - Preservar os detalhes de `INSUFFICIENT_STOCK` retornados pela RPC quando o saldo muda entre a pre-validacao da tela e o save transacional.
 
@@ -1053,3 +1057,20 @@ Atualizacao 2026-08-19d (Migration 380: realinhar o default de p_limit)
   ambiente — inclusive manualmente pelo Dashboard, que nao aparece em `db:migration-list`. Na duvida,
   migration nova; ela e barata e sempre converge, enquanto a edicao no lugar so e segura no caso em
   que a migration comprovadamente nunca rodou.
+
+Atualizacao 2026-08-20 (Categoria/Subcategoria em filtros e CSV)
+-----------------------------------------------------------------
+- Filtros novos:
+  - `Categoria`: select carregado de `material_categories` ativo no tenant.
+  - `Subcategoria`: select dependente da categoria, carregado de `material_subcategories`.
+- Listagem:
+  - `GET /api/team-stock-operations` aceita `categoryId` e `subcategoryId`.
+  - A API pre-resolve os materiais elegiveis em `materials` usando `tenant_id`, `category_id`,
+    `subcategory_id` e `codigo` quando combinados, e aplica o recorte nos itens de transferencia.
+  - O modal de detalhes exibe Categoria/Subcategoria do material.
+- Exportacao:
+  - Migration `381_team_operations_category_filters_export.sql` republica
+    `list_team_operations_export` com `p_category_id` e `p_subcategory_id`.
+  - O CSV passa a incluir as colunas `categoria` e `subcategoria` apos `descricao`.
+  - A RPC continua `SECURITY DEFINER`, `search_path = public`, com EXECUTE somente para
+    `service_role`; o `tenant_id` continua vindo da sessao resolvida na API, nunca do cliente.

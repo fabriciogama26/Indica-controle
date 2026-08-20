@@ -55,6 +55,7 @@ import styles from "../entrada/StockTransfersPageView.module.css";
 import localStyles from "./TeamStockOperationsPageView.module.css";
 import { OperationDetailModal } from "./components/OperationDetailModal";
 import { OperationHistoryModal } from "./components/OperationHistoryModal";
+import { TeamOperationFilters } from "./components/TeamOperationFilters";
 import type { DayForeman } from "@/server/modules/composicao-equipe";
 
 const LIST_PAGE_SIZE = 20;
@@ -112,6 +113,8 @@ function buildHistoryListParams(targetPage: number, pageSize: number, activeFilt
   if (activeFilters.teamId) params.set("teamId", activeFilters.teamId);
   if (activeFilters.projectId) params.set("projectId", activeFilters.projectId);
   if (activeFilters.materialCode) params.set("materialCode", activeFilters.materialCode);
+  if (activeFilters.categoryId) params.set("categoryId", activeFilters.categoryId);
+  if (activeFilters.subcategoryId) params.set("subcategoryId", activeFilters.subcategoryId);
   if (activeFilters.entryType !== "TODOS") params.set("entryType", activeFilters.entryType);
   if (activeFilters.reversalStatus !== "TODOS") params.set("reversalStatus", activeFilters.reversalStatus);
   return params;
@@ -159,6 +162,8 @@ function isPendingItemVisibleWithFilters(
   if (filters.teamId && context.teamId !== filters.teamId) return false;
   if (filters.projectId && context.projectId !== filters.projectId) return false;
   if (filters.materialCode && !item.materialCode.toUpperCase().includes(filters.materialCode.trim().toUpperCase())) return false;
+  if (filters.categoryId && item.categoryId !== filters.categoryId) return false;
+  if (filters.subcategoryId && item.subcategoryId !== filters.subcategoryId) return false;
   if (filters.entryType !== "TODOS" && item.entryType !== filters.entryType) return false;
   if (filters.reversalStatus === "ESTORNADAS" || filters.reversalStatus === "ESTORNOS") return false;
   return true;
@@ -184,6 +189,7 @@ export function TeamStockOperationsPageView() {
   const [dayForemen, setDayForemen] = useState<DayForeman[]>([]);
   const [projects, setProjects] = useState<MetaResponse["projects"]>([]);
   const [materials, setMaterials] = useState<MetaResponse["materials"]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<MetaResponse["categoryOptions"]>([]);
   const [serialOptions, setSerialOptions] = useState<SerialOption[]>([]);
   const [reversalReasons, setReversalReasons] = useState<MetaResponse["reversalReasons"]>([]);
   const [fieldReturnOriginName, setFieldReturnOriginName] = useState("CAMPO / INSTALADO");
@@ -242,6 +248,10 @@ export function TeamStockOperationsPageView() {
   const selectedReversalReason = useMemo(
     () => (reversalReasons ?? []).find((reason) => reason.code === reversalReasonCode) ?? null,
     [reversalReasonCode, reversalReasons],
+  );
+  const filterSubcategoryOptions = useMemo(
+    () => (categoryOptions ?? []).find((category) => category.id === filterDraft.categoryId)?.subcategories ?? [],
+    [categoryOptions, filterDraft.categoryId],
   );
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / LIST_PAGE_SIZE));
@@ -402,6 +412,7 @@ export function TeamStockOperationsPageView() {
     setTeams((data.teams ?? []).filter((team) => team.isActive));
     setProjects(data.projects ?? []);
     setMaterials(data.materials ?? []);
+    setCategoryOptions(data.categoryOptions ?? []);
     setReversalReasons(nextReversalReasons);
     setFieldReturnOriginName(String(data.fieldReturnOriginName ?? "CAMPO / INSTALADO"));
     const allowRequisition = data.canDirectRequisition !== false;
@@ -600,6 +611,14 @@ export function TeamStockOperationsPageView() {
     setFilterDraft((current) => ({
       ...current,
       [key]: value,
+    }));
+  }
+
+  function updateFilterCategory(categoryId: string) {
+    setFilterDraft((current) => ({
+      ...current,
+      categoryId,
+      subcategoryId: "",
     }));
   }
 
@@ -856,6 +875,8 @@ export function TeamStockOperationsPageView() {
           materialId: selectedMaterial.id,
           materialCode: selectedMaterial.materialCode,
           description: selectedMaterial.description,
+          categoryId: selectedMaterial.categoryId,
+          subcategoryId: selectedMaterial.subcategoryId,
           quantity,
           serialNumber: normalizedSerial,
           lotCode: normalizedLot,
@@ -2189,118 +2210,22 @@ export function TeamStockOperationsPageView() {
         </form>
       </article>
 
-      <article className={styles.card}>
-        <h3 className={styles.cardTitle}>Filtros</h3>
-
-        <form className={styles.filterGrid} onSubmit={handleApplyFilters}>
-          <label className={styles.field}>
-            <span>Data inicial</span>
-            <input
-              type="date"
-              value={filterDraft.startDate}
-              onChange={(event) => updateFilterDraft("startDate", event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Data final</span>
-            <input
-              type="date"
-              value={filterDraft.endDate}
-              onChange={(event) => updateFilterDraft("endDate", event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Operacao</span>
-            <select
-              value={filterDraft.operationKind}
-              onChange={(event) => updateFilterDraft("operationKind", event.target.value as FilterState["operationKind"])}
-            >
-              <option value="TODOS">Todos</option>
-              <option value="REQUISITION">Requisicao</option>
-              <option value="RETURN">Devolucao</option>
-              <option value="FIELD_RETURN">Retorno de campo</option>
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Equipe</span>
-            <select
-              value={filterDraft.teamId}
-              onChange={(event) => updateFilterDraft("teamId", event.target.value)}
-            >
-              <option value="">Todas</option>
-              {activeTeams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Projeto</span>
-            <input
-              type="text"
-              value={filterProjectSearch}
-              onChange={(event) => {
-                const value = event.target.value;
-                setFilterProjectSearch(value);
-                if (!value.trim()) {
-                  updateFilterDraft("projectId", "");
-                }
-              }}
-              list="saida-projeto-filtro-list"
-              placeholder="Digite o codigo do projeto"
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Material (codigo)</span>
-            <input
-              type="text"
-              value={filterDraft.materialCode}
-              onChange={(event) => updateFilterDraft("materialCode", event.target.value)}
-              placeholder="Filtrar por material"
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Tipo</span>
-            <select
-              value={filterDraft.entryType}
-              onChange={(event) => updateFilterDraft("entryType", event.target.value as FilterState["entryType"])}
-            >
-              <option value="TODOS">Todos</option>
-              <option value="NOVO">NOVO</option>
-              <option value="SUCATA">SUCATA</option>
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Status de estorno</span>
-            <select
-              value={filterDraft.reversalStatus}
-              onChange={(event) => updateFilterDraft("reversalStatus", event.target.value as FilterState["reversalStatus"])}
-            >
-              <option value="TODOS">Todos</option>
-              <option value="ESTORNADAS">Estornadas</option>
-              <option value="NAO_ESTORNADAS">Nao estornadas</option>
-              <option value="ESTORNOS">Somente estornos</option>
-            </select>
-          </label>
-
-          <div className={styles.actions}>
-            <button type="submit" className={styles.secondaryButton} disabled={isLoadingHistory}>
-              Aplicar
-            </button>
-            <button type="button" className={styles.ghostButton} onClick={handleClearFilters} disabled={isLoadingHistory}>
-              Limpar
-            </button>
-          </div>
-        </form>
-      </article>
+      <TeamOperationFilters
+        filterDraft={filterDraft}
+        activeTeams={activeTeams}
+        categoryOptions={categoryOptions ?? []}
+        filterSubcategoryOptions={filterSubcategoryOptions}
+        filterProjectSearch={filterProjectSearch}
+        isLoadingHistory={isLoadingHistory}
+        onSubmit={handleApplyFilters}
+        onClear={handleClearFilters}
+        onUpdateFilter={updateFilterDraft}
+        onUpdateCategory={updateFilterCategory}
+        onProjectSearchChange={(value) => {
+          setFilterProjectSearch(value);
+          if (!value.trim()) updateFilterDraft("projectId", "");
+        }}
+      />
 
       {feedback ? (
         <div className={feedback.type === "error" ? styles.errorFeedback : styles.successFeedback}>
