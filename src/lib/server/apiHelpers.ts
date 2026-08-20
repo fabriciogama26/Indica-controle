@@ -1,4 +1,15 @@
+import type { PostgrestError } from "@supabase/supabase-js";
+
 type HistoryChange = { from: string | null; to: string | null };
+
+/**
+ * Teto de linhas que o PostgREST deste projeto entrega por resposta (`db-max-rows`).
+ *
+ * O corte NAO e sinalizado: a resposta volta 200 com menos linhas do que o SQL produziu. Por isso
+ * `.limit(n)` com n acima deste valor e sempre uma armadilha — promete n, entrega 1000, e o codigo
+ * que le o resultado nao tem como saber. Ler uma tabela inteira exige `.range()` em laco.
+ */
+export const SUPABASE_RESPONSE_ROW_CAP = 1000;
 
 export function parsePositiveInteger(value: string | null, fallback: number): number {
   const parsed = Number(value ?? "");
@@ -22,6 +33,44 @@ export function parsePagination(params: URLSearchParams, options: ParsePaginatio
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
   return { page, pageSize, from, to };
+}
+
+/**
+ * Le TODAS as linhas de uma consulta, paginando por `.range()` em blocos de
+ * `SUPABASE_RESPONSE_ROW_CAP`.
+ *
+ * Duas regras que parecem detalhe e nao sao:
+ *
+ * 1. A parada e pagina VAZIA, nunca "pagina menor que a pedida". Se o teto do servidor for menor
+ *    que o bloco pedido, a primeira pagina ja volta curta e a segunda condicao daria o resultado
+ *    como terminado — truncando em silencio, que e exatamente o bug que este helper existe para
+ *    impedir. Custa uma chamada extra no fim.
+ * 2. O avanco e pelo numero de linhas REALMENTE recebidas, nao pelo tamanho do bloco. Avancar pelo
+ *    bloco pularia linhas sempre que o servidor devolvesse menos do que o pedido.
+ *
+ * `loadPage` deve aplicar um `.order()` estavel; sem ordem definida o Postgres nao garante a mesma
+ * sequencia entre chamadas e a paginacao por offset pode repetir ou perder linhas.
+ */
+export async function loadAllRows<T>(
+  loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
+): Promise<{ data: T[] | null; error: PostgrestError | null }> {
+  const rows: T[] = [];
+  let from = 0;
+
+  for (;;) {
+    const { data, error } = await loadPage(from, from + SUPABASE_RESPONSE_ROW_CAP - 1);
+    if (error) {
+      return { data: null, error };
+    }
+
+    const page = data ?? [];
+    if (!page.length) {
+      return { data: rows, error: null };
+    }
+
+    rows.push(...page);
+    from += page.length;
+  }
 }
 
 export function normalizeText(value: unknown): string {

@@ -837,3 +837,45 @@ Atualizacao 2026-08 - Filtro por descricao de material
   - `src/app/api/stock-transfers/route.ts`
   - `docs/Tela_Entrada_SaaS.txt`
   - `TASKS.md`
+
+Atualizacao 2026-08-20 (Correcao: classificacao de estorno truncava em 1.000 linhas)
+--------------------------------------------------------------------------------------
+- Problema:
+  - `preloadTransferReversalSets` e `preloadTeamOpTransferIds` liam as tabelas de estorno e de
+    operacoes de equipe com `.limit(10000)` numa unica consulta. O PostgREST deste projeto entrega
+    no maximo 1.000 linhas por resposta (`db-max-rows`) e NAO sinaliza o corte — devolve 200 com
+    menos linhas do que o SQL produziu.
+  - Os tres Sets montados a partir dessas leituras classificam TODA linha da listagem. Truncados,
+    o efeito nao e "faltam linhas na tela": e movimentacao ESTORNADA aparecendo como ativa, e
+    operacao de equipe aparecendo como movimentacao comum. Dado errado, nao dado faltante — pior
+    de detectar, porque a tela parece coerente.
+  - O corte comecava a valer a partir da milesima linha de `stock_transfer_reversals`,
+    `stock_transfer_item_reversals` ou `stock_transfer_team_operations` do tenant.
+- Correcao:
+  - Novo helper compartilhado `loadAllRows` em `src/lib/server/apiHelpers.ts`, com a constante
+    `SUPABASE_RESPONSE_ROW_CAP = 1000`. Ele pagina por `.range()`, para em pagina VAZIA (nunca em
+    "pagina menor que a pedida") e avanca o offset pelo numero de linhas REALMENTE recebidas.
+    As duas regras existem porque a alternativa obvia falha em silencio quando o teto do servidor
+    e menor que o bloco pedido — foi exatamente assim que a exportacao de `/saida` truncou.
+  - As tres leituras passaram a usar `loadAllRows` com `.order()` estavel (`id` nas tabelas de
+    estorno, `transfer_id` em `stock_transfer_team_operations`). Sem ordem definida o Postgres nao
+    garante a mesma sequencia entre chamadas e a paginacao por offset repete ou perde linhas.
+- O que NAO virou leitura completa, de proposito:
+  - `preloadTransferIdsForMaterial` continua com teto de uma pagina. O retorno dela ja e cortado em
+    200 ids logo abaixo (`.slice(0, 200)`) — e um filtro de busca best-effort, nao fonte de verdade.
+    O que mudou foi so a honestidade do numero: o teto declarado era 5 mil, valor que o PostgREST
+    nunca entregou. Transformar isso em busca exaustiva seria mudanca de comportamento de produto,
+    nao correcao de bug, e fica registrada aqui como decisao consciente.
+- Como validar:
+  - Abrir `/entrada` num tenant com mais de 1.000 estornos e conferir que movimentacoes estornadas
+    aparecem marcadas como tal. Antes da correcao, as que estivessem alem da milesima linha da
+    tabela de estornos apareciam como ativas.
+  - Conferir que operacoes de equipe continuam sendo excluidas/identificadas corretamente na
+    listagem de Entrada.
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+- Impacto multi-tenant: nenhum. Todas as consultas continuam filtrando `tenant_id` da sessao; o que
+  mudou foi so quantas linhas sao lidas.
+- Contexto: este e o quarto caso do mesmo teto de 1.000 no repositorio (Dashboard Estoque em
+  `loadTransfers`, listagem de `/saida` no commit 98783c9, exportacao de `/saida`, e agora a
+  classificacao de `/entrada`). Restam 18 pontos com `.limit()` acima de 1.000 sem `.range()`,
+  mapeados em `TASKS.md`.

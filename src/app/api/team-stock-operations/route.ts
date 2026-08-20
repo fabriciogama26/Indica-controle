@@ -751,63 +751,23 @@ async function loadTeamOperationList(request: NextRequest) {
   }
 
   const hasMaterialFilters = Boolean(materialCodeFilter || categoryIdFilter || subcategoryIdFilter);
-  const [teamOperationsResult, matchingMaterialsResult] = await Promise.all([
-    loadTeamOperationsWithHeaders(supabase, appUser.tenant_id, {
-      teamIdFilter,
-      operationKindFilter,
-      startDate,
-      endDate,
-      projectIdFilter,
-      entryTypeFilter,
-    }),
-    hasMaterialFilters
-      ? (() => {
-          let query = supabase
-            .from("materials")
-            .select("id")
-            .eq("tenant_id", appUser.tenant_id);
-
-          if (materialCodeFilter) {
-            query = query.ilike("codigo", `%${materialCodeFilter}%`);
-          }
-          if (categoryIdFilter) {
-            query = query.eq("category_id", categoryIdFilter);
-          }
-          if (subcategoryIdFilter) {
-            query = query.eq("subcategory_id", subcategoryIdFilter);
-          }
-
-          return query.returns<{ id: string }[]>();
-        })()
-      : Promise.resolve({ data: null as { id: string }[] | null, error: null }),
-  ]);
+  const teamOperationsResult = await loadTeamOperationsWithHeaders(supabase, appUser.tenant_id, {
+    teamIdFilter,
+    operationKindFilter,
+    startDate,
+    endDate,
+    projectIdFilter,
+    entryTypeFilter,
+  });
 
   if (teamOperationsResult.error) {
     logTeamOperationLoadError("team-operations", teamOperationsResult.error, { tenantId: appUser.tenant_id, teamIdFilter });
     return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
   }
 
-  if (matchingMaterialsResult.error) {
-    logTeamOperationLoadError("team-operations-material-filter", matchingMaterialsResult.error, {
-      tenantId: appUser.tenant_id,
-      materialCodeFilter,
-      categoryIdFilter,
-      subcategoryIdFilter,
-    });
-    return NextResponse.json({ message: "Falha ao filtrar materiais das operacoes de equipe." }, { status: 500 });
-  }
-
   const teamOperationRows = teamOperationsResult.data?.operations ?? [];
   const transferHeaders = teamOperationsResult.data?.headers ?? [];
   if (!teamOperationRows.length || !transferHeaders.length) {
-    return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
-  }
-
-  const materialIdFilter: string[] | null = hasMaterialFilters
-    ? (matchingMaterialsResult.data ?? []).map((r) => r.id)
-    : null;
-
-  if (materialIdFilter !== null && materialIdFilter.length === 0) {
     return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
@@ -818,10 +778,13 @@ async function loadTeamOperationList(request: NextRequest) {
     (chunk) => {
       let q = supabase
         .from("stock_transfer_items")
-        .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+        .select(`id, stock_transfer_id, material_id, quantity, serial_number, lot_code${hasMaterialFilters ? ", materials!inner(id)" : ""}`)
         .eq("tenant_id", appUser.tenant_id)
         .in("stock_transfer_id", chunk);
-      if (materialIdFilter) q = q.in("material_id", materialIdFilter);
+      if (hasMaterialFilters) q = q.eq("materials.tenant_id", appUser.tenant_id);
+      if (materialCodeFilter) q = q.ilike("materials.codigo", `%${materialCodeFilter}%`);
+      if (categoryIdFilter) q = q.eq("materials.category_id", categoryIdFilter);
+      if (subcategoryIdFilter) q = q.eq("materials.subcategory_id", subcategoryIdFilter);
       return q.returns<TransferItemRow[]>();
     },
   );
