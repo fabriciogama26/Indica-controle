@@ -877,5 +877,5 @@ Atualizacao 2026-08-20 (Correcao: classificacao de estorno truncava em 1.000 lin
   mudou foi so quantas linhas sao lidas.
 - Contexto: este e o quarto caso do mesmo teto de 1.000 no repositorio (Dashboard Estoque em
   `loadTransfers`, listagem de `/saida` no commit 98783c9, exportacao de `/saida`, e agora a
-  classificacao de `/entrada`). Restam 18 pontos com `.limit()` acima de 1.000 sem `.range()`,
+  classificacao de `/entrada`). Restam 21 pontos com `.limit()` acima de 1.000 sem `.range()`,
   mapeados em `TASKS.md`.
