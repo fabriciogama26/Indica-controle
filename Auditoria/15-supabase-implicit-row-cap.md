@@ -854,3 +854,57 @@ esperado:  2.987 / 2.987 /          2.987 /     5.791 /   5.791 /       5.791
 ```
 
 O primeiro estagio que divergir aponta a causa. Nao formular a setima hipotese por leitura.
+
+## SETIMA AUTOCORRECAO — a quinta hipotese estava CERTA, e eu a declarei morta
+
+Verificacao na tela, 2026-08-21, sem filtro:
+
+| Momento | Total exibido |
+|---|---|
+| antes das correcoes | 4.193 |
+| **apos remover `loadAllPages`** | **5.787** |
+| esperado pela medicao | 5.791 |
+
+**A correcao de `loadAllPages` era o defeito PRINCIPAL desta tela.** Recuperou ~1.594
+linhas, contra as 43 da correcao de `loadRowsInChunks`. A causa foi a que este documento
+descreveu: parada `length < PAGE_SIZE` sob embed `stock_transfers!inner`, onde pagina curta
+e o caso normal.
+
+### O erro, e por que ele e de tipo diferente dos seis anteriores
+
+Quando o primeiro teste apos a correcao devolveu 4.193 de novo, este documento concluiu que
+a hipotese tinha caido e registrou o defeito como ABERTO — inclusive no titulo do commit
+`01119fc` e no TXT da tela. O teste simplesmente nao estava exercitando o codigo corrigido.
+
+As seis autocorrecoes anteriores foram AFIRMAR SUCESSO SEM PROVA. Esta foi o inverso:
+**declarar fracasso de uma correcao correta, a partir de um teste cuja validade nao foi
+verificada**. O prejuizo e simetrico e igualmente caro: a primeira classe deixa passar
+defeito, a segunda faz descartar solucao que funcionava.
+
+Regra que faltava, e que fecha o par:
+
+**antes de concluir de um teste, verificar que o teste exercita o codigo em questao.**
+"O numero nao mudou" tem duas leituras — a correcao nao funciona, ou a correcao nao rodou.
+Sao indistinguiveis sem confirmar qual binario respondeu.
+
+### Correcao do registro
+
+- `docs/Tela_Saida_SaaS.txt`: secao "DEFEITO AINDA ABERTO" substituida pelo resultado real.
+- O commit `01119fc` tem titulo e corpo errados ("registrar que a perda da listagem continua
+  aberta"). Nao ha reescrita de historico: fica o registro aqui de que aquela conclusao foi
+  revertida pela verificacao na tela.
+
+### Residuo de 4 linhas
+
+5.791 esperado contra 5.787 exibido. A hipotese — e desta vez ela fica marcada como
+hipotese — e que o numero ESPERADO e que estava frouxo: a consulta de 5.791 nao filtra
+`tenant_id` nos dois lados do join, enquanto a rota filtra na operacao E na transferencia e
+usa `!inner`. `scripts/check-team-operations-residual-live.sql` (`npm run db:residual-live`)
+separa as populacoes e decide sem hipotese nova.
+
+### Placar final das duas correcoes nesta tela
+
+| Correcao | Linhas recuperadas |
+|---|---|
+| `loadRowsInChunks` (lote de 500 sem paginacao de resposta) | 43 |
+| `loadAllPages` (parada proibida sob join interno) | ~1.594 |
