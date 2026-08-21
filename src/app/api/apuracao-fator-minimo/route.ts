@@ -103,6 +103,8 @@ type MeasurementTeamTypeTargetRow = {
   daily_value: number | string | null;
 };
 
+type ServiceScope = "ALL" | "OBRAS" | "MANUTENCAO";
+
 type SupabasePageResult<T> = {
   data: T[] | null;
   error: { message?: string } | null;
@@ -150,6 +152,21 @@ function normalizeIsoDate(value: unknown) {
 function normalizeStatus(value: unknown) {
   const normalized = normalizeText(value).toUpperCase();
   return ["TODOS", "ABERTA", "FECHADA"].includes(normalized) ? normalized : "FECHADA";
+}
+
+function normalizeServiceScope(value: unknown): ServiceScope {
+  const token = normalizeText(value).toUpperCase();
+  if (token === "MANUTENCAO") return "MANUTENCAO";
+  if (token === "OBRAS") return "OBRAS";
+  return "ALL";
+}
+
+function isMaintenanceServiceType(value: unknown) {
+  const token = normalizeText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  return token.includes("EMERGENCIAL") || token.includes("MANUTENCAO");
 }
 
 function numberValue(value: unknown) {
@@ -316,6 +333,7 @@ async function fetchEligibleProjects(params: {
   tenantId: string;
   projectIds: string[];
   serviceTypeId: string | null;
+  serviceScope: ServiceScope;
 }) {
   const result = await fetchPagedSupabaseRows<ProjectRow>((from, to) => {
     let query = params.supabase
@@ -335,7 +353,12 @@ async function fetchEligibleProjects(params: {
 
   return {
     ...result,
-    data: result.data.filter((item) => !item.is_test && !item.is_withdrawn && !item.is_third_party),
+    data: result.data
+      .filter((item) => !item.is_test && !item.is_withdrawn && !item.is_third_party)
+      .filter((item) => {
+        if (params.serviceScope === "ALL") return true;
+        return isMaintenanceServiceType(item.service_type_text) === (params.serviceScope === "MANUTENCAO");
+      }),
   };
 }
 
@@ -585,6 +608,7 @@ async function buildAnalysis(context: AuthenticatedAppUserContext, request: Next
   const projectIds = normalizeUuidList(request.nextUrl.searchParams, "projectId");
   const teamIds = normalizeUuidList(request.nextUrl.searchParams, "teamId");
   const serviceTypeId = normalizeUuid(request.nextUrl.searchParams.get("serviceTypeId"));
+  const serviceScope = normalizeServiceScope(request.nextUrl.searchParams.get("serviceScope"));
   const activityIds = normalizeUuidList(request.nextUrl.searchParams, "activityId");
   const status = normalizeStatus(request.nextUrl.searchParams.get("status"));
   const detailTeamId = normalizeUuid(request.nextUrl.searchParams.get("detailTeamId"));
@@ -609,6 +633,7 @@ async function buildAnalysis(context: AuthenticatedAppUserContext, request: Next
     tenantId: context.appUser.tenant_id,
     projectIds,
     serviceTypeId,
+    serviceScope,
   });
   if (projectsResult.error) {
     return NextResponse.json({ message: "Falha ao carregar projetos elegiveis para apuracao." }, { status: 500 });
@@ -840,6 +865,7 @@ async function buildAnalysis(context: AuthenticatedAppUserContext, request: Next
       projectIds,
       teamIds,
       serviceTypeId,
+      serviceScope,
       activityIds,
       detailTeamId,
       detailDate,
