@@ -894,13 +894,44 @@ Sao indistinguiveis sem confirmar qual binario respondeu.
   aberta"). Nao ha reescrita de historico: fica o registro aqui de que aquela conclusao foi
   revertida pela verificacao na tela.
 
-### Residuo de 4 linhas
+### Residuo de 4 linhas — REAL, quantificado, causa nao identificada
 
-5.791 esperado contra 5.787 exibido. A hipotese — e desta vez ela fica marcada como
-hipotese — e que o numero ESPERADO e que estava frouxo: a consulta de 5.791 nao filtra
-`tenant_id` nos dois lados do join, enquanto a rota filtra na operacao E na transferencia e
-usa `!inner`. `scripts/check-team-operations-residual-live.sql` (`npm run db:residual-live`)
-separa as populacoes e decide sem hipotese nova.
+5.791 esperado contra 5.787 exibido, 0,07%.
+
+A hipotese registrada era que o ESPERADO estivesse frouxo, por nao filtrar `tenant_id` nos
+dois lados do join. `npm run db:residual-live` derrubou (oitava autocorrecao):
+
+| Medida | Valor |
+|---|---|
+| itens sem filtro de tenant | 5.791 |
+| itens com o join exato da rota | **5.791** |
+| operacoes sem transferencia | 0 |
+| itens de outro tenant | 0 |
+
+A semantica da rota da exatamente 5.791. **As 4 linhas somem na aplicacao.**
+
+Hipoteses seguintes, todas descartadas por leitura:
+- filtro em memoria: todos os cortes sao guardados por `if (filtro)`, e sem filtro
+  `filteredRows.length === allRows.length`;
+- guarda `if (!transfer || !teamOperation)`: `transferMap` e `teamOperationByTransferId`
+  saem do MESMO resultado embutido, no mesmo laco, entao nao divergem;
+- itens com `tenant_id` nulo, que o `<>` da consulta nao pegaria: `stock_transfer_items.tenant_id`
+  e `not null` (migration 128). Nona hipotese descartada.
+
+**Investigacao encerrada por decisao, nao por conclusao.** Nove hipoteses formuladas por
+leitura estatica nesta auditoria, com taxa de acerto ruim; continuar por esse metodo custa
+mais do que 0,07% de residuo justifica.
+
+Resolucao definida para quando alguem retomar, sem hipotese nova: instrumentar a rota
+registrando o tamanho de cada estagio do pipeline.
+
+```
+operations / headers / currentTransferIds / itemRows / allRows / filteredRows
+esperado:  2.987 / 2.987 /          2.987 /     5.791 /   5.791 /       5.791
+```
+
+`itemRows = 5.787` aponta a leitura de itens; `itemRows = 5.791` com `allRows = 5.787`
+aponta a guarda. Severidade baixa: 4 linhas em 5.791, sem impacto conhecido em soma ou saldo.
 
 ### Placar final das duas correcoes nesta tela
 

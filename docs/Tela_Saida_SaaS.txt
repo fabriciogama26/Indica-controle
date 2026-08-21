@@ -1121,9 +1121,12 @@ RESULTADO VERIFICADO NA TELA — 2026-08-21
   todos os itens correspondentes.
 
 RESIDUO DE 4 LINHAS — em apuracao, sem impacto conhecido
-- Esperado 5.791, exibido 5.787. A diferenca de 4 linhas (0,07%) provavelmente vem de a
-  medicao de 5.791 nao filtrar `tenant_id` nos dois lados do join, enquanto a rota filtra
-  na operacao E na transferencia e usa `!inner`. Ou seja, o esperado e que estava frouxo,
-  nao a tela.
-- `npm run db:residual-live` separa as populacoes e decide. Ate rodar, tratar como
-  divergencia conhecida e nao como defeito.
+- Esperado 5.791, exibido 5.787. `npm run db:residual-live` confirmou que a semantica
+  exata da rota (filtro de tenant nos dois lados, join interno) da 5.791: nao ha operacao
+  orfa nem item de outro tenant. As 4 linhas somem na APLICACAO.
+- Causa nao identificada. Descartadas por leitura: filtro em memoria (todos guardados por
+  `if (filtro)`), a guarda `if (!transfer || !teamOperation)` (os dois mapas saem do mesmo
+  resultado embutido) e item com `tenant_id` nulo (a coluna e `not null`).
+- Severidade baixa: 4 linhas em 5.791 (0,07%), sem impacto conhecido em soma ou saldo.
+- Para retomar, instrumentar o pipeline da rota e comparar cada estagio com o esperado
+  `2.987 / 2.987 / 2.987 / 5.791 / 5.791 / 5.791`. Nao formular nova hipotese por leitura.
