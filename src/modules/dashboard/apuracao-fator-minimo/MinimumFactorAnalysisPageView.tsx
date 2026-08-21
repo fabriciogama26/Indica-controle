@@ -26,6 +26,7 @@ type FilterState = {
   startDate: string;
   endDate: string;
   status: "TODOS" | "ABERTA" | "FECHADA";
+  serviceScope: "ALL" | "OBRAS" | "MANUTENCAO";
   projectIds: string[];
   teamIds: string[];
   serviceTypeId: string;
@@ -153,6 +154,7 @@ function buildQuery(filters: FilterState) {
   params.set("startDate", filters.startDate);
   params.set("endDate", filters.endDate);
   params.set("status", filters.status);
+  params.set("serviceScope", filters.serviceScope);
   for (const projectId of filters.projectIds) params.append("projectId", projectId);
   for (const teamId of filters.teamIds) params.append("teamId", teamId);
   if (filters.serviceTypeId) params.set("serviceTypeId", filters.serviceTypeId);
@@ -208,6 +210,7 @@ export function MinimumFactorAnalysisPageView() {
   const [filters, setFilters] = useState<FilterState>({
     ...defaultRange,
     status: "FECHADA",
+    serviceScope: "ALL",
     projectIds: [],
     teamIds: [],
     serviceTypeId: "",
@@ -336,6 +339,7 @@ export function MinimumFactorAnalysisPageView() {
     const cleared: FilterState = {
       ...defaultRange,
       status: "FECHADA",
+      serviceScope: "ALL",
       projectIds: [],
       teamIds: [],
       serviceTypeId: "",
@@ -477,6 +481,14 @@ export function MinimumFactorAnalysisPageView() {
               <option value="FECHADA">Fechada</option>
               <option value="ABERTA">Aberta</option>
               <option value="TODOS">Todos ativos</option>
+            </select>
+          </label>
+          <label className={styles.field}>
+            <span>Tipo</span>
+            <select value={filters.serviceScope} onChange={(event) => updateFilter("serviceScope", event.target.value as FilterState["serviceScope"])}>
+              <option value="ALL">Todos</option>
+              <option value="OBRAS">Obras</option>
+              <option value="MANUTENCAO">Manutencao</option>
             </select>
           </label>
           <label className={styles.field}>
