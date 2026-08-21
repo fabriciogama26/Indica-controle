@@ -1,7 +1,7 @@
 # 15 - Supabase implicit row cap
 
 Data: 2026-08-21
-Estado: passos 2, 3 e 4 (triagem) concluidos. Passo 5 (catalogar padroes) nao iniciado.
+Estado: passos 2, 3 e 4 concluidos. Passo 5 (triagem P0) EM ANDAMENTO — 2 de 17 tabelas P0.
 Escopo: truncamento implicito do PostgREST em QUALQUER consulta de `src/`, exportacao ou nao.
 Nao confundir com `Auditoria/14-exportacoes-csv.md`, que tratou so de integridade de exportacao.
 
@@ -413,7 +413,7 @@ Essa medicao pode reordenar a lista acima. A ordem atual e hipotese, nao resulta
 2.  Criar Auditoria/15-supabase-implicit-row-cap.md FEITO
 3.  Inventario completo read-only                   FEITO (489 candidatos, CSV)
 4.  Triagem por tabela                              FEITO (99 cadeias P0)
-5.  Catalogar padroes reais                         <- proximo
+5.  Catalogar padroes reais                         EM ANDAMENTO (material_history, stock_transfer_items)
 6.  Definir SAFE / REVIEW / DEFECT
 7.  Implementar novo lint:rowlimit (Compiler API + colunas UNIQUE das migrations)
 8.  Corrigir defeitos confirmados
@@ -423,3 +423,221 @@ Essa medicao pode reordenar a lista acima. A ordem atual e hipotese, nao resulta
 
 O lint nasce a partir do codigo real do repositorio, nao de uma taxonomia teorica. Por isso o
 passo 7 vem depois do 5, e nao antes.
+
+---
+
+# Passo 5 — Triagem P0 (em andamento)
+
+Data de inicio: 2026-08-21. Checkpoint anterior: commit `7ec8e9c`.
+
+## Achado estrutural: existem QUATRO helpers de paginacao, tres deles privados
+
+A auditoria comecou supondo um helper (`loadAllRows`). A triagem encontrou mais tres,
+cada um reimplementado dentro de um arquivo de rota, e dois deles com a condicao de
+parada que o `loadAllRows` proibe explicitamente:
+
+| Helper | Onde | Parada | Situacao |
+|---|---|---|---|
+| `loadAllRows` | `src/lib/server/apiHelpers.ts` | pagina VAZIA | correto |
+| `loadPaged` | `dashboard-portfolio/controller.ts:368` | `length < 1000` | armadilha latente |
+| `loadAllPages` | `team-stock-operations/route.ts:212` | `length < 1000` | armadilha latente |
+| `loadRowsInChunks` | `stock-balance/route.ts:132` | — | NAO pagina resposta |
+
+`loadPaged` e `loadAllPages` funcionam hoje pela mesma coincidencia aritmetica: o bloco
+pedido (`1000`) e igual ao teto do servidor (`1000`), entao a primeira pagina cheia volta
+com exatamente 1.000 e o laco continua. Elevar qualquer uma das duas constantes, num
+commit que parece otimizacao, faz as duas truncarem na primeira pagina PARECENDO laco
+correto.
+
+Consequencia para o passo 7: **allowlist por nome de helper esta descartada em definitivo**.
+Tres dos quatro nomes seriam marcados SAFE por engano.
+
+## Conceito que faltava no schema: cardinalidade POS-FILTRO
+
+A cardinalidade por tabela (P0-P3) diz quanto a TABELA tem. Nao diz quanto a CONSULTA
+devolve, porque a consulta tem filtro. Os dois erros possiveis aparecem juntos aqui:
+
+- `material_history` e P0 (10.803), mas filtrada por um `stockTransferId` devolve um
+  punhado de linhas. **P0 sem defeito.**
+- `stock_transfer_items` filtrada por `.in(stock_transfer_id, <lote de 500>)` pode
+  devolver mais de 1.000 numa unica resposta mesmo com media de ~2 itens por
+  transferencia. **Filtro presente, sem protecao nenhuma.**
+
+Medicao criada para decidir: `scripts/check-postfilter-cardinality-live.sql`
+(`npm run db:postfilter-live`). PENDENTE de execucao.
+
+## Triagem: `material_history` (P0, 10.803 linhas, 3 cadeias)
+
+| Arquivo:linha | Classificacao | Motivo |
+|---|---|---|
+| `materials/route.ts:773` | **SAFE** | paginacao de UI com total exato |
+| `stock-transfers/route.ts:1097` | **REVIEW** | 4 consultas sem `.limit()` nem `.range()` |
+| `team-stock-operations/route.ts:1187` | **REVIEW** | mesma leitura, com `.limit(200)` |
+
+### Novo padrao SAFE: paginacao de UI com total exato
+
+`materials/route.ts:773` nao le tudo e nao e unitaria — le UMA pagina
+(`historyPageSize <= 30`) com `count: "exact"`. Nao ha truncamento silencioso porque o
+contrato nao e "todas as linhas": e "uma pagina + total honesto", e o total vem do banco.
+
+Terceiro item da taxonomia, ao lado de `unitaria por tupla`. Importa porque a definicao
+de SAFE que abre este documento fala em "paginacao ate exaustao" — e aqui a exaustao
+nunca acontece, e mesmo assim esta correto. **A exaustao nao e o criterio; o criterio e
+o codigo nao afirmar mais do que leu.**
+
+### A assimetria entre as duas REVIEW
+
+`stock-transfers:1097` e `team-stock-operations:1187` fazem a MESMA leitura — historico
+de material de uma transferencia — com tetos diferentes: nenhum e 200. Nenhum dos dois
+autores sabia qual era o limite certo, e os dois escolheram sozinhos. O `.limit(200)` nao
+sofre corte do PostgREST (esta abaixo de 1.000), mas e corte silencioso da aplicacao, da
+mesma classe. A medicao pos-filtro decide os dois de uma vez.
+
+## Triagem: `stock_transfer_items` (P0, 7.976 linhas, 13 cadeias)
+
+Distribuicao por padrao:
+
+| Cadeias | Padrao |
+|---|---|
+| 11 | filtro `.in("stock_transfer_id", <lote>)` |
+| 1 | filtro por serial (`trafo-positions:318`) |
+| 1 | `.limit()` dentro do teto |
+
+**Uma unica medicao decide 11 das 13.** O retorno e `(tamanho do lote) x (itens por
+transferencia)`, e os tamanhos de lote em uso divergem:
+
+| Arquivo | `RELATION_QUERY_CHUNK_SIZE` |
+|---|---|
+| `stock-balance/route.ts` | 100 |
+| `stock-transfers/route.ts` | 100 |
+| `team-stock-operations/route.ts` | **500** |
+
+### Candidato a DEFECT: `team-stock-operations/route.ts:780`
+
+A cadeia completa, do inicio ao fim:
+
+```
+loadAllPages  -> le TODAS as operacoes de equipe do tenant, sem recorte de pagina
+                 (stock_transfer_team_operations = 2.987 linhas)
+   |
+currentTransferIds -> ~milhares de ids, NAO limitado a montante
+   |
+loadRowsInChunks(ids, chunk = 500)
+   |
+.in("stock_transfer_id", chunk) sobre stock_transfer_items
+   SEM .range(), SEM .limit()
+   |
+resposta esperada por chunk = 500 x ~2,11 itens/transferencia = ~1.055 linhas
+```
+
+Media global: 7.976 itens / 3.777 transferencias = **2,11**. Isso poe a resposta de cada
+chunk em torno de 1.055 linhas — **acima do teto de 1.000**, na media, nao no pior caso.
+
+Nao esta classificado como DEFECT ainda de proposito: a media global nao e a media das
+transferencias ligadas a operacoes de equipe, e o que decide e a soma dos 500 maiores, nao
+a media. `pior_lote_500` na medicao pos-filtro responde isso com numero. Mas a estrutura
+ja esta confirmada por leitura: nao ha nenhuma barreira entre um lote de 500 e a resposta.
+
+Nota: os mesmos 100 de lote em `stock-balance` e `stock-transfers` dao ~211 linhas na
+media. **CORRIGIDO PELA MEDICAO — ver secao seguinte: o teto real de um lote de 100 e 2.593.**
+
+## Status
+
+- `material_history`: 1 SAFE, 2 REVIEW (dependem da medicao pos-filtro)
+- `stock_transfer_items`: 11 dependem da medicao pos-filtro, 1 candidato a DEFECT
+- Taxonomia SAFE ate agora: `unitaria por tupla`, `paginacao de UI com total exato`,
+  `paginacao ate exaustao (parada em pagina vazia)`
+- Proximo: rodar `npm run db:postfilter-live` e fechar as 13 cadeias das duas tabelas
+
+## Medicao pos-filtro — 2026-08-21
+
+`scripts/check-postfilter-cardinality-live.sql`.
+
+| Medida | max | media | pior lote 100 | pior lote 500 |
+|---|---|---|---|---|
+| `stock_transfer_items` por transferencia | 63 | 2,11 | **2.593** | **4.699** |
+| `stock_transfer_items` por serial | 4 | 1,37 | — | — |
+| `material_history` por `stockTransferId` | 63 | 2,14 | — | — |
+| transferencias ligadas a operacoes de equipe | 2.987 | — | — | — |
+
+### CORRECAO — usei a media onde tinha acabado de escrever que media nao serve
+
+A secao anterior afirmava que um lote de 100 daria "~211 linhas, com folga confortavel".
+Isso e a MEDIA (100 x 2,11). O teto real de um lote de 100 e **2.593** — 2,6 vezes o teto
+do PostgREST.
+
+O erro e exatamente o que esta auditoria existe para combater, cometido dentro dela: o
+comentario do proprio SQL dizia "cada uma responde qual e o MAIOR retorno possivel, nao
+qual e a media", e a prosa logo abaixo usou a media assim mesmo. Media descreve o caso
+tipico; truncamento silencioso e definido pelo caso extremo. Fica registrado como segunda
+autocorrecao desta auditoria, ao lado da contagem de `.maybeSingle<T>()`.
+
+Consequencia: o defeito **nao e exclusivo do lote de 500**. Todo lote sem `.range()` esta
+exposto; o 500 apenas garante o estouro, enquanto o 100 depende de concentracao.
+
+## Vereditos — `material_history` (3 de 3 fechadas)
+
+| Arquivo:linha | Veredito | Evidencia |
+|---|---|---|
+| `materials/route.ts:773` | **SAFE** | paginacao de UI com `count: exact`, pagina <= 30 |
+| `stock-transfers/route.ts:1097` | **SAFE** | max 63 linhas por `stockTransferId`, sem barreira mas sem exposicao |
+| `team-stock-operations/route.ts:1187` | **SAFE** | max 63, muito abaixo do `.limit(200)` |
+
+Tabela P0 de 10.803 linhas, **zero defeitos**. E a demonstracao mais forte da regra
+`P0 = prioridade de inspecao, P0 != defeito`: o filtro por `stockTransferId` reduz 10.803
+para no maximo 63.
+
+## Vereditos — `stock_transfer_items`
+
+### DEFECT confirmado: `team-stock-operations/route.ts:780`
+
+```
+loadAllPages       -> 2.987 transferencias ligadas a operacoes de equipe (medido)
+loadRowsInChunks(ids, chunk = 500)
+.in("stock_transfer_id", chunk)   SEM .range(), SEM .limit()
+```
+
+Um lote CHEIO de 500 devolve, no caso tipico, 500 x 2,11 = **1.055 linhas**. Ja passa do
+teto de 1.000 na MEDIA — nao no extremo. Com 2.987 ids sao 6 lotes, e os 5 primeiros sao
+cheios. No extremo medido, um lote de 500 chega a **4.699** linhas, das quais o PostgREST
+entrega 1.000.
+
+Efeito na tela Operacoes de Equipe: itens de movimentacao somem da listagem e da
+exportacao sem nenhum aviso, com status 200.
+
+### Exposicao latente: os lotes de 100
+
+`stock-balance/route.ts:847`, `stock-transfers/route.ts:793` e `stock-transfers/route.ts:242`
+usam `RELATION_QUERY_CHUNK_SIZE = 100`. Caso tipico 211 linhas, teto medido **2.593**.
+Nao estoura sempre, mas pode estourar — e o codigo nao tem como perceber.
+
+Classificacao: **DEFECT latente**. A correcao e a mesma dos tres (paginar a resposta), e
+nao ha razao para tratar diferente do lote de 500, so ordem de prioridade.
+
+### SAFE
+
+| Arquivo:linha | Evidencia |
+|---|---|
+| `trafo-positions/route.ts:318` | max 4 linhas por (material + serial + lote) |
+
+### Pendentes de checagem por sitio
+
+As 7 cadeias com `.in(...)` sem chunk dependem de quantos ids a lista carrega em cada
+caso, e isso e limite de codigo, nao de dado — precisa de leitura individual. Sao:
+`consumo-projeto:307`, `dash-estoque:435`, `estornos:293`, `materials:1030`,
+`stock-transfers/reversal:181`, `team-stock-balance:306`,
+`team-stock-operations/reversal:130`. Mais `materials:465`, com `.limit()` dentro do teto.
+
+## Placar do passo 5 ate aqui
+
+| | |
+|---|---|
+| Cadeias fechadas | 6 |
+| SAFE | 4 |
+| DEFECT confirmado | 1 |
+| DEFECT latente | 3 |
+| Pendentes de leitura individual | 8 |
+
+Duas tabelas P0 (18.779 linhas somadas) produziram **1 defeito confirmado e 3 latentes**,
+todos do mesmo padrao: `chunk de parametro sem paginacao de resposta`. Nenhum deles seria
+detectado por `.limit()` acima do teto, que era o unico criterio da Auditoria 14.
