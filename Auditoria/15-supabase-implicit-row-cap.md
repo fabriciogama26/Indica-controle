@@ -464,7 +464,7 @@ devolve, porque a consulta tem filtro. Os dois erros possiveis aparecem juntos a
   transferencia. **Filtro presente, sem protecao nenhuma.**
 
 Medicao criada para decidir: `scripts/check-postfilter-cardinality-live.sql`
-(`npm run db:postfilter-live`). PENDENTE de execucao.
+(`npm run db:postfilter-live`). Executada em 2026-08-21.
 
 ## Triagem: `material_history` (P0, 10.803 linhas, 3 cadeias)
 
@@ -641,3 +641,216 @@ caso, e isso e limite de codigo, nao de dado — precisa de leitura individual. 
 Duas tabelas P0 (18.779 linhas somadas) produziram **1 defeito confirmado e 3 latentes**,
 todos do mesmo padrao: `chunk de parametro sem paginacao de resposta`. Nenhum deles seria
 detectado por `.limit()` acima do teto, que era o unico criterio da Auditoria 14.
+
+---
+
+# Correcao dos 4 casos — infraestrutura + migracao
+
+Data: 2026-08-21. Diagnostico congelado no commit `3a69884`.
+
+## Parte 1 — helper compartilhado
+
+`loadRowsInChunks` passou a existir UMA vez, em `src/lib/server/apiHelpers.ts`, com
+contrato explicito sobre DUAS dimensoes independentes:
+
+```
+lista de IDs --(chunkSize)--> lote --(pageSize, ate pagina vazia)--> linhas
+```
+
+Invariantes deliberadamente NAO parametrizaveis, porque a auditoria mostrou que permitir
+variacao aqui produz bug:
+
+1. parada em PAGINA VAZIA, nunca "pagina menor que a pedida";
+2. avanco pelas linhas RECEBIDAS, nunca pelo bloco pedido;
+3. paralelismo ENTRE LOTES — paginas do mesmo lote sao sequenciais por definicao, ja que
+   a proxima depende de quantas linhas a anterior devolveu.
+
+Parametros expostos: so `chunkSize`, `maxParallel` e `pageSize`. Nada de estrategia de
+parada, avanco ou ordenacao.
+
+**Erro generico, sem acoplamento.** A assinatura e `<T, TError = PostgrestError>` e o
+helper NUNCA inspeciona o erro — so o propaga. Assim a infraestrutura compartilhada nao
+conhece nem o `PostgrestError` nem o `QueryError` local de nenhum modulo, e cada call site
+mantem o proprio tipo. Nao foi preciso `mapError`: a genericidade resolve sem conversao.
+
+**Desvio do desenho proposto, registrado:** a assinatura devolve `{ data, error }` em vez
+de `Promise<T[]>` com throw. Motivo: os 19 call sites ja fazem
+`const { data, error } = await ...` seguido de `if (error) return NextResponse.json(...)`,
+e dois deles passam o erro a um logger tipado. Trocar para throw obrigaria a reescrever o
+tratamento de erro dos 19 junto com a paginacao, misturando duas mudancas de risco
+diferente na mesma entrega.
+
+**Ordem total e contrato do chamador.** O helper nao adivinha coluna: quem constroi a
+query declara `.order()`. Foi aplicado `id` na maioria, e `transfer_id` em
+`stock_transfer_team_operations`, cuja PK e `transfer_id` e nao `id` — detalhe que so
+aparece lendo a migration 140.
+
+## Parte 2 — migracao
+
+As TRES copias privadas foram removidas (`stock-balance`, `stock-transfers`,
+`team-stock-operations`), junto de `chunkValues`, que so existia para alimenta-las.
+
+| Arquivo | Call sites | chunkSize | maxParallel |
+|---|---|---|---|
+| `stock-balance/route.ts` | 8 | 100 | — |
+| `stock-transfers/route.ts` | 5 | 100 | — |
+| `team-stock-operations/route.ts` | 6 | 500 | 4 |
+
+Chunk sizes e paralelismo preservados exatamente como estavam: a correcao e sobre
+paginacao da RESPOSTA, e mudar o chunk junto tornaria impossivel atribuir qualquer
+diferenca de comportamento a uma causa.
+
+### O call site que ficou FORA do helper, de proposito
+
+`stock-transfers/route.ts`, preload de busca por material. Ele e limitado de proposito —
+corta em 200 ids logo depois, e o proprio codigo ja documentava isso. Passar esse callback
+ao helper teria duas saidas, ambas erradas: paginar ate exaurir mudaria a semantica de um
+filtro best-effort, e ignorar `from`/`to` para manter o teto criaria um LACO INFINITO,
+porque a parada por pagina vazia nunca aconteceria.
+
+Virou um laco de chunk explicito, com comentario dizendo por que nao usa o helper. Teto
+intencional declarado no codigo e diferente de teto acidental — e o helper existe para
+impedir o segundo, nao o primeiro.
+
+## Criterio de aceite
+
+Nao e "nao deu erro". E **contagem retornada = contagem esperada medida no banco**.
+`scripts/check-chunk-fix-acceptance-live.sql` (`npm run db:chunk-acceptance-live`) devolve:
+
+- `itens_reais` — total verdadeiro de itens das transferencias de operacoes de equipe;
+- `itens_entregues_antes` — o que o codigo antigo entregava, com o teto de 1.000 por lote;
+- `itens_perdidos_antes` — a diferenca, ou seja, o que sumia da tela;
+- `lotes_que_truncavam`.
+
+Executada em 2026-08-21 — resultado na secao seguinte. A tela Operacoes de Equipe e a
+exportacao dela devem passar a mostrar 5.791 itens, contra 5.748 antes da correcao.
+
+## Padrao para o resto do passo 5
+
+A correcao rende a regra que fecha a taxonomia:
+
+```
+helper que pagina PARAMETROS mas nao a RESPOSTA
+  = DEFECT ou REVIEW obrigatorio
+  independente do tamanho do chunk
+```
+
+Independente do tamanho porque o lote de 100 tambem estourava no teto medido (2.593). O
+chunk pequeno so torna o defeito dependente dos dados, e a auditoria ja rejeitou qualquer
+solucao baseada em "hoje cabe em 1.000".
+
+## Medicao de aceite — 2026-08-21
+
+`scripts/check-chunk-fix-acceptance-live.sql`.
+
+| Medida | Valor |
+|---|---|
+| transferencias de operacoes de equipe | 2.987 |
+| **itens reais** | **5.791** |
+| itens entregues antes da correcao | 5.748 |
+| **itens perdidos antes** | **43** |
+| lotes | 6 |
+| lotes que truncavam | **1** |
+
+**Defeito confirmado: 43 itens sumiam da tela Operacoes de Equipe, com status 200.**
+
+### TERCEIRA autocorrecao: o prognostico exagerou a extensao
+
+A secao do defeito afirmava que um lote cheio de 500 devolveria "500 x 2,11 = 1.055
+linhas — acima do teto de 1.000 na MEDIA, nao no extremo", e que dos 6 lotes "os 5
+primeiros sao cheios". Os numeros reais:
+
+| | Prognostico | Medido |
+|---|---|---|
+| itens por transferencia | 2,11 | **1,94** |
+| linhas por lote | ~1.055 | **~965** |
+| lotes acima do teto | 5 de 6 | **1 de 6** |
+| perda | nao estimada | **43 de 5.791 (0,74%)** |
+
+A causa do desvio: usei a media GLOBAL de itens por transferencia (7.976 / 3.777 = 2,11),
+mas as transferencias ligadas a operacoes de equipe tem media menor (5.791 / 2.987 = 1,94).
+Filtro diferente, populacao diferente, media diferente — o mesmo erro de aplicar uma
+estatistica agregada a um subconjunto, so que agora na direcao pessimista.
+
+**O que NAO muda:** o defeito era real e estava ativo. 43 linhas sumiam de uma listagem de
+movimentacao de estoque sem nenhum sinal, e itens faltando numa movimentacao sao erro de
+conferencia, nao ruido estatistico.
+
+**O que muda:** a extensao. Nao eram 5 lotes truncando, era 1. O sistema estava
+EXATAMENTE NA BORDA — 965 linhas por lote contra um teto de 1.000, folga de 3,5%. Qualquer
+crescimento (mais itens por transferencia, ou mais transferencias) empurraria os outros 5
+lotes por cima do teto. A correcao chegou no momento em que o defeito comecava a se
+manifestar, nao depois de anos escondido.
+
+### Licao para a triagem das 8 pendentes
+
+Media de populacao agregada NAO se aplica a subconjunto filtrado. Ja errei nas duas
+direcoes nesta auditoria: para menos, ao chamar o lote de 100 de "folga confortavel"
+usando media em vez de teto; e para mais, aqui, ao projetar 5 lotes truncando com uma
+media que nao era da populacao certa. Nas 8 cadeias restantes, medir a distribuicao DO
+FILTRO, nunca a da tabela.
+
+## QUINTA E SEXTA AUTOCORRECAO — o defeito principal continua ABERTO
+
+A secao anterior deu o caso de `team-stock-operations` por fechado com base em duas
+correcoes e numa medicao de aceite. As duas afirmacoes estavam erradas.
+
+### Quinta: `loadAllPages` nao era "armadilha latente", era condicao proibida sob join interno
+
+Este documento classificou `loadAllPages` como latente, argumentando que
+`pageRows.length < TEAM_OPERATION_PAGE_SIZE` so falharia se alguem elevasse a constante
+acima do teto do servidor. O argumento vale para consulta simples e NAO vale aqui: a
+consulta e um embed com `stock_transfers!inner`, e sob join interno **pagina mais curta que
+a pedida e o caso normal**, nao o excepcional. A parada precoce nao dependia de ninguem
+mexer em constante nenhuma.
+
+Corrigido: os tres call sites passaram a usar `loadAllRows`, e `loadAllPages` foi removido.
+
+### Sexta: o criterio de aceite que este documento propos nao servia
+
+`scripts/check-chunk-fix-acceptance-live.sql` conta TODOS os itens das transferencias com
+operacao de equipe, sem reproduzir os filtros de negocio de nenhum dos dois caminhos da
+aplicacao. E um superconjunto dos dois, e portanto **nao valida nem a listagem nem a
+exportacao**. Foi apresentado como criterio de aceite por engano.
+
+Erro mais serio das seis: os outros foram estimativas ruins; este foi o INSTRUMENTO DE
+MEDICAO errado, apresentado como prova.
+
+### Estado real do caso, verificado na tela
+
+| Fonte | Linhas | Confiabilidade |
+|---|---|---|
+| SQL, semantica da rota, sem filtro | 5.791 | esperado |
+| Exportacao (RPC), **com** filtro | 5.045 | caminho ja correto antes desta auditoria |
+| **Listagem, SEM filtro** | **4.193** | perde ~1.598 linhas |
+
+Um subconjunto filtrado nao pode ser maior que o conjunto completo. A listagem perde
+linhas, e **as duas correcoes desta entrega nao fecharam a perda** — o numero na tela nao
+mudou.
+
+Verificado que nao ha filtro padrao escondido: `INITIAL_FILTERS` e todo vazio/`TODOS`, e
+`normalizeReversalStatus` devolve `TODOS` por omissao. Verificado tambem que a RPC de
+exportacao nao duplica linhas: e `operacoes ⋈ transferencias ⋈ itens`, com os demais
+`left join` todos em PK.
+
+### Licao que fecha o padrao das seis
+
+Cinco das seis autocorrecoes vieram de CLASSIFICAR POR LEITURA DE CODIGO e apresentar o
+resultado como conclusao. A taxa de acerto foi ruim o bastante para virar regra:
+
+**leitura estatica gera HIPOTESE, nunca veredito. Veredito exige medicao ou instrumentacao.**
+
+Isso vale diretamente para o passo 7: um classificador que emita `SAFE` por analise
+sintatica esta sujeito exatamente a essa taxa de erro. A saida util dele e `REVIEW` com
+evidencia anexada, e `DEFECT` so quando a medicao confirmar.
+
+### Proximo passo, sem hipotese nova
+
+Instrumentar a rota registrando o tamanho de cada estagio do pipeline:
+
+```
+operations / headers / currentTransferIds / itemRows / allRows / filteredRows
+esperado:  2.987 / 2.987 /          2.987 /     5.791 /   5.791 /       5.791
+```
+
+O primeiro estagio que divergir aponta a causa. Nao formular a setima hipotese por leitura.

@@ -26,6 +26,7 @@
     "db:cardinality-live": "npm run db:check-link && npx supabase db query --file scripts/check-tenant-cardinality-live.sql --linked",
     "db:coverage-live": "npm run db:check-link && npx supabase db query --file scripts/check-tenant-coverage-live.sql --linked",
     "db:postfilter-live": "npm run db:check-link && npx supabase db query --file scripts/check-postfilter-cardinality-live.sql --linked",
+    "db:chunk-acceptance-live": "npm run db:check-link && npx supabase db query --file scripts/check-chunk-fix-acceptance-live.sql --linked",
     "db:drift-check": "npm run db:check-link && npx supabase db diff --linked --schema public",
     "fn:deploy": "npm run db:check-link && npx supabase functions deploy --project-ref lcusxnhhrjosxqgiphgp",
     "fn:deploy:forecast": "npm run db:check-link && npx supabase functions deploy import_project_forecast --project-ref lcusxnhhrjosxqgiphgp",

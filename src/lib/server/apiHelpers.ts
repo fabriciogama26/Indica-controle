@@ -90,6 +90,103 @@ export async function loadAllRows<T>(
   }
 }
 
+export interface LoadRowsInChunksOptions {
+  /** Quantos IDs por lote no filtro `.in(...)`. Limita a LARGURA da consulta. */
+  chunkSize: number;
+  /** Quantos LOTES em voo ao mesmo tempo. Paralelismo entre chunks, nunca entre paginas do mesmo chunk. */
+  maxParallel?: number;
+  /** Linhas por pagina da resposta. Default: o teto do servidor. */
+  pageSize?: number;
+}
+
+/**
+ * Le TODAS as linhas de uma consulta filtrada por uma lista de IDs, controlando DUAS
+ * dimensoes independentes:
+ *
+ *   lista de IDs --(chunkSize)--> lote --(pageSize, ate pagina vazia)--> linhas
+ *
+ * A distincao existe porque a base ja confundiu as duas: `chunk de parametro != paginacao de
+ * resposta`. Quebrar a lista de IDs em lotes limita o TAMANHO DA CONSULTA (uma URL de
+ * PostgREST tem limite); nao limita em nada o NUMERO DE LINHAS que o lote devolve. Um lote de
+ * 500 transferencias com media de 2,11 itens cada devolve ~1.055 linhas, e o servidor entrega
+ * 1.000 sem sinalizar (Auditoria/15, defeito confirmado em
+ * `team-stock-operations/route.ts:780`).
+ *
+ * INVARIANTES, deliberadamente NAO parametrizaveis — a auditoria mostrou que permitir variacao
+ * aqui produz bug:
+ *
+ * 1. A parada e PAGINA VAZIA. Nunca "pagina menor que a pedida": se o teto do servidor for
+ *    menor que o bloco pedido, a primeira pagina ja volta curta e essa condicao daria o
+ *    resultado por terminado, truncando em silencio. Custa uma chamada extra no fim.
+ * 2. O avanco e pelas linhas RECEBIDAS, nunca pelo tamanho do bloco pedido. Avancar pelo bloco
+ *    pula linhas sempre que o servidor devolve menos do que o pedido.
+ * 3. O paralelismo e ENTRE LOTES. Paginas do mesmo lote sao sequenciais por definicao: a
+ *    proxima pagina depende de quantas linhas a anterior devolveu.
+ *
+ * CONTRATO DO CHAMADOR: `loadPage` deve aplicar uma ORDEM TOTAL (`.order()` sobre coluna unica,
+ * tipicamente `id`) alem do `.range(from, to)`. Sem ordem deterministica o Postgres nao garante
+ * a mesma sequencia entre chamadas, e a paginacao por offset repete ou perde linha. O helper
+ * NAO adivinha a coluna: a ordem depende da semantica da tabela e mora no call site.
+ *
+ * O tipo do erro e generico e o helper nunca o inspeciona — so o propaga. Assim esta
+ * infraestrutura compartilhada nao fica acoplada ao `PostgrestError` nem ao tipo de erro local
+ * de nenhum modulo.
+ */
+export async function loadRowsInChunks<T, TError = PostgrestError>(
+  values: readonly string[],
+  loadPage: (
+    chunk: readonly string[],
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: TError | null }>,
+  options: LoadRowsInChunksOptions,
+): Promise<{ data: T[] | null; error: TError | null }> {
+  const { chunkSize, maxParallel = 1, pageSize = SUPABASE_RESPONSE_ROW_CAP } = options;
+
+  const unique = Array.from(new Set(values.filter(Boolean)));
+  if (!unique.length) {
+    return { data: [], error: null };
+  }
+
+  const chunks: string[][] = [];
+  for (let index = 0; index < unique.length; index += chunkSize) {
+    chunks.push(unique.slice(index, index + chunkSize));
+  }
+
+  async function loadChunk(chunk: readonly string[]): Promise<{ data: T[] | null; error: TError | null }> {
+    const rows: T[] = [];
+    let from = 0;
+
+    for (;;) {
+      const { data, error } = await loadPage(chunk, from, from + pageSize - 1);
+      if (error) {
+        return { data: null, error };
+      }
+
+      const page = data ?? [];
+      if (!page.length) {
+        return { data: rows, error: null };
+      }
+
+      rows.push(...page);
+      from += page.length;
+    }
+  }
+
+  const rows: T[] = [];
+  for (let index = 0; index < chunks.length; index += maxParallel) {
+    const results = await Promise.all(chunks.slice(index, index + maxParallel).map(loadChunk));
+    for (const result of results) {
+      if (result.error) {
+        return { data: null, error: result.error };
+      }
+      rows.push(...(result.data ?? []));
+    }
+  }
+
+  return { data: rows, error: null };
+}
+
 export function normalizeText(value: unknown): string {
   return String(value ?? "").trim();
 }
