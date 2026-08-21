@@ -56,6 +56,7 @@ const menuSections = [
       { href: "/saida", label: "Operacoes de Equipe", icon: "arrow-up" },
       { href: "/requisicao-solicitacao", label: "Solicitacao de Requisicao", icon: "arrow-up" },
       { href: "/requisicao-atendimento", label: "Atendimento de Requisicoes", icon: "box" },
+      { href: "/estorno-atendimento", label: "Atendimento de Estornos", icon: "box" },
       { href: "/estornos", label: "Estornos", icon: "box" },
       { href: "/consumo-projeto", label: "Consumo por Projeto", icon: "box" },
     ],
@@ -197,6 +198,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/requisicao-atendimento": {
     title: "Atendimento de Requisicoes",
     subtitle: "Fila de pedidos para aceitar, reduzir ou recusar item a item.",
+  },
+  "/estorno-atendimento": {
+    title: "Atendimento de Estornos",
+    subtitle: "Fila de pedidos de estorno para analise, aprovacao, recusa e execucao.",
   },
   "/estornos": {
     title: "Estornos",

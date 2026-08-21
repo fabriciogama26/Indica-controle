@@ -6,8 +6,8 @@ import { requirePageAction } from "@/lib/server/pageAuthorization";
 import {
   normalizeDateInput,
   normalizeText,
-  reverseStockTransferViaRpc,
 } from "@/lib/server/stockTransfers";
+import { createStockReversalRequestViaRpc } from "@/lib/server/stockReversalRequests";
 import { BLOCKED_REVERSAL_REASON_CODES } from "@/lib/business/reversalRules";
 
 type ReversalPayload = {
@@ -17,6 +17,7 @@ type ReversalPayload = {
   reversalReasonNotes?: unknown;
   reversalDate?: unknown;
   mode?: unknown;
+  itemIds?: unknown;
 };
 
 type StockTransferGroupingRow = {
@@ -49,12 +50,9 @@ type FullReversalRow = {
   reversal_stock_transfer_id: string;
 };
 
-function appendReversalGuidance(reason: string, message: string) {
-  if (reason !== "INSUFFICIENT_STOCK") {
-    return message;
-  }
-
-  return `${message} Regularize primeiro as movimentacoes posteriores. Se o material foi requisitado para uma equipe, faca a devolucao ou o estorno correspondente em Operacoes de Equipe antes de estornar esta entrada.`;
+function normalizeIdList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((item) => normalizeText(item)).filter(Boolean)));
 }
 
 async function resolveReversalContext(
@@ -459,21 +457,24 @@ async function handleReversal(request: NextRequest): Promise<Response> {
       }
     }
 
-    const reversalResult = await reverseStockTransferViaRpc(supabase, {
+    const reversalResult = await createStockReversalRequestViaRpc(supabase, {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
+      actorName: appUser.display ?? appUser.login_name,
+      source: "STOCK_TRANSFER",
+      mode,
       originalTransferId: transferId,
       originalTransferItemId: mode === "ITEM" ? transferItemId : null,
-      reverseBatch: mode === "BATCH",
       reversalReasonCode,
       reversalReasonNotes,
       reversalDate,
+      itemIds: mode === "ITEM" ? [transferItemId] : normalizeIdList(payload.itemIds),
     });
 
     if (!reversalResult.ok) {
       return NextResponse.json(
         {
-          message: appendReversalGuidance(reversalResult.reason, reversalResult.message),
+          message: reversalResult.message,
           reason: reversalResult.reason,
           details: reversalResult.details,
         },
@@ -483,12 +484,11 @@ async function handleReversal(request: NextRequest): Promise<Response> {
 
     return NextResponse.json({
       success: true,
-      transferId: reversalResult.transferId,
-      reversedItemCount: reversalResult.reversedItemCount,
-      results: reversalResult.results,
+      requestId: reversalResult.requestId,
+      itemCount: reversalResult.itemCount,
       message: reversalResult.message,
-    });
+    }, { status: 201 });
   } catch {
-    return NextResponse.json({ message: "Falha ao estornar movimentacao de estoque." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao solicitar estorno da movimentacao de estoque." }, { status: 500 });
   }
 }

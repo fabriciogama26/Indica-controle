@@ -2127,12 +2127,12 @@ export function StockTransfersPageView() {
       reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
-        transferId?: string;
+        requestId?: string;
         reason?: string;
       };
       if (!response.ok) {
-        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar movimentacao de estoque." });
-        await logError("Falha ao estornar movimentacao de estoque.", undefined, {
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao solicitar estorno da movimentacao de estoque." });
+        await logError("Falha ao solicitar estorno da movimentacao de estoque.", undefined, {
           status: response.status,
           reason: data.reason ?? null,
           transferId: reversalModalItem.transferId,
@@ -2141,24 +2141,7 @@ export function StockTransfersPageView() {
         return;
       }
 
-      const reversedAt = new Date().toISOString();
-      const reversalReason = selectedReversalReason
-        ? normalizedReasonNotes
-          ? `${selectedReversalReason.label}: ${normalizedReasonNotes}`
-          : selectedReversalReason.label
-        : normalizedReasonNotes;
-      setHistoryItems((current) => current.map((item) => (
-        item.id === reversalModalItem.id
-          ? {
-              ...item,
-              isReversed: true,
-              reversalTransferId: data.transferId ?? item.reversalTransferId,
-              reversalReason: reversalReason || item.reversalReason,
-              reversedAt,
-            }
-          : item
-      )));
-      setFeedback({ type: "success", message: data.message ?? "Estorno realizado com sucesso." });
+      setFeedback({ type: "success", message: data.message ?? "Pedido de estorno enviado para atendimento." });
       setReversalModalItem(null);
       setReversalBatchItems([]);
       setReversalFeedback(null);
@@ -2169,9 +2152,9 @@ export function StockTransfersPageView() {
     } catch (error) {
       setReversalFeedback({
         type: "error",
-        message: "Falha de comunicacao ao estornar. Verifique a conexao e tente novamente.",
+        message: "Falha de comunicacao ao solicitar estorno. Verifique a conexao e tente novamente.",
       });
-      await logError("Falha ao estornar movimentacao de estoque.", error, {
+      await logError("Falha ao solicitar estorno da movimentacao de estoque.", error, {
         transferId: reversalModalItem.transferId,
         transferItemId: reversalModalItem.id,
       });
@@ -2182,7 +2165,7 @@ export function StockTransfersPageView() {
 
   async function handleConfirmBatchReversal() {
     if (!session?.accessToken || !reversalModalItem) {
-      setReversalFeedback({ type: "error", message: "Sessao invalida para estornar movimentacao de estoque." });
+      setReversalFeedback({ type: "error", message: "Sessao invalida para solicitar estorno da movimentacao de estoque." });
       return;
     }
 
@@ -2228,14 +2211,15 @@ export function StockTransfersPageView() {
           reversalReasonCode: normalizedReasonCode,
           reversalReasonNotes: normalizedReasonNotes,
           reversalDate: normalizedReversalDate,
+          itemIds: activeReversalBatchItems.map((item) => item.id),
         }),
       });
 
       reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as StockTransferBatchReversalResponse;
       if (!response.ok) {
-        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar o lote da movimentacao." });
-        await logError("Falha ao estornar lote da movimentacao de estoque.", undefined, {
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao solicitar estorno do lote da movimentacao." });
+        await logError("Falha ao solicitar estorno do lote da movimentacao de estoque.", undefined, {
           status: response.status,
           reason: data.reason ?? null,
           transferId: reversalModalItem.transferId,
@@ -2243,26 +2227,7 @@ export function StockTransfersPageView() {
         return;
       }
 
-      const reversedAt = new Date().toISOString();
-      const resultMap = new Map((data.results ?? []).map((result) => [result.itemId, result.reversalTransferId]));
-      const reversalReason = selectedReversalReason
-        ? normalizedReasonNotes
-          ? `${selectedReversalReason.label}: ${normalizedReasonNotes}`
-          : selectedReversalReason.label
-        : normalizedReasonNotes;
-
-      setHistoryItems((current) => current.map((item) => (
-        resultMap.has(item.id) && !item.isReversal
-          ? {
-              ...item,
-              isReversed: true,
-              reversalTransferId: resultMap.get(item.id) ?? item.reversalTransferId,
-              reversalReason: reversalReason || item.reversalReason,
-              reversedAt,
-            }
-          : item
-      )));
-      setFeedback({ type: "success", message: data.message ?? "Estorno em lote concluido com sucesso." });
+      setFeedback({ type: "success", message: data.message ?? "Pedido de estorno em lote enviado para atendimento." });
       setReversalModalItem(null);
       setReversalBatchItems([]);
       setReversalFeedback(null);
@@ -2273,9 +2238,9 @@ export function StockTransfersPageView() {
     } catch (error) {
       setReversalFeedback({
         type: "error",
-        message: "Falha de comunicacao ao estornar o lote. Verifique a conexao e tente novamente.",
+        message: "Falha de comunicacao ao solicitar estorno do lote. Verifique a conexao e tente novamente.",
       });
-      await logError("Falha ao estornar lote da movimentacao de estoque.", error, {
+      await logError("Falha ao solicitar estorno do lote da movimentacao de estoque.", error, {
         transferId: reversalModalItem.transferId,
       });
     } finally {
@@ -3548,7 +3513,7 @@ export function StockTransfersPageView() {
                     || Boolean(selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes))
                   }
                 >
-                  {isReversing ? "Estornando..." : "Estornar material selecionado"}
+                  {isReversing ? "Enviando..." : "Enviar material para atendimento"}
                 </button>
                 <button
                   type="button"
@@ -3563,7 +3528,7 @@ export function StockTransfersPageView() {
                     || Boolean(selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes))
                   }
                 >
-                  {isReversing ? "Estornando..." : `Estornar lote (${activeReversalBatchItems.length})`}
+                  {isReversing ? "Enviando..." : `Enviar lote para atendimento (${activeReversalBatchItems.length})`}
                 </button>
               </div>
             </div>

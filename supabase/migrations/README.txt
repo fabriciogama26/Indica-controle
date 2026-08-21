@@ -1169,3 +1169,9 @@ Observacao
 - Mantem Projeto obrigatorio para `COM_PRODUCAO` por constraint e pela RPC `save_project_measurement_order`.
 - Republica `enforce_project_measurement_order_context_unique` para bloquear duplicidade por `Projeto + Equipe + Data` quando ha Projeto e por `Equipe + Data` quando a ordem `SEM_PRODUCAO` nao tem Projeto.
 - Aplica patch dinamico em `save_project_measurement_order` para aceitar `SEM_PRODUCAO` sem Projeto, sem tentar resolver Programacao/Centro/Projeto nesse caso, e preserva EXECUTE apenas para `service_role`.
+
+383_create_stock_reversal_request_flow.sql
+- Cria o fluxo de solicitacao -> atendimento para estornos: `stock_reversal_requests` e `stock_reversal_request_items`, com RLS de leitura por tenant, auditoria, indices e unique parcial para impedir dois pedidos abertos do mesmo item original.
+- Cadastra a tela `estorno-atendimento` em `app_pages`, nascendo bloqueada para usuarios nao administrativos, e faz backfill de permissoes por role/usuario.
+- Cria RPCs `create_stock_reversal_request`, `claim_stock_reversal_request`, `reject_stock_reversal_request` e `approve_stock_reversal_request`, todas `SECURITY DEFINER` com EXECUTE apenas para `service_role`.
+- A aprovacao executa os itens solicitados usando as RPCs de estorno existentes (`reverse_stock_transfer_item_record_v1` ou `reverse_team_stock_operation_item_record_v1`) e marca o pedido como `EXECUTADO`; falha de regra marca `FALHA_EXECUCAO` sem estorno parcial.
