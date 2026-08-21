@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { parsePagination } from "@/lib/server/apiHelpers";
 import { withIdempotency } from "@/lib/server/idempotency";
-import { requirePageAction } from "@/lib/server/pageAuthorization";
+import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
 import {
   approveStockReversalRequestViaRpc,
@@ -12,7 +12,7 @@ import {
 } from "@/lib/server/stockReversalRequests";
 
 const PAGE_KEY = "estorno-atendimento";
-const OPEN_STATUSES = ["PENDENTE", "EM_ANALISE", "FALHA_EXECUCAO"] as const;
+const OPEN_STATUSES = ["PENDENTE", "EM_ANALISE"] as const;
 
 type RequestRow = {
   id: string;
@@ -118,7 +118,7 @@ function modeLabel(mode: RequestRow["mode"]) {
   return "Integral";
 }
 
-async function resolveContext(request: NextRequest, action: "read" | "update") {
+async function resolveContext(request: NextRequest, action: PageAction) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para acessar Atendimento de Estornos.",
     inactiveMessage: "Usuario inativo.",
@@ -268,7 +268,9 @@ async function buildResponseRows(context: AuthenticatedAppUserContext, requestRo
       itemCount: requestItems.length,
       requestedAt: requestRow.requested_at,
       requestedByName: normalizeText(requestRow.requested_by_name_snapshot ?? requestedBy?.display ?? requestedBy?.login_name) || "-",
+      requestedById: requestRow.requested_by,
       claimedByName: normalizeText(requestRow.claimed_by_name_snapshot ?? claimedBy?.display ?? claimedBy?.login_name) || null,
+      claimedById: requestRow.claimed_by,
       claimExpiresAt: requestRow.claim_expires_at,
       reversalReasonCode: requestRow.reversal_reason_code,
       reversalReasonLabel: reasonMap.get(requestRow.reversal_reason_code) ?? requestRow.reversal_reason_code,
@@ -370,13 +372,22 @@ export async function POST(request: NextRequest) {
 }
 
 async function handleAction(request: NextRequest): Promise<Response> {
-  const context = await resolveContext(request, "update");
-  if ("error" in context) return context.error ?? NextResponse.json({ message: "Acesso negado para Atendimento de Estornos." }, { status: 403 });
-
   const payload = (await request.json().catch(() => ({}))) as ActionPayload;
   const action = normalizeText(payload.action).toUpperCase();
   const requestId = normalizeText(payload.requestId);
   const decisionNotes = normalizeText(payload.decisionNotes) || null;
+  const requiredAction: PageAction | null = action === "APPROVE"
+    ? "reverse"
+    : action === "CLAIM" || action === "REJECT"
+      ? "update"
+      : null;
+
+  if (!requiredAction) {
+    return NextResponse.json({ message: "Acao invalida para pedido de estorno." }, { status: 400 });
+  }
+
+  const context = await resolveContext(request, requiredAction);
+  if ("error" in context) return context.error ?? NextResponse.json({ message: "Acesso negado para Atendimento de Estornos." }, { status: 403 });
 
   if (!requestId) {
     return NextResponse.json({ message: "requestId e obrigatorio." }, { status: 400 });
@@ -398,18 +409,12 @@ async function handleAction(request: NextRequest): Promise<Response> {
           requestId,
           decisionNotes,
         })
-      : action === "REJECT"
-        ? await rejectStockReversalRequestViaRpc(supabase, {
-            tenantId: appUser.tenant_id,
-            actorUserId: appUser.id,
-            requestId,
-            decisionNotes,
-          })
-        : null;
-
-  if (!result) {
-    return NextResponse.json({ message: "Acao invalida para pedido de estorno." }, { status: 400 });
-  }
+      : await rejectStockReversalRequestViaRpc(supabase, {
+          tenantId: appUser.tenant_id,
+          actorUserId: appUser.id,
+          requestId,
+          decisionNotes,
+        });
 
   if (!result.ok) {
     return NextResponse.json(

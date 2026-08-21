@@ -1175,3 +1175,9 @@ Observacao
 - Cadastra a tela `estorno-atendimento` em `app_pages`, nascendo bloqueada para usuarios nao administrativos, e faz backfill de permissoes por role/usuario.
 - Cria RPCs `create_stock_reversal_request`, `claim_stock_reversal_request`, `reject_stock_reversal_request` e `approve_stock_reversal_request`, todas `SECURITY DEFINER` com EXECUTE apenas para `service_role`.
 - A aprovacao executa os itens solicitados usando as RPCs de estorno existentes (`reverse_stock_transfer_item_record_v1` ou `reverse_team_stock_operation_item_record_v1`) e marca o pedido como `EXECUTADO`; falha de regra marca `FALHA_EXECUCAO` sem estorno parcial.
+
+384_harden_stock_reversal_request_flow.sql
+- Renomeia as RPCs da fila criadas na 383 para versoes internas `_v383` e recria wrappers com regras de negocio adicionais.
+- Impede solicitante de assumir, aprovar ou recusar o proprio pedido e exige claim ativo do atendente antes de aprovar/recusar.
+- Bloqueia `BATCH` sem `itemIds` explicitos, mantendo `FULL` como unico modo que seleciona todos os itens validos.
+- Revoga EXECUTE de `authenticated`/`anon` nas RPCs antigas de execucao direta de estorno (`reverse_*`), mantendo apenas `service_role`.

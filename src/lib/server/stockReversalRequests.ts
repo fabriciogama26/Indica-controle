@@ -77,6 +77,12 @@ function mapRequestErrorMessage(reason: string, fallback: string) {
       return "Pedido de estorno ja esta encerrado.";
     case "DECISION_NOTES_REQUIRED":
       return "Informe o motivo da recusa.";
+    case "BATCH_ITEMS_REQUIRED":
+      return "Selecione ao menos um item para solicitar estorno em lote.";
+    case "REQUEST_SELF_FULFILLMENT_NOT_ALLOWED":
+      return "Quem solicitou o estorno nao pode atender o proprio pedido.";
+    case "REQUEST_CLAIM_REQUIRED":
+      return "Assuma o pedido antes de aprovar ou recusar.";
     default:
       return fallback;
   }

@@ -43,7 +43,9 @@ type ReversalRequestRow = {
   materialDescription: string;
   itemCount: number;
   requestedAt: string;
+  requestedById: string;
   requestedByName: string;
+  claimedById: string | null;
   claimedByName: string | null;
   claimExpiresAt: string | null;
   reversalReasonCode: string;
@@ -136,6 +138,7 @@ export function ReversalFulfillmentPageView() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const totalPages = Math.max(Math.ceil(total / PAGE_SIZE), 1);
+  const currentUserId = session?.user.userId ?? "";
 
   const loadList = useCallback(
     async (nextPage = page) => {
@@ -268,6 +271,14 @@ export function ReversalFulfillmentPageView() {
     setSelected(null);
     setTimeout(() => void loadList(1), 0);
   }
+
+  const selectedIsClosed = selected
+    ? ["EXECUTADO", "RECUSADO", "CANCELADO", "FALHA_EXECUCAO"].includes(selected.status)
+    : true;
+  const selectedIsMine = Boolean(selected && selected.requestedById === currentUserId);
+  const selectedClaimedByMe = Boolean(selected && selected.claimedById === currentUserId && selected.status === "EM_ANALISE");
+  const canClaimSelected = Boolean(selected && !selectedIsClosed && !selectedIsMine);
+  const canDecideSelected = Boolean(selected && !selectedIsClosed && !selectedIsMine && selectedClaimedByMe);
 
   return (
     <main className={styles.page}>
@@ -428,13 +439,13 @@ export function ReversalFulfillmentPageView() {
               </label>
 
               <div className={styles.actionBar}>
-                <button type="button" onClick={() => void runAction("CLAIM", selected.id)} disabled={isActing || selected.status === "EXECUTADO" || selected.status === "RECUSADO"}>
+                <button type="button" onClick={() => void runAction("CLAIM", selected.id)} disabled={isActing || !canClaimSelected}>
                   Assumir
                 </button>
-                <button type="button" className={styles.primaryAction} onClick={() => void runAction("APPROVE", selected.id)} disabled={isActing || selected.status === "EXECUTADO" || selected.status === "RECUSADO"}>
+                <button type="button" className={styles.primaryAction} onClick={() => void runAction("APPROVE", selected.id)} disabled={isActing || !canDecideSelected}>
                   Aprovar e executar
                 </button>
-                <button type="button" className={styles.dangerAction} onClick={() => void runAction("REJECT", selected.id)} disabled={isActing || selected.status === "EXECUTADO" || selected.status === "RECUSADO"}>
+                <button type="button" className={styles.dangerAction} onClick={() => void runAction("REJECT", selected.id)} disabled={isActing || !canDecideSelected}>
                   Recusar
                 </button>
               </div>
