@@ -894,3 +894,20 @@ Atualizacao 2026-08-18 - Tipo na Visao geral por periodo
 - Impacto multi-tenant:
   - Sem alteracao de schema, RLS, grants ou permissoes.
   - O backend continua derivando `tenant_id` da sessao e filtra projetos por `project_with_labels` dentro do tenant autenticado.
+
+Atualizacao 2026-08-21 - Teto de 1.000 linhas em quatro consultas do dashboard
+--------------------------------------------------------------------------
+- Correcao aplicada em 2026-08-21 (ver `Auditoria/14-exportacoes-csv.md`): toda leitura desta
+  tela que pedia mais de 1.000 linhas numa unica resposta passou a usar `loadAllRows`, com
+  ordem total (desempate por `id`). O PostgREST corta em 1.000 sem sinalizar, entao o
+  `.limit()` anterior devolvia resultado incompleto com status 200 — numero errado
+  apresentado como certo, nunca erro na tela.
+- Quatro consultas corrigidas em `src/server/modules/dashboard-measurement/controller.ts`:
+  descoberta de ciclos (`.limit(3000)`), janela do ciclo (`.limit(2000)`), recorte ANUAL
+  (`.limit(5000)`) e historico dos projetos do ciclo (`.limit(5000)`).
+- O caso mais grave era o ANUAL: o ano inteiro de um tenant ativo passa de 1.000 ordens com
+  folga, entao o dashboard vinha somando so a ponta mais recente e apresentando o resultado
+  como total do ano. Como a ordem era decrescente, o que sumia era sempre o dado mais ANTIGO.
+- Na descoberta de ciclos o corte tirava CICLOS INTEIROS do seletor, tambem os mais antigos.
+- Efeito: numeros anuais e lista de ciclos MUDAM neste dashboard. Os valores novos sao os
+  corretos; os anteriores estavam subestimados.

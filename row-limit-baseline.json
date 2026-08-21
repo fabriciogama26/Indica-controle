@@ -1,17 +1,4 @@
 {
   "description": "Baseline do ratchet de teto de linhas do PostgREST (scripts/check-row-limit.mjs). Cada entrada e a quantidade de chamadas .limit() acima de 1000 que o arquivo ja tinha. O numero so pode diminuir. Arquivo novo com violacao falha o lint direto. REDUCOES: rodar `npm run lint:rowlimit:update`, que nunca aumenta um baseline. Nao existe aceite de aumento: pedir mais que o teto nunca funciona, o servidor nao entrega. Para leitura completa use `loadAllRows` de src/lib/server/apiHelpers.ts. Nao editar este arquivo a mao.",
-  "files": {
-    "src/app/api/composicao-equipe/meta/route.ts": 2,
-    "src/app/api/composicao-equipe/route.ts": 3,
-    "src/app/api/consumo-projeto/route.ts": 1,
-    "src/app/api/dash-operacional-faturamento/route.ts": 1,
-    "src/app/api/locacao/meta/route.ts": 1,
-    "src/app/api/meta/route.ts": 1,
-    "src/app/api/projects/meta/route.ts": 1,
-    "src/app/api/stock-balance/route.ts": 1,
-    "src/lib/server/locationPlanning.ts": 1,
-    "src/server/modules/cronograma-solicitacoes/handlers.ts": 1,
-    "src/server/modules/cronograma-solicitacoes/queries.ts": 1,
-    "src/server/modules/dashboard-measurement/controller.ts": 4
-  }
+  "files": {}
 }

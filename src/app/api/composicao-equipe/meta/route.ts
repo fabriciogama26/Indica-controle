@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 
 type ProjectRow = {
@@ -63,15 +64,16 @@ export async function GET(request: NextRequest) {
       jobTitlesResult,
       serviceCentersResult,
     ] = await Promise.all([
-      supabase
+      loadAllRows<ProjectRow>((from, to) => supabase
         .from("project_with_labels")
         .select("id, sob, service_center_text, is_third_party")
         .eq("tenant_id", appUser.tenant_id)
         .eq("is_active", true)
         .eq("is_third_party", false)
         .order("sob", { ascending: true })
-        .limit(5000)
-        .returns<ProjectRow[]>(),
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<ProjectRow[]>()),
       supabase
         .from("teams")
         .select("id, name, vehicle_plate, service_center_id, foreman_person_id")
@@ -79,14 +81,15 @@ export async function GET(request: NextRequest) {
         .eq("ativo", true)
         .order("name", { ascending: true })
         .returns<TeamRow[]>(),
-      supabase
+      loadAllRows<PersonRow>((from, to) => supabase
         .from("people")
         .select("id, nome, matriculation, cpf, phone, job_title_id")
         .eq("tenant_id", appUser.tenant_id)
         .eq("ativo", true)
         .order("nome", { ascending: true })
-        .limit(5000)
-        .returns<PersonRow[]>(),
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<PersonRow[]>()),
       supabase
         .from("job_titles")
         .select("id, name")

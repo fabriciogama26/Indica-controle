@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
-import { BILLING_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { BILLING_PAGE_SIZE, EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   ActivityOption,
   BillingCatalogResponse,
@@ -591,18 +591,34 @@ export function BillingPageView() {
     }
     setIsExporting(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "10000" });
-      if (filters.projectId) params.set("projectId", filters.projectId);
-      if (filters.status !== "TODOS") params.set("status", filters.status);
-      if (filters.billingKind !== "TODOS") params.set("billingKind", filters.billingKind);
-      if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-      const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
-      const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
-      if (!response.ok) throw createApiError(payload, "Falha ao exportar faturamentos.");
+      // `pageSize=10000` era recusado em silencio: `parsePagination` capa em
+      // `maxPageSize: 500`, entao a exportacao trazia UMA pagina de 500 linhas e se dava
+      // por completa. Agora percorre as paginas ate alcancar `pagination.total`.
+      const exported: BillingListResponse["orders"] = [];
+      let exportPage = 1;
+      let total = 0;
+
+      for (;;) {
+        const params = new URLSearchParams({ page: String(exportPage), pageSize: String(EXPORT_PAGE_SIZE) });
+        if (filters.projectId) params.set("projectId", filters.projectId);
+        if (filters.status !== "TODOS") params.set("status", filters.status);
+        if (filters.billingKind !== "TODOS") params.set("billingKind", filters.billingKind);
+        if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
+        const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
+        const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
+        if (!response.ok) throw createApiError(payload, "Falha ao exportar faturamentos.");
+
+        const pageOrders = payload.orders ?? [];
+        total = payload.pagination?.total ?? total;
+        exported.push(...pageOrders);
+
+        if (!pageOrders.length || exported.length >= total) break;
+        exportPage += 1;
+      }
 
       downloadCsv("faturamento.csv", [
         ["numero", "projeto", "data_ingresso", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
-        ...(payload.orders ?? []).map((order) => [
+        ...exported.map((order) => [
           order.billingNumber,
           order.projectCode,
           order.ingressoDate ?? "",

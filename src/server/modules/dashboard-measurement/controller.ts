@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
@@ -603,7 +604,12 @@ export async function handleDashboardMeasurementGet(
   const annualRangeStart = annualCycles[0]?.cycleStart ?? `${annualYear}-01-01`;
   const annualRangeEnd = annualCycles[annualCycles.length - 1]?.cycleEnd ?? `${annualYear}-12-31`;
 
-  const cyclesDiscoveryResult = await resolution.supabase
+  // Descoberta de ciclos: precisa das datas TODAS. O `.limit(3000)` anterior parava em
+  // 1.000 (teto do PostgREST) e, como a ordem e decrescente, o corte comia justamente os
+  // ciclos mais ANTIGOS — eles sumiam do seletor sem nenhum aviso. O desempate por `id`
+  // e obrigatorio: `execution_date` repete, e sem ordem total a paginacao por offset pode
+  // repetir ou perder linha entre uma pagina e outra.
+  const cyclesDiscoveryResult = await loadAllRows<{ execution_date: string }>((from, to) => resolution.supabase
     .from("project_measurement_orders")
     .select("execution_date")
     .eq("tenant_id", tenantId)
@@ -611,8 +617,9 @@ export async function handleDashboardMeasurementGet(
     .eq("measurement_kind", "COM_PRODUCAO")
     .neq("status", "CANCELADA")
     .order("execution_date", { ascending: false })
-    .limit(3000)
-    .returns<{ execution_date: string }[]>();
+    .order("id", { ascending: true })
+    .range(from, to)
+    .returns<{ execution_date: string }[]>());
 
   if (cyclesDiscoveryResult.error) {
     return NextResponse.json({ message: "Falha ao carregar historico de ciclos." }, { status: 500 });
@@ -671,8 +678,13 @@ export async function handleDashboardMeasurementGet(
     ? (endDateFilter ? minIsoDate(selectedCycle.cycleEnd, endDateFilter) : selectedCycle.cycleEnd)
     : [selectedCycle.cycleEnd, endDateFilter].filter((d): d is string => Boolean(d)).sort().reverse()[0] ?? selectedCycle.cycleEnd;
 
+  // Os dois recortes liam no maximo 1.000 ordens (`.limit(2000)` e `.limit(5000)` nunca
+  // foram entregues) e, com ordem decrescente, o corte descartava sempre as medicoes mais
+  // ANTIGAS da janela. No recorte anual isso e o pior caso: o ano inteiro de um tenant
+  // ativo passa de 1.000 ordens com folga, entao o dashboard vinha somando so a ponta
+  // recente e apresentando o resultado como total do ano.
   const [ordersResult, annualOrdersResult] = await Promise.all([
-    resolution.supabase
+    loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
       .from("project_measurement_orders")
       .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
       .eq("tenant_id", tenantId)
@@ -682,11 +694,12 @@ export async function handleDashboardMeasurementGet(
       .gte("execution_date", windowStart)
       .lte("execution_date", windowEnd)
       .order("execution_date", { ascending: false })
-      .limit(2000)
-      .returns<MeasurementOrderRow[]>(),
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<MeasurementOrderRow[]>()),
     isTeamsDashboard
-      ? { data: [] as MeasurementOrderRow[], error: null }
-      : resolution.supabase
+      ? Promise.resolve({ data: [] as MeasurementOrderRow[], error: null })
+      : loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
           .from("project_measurement_orders")
           .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
           .eq("tenant_id", tenantId)
@@ -696,8 +709,9 @@ export async function handleDashboardMeasurementGet(
           .gte("execution_date", annualRangeStart)
           .lte("execution_date", annualRangeEnd)
           .order("execution_date", { ascending: false })
-          .limit(5000)
-          .returns<MeasurementOrderRow[]>(),
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<MeasurementOrderRow[]>()),
   ]);
 
   const orders = ordersResult.data;
@@ -1111,8 +1125,12 @@ export async function handleDashboardMeasurementGet(
   });
 
   const cycleDetailProjectIds = Array.from(new Set(filteredOrders.map((order) => order.project_id).filter(Boolean)));
+  // Historico de vida inteira dos projetos do ciclo: e o recorte que mais estourava o teto,
+  // porque acumula todas as medicoes de cada projeto ate o fim do ciclo. Com `.limit(5000)`
+  // cortado em 1.000 e ordem crescente, o detalhamento perdia o historico RECENTE dos
+  // projetos e mostrava reincidencia menor do que a real.
   const cycleDetailHistoryOrdersResult = !isTeamsDashboard && cycleDetailProjectIds.length
-    ? await resolution.supabase
+    ? await loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
         .from("project_measurement_orders")
         .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
         .eq("tenant_id", tenantId)
@@ -1122,8 +1140,9 @@ export async function handleDashboardMeasurementGet(
         .in("project_id", cycleDetailProjectIds)
         .lte("execution_date", selectedCycle.cycleEnd)
         .order("execution_date", { ascending: true })
-        .limit(5000)
-        .returns<MeasurementOrderRow[]>()
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<MeasurementOrderRow[]>())
     : { data: [] as MeasurementOrderRow[], error: null };
 
   if (cycleDetailHistoryOrdersResult.error) {

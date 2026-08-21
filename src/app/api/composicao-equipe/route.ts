@@ -7,7 +7,7 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type CompositionRow = {
   id: string;
@@ -772,22 +772,24 @@ export async function GET(request: NextRequest) {
 
     if (coverageDate) {
       const [teamsResult, compositionsResult] = await Promise.all([
-        supabase
+        loadAllRows<CoverageTeamRow>((from, to) => supabase
           .from("teams")
           .select("id")
           .eq("tenant_id", appUser.tenant_id)
           .eq("ativo", true)
           .order("name", { ascending: true })
-          .limit(5000)
-          .returns<CoverageTeamRow[]>(),
-        supabase
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<CoverageTeamRow[]>()),
+        loadAllRows<CoverageCompositionRow>((from, to) => supabase
           .from("team_compositions")
           .select("team_id, work_status")
           .eq("tenant_id", appUser.tenant_id)
           .eq("composition_date", coverageDate)
           .eq("is_active", true)
-          .limit(5000)
-          .returns<CoverageCompositionRow[]>(),
+          .order("team_id", { ascending: true })
+          .range(from, to)
+          .returns<CoverageCompositionRow[]>()),
       ]);
 
       if (teamsResult.error || compositionsResult.error) {
@@ -904,13 +906,14 @@ export async function GET(request: NextRequest) {
 
     let projectCompositionIds: string[] | null = null;
     if (projectId) {
-      const projectLinks = await supabase
+      const projectLinks = await loadAllRows<{ composition_id: string }>((from, to) => supabase
         .from("team_composition_projects")
         .select("composition_id")
         .eq("tenant_id", appUser.tenant_id)
         .eq("project_id", projectId)
-        .limit(5000)
-        .returns<Array<{ composition_id: string }>>();
+        .order("composition_id", { ascending: true })
+        .range(from, to)
+        .returns<Array<{ composition_id: string }>>());
 
       if (!projectLinks.error) {
         projectCompositionIds = Array.from(new Set((projectLinks.data ?? []).map((item) => item.composition_id)));

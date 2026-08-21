@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 
 type ProjectMetaRow = {
@@ -53,14 +54,17 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const { data, error } = await supabase
+    // Lista de apoio da tela: cortada em 1.000 pelo PostgREST, projeto sumia do
+    // seletor sem nenhum sinal. Desempate por `id` porque `updated_at` repete.
+    const { data, error } = await loadAllRows<ProjectMetaRow>((from, to) => supabase
       .from("project_with_labels")
       .select("id, sob, city_text, is_active, is_third_party, updated_at, has_locacao")
       .eq("tenant_id", appUser.tenant_id)
       .eq("is_third_party", false)
       .order("updated_at", { ascending: false })
-      .limit(5000)
-      .returns<ProjectMetaRow[]>();
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<ProjectMetaRow[]>());
 
     if (error) {
       return NextResponse.json({ message: "Falha ao carregar metadados de locacao." }, { status: 500 });

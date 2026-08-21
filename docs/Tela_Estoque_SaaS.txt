@@ -272,3 +272,14 @@ Atualizacao 2026-06 - Carregamento em blocos do Estoque Atual
 - Validacao:
   - `npm.cmd run lint -- src/app/api/stock-balance/route.ts`
   - `npm.cmd run build`
+
+Atualizacao 2026-08-21 - Teto de 1.000 linhas no historico do material
+--------------------------------------------------------------------------
+- Correcao aplicada em 2026-08-21 (ver `Auditoria/14-exportacoes-csv.md`): toda leitura desta
+  tela que pedia mais de 1.000 linhas numa unica resposta passou a usar `loadAllRows`, com
+  ordem total (desempate por `id`). O PostgREST corta em 1.000 sem sinalizar, entao o
+  `.limit()` anterior devolvia resultado incompleto com status 200 — numero errado
+  apresentado como certo, nunca erro na tela.
+- Consulta corrigida: leitura de `stock_transfer_items` por material em
+  `src/app/api/stock-balance/route.ts`, que usava `.limit(2000)`. Material com muita
+  movimentacao perdia parte do historico na tela e no CSV.

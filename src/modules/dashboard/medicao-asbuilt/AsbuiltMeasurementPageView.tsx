@@ -8,7 +8,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
-import { ASBUILT_MEASUREMENT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { ASBUILT_MEASUREMENT_PAGE_SIZE, EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   ActivityOption,
   AsbuiltMeasurementCatalogResponse,
@@ -585,18 +585,34 @@ export function AsbuiltMeasurementPageView() {
     }
     setIsExporting(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "10000" });
-      if (filters.projectId) params.set("projectId", filters.projectId);
-      if (filters.status !== "TODOS") params.set("status", filters.status);
-      if (filters.asbuiltMeasurementKind !== "TODOS") params.set("asbuiltMeasurementKind", filters.asbuiltMeasurementKind);
-      if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-      const response = await fetch(`/api/medicao-asbuilt?${params.toString()}`, { headers: authHeaders });
-      const payload = (await response.json().catch(() => ({}))) as AsbuiltMeasurementListResponse;
-      if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar medicoes asbuilt.");
+      // `pageSize=10000` era recusado em silencio: `parsePagination` capa em
+      // `maxPageSize: 500`, entao a exportacao trazia UMA pagina de 500 linhas e se dava
+      // por completa. Agora percorre as paginas ate alcancar `pagination.total`.
+      const exported: AsbuiltMeasurementListResponse["orders"] = [];
+      let exportPage = 1;
+      let total = 0;
+
+      for (;;) {
+        const params = new URLSearchParams({ page: String(exportPage), pageSize: String(EXPORT_PAGE_SIZE) });
+        if (filters.projectId) params.set("projectId", filters.projectId);
+        if (filters.status !== "TODOS") params.set("status", filters.status);
+        if (filters.asbuiltMeasurementKind !== "TODOS") params.set("asbuiltMeasurementKind", filters.asbuiltMeasurementKind);
+        if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
+        const response = await fetch(`/api/medicao-asbuilt?${params.toString()}`, { headers: authHeaders });
+        const payload = (await response.json().catch(() => ({}))) as AsbuiltMeasurementListResponse;
+        if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar medicoes asbuilt.");
+
+        const pageOrders = payload.orders ?? [];
+        total = payload.pagination?.total ?? total;
+        exported.push(...pageOrders);
+
+        if (!pageOrders.length || exported.length >= total) break;
+        exportPage += 1;
+      }
 
       downloadCsv("medicao_asbuilt.csv", [
         ["numero", "projeto", "servicos_considerados_ate", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
-        ...(payload.orders ?? []).map((order) => [
+        ...exported.map((order) => [
           order.asbuiltMeasurementNumber,
           order.projectCode,
           formatDate(order.serviceCoverageEndDate),
