@@ -1110,25 +1110,20 @@ SEGUNDA CORRECAO NA MESMA ROTA: `loadAllPages`
   junto todas as operacoes seguintes.
 - Substituido por `loadAllRows`, que para em pagina VAZIA e avanca pelas linhas RECEBIDAS.
 
-DEFEITO AINDA ABERTO NESTA TELA - NAO CONSIDERAR RESOLVIDO
-- Apos as DUAS correcoes acima, a listagem sem filtro continua exibindo `Total: 4193`.
-- O esperado, medido no banco com a mesma semantica da rota (operacoes x transferencias x
-  itens), e 5.791. A exportacao, que usa outro caminho (RPC `list_team_operations_export`,
-  ja com paginacao correta), devolveu 5.045 linhas COM filtro aplicado.
-- Um subconjunto filtrado nao pode ser maior que o conjunto completo: a listagem perde
-  aproximadamente 1.598 linhas, e as duas correcoes desta entrega NAO fecharam essa perda.
-- As duas correcoes valem por si (a de `loadRowsInChunks` recuperou 43 itens medidos, e a
-  condicao de parada de `loadAllPages` era comprovadamente a proibida), mas nenhuma delas era
-  a causa principal.
-- Proximo passo definido: instrumentar o pipeline da rota registrando o tamanho de cada
-  estagio (`operations` / `headers` / `currentTransferIds` / `itemRows` / `allRows` /
-  `filteredRows`) e comparar com o esperado `2.987 / 2.987 / 2.987 / 5.791 / 5.791 / 5.791`.
-  O primeiro estagio que divergir aponta a causa, sem hipotese.
-- NAO usar `npm run db:chunk-acceptance-live` como criterio de aceite desta tela: aquela
-  consulta nao reproduz os filtros de negocio de nenhum dos dois caminhos, e foi apresentada
-  como criterio por engano.
+RESULTADO VERIFICADO NA TELA — 2026-08-21
+- ANTES das correcoes: `Total: 4193` sem filtro.
+- DEPOIS: `Total: 5787` (290 paginas). A correcao de `loadAllPages` era o defeito
+  PRINCIPAL desta tela: recuperou ~1.594 linhas, contra as 43 da correcao de
+  `loadRowsInChunks`.
+- Causa: a parada `pageRows.length < TEAM_OPERATION_PAGE_SIZE` sob um embed
+  `stock_transfers!inner`. Com join interno, pagina mais curta que a pedida e o caso
+  NORMAL — entao a primeira pagina curta encerrava a leitura de operacoes e levava junto
+  todos os itens correspondentes.
 
-- Arquivos alterados:
-  - `src/lib/server/apiHelpers.ts`
-  - `src/app/api/team-stock-operations/route.ts`
-  - `scripts/check-chunk-fix-acceptance-live.sql` (novo)
+RESIDUO DE 4 LINHAS — em apuracao, sem impacto conhecido
+- Esperado 5.791, exibido 5.787. A diferenca de 4 linhas (0,07%) provavelmente vem de a
+  medicao de 5.791 nao filtrar `tenant_id` nos dois lados do join, enquanto a rota filtra
+  na operacao E na transferencia e usa `!inner`. Ou seja, o esperado e que estava frouxo,
+  nao a tela.
+- `npm run db:residual-live` separa as populacoes e decide. Ate rodar, tratar como
+  divergencia conhecida e nao como defeito.
