@@ -1075,3 +1075,60 @@ Atualizacao 2026-08-20 (Categoria/Subcategoria em filtros e CSV)
   - O CSV passa a incluir as colunas `categoria` e `subcategoria` apos `descricao`.
   - A RPC continua `SECURITY DEFINER`, `search_path = public`, com EXECUTE somente para
     `service_role`; o `tenant_id` continua vindo da sessao resolvida na API, nunca do cliente.
+
+Atualizacao 2026-08-21 - Itens sumiam da listagem por teto de 1.000 linhas
+--------------------------------------------------------------------------
+ACHADO (ver `Auditoria/15-supabase-implicit-row-cap.md`)
+- A listagem de historico carregava os itens quebrando a lista de transferencias em lotes
+  de 500 (`RELATION_QUERY_CHUNK_SIZE`) e consultando `stock_transfer_items` com
+  `.in("stock_transfer_id", lote)`, SEM `.range()` e SEM `.limit()`.
+- Chunk de parametro nao e paginacao de resposta: quebrar a lista de ids limita o tamanho
+  da CONSULTA, nao o numero de LINHAS que ela devolve. O PostgREST corta em 1.000 por
+  resposta e nao sinaliza — status 200 com menos linhas do que o banco produziu.
+- Medido em 2026-08-21: 2.987 transferencias, 5.791 itens reais, 5.748 entregues.
+  **43 itens sumiam da listagem e da exportacao CSV, sem nenhum aviso na tela.**
+- Dos 6 lotes, 1 estourava o teto. A media por lote era 965 linhas contra teto de 1.000:
+  a tela estava na BORDA, com folga de 3,5%, e qualquer crescimento de volume levaria os
+  outros 5 lotes por cima.
+
+CORRECAO
+- `loadRowsInChunks` deixou de ser copia privada desta rota e passou a ser o helper
+  compartilhado de `src/lib/server/apiHelpers.ts`, que pagina a RESPOSTA de cada lote ate
+  pagina vazia, alem de quebrar os parametros em lotes.
+- Os 6 pontos de leitura desta rota foram migrados com ORDEM TOTAL explicita, requisito da
+  paginacao por offset. Atencao a `stock_transfer_team_operations`: a PK dela e
+  `transfer_id`, nao `id`, entao a ordem usa `transfer_id`.
+- O tamanho de lote (500) e o paralelismo (4) foram PRESERVADOS de proposito: a correcao e
+  sobre paginacao de resposta, e mudar o lote junto tornaria impossivel atribuir qualquer
+  diferenca de comportamento a uma causa.
+
+SEGUNDA CORRECAO NA MESMA ROTA: `loadAllPages`
+- A leitura das operacoes usava um segundo helper privado, `loadAllPages`, com a condicao de
+  parada que a auditoria classifica como proibida: `pageRows.length < TEAM_OPERATION_PAGE_SIZE`.
+- A consulta e um embed com `stock_transfers!inner`. Com join interno, pagina mais curta que a
+  pedida e NORMAL, nao excepcional — entao a primeira pagina curta encerrava a leitura e levava
+  junto todas as operacoes seguintes.
+- Substituido por `loadAllRows`, que para em pagina VAZIA e avanca pelas linhas RECEBIDAS.
+
+DEFEITO AINDA ABERTO NESTA TELA - NAO CONSIDERAR RESOLVIDO
+- Apos as DUAS correcoes acima, a listagem sem filtro continua exibindo `Total: 4193`.
+- O esperado, medido no banco com a mesma semantica da rota (operacoes x transferencias x
+  itens), e 5.791. A exportacao, que usa outro caminho (RPC `list_team_operations_export`,
+  ja com paginacao correta), devolveu 5.045 linhas COM filtro aplicado.
+- Um subconjunto filtrado nao pode ser maior que o conjunto completo: a listagem perde
+  aproximadamente 1.598 linhas, e as duas correcoes desta entrega NAO fecharam essa perda.
+- As duas correcoes valem por si (a de `loadRowsInChunks` recuperou 43 itens medidos, e a
+  condicao de parada de `loadAllPages` era comprovadamente a proibida), mas nenhuma delas era
+  a causa principal.
+- Proximo passo definido: instrumentar o pipeline da rota registrando o tamanho de cada
+  estagio (`operations` / `headers` / `currentTransferIds` / `itemRows` / `allRows` /
+  `filteredRows`) e comparar com o esperado `2.987 / 2.987 / 2.987 / 5.791 / 5.791 / 5.791`.
+  O primeiro estagio que divergir aponta a causa, sem hipotese.
+- NAO usar `npm run db:chunk-acceptance-live` como criterio de aceite desta tela: aquela
+  consulta nao reproduz os filtros de negocio de nenhum dos dois caminhos, e foi apresentada
+  como criterio por engano.
+
+- Arquivos alterados:
+  - `src/lib/server/apiHelpers.ts`
+  - `src/app/api/team-stock-operations/route.ts`
+  - `scripts/check-chunk-fix-acceptance-live.sql` (novo)

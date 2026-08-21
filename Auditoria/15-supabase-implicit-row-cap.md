@@ -789,3 +789,68 @@ direcoes nesta auditoria: para menos, ao chamar o lote de 100 de "folga conforta
 usando media em vez de teto; e para mais, aqui, ao projetar 5 lotes truncando com uma
 media que nao era da populacao certa. Nas 8 cadeias restantes, medir a distribuicao DO
 FILTRO, nunca a da tabela.
+
+## QUINTA E SEXTA AUTOCORRECAO — o defeito principal continua ABERTO
+
+A secao anterior deu o caso de `team-stock-operations` por fechado com base em duas
+correcoes e numa medicao de aceite. As duas afirmacoes estavam erradas.
+
+### Quinta: `loadAllPages` nao era "armadilha latente", era condicao proibida sob join interno
+
+Este documento classificou `loadAllPages` como latente, argumentando que
+`pageRows.length < TEAM_OPERATION_PAGE_SIZE` so falharia se alguem elevasse a constante
+acima do teto do servidor. O argumento vale para consulta simples e NAO vale aqui: a
+consulta e um embed com `stock_transfers!inner`, e sob join interno **pagina mais curta que
+a pedida e o caso normal**, nao o excepcional. A parada precoce nao dependia de ninguem
+mexer em constante nenhuma.
+
+Corrigido: os tres call sites passaram a usar `loadAllRows`, e `loadAllPages` foi removido.
+
+### Sexta: o criterio de aceite que este documento propos nao servia
+
+`scripts/check-chunk-fix-acceptance-live.sql` conta TODOS os itens das transferencias com
+operacao de equipe, sem reproduzir os filtros de negocio de nenhum dos dois caminhos da
+aplicacao. E um superconjunto dos dois, e portanto **nao valida nem a listagem nem a
+exportacao**. Foi apresentado como criterio de aceite por engano.
+
+Erro mais serio das seis: os outros foram estimativas ruins; este foi o INSTRUMENTO DE
+MEDICAO errado, apresentado como prova.
+
+### Estado real do caso, verificado na tela
+
+| Fonte | Linhas | Confiabilidade |
+|---|---|---|
+| SQL, semantica da rota, sem filtro | 5.791 | esperado |
+| Exportacao (RPC), **com** filtro | 5.045 | caminho ja correto antes desta auditoria |
+| **Listagem, SEM filtro** | **4.193** | perde ~1.598 linhas |
+
+Um subconjunto filtrado nao pode ser maior que o conjunto completo. A listagem perde
+linhas, e **as duas correcoes desta entrega nao fecharam a perda** — o numero na tela nao
+mudou.
+
+Verificado que nao ha filtro padrao escondido: `INITIAL_FILTERS` e todo vazio/`TODOS`, e
+`normalizeReversalStatus` devolve `TODOS` por omissao. Verificado tambem que a RPC de
+exportacao nao duplica linhas: e `operacoes ⋈ transferencias ⋈ itens`, com os demais
+`left join` todos em PK.
+
+### Licao que fecha o padrao das seis
+
+Cinco das seis autocorrecoes vieram de CLASSIFICAR POR LEITURA DE CODIGO e apresentar o
+resultado como conclusao. A taxa de acerto foi ruim o bastante para virar regra:
+
+**leitura estatica gera HIPOTESE, nunca veredito. Veredito exige medicao ou instrumentacao.**
+
+Isso vale diretamente para o passo 7: um classificador que emita `SAFE` por analise
+sintatica esta sujeito exatamente a essa taxa de erro. A saida util dele e `REVIEW` com
+evidencia anexada, e `DEFECT` so quando a medicao confirmar.
+
+### Proximo passo, sem hipotese nova
+
+Instrumentar a rota registrando o tamanho de cada estagio do pipeline:
+
+```
+operations / headers / currentTransferIds / itemRows / allRows / filteredRows
+esperado:  2.987 / 2.987 /          2.987 /     5.791 /   5.791 /       5.791
+```
+
+O primeiro estagio que divergir aponta a causa. Nao formular a setima hipotese por leitura.

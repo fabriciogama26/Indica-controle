@@ -5,7 +5,7 @@ import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/mate
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { loadRowsInChunks, parsePagination } from "@/lib/server/apiHelpers";
+import { loadAllRows, loadRowsInChunks, parsePagination } from "@/lib/server/apiHelpers";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -176,30 +176,6 @@ const TRANSFER_HEADER_COLUMNS =
   "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by";
 const RELATION_QUERY_CHUNK_SIZE = 500;
 const RELATION_QUERY_MAX_PARALLEL = 4;
-const TEAM_OPERATION_PAGE_SIZE = 1000;
-
-async function loadAllPages<T>(
-  loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
-) {
-  const rows: T[] = [];
-  let from = 0;
-
-  for (;;) {
-    const result = await loadPage(from, from + TEAM_OPERATION_PAGE_SIZE - 1);
-    if (result.error) {
-      return { data: null, error: result.error };
-    }
-
-    const pageRows = result.data ?? [];
-    rows.push(...pageRows);
-    if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
-      break;
-    }
-    from += TEAM_OPERATION_PAGE_SIZE;
-  }
-
-  return { data: rows, error: null };
-}
 
 function normalizeCodeFilter(value: string | null) {
   return String(value ?? "").trim().toUpperCase();
@@ -262,7 +238,7 @@ async function loadTeamOperationRows(
   teamIdFilter: string,
   operationKindFilter?: TeamOperationKind | null,
 ) {
-  const fullResult = await loadAllPages<TeamOperationMapRow>((from, to) => {
+  const fullResult = await loadAllRows<TeamOperationMapRow>((from, to) => {
     let fullQuery = supabase
       .from("stock_transfer_team_operations")
       .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot, created_at")
@@ -287,7 +263,7 @@ async function loadTeamOperationRows(
 
   logTeamOperationLoadError("team-operations-full-select", fullResult.error, { fallback: "legacy-select" });
 
-  const legacyResult = await loadAllPages<LegacyTeamOperationMapRow>((from, to) => {
+  const legacyResult = await loadAllRows<LegacyTeamOperationMapRow>((from, to) => {
     let legacyQuery = supabase
       .from("stock_transfer_team_operations")
       .select("transfer_id, team_id, created_at")
@@ -321,7 +297,7 @@ async function loadTeamOperationsWithHeaders(
   tenantId: string,
   filters: TeamOperationHeaderFilters,
 ) {
-  const embeddedResult = await loadAllPages<TeamOperationEmbeddedRow>((from, to) => {
+  const embeddedResult = await loadAllRows<TeamOperationEmbeddedRow>((from, to) => {
     let query = supabase
       .from("stock_transfer_team_operations")
       .select(
