@@ -379,3 +379,21 @@ Atualizacao 2026-07-10 - Hardening de RPC:
 - Antes: Supabase Advisor apontava EXECUTE por `authenticated` em funcao `SECURITY DEFINER`.
 - Depois: EXECUTE direto fica revogado para `public`, `anon` e `authenticated`; importacao segue pelo backend com `service_role`.
 - Multi-tenant: escopo por tenant permanece no Route Handler e na RPC; reduz chamada direta via `/rpc`.
+
+Atualizacao 2026-08-21 - Exportacao CSV parava em 500 linhas
+--------------------------------------------------------------------------
+ACHADO (ver `Auditoria/14-exportacoes-csv.md`)
+- A exportacao pedia `pageSize=10000` numa UNICA requisicao a `/api/medicao-asbuilt`. A rota aplica
+  `parsePagination(..., { maxPageSize: 500 })`, que capa o valor SEM AVISAR.
+- Resultado: o cliente recebia 500 linhas, nao conferia `pagination.total`, e dava a
+  exportacao por completa. Acima de 500 medicoes asbuilt no filtro, o CSV saia truncado em silencio.
+- Este caso NAO era detectavel pelo ratchet `lint:rowlimit`: nao existe `.limit()` literal
+  acima de 1.000 nesse caminho — o teto efetivo era 500, e so existe em runtime.
+
+CORRECAO
+- A exportacao percorre as paginas ate alcancar `pagination.total`, com
+  `EXPORT_PAGE_SIZE = 500` casado com o `maxPageSize` real da rota.
+
+- Arquivos alterados:
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao-asbuilt/constants.ts` (constante `EXPORT_PAGE_SIZE`)

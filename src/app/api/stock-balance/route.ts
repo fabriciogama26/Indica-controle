@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type MaterialRelation = {
   id: string;
@@ -255,13 +255,17 @@ async function loadStockHistory(request: NextRequest) {
     );
   }
 
-  const { data: allMaterialItems, error: itemsError } = await supabase
+  // Historico completo do material: o `.limit(2000)` anterior nunca passou de 1.000
+  // linhas (teto do PostgREST, sem aviso), entao material com muita movimentacao
+  // perdia parte do historico na tela e no CSV.
+  const { data: allMaterialItems, error: itemsError } = await loadAllRows<StockTransferItemRow>((from, to) => supabase
     .from("stock_transfer_items")
     .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
     .eq("tenant_id", appUser.tenant_id)
     .eq("material_id", materialId)
-    .limit(2000)
-    .returns<StockTransferItemRow[]>();
+    .order("id", { ascending: true })
+    .range(from, to)
+    .returns<StockTransferItemRow[]>());
 
   if (itemsError) {
     return NextResponse.json({ message: "Falha ao carregar os itens do historico do estoque atual." }, { status: 500 });

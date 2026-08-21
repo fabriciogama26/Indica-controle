@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { normalizeText } from "@/lib/server/apiHelpers";
+import { loadAllRows, normalizeText } from "@/lib/server/apiHelpers";
 import { fetchWorkCompletionByProject } from "@/server/modules/programacao-normalizada";
 import {
   isPrioridade,
@@ -333,14 +333,15 @@ export async function fetchTipoDefaultsWithUsers(
   tenantId: string,
 ): Promise<Array<{ userId: string; userName: string; defaultTipo: string | null }>> {
   const [usersResult, defaultsResult] = await Promise.all([
-    supabase
+    loadAllRows<{ id: string; display: string | null; login_name: string | null }>((from, to) => supabase
       .from("app_users")
       .select("id, display, login_name")
       .eq("tenant_id", tenantId)
       .eq("ativo", true)
       .order("display", { ascending: true })
-      .limit(2000)
-      .returns<Array<{ id: string; display: string | null; login_name: string | null }>>(),
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<Array<{ id: string; display: string | null; login_name: string | null }>>()),
     supabase
       .from("cronograma_user_tipo_default")
       .select("user_id, default_tipo")

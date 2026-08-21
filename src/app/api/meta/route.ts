@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
@@ -504,7 +505,7 @@ export async function GET(request: NextRequest) {
       .eq("tenant_id", resolution.appUser.tenant_id)
       .eq("ativo", true)
       .returns<TeamRow[]>(),
-    resolution.supabase
+    loadAllRows<MeasurementOrderDateRow>((from, to) => resolution.supabase
       .from("project_measurement_orders")
       .select("execution_date, project_id, team_id")
       .eq("tenant_id", resolution.appUser.tenant_id)
@@ -513,8 +514,9 @@ export async function GET(request: NextRequest) {
       .neq("status", "CANCELADA")
       .gte("execution_date", measurementWindowStart)
       .order("execution_date", { ascending: false })
-      .limit(3000)
-      .returns<MeasurementOrderDateRow[]>(),
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<MeasurementOrderDateRow[]>()),
   ]);
 
   if (teamTypesResult.error) {
