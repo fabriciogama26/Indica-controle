@@ -128,7 +128,7 @@ Funcoes principais
 
 Constantes e configuracoes
 - `PAGE_KEY = "estorno-atendimento"` em `src/app/api/stock-reversal-requests/route.ts`.
-- `OPEN_STATUSES = ["PENDENTE", "EM_ANALISE", "FALHA_EXECUCAO"]` na API.
+- `OPEN_STATUSES = ["PENDENTE", "EM_ANALISE"]` na API.
 - `PAGE_SIZE = 20` e `INITIAL_FILTERS` na View.
 
 Funcoes utilitarias relacionadas
@@ -172,4 +172,13 @@ Ajuda contextual
   - Antes: confirmar o modal de estorno executava a reversao imediatamente.
   - Depois: confirmar o modal cria pedido pendente na fila.
   - Antes: `/estornos` consultava apenas estornos ja executados.
-  - Depois: `/estornos` continua read-only e `/estorno-atendimento` cuida dos pedidos pendentes.
+- Depois: `/estornos` continua read-only e `/estorno-atendimento` cuida dos pedidos pendentes.
+
+Atualizacao 2026-08 - Hardening de regras de atendimento
+- Migration: `supabase/migrations/384_harden_stock_reversal_request_flow.sql`.
+- Aprovacao/executar passa a exigir permissao `can_reverse` da pagina `estorno-atendimento`; assumir e recusar usam `can_update`.
+- O solicitante do pedido nao pode assumir, aprovar ou recusar o proprio estorno.
+- Aprovar/recusar exige que o pedido esteja assumido pelo proprio atendente e com claim ativo.
+- Pedidos em `FALHA_EXECUCAO` continuam consultaveis pelo filtro `Falha`, mas nao entram mais na visao padrao `Abertos` nem ficam com botoes de decisao habilitados.
+- Solicitar estorno em modo `BATCH` exige lista explicita de itens; selecionar todos os itens e responsabilidade do modo `FULL`.
+- RPCs antigas que executam estorno diretamente (`reverse_*`) ficam sem EXECUTE para `authenticated`/`anon`, preservando apenas `service_role`.
