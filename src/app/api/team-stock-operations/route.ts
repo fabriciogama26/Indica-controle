@@ -5,7 +5,7 @@ import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/mate
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { loadRowsInChunks, parsePagination } from "@/lib/server/apiHelpers";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -177,37 +177,6 @@ const TRANSFER_HEADER_COLUMNS =
 const RELATION_QUERY_CHUNK_SIZE = 500;
 const RELATION_QUERY_MAX_PARALLEL = 4;
 const TEAM_OPERATION_PAGE_SIZE = 1000;
-
-function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
-  const chunks: string[][] = [];
-  for (let index = 0; index < values.length; index += chunkSize) {
-    chunks.push(values.slice(index, index + chunkSize));
-  }
-  return chunks;
-}
-
-async function loadRowsInChunks<T>(
-  values: string[],
-  loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
-) {
-  const rows: T[] = [];
-  const chunks = chunkValues(values);
-
-  for (let index = 0; index < chunks.length; index += RELATION_QUERY_MAX_PARALLEL) {
-    const results = await Promise.all(
-      chunks.slice(index, index + RELATION_QUERY_MAX_PARALLEL).map((chunk) => loadChunk(chunk)),
-    );
-
-    for (const result of results) {
-      if (result.error) {
-        return { data: null, error: result.error };
-      }
-      rows.push(...(result.data ?? []));
-    }
-  }
-
-  return { data: rows, error: null };
-}
 
 async function loadAllPages<T>(
   loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
@@ -435,7 +404,7 @@ async function loadTeamOperationsWithHeaders(
 
   const headersResult = await loadRowsInChunks<TransferHeaderRow>(
     operations.map((row) => row.transfer_id),
-    (chunk) => {
+    (chunk, from, to) => {
       let q = supabase
         .from("stock_transfers")
         .select(TRANSFER_HEADER_COLUMNS)
@@ -445,8 +414,12 @@ async function loadTeamOperationsWithHeaders(
       if (filters.endDate) q = q.lte("entry_date", filters.endDate);
       if (filters.projectIdFilter) q = q.eq("project_id", filters.projectIdFilter);
       if (filters.entryTypeFilter) q = q.eq("entry_type", filters.entryTypeFilter);
-      return q.returns<TransferHeaderRow[]>();
+      return q
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<TransferHeaderRow[]>();
     },
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL },
   );
 
   if (headersResult.error) {
@@ -775,7 +748,7 @@ async function loadTeamOperationList(request: NextRequest) {
   const currentTransferIds = transferHeaders.map((row) => row.id);
   const { data: itemRows, error: itemsError } = await loadRowsInChunks<TransferItemRow>(
     currentTransferIds,
-    (chunk) => {
+    (chunk, from, to) => {
       let q = supabase
         .from("stock_transfer_items")
         .select(`id, stock_transfer_id, material_id, quantity, serial_number, lot_code${hasMaterialFilters ? ", materials!inner(id)" : ""}`)
@@ -785,8 +758,12 @@ async function loadTeamOperationList(request: NextRequest) {
       if (materialCodeFilter) q = q.ilike("materials.codigo", `%${materialCodeFilter}%`);
       if (categoryIdFilter) q = q.eq("materials.category_id", categoryIdFilter);
       if (subcategoryIdFilter) q = q.eq("materials.subcategory_id", subcategoryIdFilter);
-      return q.returns<TransferItemRow[]>();
+      return q
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<TransferItemRow[]>();
     },
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL },
   );
 
   if (itemsError) {
@@ -859,40 +836,52 @@ async function loadTeamOperationList(request: NextRequest) {
           .returns<TeamRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: TeamRow[]; error: null }),
     currentTransferIds.length
-      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_id", chunk)
-            .returns<StockTransferReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     currentTransferIds.length
-      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_id", chunk)
-            .returns<StockTransferReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferItemIds.length
-      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_item_id", chunk)
-            .returns<StockTransferItemReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferItemReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
     transferItemIds.length
-      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_item_id", chunk)
-            .returns<StockTransferItemReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferItemReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
 

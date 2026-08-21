@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { loadAllRows, parsePositiveInteger, SUPABASE_RESPONSE_ROW_CAP } from "@/lib/server/apiHelpers";
+import { loadAllRows, loadRowsInChunks, parsePositiveInteger, SUPABASE_RESPONSE_ROW_CAP } from "@/lib/server/apiHelpers";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import {
   normalizeDateInput,
@@ -162,37 +162,7 @@ type HistoryValueMaps = {
   projects: Map<string, string>;
 };
 
-type QueryError = {
-  message: string;
-  code?: string;
-};
-
 const RELATION_QUERY_CHUNK_SIZE = 100;
-
-function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
-  const chunks: string[][] = [];
-  for (let index = 0; index < values.length; index += chunkSize) {
-    chunks.push(values.slice(index, index + chunkSize));
-  }
-  return chunks;
-}
-
-async function loadRowsInChunks<T>(
-  values: string[],
-  loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: QueryError | null }>,
-) {
-  const rows: T[] = [];
-
-  for (const chunk of chunkValues(values)) {
-    const result = await loadChunk(chunk);
-    if (result.error) {
-      return { data: null, error: result.error };
-    }
-    rows.push(...(result.data ?? []));
-  }
-
-  return { data: rows, error: null };
-}
 
 // Above this many IDs an IN/NOT IN filter makes the PostgREST query too large to send.
 const IN_FILTER_MAX_IDS = 200;
@@ -236,22 +206,26 @@ async function preloadMaterialTransferIds(
   if (!materials?.length) return { transferIds: [], materialIds: [] };
 
   const materialIds = materials.map((m: { id: string }) => m.id);
-  const result = await loadRowsInChunks<{ stock_transfer_id: string }>(
-    materialIds,
-    (chunk) => supabase
+  // NAO usa `loadRowsInChunks`: esta leitura e limitada DE PROPOSITO. O retorno e cortado em
+  // 200 ids logo abaixo, entao este preload e um filtro de busca best-effort, nao uma fonte de
+  // verdade. Passar o callback para o helper faria ele paginar ate exaurir — e, se o callback
+  // ignorasse `from`/`to` para manter o teto, a parada por pagina vazia nunca aconteceria e o
+  // laco seria infinito. Ficar fora do helper e a forma honesta de declarar um teto intencional.
+  const preloadRows: Array<{ stock_transfer_id: string }> = [];
+  for (let index = 0; index < materialIds.length; index += RELATION_QUERY_CHUNK_SIZE) {
+    const chunk = materialIds.slice(index, index + RELATION_QUERY_CHUNK_SIZE);
+    const { data } = await supabase
       .from("stock_transfer_items")
       .select("stock_transfer_id")
       .eq("tenant_id", tenantId)
       .in("material_id", chunk)
-      // Nao vira leitura completa de proposito: o retorno ja e cortado em 200 ids logo abaixo, este
-      // preload e um filtro de busca best-effort, nao uma fonte de verdade. O teto de 5 mil que
-      // estava declarado aqui era so uma promessa falsa: o PostgREST nunca entregou mais que 1000.
       .limit(SUPABASE_RESPONSE_ROW_CAP)
-      .returns<{ stock_transfer_id: string }[]>(),
-  );
+      .returns<{ stock_transfer_id: string }[]>();
+    preloadRows.push(...(data ?? []));
+  }
 
   return {
-    transferIds: Array.from(new Set((result.data ?? []).map((r) => r.stock_transfer_id))).slice(0, 200),
+    transferIds: Array.from(new Set(preloadRows.map((r) => r.stock_transfer_id))).slice(0, 200),
     materialIds,
   };
 }
@@ -788,7 +762,7 @@ async function loadTransferList(request: NextRequest) {
   // Load items only for this page of transfers
   const { data: itemRows, error: itemsError } = await loadRowsInChunks<StockTransferItemRow>(
     transferIds,
-    (chunk) => {
+    (chunk, from, to) => {
       let itemsQuery = supabase
         .from("stock_transfer_items")
         .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code, cmd")
@@ -804,8 +778,12 @@ async function loadTransferList(request: NextRequest) {
         itemsQuery = itemsQuery.eq("cmd", false);
       }
 
-      return itemsQuery.returns<StockTransferItemRow[]>();
+      return itemsQuery
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<StockTransferItemRow[]>();
     },
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
   );
 
   if (itemsError) {
@@ -869,45 +847,57 @@ async function loadTransferList(request: NextRequest) {
     transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
           transferIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
           transferIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferItemIds.length
       ? loadRowsInChunks<StockTransferItemReversalRow>(
           transferItemIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_item_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferItemReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
     transferItemIds.length
       ? loadRowsInChunks<StockTransferItemReversalRow>(
           transferItemIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_item_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferItemReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
