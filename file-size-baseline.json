@@ -9,7 +9,7 @@
     "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1310,
     "src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx": 2319,
     "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1706,
-    "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3697,
+    "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3662,
     "src/modules/dashboard/equipes/TeamsPageView.tsx": 1630,
     "src/modules/dashboard/faturamento/BillingPageView.tsx": 1260,
     "src/modules/dashboard/locacao/LocationPageView.tsx": 1960,
@@ -20,7 +20,7 @@
     "src/modules/dashboard/pessoas/PeoplePageView.tsx": 1946,
     "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1065,
     "src/modules/dashboard/projetos/ProjectsPageView.tsx": 4053,
-    "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2706,
+    "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2671,
     "src/server/modules/dashboard-measurement/controller.ts": 1719
   }
 }

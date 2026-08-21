@@ -281,3 +281,15 @@ Atualizacao 2026-08-20 (Correcao: aviso de resultado parcial era codigo morto)
     mesmo segundo (era o risco de ordenar so por `created_at`).
   - `npx tsc --noEmit`, `npm run lint`, `npm run build`.
 - Impacto multi-tenant: nenhum. As consultas seguem filtrando `tenant_id` da sessao.
+
+Atualizacao 2026-08 - Separacao entre fila e historico
+------------------------------------------------------
+- A tela `/estornos` permanece read-only e continua exibindo somente estornos ja executados.
+- A nova tela `/estorno-atendimento` passa a concentrar os pedidos pendentes, em analise, recusados
+  ou com falha de execucao.
+- Confirmar o modal de estorno em `/entrada` ou `/saida` cria pedido na fila; o registro so aparece
+  em `/estornos` depois da aprovacao executar a RPC real de estorno.
+- Arquivos relacionados:
+  - `src/app/api/stock-reversal-requests/route.ts`
+  - `src/modules/dashboard/estorno-atendimento/ReversalFulfillmentPageView.tsx`
+  - `supabase/migrations/383_create_stock_reversal_request_flow.sql`

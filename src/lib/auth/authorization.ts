@@ -34,6 +34,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/saida", pageKey: "saida" },
   { prefix: "/requisicao-solicitacao", pageKey: "requisicao-solicitacao" },
   { prefix: "/requisicao-atendimento", pageKey: "requisicao-atendimento" },
+  { prefix: "/estorno-atendimento", pageKey: "estorno-atendimento" },
   { prefix: "/estornos", pageKey: "estornos" },
   { prefix: "/consumo-projeto", pageKey: "consumo-projeto" },
   { prefix: "/materiais", pageKey: "materiais" },

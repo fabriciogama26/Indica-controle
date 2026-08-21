@@ -1,0 +1,175 @@
+Tela: Atendimento de Estornos SaaS
+
+Visao geral
+-----------
+- Tela operacional para atender pedidos de estorno criados a partir dos modais existentes de `Movimentacao de Estoque` e `Operacoes de Equipe`.
+- O solicitante continua clicando em `Estornar` na tela de origem e preenchendo motivo/data/itens no modal.
+- Ao confirmar, o sistema cria um pedido `PENDENTE` na fila, sem movimentar saldo.
+- O responsavel analisa o pedido, assume a fila, aprova ou recusa.
+- Somente a acao `Aprovar e executar` chama as RPCs transacionais de estorno ja existentes.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/estorno-atendimento/page.tsx`
+- View: `src/modules/dashboard/estorno-atendimento/ReversalFulfillmentPageView.tsx`
+- Estilo: `src/modules/dashboard/estorno-atendimento/ReversalFulfillmentPageView.module.css`
+- API: `src/app/api/stock-reversal-requests/route.ts`
+- Helper server: `src/lib/server/stockReversalRequests.ts`
+- Navegacao/permissao: `src/components/layout/AppShell.tsx`
+- Catalogo de permissao frontend: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Guard de rota no shell: `src/lib/auth/authorization.ts`
+- Banco: `supabase/migrations/383_create_stock_reversal_request_flow.sql`
+- Tabelas:
+  - `stock_reversal_requests`
+  - `stock_reversal_request_items`
+
+Cadastro
+--------
+- O cadastro do pedido nao ocorre diretamente nesta tela.
+- Origem do pedido:
+  - `/entrada`, modal `Estornar movimentacao`
+  - `/saida`, modal `Estornar operacao de equipe`
+- Campos persistidos no pedido:
+  - origem (`STOCK_TRANSFER` ou `TEAM_OPERATION`)
+  - modo (`ITEM`, `BATCH` ou `FULL`)
+  - transferencia original
+  - itens originais solicitados
+  - solicitante e snapshot do nome
+  - motivo padrao do estorno
+  - observacao do motivo
+  - data do estorno
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Status`
+  - `Origem`
+  - `Solicitado de`
+  - `Solicitado ate`
+- Lista:
+  - `Status`
+  - `Origem`
+  - `Operacao`
+  - `Projeto`
+  - `Equipe`
+  - `Material`
+  - `Itens`
+  - `Solicitado em`
+  - `Acoes`
+- Painel de analise:
+  - dados da origem
+  - dados do solicitante
+  - motivo/data do estorno
+  - centros origem/destino
+  - itens solicitados
+  - observacao da decisao
+- Acoes:
+  - `Assumir`
+  - `Aprovar e executar`
+  - `Recusar`
+
+Boas praticas
+-------------
+- Nao executar estorno no momento da solicitacao.
+- Preservar os modais de origem como local de selecao visual dos itens.
+- Manter a execucao real concentrada na RPC `approve_stock_reversal_request`, que chama as RPCs de estorno existentes.
+- Nao duplicar regra de saldo, serial, TRAFO ou duplo estorno no frontend.
+- Filtrar todas as consultas por `tenant_id` derivado da sessao.
+- Usar `requirePageAction` no servidor:
+  - origem (`entrada` ou `saida`) com action `reverse` para criar pedido;
+  - `estorno-atendimento` com action `read/update` para fila e decisao.
+- Usar idempotencia nas acoes criticas.
+
+Cancelamento e saldo
+--------------------
+- Pedido `PENDENTE` ou `EM_ANALISE` nao altera saldo.
+- Pedido `RECUSADO` tambem nao altera saldo.
+- Pedido `EXECUTADO` altera saldo apenas porque `approve_stock_reversal_request` chama as RPCs de estorno existentes.
+- Em lote, a solicitacao grava os itens alvo em `stock_reversal_request_items`; a aprovacao executa exatamente esses itens.
+- A constraint `idx_stock_reversal_request_items_open_original_item` impede dois pedidos abertos para o mesmo item original.
+- Se a aprovacao falhar por regra de saldo/serial/duplo estorno, a RPC retorna erro e marca o pedido como `FALHA_EXECUCAO`, sem estorno parcial.
+
+Atalhos
+-------
+- Rota ativa: `/estorno-atendimento`
+- Exibida na secao `Almoxarifado` da sidebar.
+- Tela relacionada: `/entrada`
+- Tela relacionada: `/saida`
+- Tela relacionada: `/estornos`
+- Endpoint: `GET /api/stock-reversal-requests`
+- Endpoint de acao: `POST /api/stock-reversal-requests`
+
+Atualizacao 2026-08
+-------------------
+- Criada a fila de pedidos de estorno.
+- Criada a tela `Atendimento de Estornos`.
+- Os endpoints antigos de estorno (`POST /api/stock-transfers/reversal` e `POST /api/team-stock-operations/reversal`) passam a criar pedido pendente em vez de executar o estorno.
+- A tela de atendimento aprova ou recusa; aprovar executa o estorno real pelo backend.
+- A tela `/estornos` permanece somente leitura para auditoria dos estornos ja executados.
+- A nova tela nasce bloqueada para usuarios nao administrativos e precisa ser liberada em Permissoes.
+
+Mapa de Codigo
+--------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/estorno-atendimento/page.tsx`
+  - Responsavel por: expor a rota autenticada `/estorno-atendimento`.
+- Caminho: `src/modules/dashboard/estorno-atendimento/ReversalFulfillmentPageView.tsx`
+  - Responsavel por: filtros, lista, detalhe, claim, aprovacao e recusa.
+- Caminho: `src/app/api/stock-reversal-requests/route.ts`
+  - Responsavel por: listar pedidos, carregar detalhe e executar acoes da fila com permissao `estorno-atendimento`.
+- Caminho: `src/lib/server/stockReversalRequests.ts`
+  - Responsavel por: encapsular RPCs `create/claim/approve/reject`.
+- Caminho: `src/app/api/stock-transfers/reversal/route.ts`
+  - Responsavel por: manter o modal de `/entrada` e criar pedido de estorno de movimentacao.
+- Caminho: `src/app/api/team-stock-operations/reversal/route.ts`
+  - Responsavel por: manter o modal de `/saida` e criar pedido de estorno de operacao de equipe.
+- Caminho: `supabase/migrations/383_create_stock_reversal_request_flow.sql`
+  - Responsavel por: tabelas, RLS, indices, cadastro da tela, backfill de permissoes e RPCs.
+
+Constantes e configuracoes
+- `PAGE_KEY = "estorno-atendimento"` em `src/app/api/stock-reversal-requests/route.ts`.
+- `OPEN_STATUSES = ["PENDENTE", "EM_ANALISE", "FALHA_EXECUCAO"]` na API.
+- `PAGE_SIZE = 20` e `INITIAL_FILTERS` na View.
+
+Funcoes utilitarias relacionadas
+- `createStockReversalRequestViaRpc`
+- `claimStockReversalRequestViaRpc`
+- `approveStockReversalRequestViaRpc`
+- `rejectStockReversalRequestViaRpc`
+- `useIdempotencyKey`
+- `useErrorLogger("estorno_atendimento")`
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- RPCs de estorno existentes:
+  - `reverse_stock_transfer_item_record_v1`
+  - `reverse_team_stock_operation_item_record_v1`
+
+Ajuda contextual
+- Arquivos criados:
+  - `supabase/migrations/383_create_stock_reversal_request_flow.sql`
+  - `src/lib/server/stockReversalRequests.ts`
+  - `src/app/api/stock-reversal-requests/route.ts`
+  - `src/app/(dashboard)/estorno-atendimento/page.tsx`
+  - `src/modules/dashboard/estorno-atendimento/ReversalFulfillmentPageView.tsx`
+  - `src/modules/dashboard/estorno-atendimento/ReversalFulfillmentPageView.module.css`
+  - `docs/Tela_Estorno_Atendimento_SaaS.txt`
+- Arquivos alterados:
+  - `src/app/api/stock-transfers/reversal/route.ts`
+  - `src/app/api/team-stock-operations/reversal/route.ts`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `docs/Tela_Entrada_SaaS.txt`
+  - `docs/Tela_Saida_SaaS.txt`
+  - `docs/Tela_Estornos_SaaS.txt`
+  - `docs/00_Indice_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: confirmar o modal de estorno executava a reversao imediatamente.
+  - Depois: confirmar o modal cria pedido pendente na fila.
+  - Antes: `/estornos` consultava apenas estornos ja executados.
+  - Depois: `/estornos` continua read-only e `/estorno-atendimento` cuida dos pedidos pendentes.

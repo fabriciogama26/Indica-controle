@@ -879,3 +879,23 @@ Atualizacao 2026-08-20 (Correcao: classificacao de estorno truncava em 1.000 lin
   `loadTransfers`, listagem de `/saida` no commit 98783c9, exportacao de `/saida`, e agora a
   classificacao de `/entrada`). Restam 21 pontos com `.limit()` acima de 1.000 sem `.range()`,
   mapeados em `TASKS.md`.
+
+Atualizacao 2026-08 - Estorno com fila de atendimento
+-----------------------------------------------------
+- O botao `Estornar` e o modal de selecao visual permanecem na tela.
+- Mudanca de efeito: confirmar o modal nao executa mais a reversao imediatamente.
+- `POST /api/stock-transfers/reversal` passa a criar pedido em `stock_reversal_requests` e itens em
+  `stock_reversal_request_items`, retornando `requestId`.
+- A execucao real do estorno ocorre somente em `/estorno-atendimento`, pela acao `Aprovar e executar`.
+- Em lote, o frontend envia `itemIds` com os itens ativos exibidos no modal, preservando exatamente o
+  escopo solicitado pelo usuario.
+- A tela nao marca a linha como `Estornada` apos a solicitacao; esse status continua derivado das
+  tabelas reais de estorno depois da aprovacao.
+- Arquivos alterados:
+  - `src/app/api/stock-transfers/reversal/route.ts`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `src/lib/server/stockReversalRequests.ts`
+  - `supabase/migrations/383_create_stock_reversal_request_flow.sql`
+- Comportamento antes/depois:
+  - Antes: `Usuario -> Estornar -> saldo alterado`.
+  - Depois: `Usuario -> Estornar -> pedido pendente -> Atendimento de Estornos -> Aprovar/Recusar`.
