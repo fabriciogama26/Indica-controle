@@ -42,11 +42,10 @@ export function LoginPageView() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      const shouldSelectTenant =
-        isAdminRole(session?.user.role) && (session?.user.availableTenantIds?.length ?? 0) > 1;
+      const shouldSelectTenant = session?.source === "remote" && isAdminRole(session.user.role);
       router.replace(shouldSelectTenant ? "/selecionar-contrato" : "/home");
     }
-  }, [isAuthenticated, isLoading, router, session?.user.availableTenantIds?.length, session?.user.role]);
+  }, [isAuthenticated, isLoading, router, session?.source, session?.user.role]);
 
   useEffect(() => {
     const authFeedback = consumeAuthFeedback();

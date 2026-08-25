@@ -46,7 +46,7 @@ Boas praticas
 - Registrar `TOKEN_EXPIRED` no `login_audit` sempre que a sessao remota precisar ser encerrada por expiracao.
 - Invalidar hidratacoes antigas de sessao quando houver novo login/logout para evitar sobrescrever o usuario atual.
 - Desabilitar cache em `/api/auth/session-access` no frontend para evitar leitura de identidade/permissoes antigas.
-- Direcionar admin com mais de um contrato para `/selecionar-contrato` apos login.
+- Direcionar todo admin remoto para `/selecionar-contrato` apos login.
 - Persistir o contrato ativo apenas via API server-side em cookie `httpOnly`; o front nao deve editar esse estado direto.
 - Resolver tenant no backend por membership: header/cookie podem indicar o tenant ativo, mas precisam ser validados contra os tenants permitidos ao usuario.
 
@@ -57,9 +57,9 @@ Cancelamento e saldo
 Atalhos
 -------
 - `login -> /home` apos autenticacao bem sucedida.
-- `login -> /selecionar-contrato` para admin com mais de um contrato disponivel.
-- `login -> /home` para `user`, `viewer` ou admin com um unico contrato.
-- `/ -> /login`, `/selecionar-contrato` ou `/home` conforme sessao persistida e quantidade de contratos do admin.
+- `login -> /selecionar-contrato` para admin remoto.
+- `login -> /home` para `user`, `viewer` ou login local/dev.
+- `/ -> /login`, `/selecionar-contrato` ou `/home` conforme sessao persistida e role.
 
 Atualizacao 2026-03
 -------------------
@@ -148,8 +148,8 @@ Ajuda contextual
 - Estado atual: a tela passa a mostrar feedback de `sessao expirada` e `expirada por inatividade` quando o `AuthContext` limpa a sessao.
 - Estado atual: a sessao frontend preserva `role` como `role_key` e `roleId` como referencia tecnica do perfil.
 - Estado atual: `TOKEN_EXPIRED` continua limpando a sessao local, mas agora tambem tenta registrar a saida no `login_audit` com base no `session_ref` salvo.
-- Estado atual: admin com mais de um contrato e direcionado para `/selecionar-contrato` antes da home.
-- Estado atual: a selecao de contrato grava `INDICA.activeTenantId` em cookie `httpOnly`, validado no servidor contra `app_user_tenants`.
+- Estado atual: todo admin remoto e direcionado para `/selecionar-contrato` antes da home.
+- Estado atual: a selecao de contrato lista apenas contratos ativos vinculados em `app_user_tenants` e grava `INDICA.activeTenantId` em cookie `httpOnly`, validado no servidor.
 - Estado atual: logout/inatividade/token expirado limpam tambem o cookie de tenant ativo.
 
 Atualizacao 2026-08-25 - Selecao de contrato
@@ -165,8 +165,9 @@ Atualizacao 2026-08-25 - Selecao de contrato
   - `src/services/auth/auth.service.ts`
 - Comportamento antes/depois:
   - Antes: apos login, todos os perfis iam direto para `/home`; o tenant ativo era o default ou o header manual enviado por telas especificas.
-  - Depois: admin com mais de um contrato escolhe o contrato em `/selecionar-contrato`; `user` e `viewer` continuam indo direto para `/home`.
+  - Depois: admin remoto sempre escolhe o contrato em `/selecionar-contrato`; `user` e `viewer` continuam indo direto para `/home`.
 - Impacto multi-tenant:
+  - Para admin, os contratos permitidos vem obrigatoriamente de `app_user_tenants`; `app_users.tenant_id` nao e fallback operacional para administrador.
   - O tenant ativo fica em cookie `httpOnly` e so e aceito depois de validado no backend contra os contratos permitidos ao usuario.
   - A rota de troca de contrato ignora o cookie atual ao carregar o contexto, permitindo que admin corrija uma selecao expirada ou invalida.
 

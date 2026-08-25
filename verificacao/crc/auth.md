@@ -42,7 +42,7 @@
 4. GET /api/auth/session-access
    → retorna user, pageAccess, hasCustomPermissions
 5. AuthContext armazena a sessão completa
-6. Admin com mais de um contrato acessa /selecionar-contrato
+6. Admin remoto acessa /selecionar-contrato
    → GET/POST /api/auth/active-tenant grava cookie INDICA.activeTenantId
 7. useAuth() expõe para todos os componentes
 
@@ -88,7 +88,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 1. **Todo endpoint** deve chamar `resolveAuthenticatedAppUser` antes de qualquer operação.
 2. **Tenant isolation:** `activeTenantId` resolvido a partir do header `x-tenant-id`, cookie `httpOnly` `INDICA.activeTenantId` ou tenant padrão do usuário. Nunca confiar no tenant vindo do body do request.
 3. **Usuário inativo:** `ativo = false` retorna 403 imediatamente, sem consultar dados de negócio.
-4. **Multi-tenant:** Admin pode ter acesso a múltiplos tenants via `app_user_tenants`. O tenant ativo é resolvido no servidor.
+4. **Multi-tenant:** Admin usa obrigatoriamente vínculos ativos em `app_user_tenants`; sem tenant ativo por cookie/header validado, API operacional retorna 428.
 5. **Permissões customizadas:** Se o usuário tem entradas em `app_user_page_permissions`, elas sobrescrevem o padrão da role.
 6. **Token expirado:** `TOKEN_EXPIRED` limpa sessão sem chamar `supabase.auth.signOut()` (para evitar loop).
 
@@ -119,5 +119,5 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 
 | Data | O que mudou |
 |---|---|
-| 2026-08-25 | Criada seleção inicial de contrato para admin multi-tenant; tenant ativo pode vir de cookie `httpOnly`, sempre validado contra membership no servidor |
+| 2026-08-25 | Criada seleção inicial de contrato para admin; vínculos de admin vêm obrigatoriamente de `app_user_tenants`, e tenant ativo pode vir de cookie `httpOnly`, sempre validado contra membership no servidor |
 | 2026-06 | CRC criado com identificação dos problemas de criação de client e ausência de cache |

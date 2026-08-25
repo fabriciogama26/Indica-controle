@@ -13,10 +13,9 @@ export default function IndexPage() {
 
   useEffect(() => {
     if (isLoading) return;
-    const shouldSelectTenant =
-      isAdminRole(session?.user.role) && (session?.user.availableTenantIds?.length ?? 0) > 1;
+    const shouldSelectTenant = session?.source === "remote" && isAdminRole(session.user.role);
     router.replace(isAuthenticated ? (shouldSelectTenant ? "/selecionar-contrato" : "/home") : "/login");
-  }, [isAuthenticated, isLoading, router, session?.user.availableTenantIds?.length, session?.user.role]);
+  }, [isAuthenticated, isLoading, router, session?.source, session?.user.role]);
 
   return (
     <main className={styles.page}>
