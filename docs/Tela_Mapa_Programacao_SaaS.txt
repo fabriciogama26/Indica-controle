@@ -133,11 +133,11 @@ Filtros, auto-complete e listagem
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
-  - Equipes sem programacao
+  - Equipes sem programacao por dia
 - Exportacao:
   - CSV dos prazos das obras na janela selecionada.
   - CSV das obras do card aberto.
-  - CSV de equipes sem programacao quando houver periodo.
+  - CSV de equipes sem programacao quando houver periodo, com uma linha por equipe e data sem agenda.
 - Prazos das Obras:
   - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
   - Respeita os filtros locais de `Centro de servico` e busca de obra/projeto/status.
@@ -172,7 +172,7 @@ Boas praticas
 - A quantidade de equipes conta `team_id` distintos em `programming_team` (qualquer status) entre as etapas da obra.
 - Pendencia aberta (card `Pendentes`) e a flag `is_pendencia = true` numa etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) cujo `work_completion_status` ainda nao e `CONCLUIDO` — mesma definicao do chip "Pendencias abertas" da lista da Programacao Normalizada.
 - Equipe/encarregado da "ultima etapa" mostram TODAS as equipes com `programming_team.status = 'ATIVA'` naquela etapa (lista), nao so uma.
-- Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` no periodo, resolvidos via `programming_team` (status `ATIVA`) cruzado com `programming`.
+- Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` em cada dia do periodo, resolvidos via `programming_team` (status `ATIVA`) cruzado com `programming`. A mesma equipe pode aparecer em varios dias se ficou sem agenda nesses dias.
 - Falhas da tela sao registradas com `useErrorLogger("mapa_programacao")`.
 
 Atalhos
@@ -293,8 +293,8 @@ Funcoes utilitarias relacionadas
   - Resolve label de exibicao do catalogo de Estado Trabalho.
 - `fetchTeams`
   - Carrega equipes ativas e inativas para resolver historico, tipo, encarregado e centro de servico.
-- `fetchTeamIdsProgrammedInPeriod` (fachada `@/server/modules/programacao-normalizada`)
-  - Carrega equipes com etapa ativa (`ATIVA` em `programming_team`, `PROGRAMADA`/`REPROGRAMADA` em `programming`) no periodo filtrado.
+- `fetchProgrammedTeamDatesInPeriod` (fachada `@/server/modules/programacao-normalizada`)
+  - Carrega pares `equipe + data` com etapa ativa (`ATIVA` em `programming_team`, `PROGRAMADA`/`REPROGRAMADA` em `programming`) no periodo filtrado.
 - `normalizeToken`
   - Normaliza textos tecnicos para comparar status e Estado Trabalho.
 - `isCompletedWorkStatus`
@@ -306,7 +306,7 @@ Funcoes utilitarias relacionadas
 - `filterProjects`
   - Aplica filtros locais de busca/centro sobre cards, tabelas e modal.
 - `exportCsv`
-  - Gera CSV local das obras do card e das equipes.
+  - Gera CSV local das obras do card e das equipes sem programacao por dia.
 - `resolveDeadlineWindowDays`
   - Resolve a janela ativa do painel `Prazos das Obras`.
 - `formatDeadlineRangeLabel`
@@ -461,8 +461,8 @@ IMPLEMENTADO 2026-07-31 - Fase 4 do corte: Mapa lendo Programacao Normalizada
   mesmo padrao da Fase 3a/3b). Funcoes novas na fachada:
   `fetchProgrammingStagesForMap` (etapas do tenant desde a janela de 18 meses,
   com `programming_team(team_id, status)` embutido) e
-  `fetchTeamIdsProgrammedInPeriod` (equipes com etapa ativa no periodo, via
-  `programming_team!inner(programming)`).
+  `fetchProgrammedTeamDatesInPeriod` (pares equipe + data com etapa ativa no
+  periodo, via `programming_team!inner(programming)`).
 - `Revisao de etapas` e `Interrompidas com Estado concluido` foram MANTIDOS
   nesta entrega, conforme a secao "Ordem" acima — apenas passaram a ler a nova
   fonte. `resolveStageReviewIssue`/`resolveInterruptedCompletedIssue` nao
@@ -504,7 +504,7 @@ IMPLEMENTADO 2026-07-31 - Fase 4 do corte: Mapa lendo Programacao Normalizada
   o lugar errado).
 - Arquivos alterados:
   - `src/server/modules/programacao-normalizada/queries.ts` (novas
-    `fetchProgrammingStagesForMap`/`fetchTeamIdsProgrammedInPeriod`)
+    `fetchProgrammingStagesForMap`/`fetchProgrammedTeamDatesInPeriod`)
   - `src/server/modules/programacao-normalizada/index.ts` (exports novos)
   - `src/app/api/mapa-programacao/route.ts`
   - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
@@ -652,3 +652,31 @@ Atualizacao 2026-08-14 - Etapa "em espera" passa a existir no Mapa:
   `Nunca programadas` desce, e `Para reprogramar` pode subir (obra em espera tem
   `actionRequired`, por nao ter programacao futura ativa). `Carteira valida` nao
   muda: o total de obras e o mesmo, so a situacao de cada uma foi corrigida.
+
+Atualizacao 2026-08-25 - Equipes sem programacao por dia
+-------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/server/modules/programacao-normalizada/index.ts`
+  - `src/app/api/mapa-programacao/route.ts`
+  - `src/modules/dashboard/mapa-programacao/types.ts`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Antes: `Equipes sem programacao` removia da lista a equipe que tivesse qualquer
+  etapa ativa em qualquer dia do periodo. Num filtro de 02 a 20, uma equipe
+  programada somente no dia 05 sumia do periodo inteiro.
+- Depois: o endpoint monta todos os dias do periodo e cruza com as equipes ativas.
+  A resposta e o CSV passam a ter uma linha por `equipe + data` sem agenda. No
+  exemplo acima, a equipe nao aparece no dia 05, mas aparece nos demais dias em
+  que ficou livre.
+- A query normalizada foi renomeada de `fetchTeamIdsProgrammedInPeriod` para
+  `fetchProgrammedTeamDatesInPeriod` e passou a usar `loadAllRows`, com ordenacao
+  por `programming_team.id`, para evitar corte silencioso acima de 1.000 linhas.
+- A tela mostra a data em cada item, inclui a data na busca de equipe, pagina a
+  lista de equipes sem programacao em blocos de 30 itens e limita a altura do
+  bloco com rolagem interna. O CSV exporta todas as linhas filtradas, nao somente
+  a pagina visivel.
+- Sem migration, RLS, grant ou permissao nova. `tenant_id` continua derivado da
+  sessao autenticada e a rota segue protegida por `mapa-programacao/read`.

@@ -883,30 +883,47 @@ export async function fetchProgrammingStagesForMap(params: {
   return data ?? [];
 }
 
-// Equipes com pelo menos uma etapa ativa (PROGRAMADA/REPROGRAMADA) no periodo —
-// usado pelo Mapa para achar equipes SEM programacao no periodo escolhido.
-export async function fetchTeamIdsProgrammedInPeriod(params: {
+// Pares equipe + data com pelo menos uma etapa ativa (PROGRAMADA/REPROGRAMADA)
+// no periodo — usado pelo Mapa para achar equipes SEM programacao em cada dia.
+export async function fetchProgrammedTeamDatesInPeriod(params: {
   supabase: SupabaseClient;
   tenantId: string;
   startDate: string;
   endDate: string;
 }): Promise<Set<string>> {
-  const { data, error } = await params.supabase
-    .from("programming_team")
-    .select("team_id, programming!inner(execution_date, status, tenant_id)")
-    .eq("tenant_id", params.tenantId)
-    .eq("status", "ATIVA")
-    .eq("programming.tenant_id", params.tenantId)
-    .gte("programming.execution_date", params.startDate)
-    .lte("programming.execution_date", params.endDate)
-    .in("programming.status", ["PROGRAMADA", "REPROGRAMADA"])
-    .returns<Array<{ team_id: string }>>();
+  const { data, error } = await loadAllRows<{
+    id: string;
+    team_id: string;
+    programming: { execution_date: string | null } | null;
+  }>(
+    (from, to) =>
+      params.supabase
+        .from("programming_team")
+        .select("id, team_id, programming!inner(execution_date, status, tenant_id)")
+        .eq("tenant_id", params.tenantId)
+        .eq("status", "ATIVA")
+        .eq("programming.tenant_id", params.tenantId)
+        .gte("programming.execution_date", params.startDate)
+        .lte("programming.execution_date", params.endDate)
+        .in("programming.status", ["PROGRAMADA", "REPROGRAMADA"])
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<Array<{ id: string; team_id: string; programming: { execution_date: string | null } | null }>>(),
+  );
 
   if (error) {
     throw new Error(`Falha ao carregar programacoes das equipes no periodo: ${error.message}`);
   }
 
-  return new Set((data ?? []).map((item) => item.team_id).filter(Boolean));
+  return new Set(
+    (data ?? [])
+      .map((item) => {
+        const teamId = item.team_id;
+        const executionDate = item.programming?.execution_date;
+        return teamId && executionDate ? `${teamId}|${executionDate}` : "";
+      })
+      .filter(Boolean),
+  );
 }
 
 // Historico exibido em modal: limit 50 (guia_backend regra 26).
