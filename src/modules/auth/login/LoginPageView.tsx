@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { isAdminRole } from "@/lib/auth/authorization";
 import { consumeAuthFeedback, requestPasswordRecovery } from "@/services/auth/auth.service";
 import styles from "./LoginPageView.module.css";
 
 export function LoginPageView() {
   const router = useRouter();
-  const { login, isAuthenticated, isLoading } = useAuth();
+  const { login, isAuthenticated, isLoading, session } = useAuth();
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -20,7 +21,6 @@ export function LoginPageView() {
     mutationFn: () => login({ loginName, password }),
     onSuccess: (result) => {
       if (result.success) {
-        router.replace("/home");
         return;
       }
       setFeedback(result.message);
@@ -42,9 +42,11 @@ export function LoginPageView() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace("/home");
+      const shouldSelectTenant =
+        isAdminRole(session?.user.role) && (session?.user.availableTenantIds?.length ?? 0) > 1;
+      router.replace(shouldSelectTenant ? "/selecionar-contrato" : "/home");
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, session?.user.availableTenantIds?.length, session?.user.role]);
 
   useEffect(() => {
     const authFeedback = consumeAuthFeedback();

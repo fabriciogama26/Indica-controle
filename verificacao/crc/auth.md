@@ -28,6 +28,7 @@
 | `src/lib/server/pageAuthorization.ts` | Verificação de permissão por page_key e action |
 | `src/app/api/auth/local-login/route.ts` | Login local (desenvolvimento) |
 | `src/app/api/auth/session-access/route.ts` | Carrega permissões da sessão |
+| `src/app/api/auth/active-tenant/route.ts` | Lista contratos do admin e grava/limpa cookie `httpOnly` do tenant ativo |
 
 ---
 
@@ -41,7 +42,9 @@
 4. GET /api/auth/session-access
    → retorna user, pageAccess, hasCustomPermissions
 5. AuthContext armazena a sessão completa
-6. useAuth() expõe para todos os componentes
+6. Admin com mais de um contrato acessa /selecionar-contrato
+   → GET/POST /api/auth/active-tenant grava cookie INDICA.activeTenantId
+7. useAuth() expõe para todos os componentes
 
 Idle Timeout:
   - setInterval de 15s verifica tempo desde última atividade
@@ -83,7 +86,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 ## Regras de Negócio Principais
 
 1. **Todo endpoint** deve chamar `resolveAuthenticatedAppUser` antes de qualquer operação.
-2. **Tenant isolation:** `activeTenantId` resolvido a partir do header `x-tenant-id` ou tenant padrão do usuário. Nunca confiar no tenant vindo do body do request.
+2. **Tenant isolation:** `activeTenantId` resolvido a partir do header `x-tenant-id`, cookie `httpOnly` `INDICA.activeTenantId` ou tenant padrão do usuário. Nunca confiar no tenant vindo do body do request.
 3. **Usuário inativo:** `ativo = false` retorna 403 imediatamente, sem consultar dados de negócio.
 4. **Multi-tenant:** Admin pode ter acesso a múltiplos tenants via `app_user_tenants`. O tenant ativo é resolvido no servidor.
 5. **Permissões customizadas:** Se o usuário tem entradas em `app_user_page_permissions`, elas sobrescrevem o padrão da role.
@@ -108,6 +111,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 | Todas as 68 rotas | `resolveAuthenticatedAppUser` → `requirePageAction` |
 | `AuthContext.tsx` | `supabase.auth.onAuthStateChange` para TOKEN_REFRESHED |
 | `auth.service.ts` | `hydrateSessionAccess` → chama `/api/auth/session-access` |
+| `TenantSelectorPageView.tsx` | chama `/api/auth/active-tenant` para admin escolher contrato ativo |
 
 ---
 
@@ -115,4 +119,5 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 
 | Data | O que mudou |
 |---|---|
+| 2026-08-25 | Criada seleção inicial de contrato para admin multi-tenant; tenant ativo pode vir de cookie `httpOnly`, sempre validado contra membership no servidor |
 | 2026-06 | CRC criado com identificação dos problemas de criação de client e ausência de cache |
