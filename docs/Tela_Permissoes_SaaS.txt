@@ -47,7 +47,7 @@ Filtros, auto-complete e listagem
 - A pesquisa considera apenas `login_name` e `matricula`.
 - A listagem nao depende de `app_roles` com join obrigatorio; usuarios do tenant continuam aparecendo mesmo se o `role_id` ainda estiver incompleto.
 - O bloqueio administrativo vale apenas para quem abre a tela de configuracao; a listagem retornada pela busca inclui qualquer usuario do mesmo tenant.
-- A route usa `SUPABASE_SERVICE_ROLE_KEY` no servidor, mas aplica checagem explicita de operador admin/master e filtro obrigatorio por `tenant_id`.
+- A route usa `SUPABASE_SERVICE_ROLE_KEY` no servidor, mas aplica checagem explicita de operador admin e filtro obrigatorio por `tenant_id`.
 - Ao selecionar o usuario, a tela chama `src/app/api/app-users/[userId]/permissions/route.ts` para carregar os dados salvos.
 - Ao salvar, a route:
   - valida `expectedUpdatedAt` de `app_users` para bloquear salvamento concorrente do mesmo usuario
@@ -55,7 +55,7 @@ Filtros, auto-complete e listagem
   - chama a RPC `save_user_permissions`
   - deixa a transacao no banco atualizar `app_users`, `app_user_page_permissions` e `app_user_permission_history`
 - Ao clicar em `Enviar convite`, a route:
-  - valida se o operador atual e admin/master do tenant
+  - valida se o operador atual e admin do tenant
   - valida se o usuario alvo possui `email`, `matricula` e `login_name`
   - envia `inviteUserByEmail` para o email do pre-cadastro em `app_users`
   - usa a metadata minima para sincronizar `auth.users` com `app_users`
@@ -86,14 +86,14 @@ Boas praticas
 - Checklist obrigatorio para toda nova tela:
   - Criar migration versionada com insert em `app_pages`.
   - Manter `app_pages.default_user_access = false` para que usuarios nao administrativos nascam bloqueados na tela nova. Desde a migration 356 isso e garantido pelo trigger `trg_app_pages_force_blocked_by_default` (BEFORE INSERT), que sobrescreve qualquer valor informado no INSERT. Nunca herdar o valor de outra pagina (`coalesce((select default_user_access from app_pages where page_key = '<outra>'), false)`) — foi assim que a 355 liberou a tela nova para todos.
-  - Fazer backfill em `app_user_page_permissions` sem sobrescrever configuracoes existentes; admin/master podem nascer liberados, usuarios comuns devem nascer bloqueados.
+  - Fazer backfill em `app_user_page_permissions` sem sobrescrever configuracoes existentes; admin pode nascer liberado, usuarios comuns devem nascer bloqueados.
   - ATENCAO a ordem dos triggers: `trg_app_pages_default_user_permissions` (AFTER INSERT, migration 253) ja cria a linha de TODOS os usuarios no proprio `insert into app_pages`. Um backfill escrito depois com `on conflict (tenant_id, user_id, page_key) do nothing` e sempre um no-op. Se o backfill precisa mesmo definir valor por usuario, usar `do update`.
   - Toda validacao pos-execucao (bloco `do $$`) checa os DOIS sentidos: ninguem perdeu acesso que tinha E ninguem ganhou acesso que nao tinha. A 355 so checava o primeiro e passou em silencio.
   - Incluir a tela no `permissionCatalog` do frontend (`PermissionsPageView.tsx`) — isso apenas a torna concedivel, nao a concede.
   - NAO incluir a `page_key` em `DEFAULT_USER_PAGE_ACCESS` (`src/lib/auth/authorization.ts`). Essa constante espelha `app_pages.default_user_access = true` e e usada tanto pelo fallback de sessao quanto pela matriz inicial da tela de Permissoes. Incluir ali antes de existir concessao no banco libera a tela para todo usuario nao administrativo sem registro em `app_user_permission_history`.
   - Incluir rota no `AppShell` (`menuSections`) e no `titleMap`, e a `page_key` em `ROUTE_PAGE_KEYS` (`authorization.ts`). Permissao granular por operacao (sem rota navegavel) entra so no `permissionCatalog`.
   - Validar o save de permissoes para a nova `page_key` sem erro `nao estao cadastradas em app_pages`.
-  - Conferir apos aplicar a migration: contar quantos usuarios ficaram com `can_access = true` na tela nova. O esperado para uma tela nova e apenas admin/master.
+  - Conferir apos aplicar a migration: contar quantos usuarios ficaram com `can_access = true` na tela nova. O esperado para uma tela nova e apenas admin.
 
 Cancelamento e saldo
 --------------------
@@ -104,7 +104,7 @@ Atalhos
 - Rota ativa: `/permissoes`
 - Acesso visual pelo icone de engrenagem no topo direito.
 - Nao faz parte da navegacao principal da sidebar.
-- Visivel somente para `admin` e `master`.
+- Visivel somente para `admin`.
 
 Atualizacao 2026-03
 -------------------
@@ -191,7 +191,7 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
   - Responsavel por: apresentar a UI de credenciais e permissoes, com lista inicial do tenant, busca de usuario, role, status, resumo do tenant, matriz local de liberacao por tela e envio de `expectedUpdatedAt` no save.
 - Caminho: `src/app/api/app-users/search/route.ts`
-  - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado, listar os usuarios do tenant e buscar `app_users` por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin/master.
+  - Responsavel por: validar o token atual, resolver o tenant do usuario autenticado, listar os usuarios do tenant e buscar `app_users` por `login_name` e `matricula`, usando `service_role` no backend com checagem explicita de admin.
 - Caminho: `src/app/api/app-users/[userId]/permissions/route.ts`
   - Responsavel por: carregar `role` e matriz do usuario, validar `expectedUpdatedAt`, validar `role/page_key` e delegar o save transacional para `save_user_permissions`.
 - Caminho: `src/app/api/app-users/[userId]/invite/route.ts`
@@ -293,7 +293,7 @@ Ajuda contextual
 - Antes: a rota existia, mas ainda estava no formato de base visual inicial.
 - Depois: a rota `/permissoes` representa o fluxo real esperado para selecionar usuario e liberar ou bloquear cada tela.
 - Estado atual: a tela ja consome e grava `app_user_page_permissions`, e o shell ja passa a esconder as telas desabilitadas quando o usuario faz login ou reabre a sessao.
-- Estado atual: o save usa apenas `can_access`, sem matriz individual de `select/insert/update`.
+- Estado atual: o save usa `can_access` como toggle visual da tela, mas `viewer` e excecao server-side: so pode manter `can_access` nas paginas de consulta e sempre grava acoes (`create/update/cancel/reverse/import/export`) como `false`.
 - Estado atual: toda alteracao de role, status, telas liberadas e envio de convite passa a gerar historico em `app_user_permission_history`.
 - Estado atual: o save passa a ser serializado por `app_users.updated_at`, recusando sobrescrita concorrente e recarregando os dados atuais do usuario no frontend.
 - Estado atual: o save de `role`, `status` e matriz de paginas passa a ser executado por RPC transacional no banco.
@@ -460,3 +460,24 @@ Atualizacao 2026-08-11
 - Precedente que NAO segue esta regra: `saida-requisicao` (Operacoes de Equipe) continua
   com card proprio de proposito — ali a permissao existe justamente para bloquear uma
   operacao de quem tem a tela.
+
+Atualizacao 2026-08-25
+----------------------
+- Papeis ativos reduzidos para `admin`, `user` e `viewer`. A migration
+  `385_normalize_roles_and_viewer_read_only.sql` migra usuarios `master` para `admin`,
+  migra usuarios `supervisor` para `user` e inativa os dois papeis antigos em
+  `app_roles`, preservando historico em `app_user_permission_history`.
+- A tela de Permissoes passa a listar apenas `Admin`, `User` e `Viewer` no select de role.
+  `src/lib/auth/authorization.ts` tambem deixa de tratar `master` como admin no frontend.
+- O `viewer` vira perfil de leitura: `VIEWER_PAGE_ACCESS` fica restrito a paginas de consulta
+  conhecidas (`home`, dashboards, visualizacoes de Programacao/Medicao, Estoque Atual,
+  Estoque das Equipes, Rastreio de SERIAL, Estornos e Consumo por Projeto).
+- A protecao nao e so visual. A migration atualiza `role_page_permissions` e
+  `app_user_page_permissions` para viewer com `can_access` apenas nas paginas liberadas e
+  todas as acoes (`can_create`, `can_update`, `can_cancel`, `can_reverse`, `can_import`,
+  `can_export`) em `false`.
+- A RPC `save_user_permissions` passa a validar o papel salvo: aceita somente `admin`,
+  `user` ou `viewer`. Quando o papel escolhido e `viewer`, qualquer pagina fora da lista de
+  consulta e gravada como bloqueada, mesmo que o payload do frontend tente habilitar.
+- Impacto pratico: esconder tela no frontend continua sendo UX, mas a barreira real fica no
+  backend/banco via matriz granular e `requirePageAction`.

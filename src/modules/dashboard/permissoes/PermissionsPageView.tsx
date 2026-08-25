@@ -45,11 +45,9 @@ type TenantUser = {
 };
 
 const roleOptions: RoleOption[] = [
-  { value: "master", label: "Master" },
   { value: "admin", label: "Admin" },
-  { value: "supervisor", label: "Supervisor" },
-  { value: "viewer", label: "Viewer" },
   { value: "user", label: "User" },
+  { value: "viewer", label: "Viewer" },
 ];
 
 function resolveRoleLabel(role: string) {
@@ -192,7 +190,7 @@ function createPermissionSet(role: string): PermissionCard[] {
   const defaultPageAccess: readonly string[] = DEFAULT_USER_PAGE_ACCESS;
 
   const cards = permissionCatalog.map<PermissionCard>((item) => {
-    if (role === "master" || role === "admin") {
+    if (role === "admin") {
       return { ...item, enabled: true };
     }
 
@@ -203,7 +201,6 @@ function createPermissionSet(role: string): PermissionCard[] {
       };
     }
 
-    // `supervisor` e `user` compartilham o mesmo default.
     return {
       ...item,
       enabled: defaultPageAccess.includes(item.pageKey),

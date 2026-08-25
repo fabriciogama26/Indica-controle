@@ -1181,3 +1181,10 @@ Observacao
 - Impede solicitante de assumir, aprovar ou recusar o proprio pedido e exige claim ativo do atendente antes de aprovar/recusar.
 - Bloqueia `BATCH` sem `itemIds` explicitos, mantendo `FULL` como unico modo que seleciona todos os itens validos.
 - Revoga EXECUTE de `authenticated`/`anon` nas RPCs antigas de execucao direta de estorno (`reverse_*`), mantendo apenas `service_role`.
+
+385_normalize_roles_and_viewer_read_only.sql
+- Mantem somente `admin`, `user` e `viewer` ativos em `app_roles`.
+- Migra usuarios `master` para `admin` e usuarios `supervisor` para `user`, com historico em `app_user_permission_history`.
+- Regrava o template `role_page_permissions` do `viewer` para permitir apenas paginas de consulta conhecidas e bloquear todas as acoes de escrita/exportacao.
+- Regrava `app_user_page_permissions` dos usuarios `viewer` existentes no mesmo padrao de leitura apenas.
+- Republica `save_user_permissions` para aceitar somente `admin`, `user` e `viewer`; quando o papel alvo e `viewer`, paginas fora da whitelist sao gravadas como bloqueadas e todas as acoes ficam `false`.
