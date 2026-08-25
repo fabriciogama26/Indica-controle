@@ -67,7 +67,7 @@ export function normalizeRole(role: string | null | undefined) {
 
 export function isAdminRole(role: string | null | undefined) {
   const normalized = normalizeRole(role);
-  return normalized === "admin" || normalized === "master";
+  return normalized === "admin";
 }
 
 // Espelho de `app_pages.default_user_access = true`. NAO e a fonte de verdade — o banco e —,
@@ -130,6 +130,11 @@ export const DEFAULT_USER_PAGE_ACCESS = [
 export const VIEWER_PAGE_ACCESS = [
   "home",
   "dash-estoque",
+  "dashboard-medicao",
+  "dashboard-equipes",
+  "dash-operacional-faturamento",
+  "programacao-visualizacao",
+  "medicao-visualizacao",
   "estoque",
   "estoque-equipes",
   "posicao-trafo",
@@ -141,12 +146,8 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   const normalized = normalizeRole(role);
   const defaultPageAccess = [...DEFAULT_USER_PAGE_ACCESS];
 
-  if (normalized === "master" || normalized === "admin") {
+  if (normalized === "admin") {
     return [...defaultPageAccess, "dashboard-carteira-operacional"];
-  }
-
-  if (normalized === "supervisor") {
-    return defaultPageAccess;
   }
 
   if (normalized === "viewer") {

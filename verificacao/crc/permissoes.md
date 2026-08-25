@@ -17,7 +17,7 @@ o RPC de persistencia (`save_user_permissions`) e a autorizacao das Edge Functio
 | `app_user_page_permissions` | INSERT / UPSERT | Trigger de novo usuario/tela; RPC save_user_permissions |
 | `app_pages` | SELECT | Fallback de `default_user_access` quando sem linha de usuario |
 | `app_roles` | SELECT | Admin short-circuit (`is_admin`) |
-| `role_page_permissions` | SELECT | Fallback de acesso por role (apenas `can_access`) |
+| `role_page_permissions` | SELECT (7 colunas) | Fallback de acesso por role e acao |
 
 ---
 
@@ -71,6 +71,11 @@ export  → can_export
 ## RPC — `save_user_permissions`
 
 Parametros: `p_tenant_id, p_actor_user_id, p_target_user_id, p_role_id, p_ativo, p_permissions jsonb, p_expected_updated_at`
+
+Excecao desde a migration 385: quando `p_role_id` aponta para `viewer`, a RPC grava apenas leitura.
+Paginas fora da whitelist de consulta sao forçadas para `can_access=false`; paginas permitidas
+ficam com `can_access=true` e todas as acoes (`can_create`, `can_update`, `can_cancel`,
+`can_reverse`, `can_import`, `can_export`) = `false`.
 
 Comportamento na gravacao de cada pagina:
 - Toggle `enabled=true` → todas as 7 colunas = `true`
@@ -152,3 +157,4 @@ Liberar uma tela para usuarios comuns exige passo EXPLICITO e posterior ao INSER
 | 348 | Padrao de liberacao explicita de tela para o papel `user` (default + role template + backfill das 7 colunas + historico) |
 | 355 | Cadastrou `medicao-visualizacao` herdando `default_user_access` de `medicao` — liberou a tela para todos por engano |
 | 356 | Trigger BEFORE INSERT `force_new_app_page_blocked_by_default()`; corrigiu `medicao-visualizacao` para `false` |
+| 385 | Reduz roles ativos para `admin`, `user`, `viewer`; migra `master`/`supervisor`; fecha `viewer` como leitura apenas tambem na RPC |
