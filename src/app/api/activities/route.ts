@@ -19,6 +19,7 @@ import {
   parsePagination,
   parsePositiveInteger,
 } from "@/lib/server/apiHelpers";
+import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 
 type ActivityRow = {
   id: string;
@@ -88,6 +89,11 @@ type CreateActivityPayload = {
 type UpdateActivityPayload = CreateActivityPayload & {
   id: string;
   expectedUpdatedAt?: string | null;
+};
+
+type ActivityBatchImportPayload = {
+  action?: "BATCH_IMPORT";
+  rows?: Array<Partial<CreateActivityPayload> & { rowNumber?: number }>;
 };
 
 type UpdateActivityStatusPayload = {
@@ -331,6 +337,117 @@ async function saveActivityViaRpc(params: {
   }
 
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
+}
+
+
+async function importActivityBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: Array<Partial<CreateActivityPayload> & { rowNumber?: number }>;
+}) {
+  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
+  const validTeamTypeIds = new Map<string, boolean>();
+  const validCategoryIds = new Map<string, boolean>();
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+    const input = parseActivityInput(row);
+
+    if (
+      !input.code
+      || !input.description
+      || !input.teamTypeId
+      || !input.categoryId
+      || !input.group
+      || input.value === null
+      || input.voicePoint === null
+      || !input.unit
+    ) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Preencha todos os campos obrigatorios da atividade.",
+        code: "INVALID_ACTIVITY",
+      });
+      continue;
+    }
+
+    if (!validTeamTypeIds.has(input.teamTypeId)) {
+      validTeamTypeIds.set(
+        input.teamTypeId,
+        Boolean(await fetchTeamTypeById(params.supabase, params.tenantId, input.teamTypeId)),
+      );
+    }
+
+    if (!validTeamTypeIds.get(input.teamTypeId)) {
+      results.push({ rowNumber, success: false, message: "Tipo invalido para o tenant atual.", code: "INVALID_TEAM_TYPE" });
+      continue;
+    }
+
+    if (!validCategoryIds.has(input.categoryId)) {
+      validCategoryIds.set(
+        input.categoryId,
+        Boolean(await fetchTypeServiceById(params.supabase, params.tenantId, input.categoryId)),
+      );
+    }
+
+    if (!validCategoryIds.get(input.categoryId)) {
+      results.push({ rowNumber, success: false, message: "Categoria invalida para o tenant atual.", code: "INVALID_CATEGORY" });
+      continue;
+    }
+
+    const { data: precheck, error: precheckError } = await params.supabase.rpc("precheck_activity_code_conflict", {
+      p_tenant_id: params.tenantId,
+      p_activity_id: null,
+      p_code: input.code,
+    });
+
+    const precheckResult = precheckError ? null : ((precheck ?? null) as ActivityCodePrecheckResult | null);
+    if (!precheckResult?.success) {
+      const mapped = mapCodeConflictReasonToMessage(precheckResult?.reason);
+      results.push({
+        rowNumber,
+        success: false,
+        message: mapped.message,
+        code: mapped.status === 409 ? "DUPLICATE_ACTIVITY_CODE" : undefined,
+      });
+      continue;
+    }
+
+    const saveResult = await saveActivityViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      activityId: null,
+      code: input.code,
+      codeIdd: input.codeIdd,
+      description: input.description,
+      teamTypeId: input.teamTypeId,
+      categoryId: input.categoryId,
+      group: input.group,
+      value: input.value as number,
+      voicePoint: input.voicePoint as number,
+      unit: input.unit,
+      scope: input.scope,
+    });
+
+    if (!saveResult.ok) {
+      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({ rowNumber, success: true, message: `Atividade ${input.code} cadastrada com sucesso.` });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
 }
 
 async function setActivityStatusViaRpc(params: {
@@ -609,7 +726,38 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as Partial<CreateActivityPayload>;
+    const body = (await request.json().catch(() => ({}))) as Partial<CreateActivityPayload> & ActivityBatchImportPayload;
+
+    if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+
+      if (!rows.length) {
+        return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+      }
+
+      if (rows.length > MASS_IMPORT_ROW_LIMIT) {
+        return NextResponse.json(
+          { message: `Cadastro em massa limitado a ${MASS_IMPORT_ROW_LIMIT} linhas por arquivo.` },
+          { status: 400 },
+        );
+      }
+
+      const batchResult = await importActivityBatch({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        rows,
+      });
+
+      return NextResponse.json({
+        ...batchResult,
+        message:
+          batchResult.errorCount > 0
+            ? `Cadastro em massa processado com ${batchResult.savedCount} atividades salvas e ${batchResult.errorCount} linhas com erro.`
+            : `Cadastro em massa concluido com ${batchResult.savedCount} atividades salvas.`,
+      });
+    }
+
     const input = parseActivityInput(body);
 
     if (

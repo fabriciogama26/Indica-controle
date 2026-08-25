@@ -18,37 +18,21 @@ import {
   parsePagination,
   parsePositiveInteger,
 } from "@/lib/server/apiHelpers";
-
-type TeamRow = {
-  id: string;
-  name: string;
-  vehicle_plate: string;
-  service_center_id: string | null;
-  stock_center_id: string | null;
-  team_type_id: string;
-  foreman_person_id: string;
-  supervisor_person_id: string | null;
-  ativo: boolean;
-  cancellation_reason: string | null;
-  canceled_at: string | null;
-  canceled_by: string | null;
-  created_by: string | null;
-  updated_by: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-type ForemanRow = {
-  id: string;
-  nome: string;
-  job_title_id: string;
-};
-
-type SupervisorRow = ForemanRow;
-
-type JobTitleIdRow = {
-  id: string;
-};
+import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
+import {
+  fetchExistingTeamByForeman,
+  fetchForemanById,
+  fetchServiceCenterById,
+  fetchStockCenterById,
+  fetchSupervisorById,
+  fetchTeamById,
+  fetchTeamTypeById,
+  type ServiceCenterRow,
+  type StockCenterRow,
+  type TeamRow,
+  type TeamTypeRow,
+} from "@/server/modules/teams/lookups";
+import { isMissingFunctionError, mapTeamDbError } from "@/server/modules/teams/errors";
 
 type AppUserRow = {
   id: string;
@@ -59,28 +43,6 @@ type AppUserRow = {
 type PersonRow = {
   id: string;
   nome: string;
-};
-
-type TeamTypeRow = {
-  id: string;
-  name: string;
-};
-
-type ServiceCenterRow = {
-  id: string;
-  name: string;
-};
-
-type StockCenterRow = {
-  id: string;
-  name: string;
-  center_type?: string | null;
-};
-
-type ExistingTeamByForemanRow = {
-  id: string;
-  name: string;
-  foreman_person_id: string;
 };
 
 type TeamHistoryRow = {
@@ -142,150 +104,8 @@ type TeamForemanSwapRpcResult = {
   target_updated_at?: string;
 };
 
-type DbErrorShape = {
-  message?: string | null;
-  details?: string | null;
-  hint?: string | null;
-  code?: string | null;
-};
-
-const FOREMAN_JOB_TITLE_FILTER = "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%";
-const SUPERVISOR_JOB_TITLE_FILTER = "code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
-
 function normalizePlate(value: unknown) {
   return normalizeText(value).toUpperCase();
-}
-
-function normalizeDbErrorText(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
-}
-
-function isMissingFunctionError(error: unknown, functionName: string) {
-  const rawMessage = normalizeDbErrorText((error as DbErrorShape | null)?.message);
-  return rawMessage.includes("function") && rawMessage.includes(functionName.toLowerCase());
-}
-
-function isTeamDuplicateCombinationError(rawMessage: unknown) {
-  const message = normalizeDbErrorText(rawMessage);
-  if (!message.includes("duplicate key")) {
-    return false;
-  }
-
-  return (
-    message.includes("teams_tenant_foreman_name_plate_key")
-    || message.includes("teams_tenant_id_name_key")
-    || message.includes("teams_tenant_id_vehicle_plate_key")
-  );
-}
-
-function mapTeamDbError(error: unknown, fallbackMessage: string) {
-  const dbError = (error ?? {}) as DbErrorShape;
-  const message = normalizeDbErrorText(dbError.message);
-  const details = normalizeDbErrorText(dbError.details);
-  const hint = normalizeDbErrorText(dbError.hint);
-  const combined = `${message} ${details} ${hint}`.trim();
-
-  if (isTeamDuplicateCombinationError(combined) || combined.includes("duplicate_team_combination")) {
-    return {
-      status: 409,
-      message: "Ja existe equipe com o mesmo nome, encarregado e placa no tenant atual.",
-      reason: "DUPLICATE_TEAM_COMBINATION",
-    } as const;
-  }
-
-  if (combined.includes("teams_service_center_tenant_fk")) {
-    return {
-      status: 422,
-      message: "Base invalida para o tenant atual.",
-      reason: "INVALID_SERVICE_CENTER",
-    } as const;
-  }
-
-  if (combined.includes("teams_team_type_tenant_fk")) {
-    return {
-      status: 422,
-      message: "Tipo de equipe invalido para o tenant atual.",
-      reason: "INVALID_TEAM_TYPE",
-    } as const;
-  }
-
-  if (combined.includes("teams_foreman_person_tenant_fk")) {
-    return {
-      status: 422,
-      message: "Encarregado invalido para o tenant atual.",
-      reason: "INVALID_FOREMAN",
-    } as const;
-  }
-
-  if (combined.includes("teams_supervisor_person_tenant_fk") || combined.includes("invalid_supervisor")) {
-    return {
-      status: 422,
-      message: "Supervisor invalido para o tenant atual.",
-      reason: "INVALID_SUPERVISOR",
-    } as const;
-  }
-
-  if (combined.includes("invalid_stock_center")) {
-    return {
-      status: 422,
-      message: "Centro de estoque proprio invalido para a equipe.",
-      reason: "INVALID_STOCK_CENTER",
-    } as const;
-  }
-
-  if (
-    combined.includes("stock_center_already_linked")
-    || combined.includes("idx_teams_unique_stock_center")
-  ) {
-    return {
-      status: 409,
-      message: "Este centro de estoque proprio ja esta vinculado a outra equipe.",
-      reason: "STOCK_CENTER_ALREADY_LINKED",
-    } as const;
-  }
-
-  if (
-    combined.includes("chk_teams_name_not_blank")
-    || combined.includes("chk_teams_vehicle_plate_not_blank")
-    || combined.includes("null value in column \"name\"")
-    || combined.includes("null value in column \"vehicle_plate\"")
-    || combined.includes("null value in column \"service_center_id\"")
-    || combined.includes("null value in column \"team_type_id\"")
-    || combined.includes("null value in column \"foreman_person_id\"")
-  ) {
-    return {
-      status: 400,
-      message: "Preencha todos os campos obrigatorios da equipe.",
-      reason: "MISSING_REQUIRED_FIELDS",
-    } as const;
-  }
-
-  if (combined.includes("save_team_record") && combined.includes("function")) {
-    return {
-      status: 500,
-      message: "RPC save_team_record indisponivel no banco. Aplique a migration 077_create_admin_write_rpcs.sql.",
-      reason: "RPC_MISSING",
-    } as const;
-  }
-
-  if (combined.includes("set_team_record_status") && combined.includes("function")) {
-    return {
-      status: 500,
-      message: "RPC set_team_record_status indisponivel no banco. Aplique a migration 077_create_admin_write_rpcs.sql.",
-      reason: "RPC_MISSING",
-    } as const;
-  }
-
-  const detailsMessage = [dbError.message, dbError.hint, dbError.details]
-    .map((item) => String(item ?? "").trim())
-    .filter(Boolean)
-    .join(" | ");
-
-  return {
-    status: 500,
-    message: detailsMessage ? `${fallbackMessage} ${detailsMessage}` : fallbackMessage,
-    reason: null,
-  } as const;
 }
 
 function buildForemanMap(people: PersonRow[]) {
@@ -294,221 +114,6 @@ function buildForemanMap(people: PersonRow[]) {
 
 function buildTeamTypeMap(teamTypes: TeamTypeRow[]) {
   return buildNameMap(teamTypes);
-}
-
-async function fetchForemanJobTitleIds(supabase: SupabaseClient, tenantId: string) {
-  const { data, error } = await supabase
-    .from("job_titles")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .or(FOREMAN_JOB_TITLE_FILTER)
-    .returns<JobTitleIdRow[]>();
-
-  if (error) {
-    return [] as string[];
-  }
-
-  return (data ?? []).map((item) => item.id).filter(Boolean);
-}
-
-async function fetchSupervisorJobTitleIds(supabase: SupabaseClient, tenantId: string) {
-  const { data, error } = await supabase
-    .from("job_titles")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .or(SUPERVISOR_JOB_TITLE_FILTER)
-    .returns<JobTitleIdRow[]>();
-
-  if (error) {
-    return [] as string[];
-  }
-
-  return (data ?? []).map((item) => item.id).filter(Boolean);
-}
-
-async function fetchForemanById(
-  supabase: SupabaseClient,
-  tenantId: string,
-  foremanId: string,
-) {
-  const jobTitleIds = await fetchForemanJobTitleIds(supabase, tenantId);
-  if (jobTitleIds.length === 0) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("people")
-    .select("id, nome, job_title_id")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .eq("id", foremanId)
-    .in("job_title_id", jobTitleIds)
-    .maybeSingle<ForemanRow>();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: normalizeText(data.nome),
-  };
-}
-
-async function fetchSupervisorById(
-  supabase: SupabaseClient,
-  tenantId: string,
-  supervisorId: string | null,
-) {
-  const normalizedSupervisorId = normalizeText(supervisorId);
-  if (!normalizedSupervisorId) {
-    return null;
-  }
-
-  const jobTitleIds = await fetchSupervisorJobTitleIds(supabase, tenantId);
-  if (jobTitleIds.length === 0) {
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from("people")
-    .select("id, nome, job_title_id")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .eq("id", normalizedSupervisorId)
-    .in("job_title_id", jobTitleIds)
-    .maybeSingle<SupervisorRow>();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: normalizeText(data.nome),
-  };
-}
-
-async function fetchTeamTypeById(
-  supabase: SupabaseClient,
-  tenantId: string,
-  teamTypeId: string,
-) {
-  const { data, error } = await supabase
-    .from("team_types")
-    .select("id, name")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .eq("id", teamTypeId)
-    .maybeSingle<TeamTypeRow>();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: normalizeText(data.name),
-  };
-}
-
-async function fetchServiceCenterById(
-  supabase: SupabaseClient,
-  tenantId: string,
-  serviceCenterId: string,
-) {
-  const { data, error } = await supabase
-    .from("project_service_centers")
-    .select("id, name")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .eq("id", serviceCenterId)
-    .maybeSingle<ServiceCenterRow>();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: normalizeText(data.name),
-  };
-}
-
-async function fetchStockCenterById(
-  supabase: SupabaseClient,
-  tenantId: string,
-  stockCenterId: string,
-) {
-  const { data, error } = await supabase
-    .from("stock_centers")
-    .select("id, name, center_type")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .eq("id", stockCenterId)
-    .maybeSingle<StockCenterRow>();
-
-  if (error || !data) {
-    return null;
-  }
-
-  if (String(data.center_type ?? "").trim().toUpperCase() !== "OWN") {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: normalizeText(data.name),
-  };
-}
-
-async function fetchTeamById(
-  supabase: SupabaseClient,
-  tenantId: string,
-  teamId: string,
-) {
-  const { data, error } = await supabase
-    .from("teams")
-    .select(
-      "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, supervisor_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
-    )
-    .eq("tenant_id", tenantId)
-    .eq("id", teamId)
-    .maybeSingle<TeamRow>();
-
-  if (error || !data) {
-    return null;
-  }
-
-  return data;
-}
-
-async function fetchExistingTeamByForeman(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  foremanId: string;
-  excludeTeamId?: string | null;
-}) {
-  let query = params.supabase
-    .from("teams")
-    .select("id, name, foreman_person_id")
-    .eq("tenant_id", params.tenantId)
-    .eq("foreman_person_id", params.foremanId)
-    .eq("ativo", true)
-    .limit(1);
-
-  if (params.excludeTeamId) {
-    query = query.neq("id", params.excludeTeamId);
-  }
-
-  const { data, error } = await query.returns<ExistingTeamByForemanRow[]>();
-  if (error || !data || data.length === 0) {
-    return null;
-  }
-
-  return data[0];
 }
 
 async function saveTeamViaRpc(params: {
@@ -1234,6 +839,127 @@ export async function GET(request: NextRequest) {
   }
 }
 
+type TeamBatchImportRow = Partial<CreateTeamPayload> & { rowNumber?: number };
+
+type TeamBatchImportPayload = {
+  action?: "BATCH_IMPORT";
+  rows?: TeamBatchImportRow[];
+};
+
+async function importTeamBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: TeamBatchImportRow[];
+}) {
+  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
+  const validServiceCenterIds = new Map<string, boolean>();
+  const validTeamTypeIds = new Map<string, boolean>();
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+    const input = {
+      name: normalizeText(row.name),
+      vehiclePlate: normalizePlate(row.vehiclePlate),
+      serviceCenterId: normalizeText(row.serviceCenterId),
+      teamTypeId: normalizeText(row.teamTypeId),
+      foremanId: normalizeText(row.foremanId),
+      supervisorId: normalizeText(row.supervisorId) || null,
+    };
+
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Preencha todos os campos obrigatorios da equipe.",
+        code: "MISSING_REQUIRED_FIELDS",
+      });
+      continue;
+    }
+
+    if (!validServiceCenterIds.has(input.serviceCenterId)) {
+      validServiceCenterIds.set(
+        input.serviceCenterId,
+        Boolean(await fetchServiceCenterById(params.supabase, params.tenantId, input.serviceCenterId)),
+      );
+    }
+
+    if (!validServiceCenterIds.get(input.serviceCenterId)) {
+      results.push({ rowNumber, success: false, message: "Base invalida para o tenant atual.", code: "INVALID_SERVICE_CENTER" });
+      continue;
+    }
+
+    if (!validTeamTypeIds.has(input.teamTypeId)) {
+      validTeamTypeIds.set(
+        input.teamTypeId,
+        Boolean(await fetchTeamTypeById(params.supabase, params.tenantId, input.teamTypeId)),
+      );
+    }
+
+    if (!validTeamTypeIds.get(input.teamTypeId)) {
+      results.push({ rowNumber, success: false, message: "Tipo de equipe invalido para o tenant atual.", code: "INVALID_TEAM_TYPE" });
+      continue;
+    }
+
+    if (!(await fetchForemanById(params.supabase, params.tenantId, input.foremanId))) {
+      results.push({ rowNumber, success: false, message: "Encarregado invalido para o tenant atual.", code: "INVALID_FOREMAN" });
+      continue;
+    }
+
+    if (input.supervisorId && !(await fetchSupervisorById(params.supabase, params.tenantId, input.supervisorId))) {
+      results.push({ rowNumber, success: false, message: "Supervisor invalido para o tenant atual.", code: "INVALID_SUPERVISOR" });
+      continue;
+    }
+
+    const existingTeamByForeman = await fetchExistingTeamByForeman({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      foremanId: input.foremanId,
+      excludeTeamId: null,
+    });
+
+    if (existingTeamByForeman) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Ja existe equipe ativa cadastrada para este encarregado. Selecione outro encarregado.",
+        code: "FOREMAN_ALREADY_LINKED",
+      });
+      continue;
+    }
+
+    const saveResult = await saveTeamViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      teamId: null,
+      name: input.name,
+      vehiclePlate: input.vehiclePlate,
+      serviceCenterId: input.serviceCenterId,
+      stockCenterId: null,
+      teamTypeId: input.teamTypeId,
+      foremanId: input.foremanId,
+      supervisorId: input.supervisorId,
+    });
+
+    if (!saveResult.ok) {
+      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({ rowNumber, success: true, message: `Equipe ${input.name} cadastrada com sucesso.` });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -1246,7 +972,38 @@ export async function POST(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as Partial<CreateTeamPayload>;
+    const body = (await request.json().catch(() => ({}))) as Partial<CreateTeamPayload> & TeamBatchImportPayload;
+
+    if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+
+      if (!rows.length) {
+        return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+      }
+
+      if (rows.length > MASS_IMPORT_ROW_LIMIT) {
+        return NextResponse.json(
+          { message: `Cadastro em massa limitado a ${MASS_IMPORT_ROW_LIMIT} linhas por arquivo.` },
+          { status: 400 },
+        );
+      }
+
+      const batchResult = await importTeamBatch({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        rows,
+      });
+
+      return NextResponse.json({
+        ...batchResult,
+        message:
+          batchResult.errorCount > 0
+            ? `Cadastro em massa processado com ${batchResult.savedCount} equipes salvas e ${batchResult.errorCount} linhas com erro.`
+            : `Cadastro em massa concluido com ${batchResult.savedCount} equipes salvas.`,
+      });
+    }
+
     const input = {
       name: normalizeText(body.name),
       vehiclePlate: normalizePlate(body.vehiclePlate),

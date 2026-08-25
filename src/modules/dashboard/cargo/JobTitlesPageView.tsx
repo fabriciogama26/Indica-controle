@@ -3,16 +3,26 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
 import styles from "../pessoas/PeoplePageView.module.css";
-import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import {
+  JOB_TITLE_MASS_IMPORT_COLUMNS_HINT,
+  buildJobTitleMassImportTemplateCsv,
+  parseJobTitleMassImportCsv,
+  type JobTitleImportRow,
+} from "./massImport";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
+import { buildJobTitlesCsv } from "./csv";
 
 type JobTitleItem = {
   id: string;
@@ -137,34 +147,6 @@ function buildQuery(filters: JobTitleFilterState, page: number, pageSize = PAGE_
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
-}
-
-function buildJobTitlesCsv(jobTitles: JobTitleItem[]) {
-  const header = [
-    "Codigo",
-    "Nome",
-    "Tipos ativos",
-    "Niveis ativos",
-    "Status",
-    "Registrado por",
-    "Registrado em",
-    "Atualizado por",
-    "Atualizado em",
-  ];
-  const rows = jobTitles.map((jobTitle) => [
-    jobTitle.code,
-    jobTitle.name,
-    jobTitle.activeTypeNames.join(", "),
-    jobTitle.activeLevelNames.join(", "),
-    jobTitle.isActive ? "Ativo" : "Inativo",
-    formatAuditActor(jobTitle.createdByName),
-    formatDateTime(jobTitle.createdAt),
-    formatAuditActor(jobTitle.updatedByName),
-    formatDateTime(jobTitle.updatedAt),
-  ]);
-
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}`;
 }
 
 function formatHistoryValue(field: string, value: string | null) {
@@ -313,6 +295,52 @@ export function JobTitlesPageView() {
   useEffect(() => {
     void loadJobTitles(page, activeFilters);
   }, [activeFilters, loadJobTitles, page]);
+
+  const submitMassImport = useCallback(
+    async (rows: JobTitleImportRow[]) => {
+      if (!session?.accessToken) {
+        return { ok: false, message: "Sessao invalida para importar cargos em massa.", savedCount: 0, results: [] };
+      }
+
+      const response = await fetch("/api/job-titles", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const massImport = useMassImport<JobTitleImportRow>({
+    entityLabel: "cargos",
+    errorFilePrefix: "cargos",
+    templateFileName: "modelo_cargos_cadastro_em_massa.csv",
+    buildTemplateCsv: buildJobTitleMassImportTemplateCsv,
+    parse: parseJobTitleMassImportCsv,
+    submit: submitMassImport,
+    resolveErrorColumn: (code) => (code === "DUPLICATE_CODE" ? "codigo" : "salvamento"),
+    onImported: async () => {
+      await loadJobTitles(1, activeFilters);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+    onError: (error) => logError("Falha ao importar cargos em massa.", error),
+  });
 
   function resetForm() {
     setForm((current) => ({
@@ -609,6 +637,11 @@ export function JobTitlesPageView() {
             <button type="submit" className={styles.primaryButton} disabled={isSaving}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={massImport.open}>
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -934,6 +967,8 @@ export function JobTitlesPageView() {
           </article>
         </div>
       ) : null}
+
+      <MassImportModal controller={massImport} entityLabel="cargos" columnsHint={JOB_TITLE_MASS_IMPORT_COLUMNS_HINT} />
     </section>
   );
 }

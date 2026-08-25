@@ -359,3 +359,40 @@ Atualizacao 2026-08-15 - Formulario nao e mais apagado em conflito de concorrenc
 - Arquivos alterados: `src/modules/dashboard/equipes/TeamsPageView.tsx`.
 - Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; baseline reduzido via
   `npm run lint:size:update`).
+
+Cadastro em massa
+-----------------
+- Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao, e fica desabilitado enquanto os catalogos da tela carregam.
+- Modelo CSV: `nome;placa;base;tipo_equipe;encarregado;supervisor`.
+- Colunas obrigatorias: `nome`, `placa`, `base`, `tipo_equipe` e `encarregado`. `supervisor` e opcional.
+- `base`, `tipo_equipe`, `encarregado` e `supervisor` sao informados pelo nome e resolvidos contra os catalogos ativos ja carregados na tela.
+- Nome repetido no catalogo (duas bases com o mesmo nome, dois encarregados homonimos) recusa a linha como ambigua em vez de escolher um registro no escuro.
+- Placa repetida no arquivo e encarregado repetido no arquivo sao recusados na pre-validacao (um encarregado so pode ter uma equipe ativa).
+- O lote nao define `Centro de estoque proprio`: as equipes importadas seguem o mesmo comportamento do cadastro manual da tela.
+- Envio: `POST /api/teams` com `action = BATCH_IMPORT` e `rows`.
+- O backend revalida base, tipo, encarregado, supervisor e a regra de encarregado ja vinculado antes de chamar `saveTeamViaRpc` linha a linha.
+- Erros parciais geram CSV de retorno com `linha`, `coluna`, `valor` e `erro`; as linhas validas sao salvas mesmo assim.
+- Infraestrutura compartilhada do cadastro em massa:
+  - Modal: `src/components/ui/MassImportModal.tsx` (3 etapas: baixar modelo, preencher, enviar).
+  - Orquestracao: `src/hooks/useMassImport.ts` (le o arquivo, chama o parser de dominio, envia o lote e monta o CSV de erros).
+  - Helpers de CSV: `src/lib/utils/massImport.ts` (`readMassImportCsv`, `buildMassImportTemplateCsv`, `createMassImportErrorReport`).
+  - Teto por arquivo: `MASS_IMPORT_ROW_LIMIT` = 500 linhas (`src/lib/constants/massImport.ts`).
+
+Atualizacao 2026-08-25 - Cadastro em massa
+--------------------------------------------------------------------------------------------
+- `Equipes` passa a ter cadastro em massa por CSV, no mesmo padrao ja existente em `Materiais` e `Pessoas`.
+- Antes: so era possivel cadastrar uma equipe por vez pelo formulario.
+- Depois: o CSV `nome;placa;base;tipo_equipe;encarregado;supervisor` cadastra ate 500 equipes por arquivo, com pre-validacao no frontend e CSV de erros por linha.
+- Reorganizacao de backend exigida pelo teto de tamanho de `src/app/api/teams/route.ts` (estava em 1.635 linhas, acima do teto de 1.500 para `route.ts`):
+  * `src/server/modules/teams/lookups.ts`: tipos das tabelas consultadas e `fetchForemanById`, `fetchSupervisorById`, `fetchTeamTypeById`,
+    `fetchServiceCenterById`, `fetchStockCenterById`, `fetchTeamById`, `fetchExistingTeamByForeman`.
+  * `src/server/modules/teams/errors.ts`: `mapTeamDbError` e `isMissingFunctionError`.
+  * A rota caiu para 1.392 linhas, voltou ao limite e saiu do `file-size-baseline.json`.
+- `buildTeamsCsv` saiu para `src/modules/dashboard/equipes/csv.ts`; `TeamFilterState`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`,
+  `buildQuery` e `formatHistoryValue` sairam para `src/modules/dashboard/equipes/presentation.ts`, mantendo a view dentro do baseline.
+- Arquivos alterados/criados: `src/app/api/teams/route.ts`, `src/server/modules/teams/lookups.ts`, `src/server/modules/teams/errors.ts`,
+  `src/modules/dashboard/equipes/TeamsPageView.tsx`, `src/modules/dashboard/equipes/massImport.ts`,
+  `src/modules/dashboard/equipes/csv.ts`, `src/modules/dashboard/equipes/presentation.ts`.
+- Validado com `npx tsc --noEmit`, `npm run lint` e `npm run build`. Validacao manual pendente:
+  (1) importar CSV valido e conferir as equipes na lista; (2) importar CSV com o mesmo encarregado em duas linhas e conferir a recusa;
+  (3) importar CSV com base inexistente e conferir o CSV de erros.

@@ -4,13 +4,24 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import styles from "./ActivitiesPageView.module.css";
-import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
+import { buildActivitiesCsv } from "./csv";
+import { formatHistoryValue, formatMoney, formatPoints, toInputMoney, toInputPoints } from "./formatters";
+import {
+  ACTIVITY_MASS_IMPORT_COLUMNS_HINT,
+  buildActivityMassImportTemplateCsv,
+  parseActivityMassImportCsv,
+  type ActivityImportRow,
+} from "./massImport";
 
 type ActivityItem = {
   id: string;
@@ -141,99 +152,6 @@ function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
-}
-
-function buildActivitiesCsv(activityItems: ActivityItem[]) {
-  const header = [
-    "Codigo",
-    "Cod. SAP",
-    "Descricao",
-    "Tipo",
-    "Categoria",
-    "Grupo",
-    "Valor",
-    "Pontos",
-    "Unidade",
-    "Alcance",
-    "Status",
-    "Registrado por",
-    "Registrado em",
-    "Atualizado por",
-    "Atualizado em",
-  ];
-  const rows = activityItems.map((activity) => [
-    activity.code,
-    activity.codeIdd || "-",
-    activity.description,
-    activity.teamTypeName,
-    activity.categoryName,
-    activity.group || "",
-    activity.value.toFixed(2),
-    formatPoints(activity.voicePoint),
-    activity.unit,
-    activity.scope || "",
-    activity.isActive ? "Ativo" : "Inativo",
-    formatAuditActor(activity.createdByName),
-    formatDateTime(activity.createdAt),
-    formatAuditActor(activity.updatedByName),
-    formatDateTime(activity.updatedAt),
-  ]);
-
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function formatMoney(value: number) {
-  return Number(value ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatPoints(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "-";
-  }
-
-  return Number(value).toLocaleString("pt-BR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 6,
-  });
-}
-
-function toInputMoney(value: number) {
-  return String(Number(value ?? 0).toFixed(2));
-}
-
-function toInputPoints(value: number | null | undefined) {
-  const numericValue = Number(value ?? "");
-  return Number.isFinite(numericValue) && numericValue > 0 ? String(numericValue) : "";
-}
-
-function formatHistoryValue(field: string, value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  if (field === "value") {
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? formatMoney(numericValue) : value;
-  }
-
-  if (field === "voicePoint") {
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? formatPoints(numericValue) : value;
-  }
-
-  if (field === "isActive") {
-    return value === "true" ? "Ativo" : "Inativo";
-  }
-
-  if (field === "canceledAt") {
-    return formatDateTime(value);
-  }
-
-  return value;
 }
 
 function scrollDashboardContentToTop() {
@@ -417,6 +335,61 @@ export function ActivitiesPageView() {
   useEffect(() => {
     void loadActivities(page, activeFilters);
   }, [activeFilters, loadActivities, page]);
+
+  const parseMassImportCsv = useCallback(
+    (content: string, fileName: string) => parseActivityMassImportCsv({ content, fileName, teamTypes, categories }),
+    [categories, teamTypes],
+  );
+
+  const submitMassImport = useCallback(
+    async (rows: ActivityImportRow[]) => {
+      if (!session?.accessToken) {
+        return { ok: false, message: "Sessao invalida para importar atividades em massa.", savedCount: 0, results: [] };
+      }
+
+      const response = await fetch("/api/activities", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const massImport = useMassImport<ActivityImportRow>({
+    entityLabel: "atividades",
+    errorFilePrefix: "atividades",
+    templateFileName: "modelo_atividades_cadastro_em_massa.csv",
+    buildTemplateCsv: buildActivityMassImportTemplateCsv,
+    parse: parseMassImportCsv,
+    submit: submitMassImport,
+    resolveErrorColumn: (code) => {
+      if (code === "DUPLICATE_ACTIVITY_CODE") return "codigo";
+      if (code === "INVALID_TEAM_TYPE") return "tipo_equipe";
+      if (code === "INVALID_CATEGORY") return "categoria";
+      return "salvamento";
+    },
+    onImported: async () => {
+      await loadActivities(1, activeFilters);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+  });
 
   const formTitle = useMemo(() => (isEditing ? "Editar Atividade" : "Cadastro de Atividades"), [isEditing]);
 
@@ -863,6 +836,11 @@ export function ActivitiesPageView() {
             <button type="submit" className={styles.primaryButton} disabled={isSaving}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={massImport.open} disabled={isLoadingMeta}>
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -1282,6 +1260,8 @@ export function ActivitiesPageView() {
           </article>
         </div>
       ) : null}
+
+      <MassImportModal controller={massImport} entityLabel="atividades" columnsHint={ACTIVITY_MASS_IMPORT_COLUMNS_HINT} />
     </section>
   );
 }
