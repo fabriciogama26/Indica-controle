@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import {
   ensureActiveLocationProject,
   ensureLocationPlan,
@@ -30,6 +31,11 @@ export async function POST(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationError = await authorizePageAction(resolution, "locacao", "create");
+    if (authorizationError) {
+      return authorizationError;
     }
 
     const payload = (await request.json().catch(() => null)) as {
@@ -131,6 +137,11 @@ export async function PUT(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationError = await authorizePageAction(resolution, "locacao", "update");
+    if (authorizationError) {
+      return authorizationError;
     }
 
     const payload = (await request.json().catch(() => null)) as {

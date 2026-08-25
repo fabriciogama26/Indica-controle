@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import { withIdempotency } from "@/lib/server/idempotency";
 import {
   normalizeDateInput,
@@ -126,6 +127,11 @@ async function handleImport(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationError = await authorizePageAction(resolution, "entrada", "import");
+    if (authorizationError) {
+      return authorizationError;
     }
 
     const payload = (await request.json().catch(() => ({}))) as ImportPayload;

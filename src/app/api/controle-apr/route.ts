@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { parsePagination } from "@/lib/server/apiHelpers";
 
@@ -332,6 +333,11 @@ async function saveApr(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "controle-apr", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const payload = (await request.json().catch(() => null)) as SavePayload | null;
   const id = normalizeUuid(payload?.id);
   const projectId = normalizeUuid(payload?.projectId);
@@ -405,6 +411,12 @@ export async function PATCH(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as StatusPayload | null;
   const id = normalizeUuid(payload?.id);
   const action = normalizeText(payload?.action).toUpperCase();
+
+  const authorizationError = await authorizePageAction(resolution, "controle-apr", "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const reason = normalizeText(payload?.reason) || null;
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
 

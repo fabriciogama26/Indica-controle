@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import {
   buildConcurrencyConflictResponse,
   hasUpdatedAtConflict,
@@ -1081,6 +1082,11 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
 
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizePageAction(resolution, "composicao-equipe", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
   }
 
   const { supabase, appUser } = resolution;

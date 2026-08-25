@@ -19,6 +19,7 @@ import {
   parsePositiveInteger,
 } from "@/lib/server/apiHelpers";
 import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import {
   fetchExistingTeamByForeman,
   fetchForemanById,
@@ -975,6 +976,11 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Partial<CreateTeamPayload> & TeamBatchImportPayload;
 
     if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const authorizationError = await authorizePageAction(resolution, "equipes", "import");
+      if (authorizationError) {
+        return authorizationError;
+      }
+
       const rows = Array.isArray(body.rows) ? body.rows : [];
 
       if (!rows.length) {
@@ -1002,6 +1008,11 @@ export async function POST(request: NextRequest) {
             ? `Cadastro em massa processado com ${batchResult.savedCount} equipes salvas e ${batchResult.errorCount} linhas com erro.`
             : `Cadastro em massa concluido com ${batchResult.savedCount} equipes salvas.`,
       });
+    }
+
+    const authorizationError = await authorizePageAction(resolution, "equipes", "create");
+    if (authorizationError) {
+      return authorizationError;
     }
 
     const input = {
@@ -1096,6 +1107,11 @@ export async function PUT(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationError = await authorizePageAction(resolution, "equipes", "update");
+    if (authorizationError) {
+      return authorizationError;
     }
 
     const { supabase, appUser } = resolution;
@@ -1255,6 +1271,11 @@ export async function PATCH(request: NextRequest) {
     const action = requestedAction === "activate" ? "ACTIVATE" : "CANCEL";
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const targetExpectedUpdatedAt = normalizeExpectedUpdatedAt(body.targetExpectedUpdatedAt);
+
+    const authorizationError = await authorizePageAction(resolution, "equipes", requestedAction === "swapforeman" || action === "ACTIVATE" ? "update" : "cancel");
+    if (authorizationError) {
+      return authorizationError;
+    }
 
     if (!teamId) {
       return NextResponse.json({ message: "Equipe invalida para atualizar status." }, { status: 400 });
