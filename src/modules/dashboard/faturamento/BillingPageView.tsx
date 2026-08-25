@@ -159,12 +159,8 @@ export function BillingPageView() {
     if (session?.accessToken) {
       headers.Authorization = `Bearer ${session.accessToken}`;
     }
-    const tenantId = session?.user.activeTenantId ?? session?.user.tenantId;
-    if (tenantId) {
-      headers["x-tenant-id"] = tenantId;
-    }
     return headers;
-  }, [session?.accessToken, session?.user.activeTenantId, session?.user.tenantId]);
+  }, [session?.accessToken]);
 
   const formTotalAmount = useMemo(
     () => form.items.reduce((sum, item) => sum + calculateItemTotal(item), 0),

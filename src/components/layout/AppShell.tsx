@@ -427,6 +427,7 @@ export function AppShell({ children }: PropsWithChildren) {
 
   const normalizedRole = normalizeRole(session?.user.role);
   const isAdmin = isAdminRole(normalizedRole);
+  const requiresTenantSelection = session?.source === "remote" && isAdmin && !session.user.activeTenantId;
   const routeAccessContext = useMemo(
     () => ({
       role: session?.user.role,
@@ -442,6 +443,12 @@ export function AppShell({ children }: PropsWithChildren) {
       router.replace("/login");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && requiresTenantSelection && pathname !== "/selecionar-contrato") {
+      router.replace("/selecionar-contrato");
+    }
+  }, [isAuthenticated, isLoading, pathname, requiresTenantSelection, router]);
 
   const header = useMemo(() => {
     if (!pathname) {
@@ -471,10 +478,10 @@ export function AppShell({ children }: PropsWithChildren) {
   }, [visibleSections]);
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && !canAccessCurrentRoute) {
+    if (!isLoading && isAuthenticated && !requiresTenantSelection && !canAccessCurrentRoute) {
       router.replace(fallbackRoute ?? "/login");
     }
-  }, [canAccessCurrentRoute, fallbackRoute, isAuthenticated, isLoading, router]);
+  }, [canAccessCurrentRoute, fallbackRoute, isAuthenticated, isLoading, requiresTenantSelection, router]);
 
   if (isLoading || !session) {
     return (

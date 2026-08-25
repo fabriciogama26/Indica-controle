@@ -86,11 +86,12 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 ## Regras de Negócio Principais
 
 1. **Todo endpoint** deve chamar `resolveAuthenticatedAppUser` antes de qualquer operação.
-2. **Tenant isolation:** `activeTenantId` resolvido a partir do header `x-tenant-id`, cookie `httpOnly` `INDICA.activeTenantId` ou tenant padrão do usuário. Nunca confiar no tenant vindo do body do request.
+2. **Tenant isolation:** `activeTenantId` operacional de admin é resolvido pelo cookie `httpOnly` `INDICA.activeTenantId` validado contra membership. `user`/`viewer` ignoram esse cookie, `x-tenant-id` é bloqueado por padrão e nunca se confia no tenant vindo do body do request.
 3. **Usuário inativo:** `ativo = false` retorna 403 imediatamente, sem consultar dados de negócio.
-4. **Multi-tenant:** Admin usa obrigatoriamente vínculos ativos em `app_user_tenants`; sem tenant ativo por cookie/header validado, API operacional retorna 428.
-5. **Permissões customizadas:** Se o usuário tem entradas em `app_user_page_permissions`, elas sobrescrevem o padrão da role.
-6. **Token expirado:** `TOKEN_EXPIRED` limpa sessão sem chamar `supabase.auth.signOut()` (para evitar loop).
+4. **Multi-tenant:** Admin usa obrigatoriamente vínculos ativos em `app_user_tenants`; sem tenant ativo por cookie validado, API operacional retorna 428 e o `AppShell` redireciona para `/selecionar-contrato`.
+5. **Cookie inválido:** cookie de tenant que não pertence mais ao usuário é ignorado e limpo em `/api/auth/session-access`; não deve causar 403 persistente.
+6. **Permissões customizadas:** Se o usuário tem entradas em `app_user_page_permissions`, elas sobrescrevem o padrão da role.
+7. **Token expirado:** `TOKEN_EXPIRED` limpa sessão sem chamar `supabase.auth.signOut()` (para evitar loop).
 
 ---
 
@@ -112,6 +113,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 | `AuthContext.tsx` | `supabase.auth.onAuthStateChange` para TOKEN_REFRESHED |
 | `auth.service.ts` | `hydrateSessionAccess` → chama `/api/auth/session-access` |
 | `TenantSelectorPageView.tsx` | chama `/api/auth/active-tenant` para admin escolher contrato ativo |
+| `AppShell.tsx` | redireciona admin remoto sem contrato selecionado para `/selecionar-contrato` |
 
 ---
 
@@ -119,5 +121,6 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 
 | Data | O que mudou |
 |---|---|
+| 2026-08-25 | Migration 386 fecha brecha de `app_user_tenants`: backfill de vinculos, sync futuro, `save_user_permissions` cria/reativa vinculo de admin; header de tenant deixa de ser fonte operacional e cookie invalido passa a ser limpo |
 | 2026-08-25 | Criada seleção inicial de contrato para admin; vínculos de admin vêm obrigatoriamente de `app_user_tenants`, e tenant ativo pode vir de cookie `httpOnly`, sempre validado contra membership no servidor |
 | 2026-06 | CRC criado com identificação dos problemas de criação de client e ausência de cache |
