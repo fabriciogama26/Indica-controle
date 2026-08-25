@@ -61,8 +61,8 @@ export function TenantSelectorPageView() {
   const [manualTenantId, setManualTenantId] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const accessToken = session?.accessToken ?? "";
-  const isAdmin = isAdminRole(session?.user.role);
-  const shouldSelectTenant = isAdmin && (session?.user.availableTenantIds?.length ?? 0) > 1;
+  const isAdmin = session?.source === "remote" && isAdminRole(session.user.role);
+  const shouldSelectTenant = isAdmin;
 
   useEffect(() => {
     if (isLoading) return;

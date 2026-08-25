@@ -42,6 +42,7 @@ async function resolveAdminTenantContext(request: NextRequest): Promise<AdminTen
     invalidSessionMessage: "Sessao invalida para selecionar contrato.",
     inactiveMessage: "Usuario inativo.",
     ignoreActiveTenantCookie: true,
+    allowAdminWithoutActiveTenant: true,
   });
 
   if ("error" in resolution) {

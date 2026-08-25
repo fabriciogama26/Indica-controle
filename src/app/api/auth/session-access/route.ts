@@ -18,6 +18,7 @@ export async function GET(request: NextRequest) {
     const resolution = await resolveAuthenticatedAppUser(request, {
       invalidSessionMessage: "Sessao invalida para carregar permissoes.",
       inactiveMessage: "Usuario inativo.",
+      allowAdminWithoutActiveTenant: true,
     });
 
     if ("error" in resolution) {
