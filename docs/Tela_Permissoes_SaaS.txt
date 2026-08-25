@@ -43,7 +43,7 @@ Filtros, auto-complete e listagem
 ---------------------------------
 - A busca chama `src/app/api/app-users/search/route.ts` com o token atual da sessao.
 - A lista inicial chama `src/app/api/app-users/search/route.ts?list=tenant` e carrega os usuarios do tenant em lotes.
-- A rota valida o usuario autenticado, resolve o tenant dele e retorna apenas usuarios do mesmo tenant.
+- A rota valida o usuario autenticado, resolve o tenant dele e retorna usuarios do tenant home e usuarios vinculados ao tenant atual por `app_user_tenants`.
 - A pesquisa considera apenas `login_name` e `matricula`.
 - A listagem nao depende de `app_roles` com join obrigatorio; usuarios do tenant continuam aparecendo mesmo se o `role_id` ainda estiver incompleto.
 - O bloqueio administrativo vale apenas para quem abre a tela de configuracao; a listagem retornada pela busca inclui qualquer usuario do mesmo tenant.
@@ -79,7 +79,7 @@ Boas praticas
 - Quando a tela estiver liberada, o usuario herda o pacote de permissao daquela pagina.
 - Nao modelar `delete`.
 - Manter a UI coerente com o conceito final: primeiro selecionar o usuario, depois definir as permissoes dele.
-- O operador da tela precisa ser administrativo; o usuario alvo pode ser qualquer `app_user` do mesmo tenant.
+- O operador da tela precisa ser administrativo; o usuario alvo pode ser qualquer `app_user` do tenant home ou com vinculo ativo em `app_user_tenants` para o tenant atual.
 - Exigir `app_users.updated_at` como token de concorrencia para role, status e matriz de paginas do usuario.
 - Preferir RPC transacional para o save, concentrando role, status, matriz e historico no banco.
 - Manter RPCs `SECURITY DEFINER` sem execucao direta por `PUBLIC`, `anon` ou `authenticated`; o app deve chamar essas funcoes pelo backend com `service_role` e validacao explicita de tenant/usuario.
@@ -481,3 +481,7 @@ Atualizacao 2026-08-25
   consulta e gravada como bloqueada, mesmo que o payload do frontend tente habilitar.
 - Impacto pratico: esconder tela no frontend continua sendo UX, mas a barreira real fica no
   backend/banco via matriz granular e `requirePageAction`.
+- A busca, a carga, o save e o convite de usuario agora usam o mesmo escopo multi-tenant:
+  o usuario alvo pode ter `app_users.tenant_id` diferente do contrato ativo se existir vinculo
+  ativo em `app_user_tenants`. A migration 386 republica `save_user_permissions` para aceitar
+  esse mesmo alvo vinculado dentro da transacao.

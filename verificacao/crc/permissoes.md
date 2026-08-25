@@ -18,6 +18,7 @@ o RPC de persistencia (`save_user_permissions`) e a autorizacao das Edge Functio
 | `app_pages` | SELECT | Fallback de `default_user_access` quando sem linha de usuario |
 | `app_roles` | SELECT | Admin short-circuit (`is_admin`) |
 | `role_page_permissions` | SELECT (7 colunas) | Fallback de acesso por role e acao |
+| `app_user_tenants` | SELECT | Escopo de usuario alvo vinculado ao tenant atual na tela de Permissoes |
 
 ---
 
@@ -85,6 +86,11 @@ Comportamento na gravacao de cada pagina:
 
 Granularidade fina por acao (ex: liberar `read` sem `export`) requer UI dedicada futura
 e mudanca no RPC para aceitar as 7 flags individualmente.
+
+Desde a migration 386, a RPC tambem aceita usuario alvo cujo `app_users.tenant_id` seja
+diferente de `p_tenant_id`, desde que exista vinculo ativo em `app_user_tenants` para o
+tenant atual. Isso alinha o save com a busca/listagem da tela de Permissoes e evita que
+um usuario multi-tenant apareca na UI mas falhe no salvamento.
 
 ---
 
@@ -168,7 +174,7 @@ Das 18 sem gate, 4 usam outro mecanismo de autorizacao e nao sao lacuna:
 
 | Rota | Mecanismo |
 |---|---|
-| `POST/DELETE /api/auth/active-tenant` | fluxo anterior a qualquer pagina |
+| `POST/DELETE /api/auth/active-tenant` | fluxo anterior a qualquer pagina; `DELETE` exige sessao valida antes de limpar cookie |
 | `POST /api/auth/local-login` | fluxo anterior a qualquer pagina |
 | `POST /api/app-users/[userId]/invite` | `resolveAdminOperator` |
 | `PUT /api/app-users/[userId]/permissions` | `resolveAdminOperator` |

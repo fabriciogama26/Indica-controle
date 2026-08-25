@@ -1194,5 +1194,5 @@ Observacao
 - Faz backfill de `app_user_tenants` para usuarios existentes com `tenant_id`, evitando lockout de administradores apos exigir selecao de contrato.
 - Republica `sync_auth_user_to_app_user` para criar/reativar o vinculo quando um usuario nasce ou e sincronizado a partir do Supabase Auth.
 - Republica `user_is_admin_in_tenant` para considerar administradores vinculados via `app_user_tenants`, nao apenas `app_users.tenant_id`.
-- Republica `save_user_permissions` para criar/reativar o vinculo no tenant atual quando o papel salvo for `admin`.
+- Republica `save_user_permissions` para aceitar usuario alvo vinculado por `app_user_tenants` no tenant atual e criar/reativar o vinculo quando o papel salvo for `admin`.
 - Inclui validacao pos-aplicacao que aborta se sobrar administrador ativo sem vinculo ativo no proprio tenant.

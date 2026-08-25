@@ -16,6 +16,65 @@ type SearchUserRow = {
   role_id: string | null;
 };
 
+type UserTenantLinkRow = {
+  user_id: string;
+};
+
+function mergeUsers(users: SearchUserRow[]) {
+  const map = new Map<string, SearchUserRow>();
+  users.forEach((user) => {
+    map.set(user.id, user);
+  });
+  return Array.from(map.values()).sort((left, right) => left.login_name.localeCompare(right.login_name));
+}
+
+async function fetchLinkedTenantUserIds(supabase: SupabaseClient, tenantId: string) {
+  const userIds: string[] = [];
+  const batchSize = 500;
+
+  for (let offset = 0; ; offset += batchSize) {
+    const { data, error } = await supabase
+      .from("app_user_tenants")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .range(offset, offset + batchSize - 1)
+      .returns<UserTenantLinkRow[]>();
+
+    if (error) {
+      return { userIds: [], error };
+    }
+
+    userIds.push(...(data ?? []).map((item) => item.user_id).filter(Boolean));
+
+    if ((data ?? []).length < batchSize) {
+      return { userIds: Array.from(new Set(userIds)), error: null };
+    }
+  }
+}
+
+async function fetchUsersByIds(supabase: SupabaseClient, userIds: string[]) {
+  const users: SearchUserRow[] = [];
+  const batchSize = 500;
+
+  for (let offset = 0; offset < userIds.length; offset += batchSize) {
+    const ids = userIds.slice(offset, offset + batchSize);
+    const { data, error } = await supabase
+      .from("app_users")
+      .select("id, tenant_id, matricula, login_name, ativo, role_id")
+      .in("id", ids)
+      .returns<SearchUserRow[]>();
+
+    if (error) {
+      return { users: [], error };
+    }
+
+    users.push(...(data ?? []));
+  }
+
+  return { users, error: null };
+}
+
 async function listTenantUsers(supabase: SupabaseClient, tenantId: string) {
   const users: SearchUserRow[] = [];
   const batchSize = 500;
@@ -54,6 +113,15 @@ async function searchTenantUsers(supabase: SupabaseClient, tenantId: string, que
   return { users: data ?? [], error };
 }
 
+function filterUsersByQuery(users: SearchUserRow[], query: string) {
+  const normalizedQuery = query.toLowerCase();
+  return users.filter((user) => {
+    const loginName = user.login_name.toLowerCase();
+    const matricula = String(user.matricula ?? "").toLowerCase();
+    return loginName.includes(normalizedQuery) || matricula.includes(normalizedQuery);
+  });
+}
+
 export async function GET(request: NextRequest) {
   try {
     const query = normalizeSearchTerm(request.nextUrl.searchParams.get("q") ?? "");
@@ -70,13 +138,31 @@ export async function GET(request: NextRequest) {
 
     const { supabase, operator } = resolution;
 
-    const { users, error: usersError } = shouldListTenantUsers
+    const { users: homeUsers, error: homeUsersError } = shouldListTenantUsers
       ? await listTenantUsers(supabase, operator.tenantId)
       : await searchTenantUsers(supabase, operator.tenantId, query);
 
-    if (usersError) {
+    if (homeUsersError) {
       return NextResponse.json({ message: "Falha ao buscar usuarios do tenant." }, { status: 500 });
     }
+
+    const { userIds: linkedUserIds, error: linkedUserIdsError } = await fetchLinkedTenantUserIds(supabase, operator.tenantId);
+    if (linkedUserIdsError) {
+      return NextResponse.json({ message: "Falha ao buscar vinculos dos usuarios do tenant." }, { status: 500 });
+    }
+
+    const missingLinkedUserIds = linkedUserIds.filter((userId) => !homeUsers.some((user) => user.id === userId));
+    const { users: linkedUsers, error: linkedUsersError } = missingLinkedUserIds.length
+      ? await fetchUsersByIds(supabase, missingLinkedUserIds)
+      : { users: [], error: null };
+
+    if (linkedUsersError) {
+      return NextResponse.json({ message: "Falha ao buscar usuarios vinculados ao tenant." }, { status: 500 });
+    }
+
+    const users = shouldListTenantUsers
+      ? mergeUsers([...homeUsers, ...linkedUsers])
+      : mergeUsers([...homeUsers, ...filterUsersByQuery(linkedUsers, query)]).slice(0, 8);
 
     const roleIds = Array.from(new Set((users ?? []).map((item) => item.role_id).filter((value): value is string => Boolean(value))));
 
@@ -103,7 +189,7 @@ export async function GET(request: NextRequest) {
         const role = item.role_id ? rolesMap.get(item.role_id) : null;
         return {
           id: item.id,
-          tenantId: item.tenant_id,
+          tenantId: operator.tenantId,
           matricula: item.matricula,
           loginName: item.login_name,
           status: item.ativo ? "Ativo" : "Inativo",

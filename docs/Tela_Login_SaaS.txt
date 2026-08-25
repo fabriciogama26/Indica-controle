@@ -155,7 +155,7 @@ Ajuda contextual
 - Estado atual: a selecao de contrato lista apenas contratos ativos vinculados em `app_user_tenants` e grava `INDICA.activeTenantId` em cookie `httpOnly`, validado no servidor.
 - Estado atual: cookie de tenant invalido e limpo na hidratacao da sessao e nao causa 403 permanente.
 - Estado atual: `x-tenant-id` vindo do frontend nao e mais usado por Faturamento/Medicao Asbuilt e o backend bloqueia header por padrao.
-- Estado atual: logout/inatividade/token expirado limpam tambem o cookie de tenant ativo.
+- Estado atual: logout/inatividade/token expirado limpam tambem o cookie de tenant ativo; a rota `DELETE /api/auth/active-tenant` exige sessao valida antes de limpar o cookie.
 
 Atualizacao 2026-08-25 - Selecao de contrato
 ---------------------------------------------
@@ -181,6 +181,7 @@ Atualizacao 2026-08-25 - Selecao de contrato
   - O tenant ativo fica em cookie `httpOnly` e so e aceito depois de validado no backend contra os contratos permitidos ao usuario.
   - A rota de troca de contrato ignora o cookie atual ao carregar o contexto, permitindo que admin corrija uma selecao expirada ou invalida.
   - A migration 386 faz backfill dos vinculos existentes, ajusta o trigger de sync de usuario e faz `save_user_permissions` criar/reativar vinculo quando o papel vira `admin`.
+  - A limpeza do contrato ativo tambem passa por autenticacao, evitando endpoint anonimo para manipular o cookie operacional.
 
 Atualizacao 2026-08 - Estabilidade visual / CLS
 ------------------------------------------------

@@ -82,10 +82,25 @@ async function resolveTargetUser(userId: string, tenantId: string, supabase: Sup
     .from("app_users")
     .select("id, tenant_id, matricula, login_name, email, auth_user_id, ativo, role_id, updated_at")
     .eq("id", userId)
-    .eq("tenant_id", tenantId)
     .maybeSingle<TargetUserRow>();
 
   if (targetUserError || !targetUser) {
+    return null;
+  }
+
+  if (targetUser.tenant_id === tenantId) {
+    return targetUser;
+  }
+
+  const { data: tenantLink, error: tenantLinkError } = await supabase
+    .from("app_user_tenants")
+    .select("user_id")
+    .eq("user_id", targetUser.id)
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .maybeSingle<{ user_id: string }>();
+
+  if (tenantLinkError || !tenantLink) {
     return null;
   }
 
@@ -129,7 +144,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ use
     return NextResponse.json({
       user: {
         id: targetUser.id,
-        tenantId: targetUser.tenant_id,
+        tenantId: operator.tenantId,
         loginName: targetUser.login_name,
         matricula: targetUser.matricula,
         status: targetUser.ativo ? "Ativo" : "Inativo",
