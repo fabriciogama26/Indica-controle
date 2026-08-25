@@ -68,6 +68,14 @@ async function fetchSessionAccess(accessToken: string) {
   };
 }
 
+async function clearActiveTenantCookie() {
+  if (typeof window === "undefined") return;
+  await fetch("/api/auth/active-tenant", {
+    method: "DELETE",
+    cache: "no-store",
+  }).catch(() => null);
+}
+
 async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
   const response = await fetch(`${baseUrl()}/functions/v1/auth-login-web`, {
     method: "POST",
@@ -561,6 +569,7 @@ export async function clearPersistedSession(options: ClearSessionOptions = {}) {
   }
 
   clearLocalAppSessionStorage();
+  await clearActiveTenantCookie();
   writeAuthFeedback(options.feedbackMessage);
 
   return {

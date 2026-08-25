@@ -6,6 +6,7 @@ let _adminClient: SupabaseClient | null = null;
 
 // --- Cache de auth por token+tenant com TTL de 45s ---
 const AUTH_CACHE_TTL_MS = 45_000;
+const ACTIVE_TENANT_COOKIE_NAME = "INDICA.activeTenantId";
 
 type AuthCacheEntry = {
   result: AuthenticatedAppUserContext;
@@ -59,6 +60,7 @@ type CurrentRoleRow = {
 type ResolveAuthenticatedAppUserOptions = {
   invalidSessionMessage?: string;
   inactiveMessage?: string;
+  ignoreActiveTenantCookie?: boolean;
 };
 
 export type AdminOperatorContext = {
@@ -153,7 +155,11 @@ export async function resolveAuthenticatedAppUser(
     };
   }
 
-  const requestedTenantId = normalizeHeaderTenantId(request.headers.get("x-tenant-id"));
+  const requestedTenantId =
+    normalizeHeaderTenantId(request.headers.get("x-tenant-id")) ??
+    (options.ignoreActiveTenantCookie
+      ? null
+      : normalizeHeaderTenantId(request.cookies.get(ACTIVE_TENANT_COOKIE_NAME)?.value ?? null));
   const cacheKey = `${token}:${requestedTenantId ?? ""}`;
   const cached = getCachedAuth(cacheKey);
   if (cached) return cached;
