@@ -61,6 +61,7 @@ export type StatusCard = {
 
 export type TeamWithoutProgramming = {
   id: string;
+  date: string;
   name: string;
   vehiclePlate: string;
   serviceCenter: string;

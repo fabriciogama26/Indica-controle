@@ -4,8 +4,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import {
+  fetchProgrammedTeamDatesInPeriod,
   fetchProgrammingStagesForMap,
-  fetchTeamIdsProgrammedInPeriod,
   type ProgrammingMapStageRow,
 } from "@/server/modules/programacao-normalizada";
 
@@ -111,6 +111,23 @@ function normalizeIsoDate(value: unknown) {
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function buildDateRange(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  const current = new Date(`${startDate}T00:00:00.000Z`);
+  const end = Date.parse(`${endDate}T00:00:00.000Z`);
+
+  while (Number.isFinite(current.getTime()) && Number.isFinite(end) && current.getTime() <= end) {
+    dates.push(toIsoDate(current));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return dates;
+}
+
+function buildTeamDateKey(teamId: string, date: string) {
+  return `${teamId}|${date}`;
 }
 
 function diffInDays(targetDate: string, baseDate: string) {
@@ -618,16 +635,21 @@ export async function GET(request: NextRequest) {
     ];
 
     const activeTeams = Array.from(teamMap.values()).filter((team) => team.active);
-    const programmedTeamIds = hasTeamPeriod && startDate && endDate
-      ? await fetchTeamIdsProgrammedInPeriod({
+    const programmedTeamDateKeys = hasTeamPeriod && startDate && endDate
+      ? await fetchProgrammedTeamDatesInPeriod({
           supabase: resolution.supabase,
           tenantId: resolution.appUser.tenant_id,
           startDate,
           endDate,
         })
       : new Set<string>();
+    const teamPeriodDates = hasTeamPeriod && startDate && endDate ? buildDateRange(startDate, endDate) : [];
     const teamsWithoutProgramming = hasTeamPeriod
-      ? activeTeams.filter((team) => !programmedTeamIds.has(team.id))
+      ? teamPeriodDates.flatMap((date) =>
+          activeTeams
+            .filter((team) => !programmedTeamDateKeys.has(buildTeamDateKey(team.id, date)))
+            .map((team) => ({ ...team, date })),
+        )
       : [];
 
     return NextResponse.json({
