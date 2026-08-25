@@ -335,7 +335,16 @@ begin
   into v_target_user
   from public.app_users
   where id = p_target_user_id
-    and tenant_id = p_tenant_id
+    and (
+      tenant_id = p_tenant_id
+      or exists (
+        select 1
+        from public.app_user_tenants user_tenants
+        where user_tenants.user_id = public.app_users.id
+          and user_tenants.tenant_id = p_tenant_id
+          and user_tenants.ativo = true
+      )
+    )
   for update;
 
   if not found then
@@ -361,8 +370,7 @@ begin
     ativo = p_ativo,
     updated_by = p_actor_user_id,
     updated_at = v_next_updated_at
-  where id = p_target_user_id
-    and tenant_id = p_tenant_id;
+  where id = p_target_user_id;
 
   if v_role_key = 'admin' and p_ativo then
     perform public.ensure_app_user_tenant_link(p_target_user_id, p_tenant_id, false, true, p_actor_user_id);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAdminOperator } from "@/lib/server/appUsersAdmin";
 
@@ -25,6 +26,36 @@ type InviteHistoryRpcResult = {
   message?: string;
 };
 
+async function resolveTargetUser(userId: string, tenantId: string, supabase: SupabaseClient) {
+  const { data: targetUser, error: targetUserError } = await supabase
+    .from("app_users")
+    .select("id, tenant_id, matricula, login_name, email, auth_user_id, ativo, role_id")
+    .eq("id", userId)
+    .maybeSingle<TargetUserRow>();
+
+  if (targetUserError || !targetUser) {
+    return null;
+  }
+
+  if (targetUser.tenant_id === tenantId) {
+    return targetUser;
+  }
+
+  const { data: tenantLink, error: tenantLinkError } = await supabase
+    .from("app_user_tenants")
+    .select("user_id")
+    .eq("user_id", targetUser.id)
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .maybeSingle<{ user_id: string }>();
+
+  if (tenantLinkError || !tenantLink) {
+    return null;
+  }
+
+  return targetUser;
+}
+
 export async function POST(request: NextRequest, context: { params: Promise<{ userId: string }> }) {
   try {
     const resolution = await resolveAdminOperator(request);
@@ -35,14 +66,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ us
     const { userId } = await context.params;
     const { supabase, operator } = resolution;
 
-    const { data: targetUser, error: targetUserError } = await supabase
-      .from("app_users")
-      .select("id, tenant_id, matricula, login_name, email, auth_user_id, ativo, role_id")
-      .eq("id", userId)
-      .eq("tenant_id", operator.tenantId)
-      .maybeSingle<TargetUserRow>();
-
-    if (targetUserError || !targetUser) {
+    const targetUser = await resolveTargetUser(userId, operator.tenantId, supabase);
+    if (!targetUser) {
       return NextResponse.json({ message: "Usuario nao encontrado no tenant atual." }, { status: 404 });
     }
 

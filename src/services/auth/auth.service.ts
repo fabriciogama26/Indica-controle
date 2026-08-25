@@ -68,11 +68,16 @@ async function fetchSessionAccess(accessToken: string) {
   };
 }
 
-async function clearActiveTenantCookie() {
+async function clearActiveTenantCookie(accessToken?: string | null) {
   if (typeof window === "undefined") return;
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
   await fetch("/api/auth/active-tenant", {
     method: "DELETE",
     cache: "no-store",
+    headers,
   }).catch(() => null);
 }
 
@@ -572,7 +577,7 @@ export async function clearPersistedSession(options: ClearSessionOptions = {}) {
   }
 
   clearLocalAppSessionStorage();
-  await clearActiveTenantCookie();
+  await clearActiveTenantCookie(session?.accessToken);
   writeAuthFeedback(options.feedbackMessage);
 
   return {

@@ -18,6 +18,7 @@ o RPC de persistencia (`save_user_permissions`) e a autorizacao das Edge Functio
 | `app_pages` | SELECT | Fallback de `default_user_access` quando sem linha de usuario |
 | `app_roles` | SELECT | Admin short-circuit (`is_admin`) |
 | `role_page_permissions` | SELECT (7 colunas) | Fallback de acesso por role e acao |
+| `app_user_tenants` | SELECT | Escopo de usuario alvo vinculado ao tenant atual na tela de Permissoes |
 
 ---
 
@@ -86,6 +87,11 @@ Comportamento na gravacao de cada pagina:
 Granularidade fina por acao (ex: liberar `read` sem `export`) requer UI dedicada futura
 e mudanca no RPC para aceitar as 7 flags individualmente.
 
+Desde a migration 386, a RPC tambem aceita usuario alvo cujo `app_users.tenant_id` seja
+diferente de `p_tenant_id`, desde que exista vinculo ativo em `app_user_tenants` para o
+tenant atual. Isso alinha o save com a busca/listagem da tela de Permissoes e evita que
+um usuario multi-tenant apareca na UI mas falhe no salvamento.
+
 ---
 
 ## Edge Functions — `_shared/page_authorization.ts`
@@ -143,6 +149,80 @@ Liberar uma tela para usuarios comuns exige passo EXPLICITO e posterior ao INSER
 | `GET /api/team-stock-operations/reversal` | `estoque-equipes` | `read` |
 | `POST /api/team-stock-operations/reversal` | `estoque-equipes` | `reverse` |
 | `GET /api/dashboard-measurement` | `dashboard-medicao` | `read` |
+
+> A tabela acima esta DESATUALIZADA e lista apenas o lado positivo, entao nao serve para concluir
+> que o resto esta coberto. Conferido em 2026-08-25: 13 rotas que usam `requirePageAction` nao
+> aparecem nela — `/api/materials`, `/api/materials/meta`, `/api/apuracao-fator-minimo`,
+> `/api/stock-requisitions` (mais `/cancel`, `/claim`, `/fulfill`), `/api/stock-reversal-requests`,
+> `/api/stock-transfers`, `/api/team-stock-operations` (mais `/day-foremen`, `/import`, `/meta`).
+> Ao atualizar esta secao, atualizar tambem a seguinte: e a ausencia da contraparte negativa que
+> deixou a lacuna invisivel ate 2026-08-25.
+
+---
+
+## Rotas de escrita SEM `requirePageAction`
+
+Levantamento de 2026-08-25 sobre `src/app/api/**/route.ts`, considerando gate direto no arquivo da
+rota **ou** no modulo de `src/server/modules/` para onde ela delega (`projects`, `medicao`,
+`programacao-normalizada`, `cronograma-solicitacoes`, `warehouse-addressing`, `dashboard-*`).
+
+| Total de rotas com handler de escrita | Com gate | Sem gate |
+|---|---|---|
+| 41 | 23 | 18 |
+
+Das 18 sem gate, 4 usam outro mecanismo de autorizacao e nao sao lacuna:
+
+| Rota | Mecanismo |
+|---|---|
+| `POST/DELETE /api/auth/active-tenant` | fluxo anterior a qualquer pagina; `DELETE` exige sessao valida antes de limpar cookie |
+| `POST /api/auth/local-login` | fluxo anterior a qualquer pagina |
+| `POST /api/app-users/[userId]/invite` | `resolveAdminOperator` |
+| `PUT /api/app-users/[userId]/permissions` | `resolveAdminOperator` |
+
+As 14 restantes validam apenas `resolveAuthenticatedAppUser` (autenticado + escopo de tenant):
+
+| Rota | Handlers |
+|---|---|
+| `/api/activities` | `POST`, `PUT`, `PATCH` |
+| `/api/composicao-equipe` | `POST`, `PUT` |
+| `/api/controle-apr` | `POST`, `PUT`, `PATCH` |
+| `/api/faturamento` | `POST`, `PUT`, `PATCH` |
+| `/api/job-titles` | `POST`, `PUT`, `PATCH` |
+| `/api/locacao` | `POST`, `PUT` |
+| `/api/locacao/activities` | `POST`, `PUT` |
+| `/api/locacao/materials` | `POST`, `PUT` |
+| `/api/medicao` | `POST`, `PUT`, `PATCH` |
+| `/api/medicao-asbuilt` | `POST`, `PUT`, `PATCH` |
+| `/api/people` | `POST`, `PUT`, `PATCH` |
+| `/api/stock-transfers/import` | `POST` |
+| `/api/teams` | `POST`, `PUT`, `PATCH` |
+| `/api/trafo-positions` | `POST` |
+
+Nota sobre `/api/medicao`: existe `src/server/modules/medicao/authorization.ts`, mas ele exporta
+apenas `authorizeMeasurementReadOrExportAction`, consumido por `/api/medicao/export` e
+`/api/medicao/programming-sources`. Os handlers de escrita de `/api/medicao` nao passam por ele.
+
+### Por que isso nao e apenas defesa em profundidade
+
+`resolveAuthenticatedAppUser` devolve um cliente `service_role`
+(`src/lib/server/appUsersAdmin.ts`), que nao passa por RLS, e as RPCs de escrita desses modulos
+recebem `grant execute ... to service_role` (ex.: `save_job_title_record` /
+`set_job_title_record_status` na migration 371). Nessas 14 rotas, portanto:
+
+1. a matriz de permissoes por pagina/acao nunca e consultada;
+2. a RLS nao funciona como barreira de reserva, porque o cliente a contorna;
+3. o unico controle efetivo e `autenticado + pertence ao tenant`.
+
+Consequencia a verificar antes de dimensionar a correcao: a migration 385 fechou `viewer` como
+leitura apenas gravando `create/update/cancel/reverse/import/export = false`, mas essas colunas so
+sao lidas por `requirePageAction` — em rota sem gate elas nao chegam a ser consultadas. Confirmar
+em ambiente controlado se um `viewer` autenticado consegue escrever em uma dessas rotas.
+
+Agravante de alcance: `/api/job-titles`, `/api/teams`, `/api/activities` e `/api/people` aceitam
+`action = BATCH_IMPORT`, entao uma unica chamada sem gate grava ate 500 registros
+(`MASS_IMPORT_ROW_LIMIT`) em vez de um.
+
+Backlog: item aberto `[Seguranca][Autorizacao]` no topo de `TASKS.md`.
 
 ---
 
