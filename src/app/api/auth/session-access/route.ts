@@ -12,6 +12,7 @@ const NO_STORE_HEADERS = {
   Pragma: "no-cache",
   Expires: "0",
 } as const;
+const ACTIVE_TENANT_COOKIE_NAME = "INDICA.activeTenantId";
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,12 +45,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         user: {
           userId: appUser.id,
           tenantId: appUser.tenant_id,
-          activeTenantId: tenantAccess.activeTenantId,
+          activeTenantId: role.isAdmin && !tenantAccess.hasSelectedActiveTenant ? null : tenantAccess.activeTenantId,
           availableTenantIds: tenantAccess.availableTenantIds,
           role: role.roleKey,
           roleId: appUser.role_id,
@@ -62,6 +63,16 @@ export async function GET(request: NextRequest) {
       },
       { headers: NO_STORE_HEADERS },
     );
+    if (tenantAccess.hasInvalidActiveTenantCookie) {
+      response.cookies.set(ACTIVE_TENANT_COOKIE_NAME, "", {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        maxAge: 0,
+      });
+    }
+    return response;
   } catch {
     return NextResponse.json(
       { message: "Falha ao carregar permissoes da sessao." },

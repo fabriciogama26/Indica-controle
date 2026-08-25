@@ -4,14 +4,31 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
 import styles from "./TeamsPageView.module.css";
-import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
+import { buildTeamsCsv } from "./csv";
+import {
+  HISTORY_FIELD_LABELS,
+  INITIAL_FILTERS,
+  buildQuery,
+  formatHistoryValue,
+  type TeamFilterState,
+} from "./presentation";
+import {
+  TEAM_MASS_IMPORT_COLUMNS_HINT,
+  buildTeamMassImportTemplateCsv,
+  parseTeamMassImportCsv,
+  type TeamImportRow,
+} from "./massImport";
 
 type TeamItem = {
   id: string;
@@ -74,15 +91,6 @@ type TeamFormState = {
   updatedAt: string;
 };
 
-type TeamFilterState = {
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string;
-  teamTypeId: string;
-  foremanId: string;
-  supervisorId: string;
-};
-
 type TeamsListResponse = {
   teams?: TeamItem[];
   pagination?: { page: number; pageSize: number; total: number };
@@ -107,20 +115,6 @@ const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 
-const HISTORY_FIELD_LABELS: Record<string, string> = {
-  name: "Nome da equipe",
-  vehiclePlate: "Placa do veiculo",
-  serviceCenterName: "Base",
-  stockCenterName: "Centro de estoque proprio",
-  teamTypeName: "Tipo",
-  foremanName: "Encarregado",
-  supervisorName: "Supervisor",
-  isActive: "Status",
-  cancellationReason: "Motivo do cancelamento",
-  canceledAt: "Data do cancelamento",
-  activationReason: "Motivo da ativacao",
-};
-
 const INITIAL_FORM: TeamFormState = {
   id: null,
   name: "",
@@ -132,96 +126,12 @@ const INITIAL_FORM: TeamFormState = {
   updatedAt: "",
 };
 
-const INITIAL_FILTERS: TeamFilterState = {
-  name: "",
-  vehiclePlate: "",
-  serviceCenterId: "",
-  teamTypeId: "",
-  foremanId: "",
-  supervisorId: "",
-};
-
 function normalizeText(value: string) {
   return String(value ?? "").trim();
 }
 
 function normalizePlate(value: string) {
   return normalizeText(value).toUpperCase();
-}
-
-function buildQuery(filters: TeamFilterState, page: number, pageSize = PAGE_SIZE) {
-  const params = new URLSearchParams();
-  if (filters.name.trim()) {
-    params.set("name", filters.name.trim());
-  }
-  if (filters.vehiclePlate.trim()) {
-    params.set("vehiclePlate", filters.vehiclePlate.trim());
-  }
-  if (filters.serviceCenterId.trim()) {
-    params.set("serviceCenterId", filters.serviceCenterId.trim());
-  }
-  if (filters.teamTypeId.trim()) {
-    params.set("teamTypeId", filters.teamTypeId.trim());
-  }
-  if (filters.foremanId.trim()) {
-    params.set("foremanId", filters.foremanId.trim());
-  }
-  if (filters.supervisorId.trim()) {
-    params.set("supervisorId", filters.supervisorId.trim());
-  }
-  params.set("page", String(page));
-  params.set("pageSize", String(pageSize));
-  return params.toString();
-}
-
-function buildTeamsCsv(teamItems: TeamItem[]) {
-  const header = [
-    "Nome da equipe",
-    "Placa do veiculo",
-    "Base",
-    "Centro de estoque proprio",
-    "Tipo",
-    "Encarregado",
-    "Supervisor",
-    "Status",
-    "Registrado por",
-    "Registrado em",
-    "Atualizado por",
-    "Atualizado em",
-  ];
-  const rows = teamItems.map((team) => [
-    team.name,
-    team.vehiclePlate,
-    team.serviceCenterName,
-    team.stockCenterName,
-    team.teamTypeName,
-    team.foremanName,
-    team.supervisorName,
-    team.isActive ? "Ativo" : "Inativo",
-    formatAuditActor(team.createdByName),
-    formatDateTime(team.createdAt),
-    formatAuditActor(team.updatedByName),
-    formatDateTime(team.updatedAt),
-  ]);
-
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function formatHistoryValue(field: string, value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  if (field === "isActive") {
-    return value === "true" ? "Ativo" : "Inativo";
-  }
-
-  if (field === "canceledAt") {
-    return formatDateTime(value);
-  }
-
-  return value;
 }
 
 function scrollDashboardContentToTop() {
@@ -452,6 +362,65 @@ export function TeamsPageView() {
   useEffect(() => {
     void loadTeams(page, activeFilters);
   }, [activeFilters, loadTeams, page]);
+
+  const parseMassImportCsv = useCallback(
+    (content: string, fileName: string) =>
+      parseTeamMassImportCsv({ content, fileName, serviceCenters, teamTypes, foremen, supervisors }),
+    [foremen, serviceCenters, supervisors, teamTypes],
+  );
+
+  const submitMassImport = useCallback(
+    async (rows: TeamImportRow[]) => {
+      if (!session?.accessToken) {
+        return { ok: false, message: "Sessao invalida para importar equipes em massa.", savedCount: 0, results: [] };
+      }
+
+      const response = await fetch("/api/teams", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const massImport = useMassImport<TeamImportRow>({
+    entityLabel: "equipes",
+    errorFilePrefix: "equipes",
+    templateFileName: "modelo_equipes_cadastro_em_massa.csv",
+    buildTemplateCsv: buildTeamMassImportTemplateCsv,
+    parse: parseMassImportCsv,
+    submit: submitMassImport,
+    resolveErrorColumn: (code) => {
+      if (code === "DUPLICATE_TEAM_COMBINATION") return "nome";
+      if (code === "INVALID_SERVICE_CENTER") return "base";
+      if (code === "INVALID_TEAM_TYPE") return "tipo_equipe";
+      if (code === "INVALID_FOREMAN" || code === "FOREMAN_ALREADY_LINKED") return "encarregado";
+      if (code === "INVALID_SUPERVISOR") return "supervisor";
+      return "salvamento";
+    },
+    onImported: async () => {
+      await loadTeams(1, activeFilters);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+    onError: (error) => logError("Falha ao importar equipes em massa.", error),
+  });
 
   const formTitle = useMemo(() => (isEditing ? "Editar Equipe" : "Cadastro de Equipes"), [isEditing]);
 
@@ -1023,6 +992,11 @@ export function TeamsPageView() {
             <button type="submit" className={styles.primaryButton} disabled={!canSubmitTeamForm}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={massImport.open} disabled={isLoadingMeta}>
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -1624,6 +1598,8 @@ export function TeamsPageView() {
           </article>
         </div>
       ) : null}
+
+      <MassImportModal controller={massImport} entityLabel="equipes" columnsHint={TEAM_MASS_IMPORT_COLUMNS_HINT} />
     </section>
   );
 }

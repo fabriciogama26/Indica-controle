@@ -39,6 +39,22 @@ Cadastro
   - `PUT /api/job-titles` para edicao.
   - `PATCH /api/job-titles` para cancelamento/ativacao com motivo obrigatorio.
 
+Cadastro em massa
+-----------------
+- Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao.
+- Modelo CSV: `codigo;nome;tipos;niveis`.
+- Colunas obrigatorias: `codigo`, `nome` e `tipos`. `niveis` e opcional.
+- `tipos` e `niveis` aceitam varios valores na mesma celula separados por virgula, barra vertical ou quebra de linha.
+- `codigo` e normalizado (maiusculo, sem acento, sem espaco) e codigo repetido dentro do arquivo e recusado.
+- Envio: `POST /api/job-titles` com `action = BATCH_IMPORT` e `rows`.
+- Cada linha e salva pela mesma RPC `save_job_title_record` do cadastro manual, com `p_expected_updated_at = null` (sempre insert).
+- Erros parciais geram CSV de retorno com `linha`, `coluna`, `valor` e `erro`; as linhas validas sao salvas mesmo assim.
+- Infraestrutura compartilhada do cadastro em massa:
+  - Modal: `src/components/ui/MassImportModal.tsx` (3 etapas: baixar modelo, preencher, enviar).
+  - Orquestracao: `src/hooks/useMassImport.ts` (le o arquivo, chama o parser de dominio, envia o lote e monta o CSV de erros).
+  - Helpers de CSV: `src/lib/utils/massImport.ts` (`readMassImportCsv`, `buildMassImportTemplateCsv`, `createMassImportErrorReport`).
+  - Teto por arquivo: `MASS_IMPORT_ROW_LIMIT` = 500 linhas (`src/lib/constants/massImport.ts`).
+
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
@@ -218,3 +234,20 @@ Ajuda contextual
   - Antes: tela informativa sem persistencia.
   - Depois: tela operacional completa no padrao SaaS de cadastros.
   - Depois: `Pessoas` pode ser abastecida diretamente pelos catalogos mantidos em `Cargo`.
+
+Atualizacao 2026-08-25 - Cadastro em massa
+--------------------------------------------------------------------------------------------
+- `Cargo` passa a ter cadastro em massa por CSV, no mesmo padrao ja existente em `Materiais` e `Pessoas`.
+- Antes: so era possivel cadastrar um cargo por vez pelo formulario.
+- Depois: o CSV `codigo;nome;tipos;niveis` cadastra ate 500 cargos por arquivo, com pre-validacao no frontend e CSV de erros por linha.
+- O padrao deixou de ser copiado tela a tela: modal, orquestracao e helpers de CSV viraram infraestrutura compartilhada
+  (`src/components/ui/MassImportModal.tsx`, `src/hooks/useMassImport.ts`, `src/lib/utils/massImport.ts`).
+  `Materiais` e `Pessoas` continuam com a implementacao inline anterior e ainda nao foram migrados para a infraestrutura nova.
+- `src/app/api/job-titles/route.ts`: `saveJobTitle` passou a delegar para `saveJobTitleViaRpc`, reaproveitado pelo lote em `importJobTitleBatch`.
+  `POST` agora le o corpo uma unica vez e decide entre cadastro individual e `BATCH_IMPORT`.
+- `buildJobTitlesCsv` saiu de `JobTitlesPageView.tsx` para `src/modules/dashboard/cargo/csv.ts`, mantendo a view abaixo do teto de 1.000 linhas.
+- Arquivos alterados/criados: `src/app/api/job-titles/route.ts`, `src/modules/dashboard/cargo/JobTitlesPageView.tsx`,
+  `src/modules/dashboard/cargo/massImport.ts`, `src/modules/dashboard/cargo/csv.ts`.
+- Validado com `npx tsc --noEmit`, `npm run lint` e `npm run build`. Validacao manual pendente:
+  (1) importar CSV valido e conferir os cargos na lista; (2) importar CSV com codigo duplicado e conferir o CSV de erros;
+  (3) importar arquivo sem a coluna `tipos` e conferir a recusa por cabecalho.

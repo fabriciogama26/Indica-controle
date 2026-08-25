@@ -311,6 +311,7 @@ export async function hydrateSessionAccess(currentAppSession: AuthSession) {
   }
 
   const hasAccessDisplayName = Object.prototype.hasOwnProperty.call(access.user, "displayName");
+  const hasAccessActiveTenantId = Object.prototype.hasOwnProperty.call(access.user, "activeTenantId");
   const nextSession: AuthSession = {
     ...currentAppSession,
     user: {
@@ -319,8 +320,10 @@ export async function hydrateSessionAccess(currentAppSession: AuthSession) {
       role: String(access.user.role ?? currentAppSession.user.role),
       roleId: access.user.roleId ? String(access.user.roleId) : currentAppSession.user.roleId,
       tenantId: String(access.user.tenantId ?? currentAppSession.user.tenantId),
-      activeTenantId: access.user.activeTenantId
-        ? String(access.user.activeTenantId)
+      activeTenantId: hasAccessActiveTenantId
+        ? access.user.activeTenantId
+          ? String(access.user.activeTenantId)
+          : undefined
         : currentAppSession.user.activeTenantId,
       availableTenantIds: Array.isArray(access.user.availableTenantIds)
         ? access.user.availableTenantIds.map((value) => String(value))

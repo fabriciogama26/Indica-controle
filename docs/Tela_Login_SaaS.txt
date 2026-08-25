@@ -48,7 +48,8 @@ Boas praticas
 - Desabilitar cache em `/api/auth/session-access` no frontend para evitar leitura de identidade/permissoes antigas.
 - Direcionar todo admin remoto para `/selecionar-contrato` apos login.
 - Persistir o contrato ativo apenas via API server-side em cookie `httpOnly`; o front nao deve editar esse estado direto.
-- Resolver tenant no backend por membership: header/cookie podem indicar o tenant ativo, mas precisam ser validados contra os tenants permitidos ao usuario.
+- Resolver tenant no backend por membership: para admin remoto, o cookie indica o tenant ativo e precisa ser validado contra os tenants permitidos ao usuario; `user`/`viewer` ignoram esse cookie e `x-tenant-id` nao e fonte operacional padrao.
+- Ignorar e limpar cookie de tenant invalido durante a hidratacao da sessao, evitando 403 persistente em maquina compartilhada.
 
 Cancelamento e saldo
 --------------------
@@ -107,9 +108,11 @@ Funcoes principais
 - Caminho: `src/context/AuthContext.tsx`
   - Responsavel por: hidratar sessao, manter estado autenticado, tratar timeout por inatividade, token expirado e expor `login/logout`.
 - Caminho: `src/lib/server/appUsersAdmin.ts`
-  - Responsavel por: resolver usuario autenticado, validar tenants disponiveis e aplicar o tenant ativo vindo de header ou cookie `INDICA.activeTenantId`.
+  - Responsavel por: resolver usuario autenticado, validar tenants disponiveis, aplicar o tenant ativo vindo do cookie `INDICA.activeTenantId`, bloquear header de tenant por padrao e retornar 428 quando admin nao selecionou contrato.
 - Caminho: `src/app/api/auth/active-tenant/route.ts`
   - Responsavel por: listar contratos ativos do admin, gravar o tenant selecionado em cookie `httpOnly` e limpar esse cookie no logout.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: redirecionar admin remoto sem contrato selecionado para `/selecionar-contrato` antes de renderizar telas internas.
 
 Constantes e configuracoes
 - Caminho: `.env.example`
@@ -150,6 +153,8 @@ Ajuda contextual
 - Estado atual: `TOKEN_EXPIRED` continua limpando a sessao local, mas agora tambem tenta registrar a saida no `login_audit` com base no `session_ref` salvo.
 - Estado atual: todo admin remoto e direcionado para `/selecionar-contrato` antes da home.
 - Estado atual: a selecao de contrato lista apenas contratos ativos vinculados em `app_user_tenants` e grava `INDICA.activeTenantId` em cookie `httpOnly`, validado no servidor.
+- Estado atual: cookie de tenant invalido e limpo na hidratacao da sessao e nao causa 403 permanente.
+- Estado atual: `x-tenant-id` vindo do frontend nao e mais usado por Faturamento/Medicao Asbuilt e o backend bloqueia header por padrao.
 - Estado atual: logout/inatividade/token expirado limpam tambem o cookie de tenant ativo.
 
 Atualizacao 2026-08-25 - Selecao de contrato
@@ -158,11 +163,16 @@ Atualizacao 2026-08-25 - Selecao de contrato
   - `src/app/page.tsx`
   - `src/app/(public)/selecionar-contrato/page.tsx`
   - `src/app/api/auth/active-tenant/route.ts`
+  - `src/app/api/auth/session-access/route.ts`
+  - `src/components/layout/AppShell.tsx`
   - `src/lib/server/appUsersAdmin.ts`
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
   - `src/modules/auth/login/LoginPageView.tsx`
   - `src/modules/auth/tenant-selector/TenantSelectorPageView.tsx`
   - `src/modules/auth/tenant-selector/TenantSelectorPageView.module.css`
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
   - `src/services/auth/auth.service.ts`
+  - `supabase/migrations/386_harden_admin_tenant_links.sql`
 - Comportamento antes/depois:
   - Antes: apos login, todos os perfis iam direto para `/home`; o tenant ativo era o default ou o header manual enviado por telas especificas.
   - Depois: admin remoto sempre escolhe o contrato em `/selecionar-contrato`; `user` e `viewer` continuam indo direto para `/home`.
@@ -170,6 +180,7 @@ Atualizacao 2026-08-25 - Selecao de contrato
   - Para admin, os contratos permitidos vem obrigatoriamente de `app_user_tenants`; `app_users.tenant_id` nao e fallback operacional para administrador.
   - O tenant ativo fica em cookie `httpOnly` e so e aceito depois de validado no backend contra os contratos permitidos ao usuario.
   - A rota de troca de contrato ignora o cookie atual ao carregar o contexto, permitindo que admin corrija uma selecao expirada ou invalida.
+  - A migration 386 faz backfill dos vinculos existentes, ajusta o trigger de sync de usuario e faz `save_user_permissions` criar/reativar vinculo quando o papel vira `admin`.
 
 Atualizacao 2026-08 - Estabilidade visual / CLS
 ------------------------------------------------

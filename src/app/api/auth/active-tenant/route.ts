@@ -87,12 +87,10 @@ export async function GET(request: NextRequest) {
     }
 
     const cookieTenantId = request.cookies.get(ACTIVE_TENANT_COOKIE_NAME)?.value ?? null;
-    const activeTenantId =
-      cookieTenantId && context.tenantAccess.availableTenantIds.includes(cookieTenantId)
-        ? cookieTenantId
-        : context.tenantAccess.activeTenantId;
+    const isCookieTenantAllowed = Boolean(cookieTenantId && context.tenantAccess.availableTenantIds.includes(cookieTenantId));
+    const activeTenantId = isCookieTenantAllowed ? cookieTenantId : context.tenantAccess.activeTenantId;
 
-    return NextResponse.json(
+    const response = NextResponse.json(
       {
         activeTenantId,
         tenants: (data ?? []).map((tenant) => ({
@@ -102,6 +100,13 @@ export async function GET(request: NextRequest) {
       },
       { headers: NO_STORE_HEADERS },
     );
+    if (cookieTenantId && !isCookieTenantAllowed) {
+      response.cookies.set(ACTIVE_TENANT_COOKIE_NAME, "", {
+        ...buildCookieOptions(),
+        maxAge: 0,
+      });
+    }
+    return response;
   } catch {
     return NextResponse.json({ message: "Falha ao carregar contratos disponiveis." }, { status: 500 });
   }

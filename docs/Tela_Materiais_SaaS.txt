@@ -257,7 +257,7 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
-  - Suporta selecao de tenant por requisicao via header `x-tenant-id` (quando o usuario possui vinculo em `app_user_tenants`).
+  - Usa o cookie server-side `INDICA.activeTenantId` como contexto de tenant ativo; `x-tenant-id` nao e fonte operacional padrao.
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
 - Caminho: `src/components/ui/ActionIcon.tsx`

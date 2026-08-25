@@ -62,6 +62,7 @@ type ResolveAuthenticatedAppUserOptions = {
   inactiveMessage?: string;
   ignoreActiveTenantCookie?: boolean;
   allowAdminWithoutActiveTenant?: boolean;
+  allowTenantHeader?: boolean;
 };
 
 export type AdminOperatorContext = {
@@ -82,6 +83,8 @@ export type AuthenticatedAppUserContext = {
   tenantAccess: {
     activeTenantId: string;
     availableTenantIds: string[];
+    hasSelectedActiveTenant: boolean;
+    hasInvalidActiveTenantCookie: boolean;
   };
   role: {
     roleKey: string;
@@ -156,12 +159,17 @@ export async function resolveAuthenticatedAppUser(
     };
   }
 
-  const requestedTenantId =
-    normalizeHeaderTenantId(request.headers.get("x-tenant-id")) ??
-    (options.ignoreActiveTenantCookie
-      ? null
-      : normalizeHeaderTenantId(request.cookies.get(ACTIVE_TENANT_COOKIE_NAME)?.value ?? null));
-  const cacheKey = `${token}:${requestedTenantId ?? ""}:${options.allowAdminWithoutActiveTenant ? "admin-optional" : "strict"}`;
+  const headerTenantId = normalizeHeaderTenantId(request.headers.get("x-tenant-id"));
+  const cookieTenantId = options.ignoreActiveTenantCookie
+    ? null
+    : normalizeHeaderTenantId(request.cookies.get(ACTIVE_TENANT_COOKIE_NAME)?.value ?? null);
+  const cacheKey = [
+    token,
+    headerTenantId ?? "",
+    cookieTenantId ?? "",
+    options.allowAdminWithoutActiveTenant ? "admin-optional" : "strict",
+    options.allowTenantHeader ? "header-ok" : "header-blocked",
+  ].join(":");
   const cached = getCachedAuth(cacheKey);
   if (cached) return cached;
 
@@ -241,6 +249,8 @@ export async function resolveAuthenticatedAppUser(
   const isAdmin = Boolean(currentRole.is_admin);
   let availableTenantIds = [currentUser.tenant_id];
   let activeTenantId = currentUser.tenant_id;
+  let hasSelectedActiveTenant = false;
+  let hasInvalidActiveTenantCookie = false;
 
   if (isAdmin) {
     if (linkedTenantIds.length === 0) {
@@ -261,8 +271,17 @@ export async function resolveAuthenticatedAppUser(
     activeTenantId = defaultTenant?.tenant_id ?? linkedTenantIds[0] ?? currentUser.tenant_id;
   }
 
-  if (requestedTenantId) {
-    if (!availableTenantIds.includes(requestedTenantId)) {
+  if (headerTenantId && !options.allowTenantHeader) {
+    return {
+      error: {
+        status: 403,
+        message: "Troca de tenant por header nao permitida para esta rota.",
+      },
+    };
+  }
+
+  if (headerTenantId && options.allowTenantHeader) {
+    if (!availableTenantIds.includes(headerTenantId)) {
       return {
         error: {
           status: 403,
@@ -270,7 +289,21 @@ export async function resolveAuthenticatedAppUser(
         },
       };
     }
-    activeTenantId = requestedTenantId;
+    activeTenantId = headerTenantId;
+    hasSelectedActiveTenant = true;
+  } else if (cookieTenantId && isAdmin && availableTenantIds.includes(cookieTenantId)) {
+    activeTenantId = cookieTenantId;
+    hasSelectedActiveTenant = true;
+  } else if (cookieTenantId) {
+    hasInvalidActiveTenantCookie = true;
+    if (isAdmin && !options.allowAdminWithoutActiveTenant) {
+      return {
+        error: {
+          status: 428,
+          message: "Selecione um contrato antes de operar como administrador.",
+        },
+      };
+    }
   } else if (isAdmin && !options.allowAdminWithoutActiveTenant) {
     return {
       error: {
@@ -290,6 +323,8 @@ export async function resolveAuthenticatedAppUser(
     tenantAccess: {
       activeTenantId,
       availableTenantIds,
+      hasSelectedActiveTenant,
+      hasInvalidActiveTenantCookie,
     },
     role: {
       roleKey,

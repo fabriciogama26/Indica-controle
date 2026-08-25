@@ -4,6 +4,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
 import { parsePagination } from "@/lib/server/apiHelpers";
+import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 
 type JobTitleRow = {
   id: string;
@@ -66,6 +67,19 @@ type UpdateJobTitleStatusPayload = {
   reason?: string | null;
   action?: "cancel" | "activate";
   expectedUpdatedAt?: string | null;
+};
+
+type JobTitleBatchImportRow = {
+  rowNumber?: number;
+  code?: string | null;
+  name?: string | null;
+  types?: string[] | string | null;
+  levels?: string[] | string | null;
+};
+
+type JobTitleBatchImportPayload = {
+  action?: "BATCH_IMPORT";
+  rows?: JobTitleBatchImportRow[];
 };
 
 function parsePositiveInteger(value: string | null, fallback: number) {
@@ -411,7 +425,108 @@ type SaveJobTitleRpcResult = {
 
 type SetJobTitleStatusRpcResult = SaveJobTitleRpcResult;
 
-async function saveJobTitle(request: NextRequest, method: "POST" | "PUT") {
+async function saveJobTitleViaRpc(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  jobTitleId: string | null;
+  code: string;
+  name: string;
+  typeNames: string[];
+  levelNames: string[];
+  expectedUpdatedAt: string | null;
+}) {
+  const { data, error } = await params.supabase.rpc("save_job_title_record", {
+    p_tenant_id: params.tenantId,
+    p_actor_user_id: params.actorUserId,
+    p_job_title_id: params.jobTitleId,
+    p_code: params.code,
+    p_name: params.name,
+    p_types: params.typeNames.map((name) => ({ code: normalizeCode(name), name })),
+    p_levels: params.levelNames,
+    p_expected_updated_at: params.expectedUpdatedAt,
+  });
+
+  if (error) {
+    return { ok: false, status: 500, message: `Falha ao salvar cargo. ${error.message}`.trim(), reason: null } as const;
+  }
+
+  const result = (data ?? {}) as SaveJobTitleRpcResult;
+  if (result.success !== true) {
+    return {
+      ok: false,
+      status: Number(result.status ?? 400),
+      message: result.message ?? "Falha ao salvar cargo.",
+      reason: result.reason ?? null,
+    } as const;
+  }
+
+  return {
+    ok: true,
+    jobTitleId: result.job_title_id ?? null,
+    updatedAt: result.updated_at ?? null,
+    message: result.message ?? "Cargo salvo com sucesso.",
+  } as const;
+}
+
+async function importJobTitleBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: JobTitleBatchImportRow[];
+}) {
+  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+    const input = {
+      code: normalizeCode(row.code),
+      name: normalizeText(row.name),
+      typeNames: normalizeList(row.types),
+      levelNames: normalizeList(row.levels),
+    };
+
+    if (!input.code || !input.name || input.typeNames.length === 0) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Preencha codigo, nome e ao menos um tipo do cargo.",
+        code: "INVALID_JOB_TITLE",
+      });
+      continue;
+    }
+
+    const saveResult = await saveJobTitleViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      jobTitleId: null,
+      code: input.code,
+      name: input.name,
+      typeNames: input.typeNames,
+      levelNames: input.levelNames,
+      expectedUpdatedAt: null,
+    });
+
+    if (!saveResult.ok) {
+      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({ rowNumber, success: true, message: `Cargo ${input.code} cadastrado com sucesso.` });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
+}
+
+async function saveJobTitle(request: NextRequest, method: "POST" | "PUT", parsedBody?: SaveJobTitlePayload) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
       invalidSessionMessage: method === "POST" ? "Sessao invalida para cadastrar cargo." : "Sessao invalida para editar cargo.",
@@ -423,7 +538,7 @@ async function saveJobTitle(request: NextRequest, method: "POST" | "PUT") {
     }
 
     const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as SaveJobTitlePayload;
+    const body = parsedBody ?? ((await request.json().catch(() => ({}))) as SaveJobTitlePayload);
     const jobTitleId = method === "PUT" ? normalizeText(body.id) : null;
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const input = {
@@ -443,33 +558,27 @@ async function saveJobTitle(request: NextRequest, method: "POST" | "PUT") {
       return NextResponse.json({ message: "Preencha codigo, nome e ao menos um tipo do cargo." }, { status: 400 });
     }
 
-    const types = input.typeNames.map((name) => ({ code: normalizeCode(name), name }));
-
-    const { data, error } = await supabase.rpc("save_job_title_record", {
-      p_tenant_id: appUser.tenant_id,
-      p_actor_user_id: appUser.id,
-      p_job_title_id: jobTitleId,
-      p_code: input.code,
-      p_name: input.name,
-      p_types: types,
-      p_levels: input.levelNames,
-      p_expected_updated_at: expectedUpdatedAt,
+    const saveResult = await saveJobTitleViaRpc({
+      supabase,
+      tenantId: appUser.tenant_id,
+      actorUserId: appUser.id,
+      jobTitleId,
+      code: input.code,
+      name: input.name,
+      typeNames: input.typeNames,
+      levelNames: input.levelNames,
+      expectedUpdatedAt,
     });
 
-    if (error) {
-      return NextResponse.json({ message: `Falha ao salvar cargo. ${error.message}`.trim() }, { status: 500 });
-    }
-
-    const result = (data ?? {}) as SaveJobTitleRpcResult;
-    if (result.success !== true) {
-      return NextResponse.json({ message: result.message ?? "Falha ao salvar cargo.", reason: result.reason ?? null }, { status: Number(result.status ?? 400) });
+    if (!saveResult.ok) {
+      return NextResponse.json({ message: saveResult.message, reason: saveResult.reason }, { status: saveResult.status });
     }
 
     return NextResponse.json({
       success: true,
-      jobTitleId: result.job_title_id,
-      updatedAt: result.updated_at,
-      message: result.message ?? "Cargo salvo com sucesso.",
+      jobTitleId: saveResult.jobTitleId,
+      updatedAt: saveResult.updatedAt,
+      message: saveResult.message,
     });
   } catch {
     return NextResponse.json({ message: method === "POST" ? "Falha ao cadastrar cargo." : "Falha ao editar cargo." }, { status: 500 });
@@ -477,7 +586,50 @@ async function saveJobTitle(request: NextRequest, method: "POST" | "PUT") {
 }
 
 export async function POST(request: NextRequest) {
-  return saveJobTitle(request, "POST");
+  const body = (await request.json().catch(() => ({}))) as SaveJobTitlePayload & JobTitleBatchImportPayload;
+
+  if (normalizeText(body.action).toUpperCase() !== "BATCH_IMPORT") {
+    return saveJobTitle(request, "POST", body);
+  }
+
+  try {
+    const resolution = await resolveAuthenticatedAppUser(request, {
+      invalidSessionMessage: "Sessao invalida para cadastrar cargo.",
+      inactiveMessage: "Usuario inativo.",
+    });
+
+    if ("error" in resolution) {
+      return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    if (!rows.length) {
+      return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+    }
+    if (rows.length > MASS_IMPORT_ROW_LIMIT) {
+      return NextResponse.json(
+        { message: `Cadastro em massa limitado a ${MASS_IMPORT_ROW_LIMIT} linhas por arquivo.` },
+        { status: 400 },
+      );
+    }
+
+    const result = await importJobTitleBatch({
+      supabase: resolution.supabase,
+      tenantId: resolution.appUser.tenant_id,
+      actorUserId: resolution.appUser.id,
+      rows,
+    });
+
+    return NextResponse.json({
+      ...result,
+      message:
+        result.errorCount > 0
+          ? `Cadastro em massa processado com ${result.savedCount} cargos salvos e ${result.errorCount} linhas com erro.`
+          : `Cadastro em massa concluido com ${result.savedCount} cargos salvos.`,
+    });
+  } catch {
+    return NextResponse.json({ message: "Falha ao cadastrar cargos em massa." }, { status: 500 });
+  }
 }
 
 export async function PUT(request: NextRequest) {

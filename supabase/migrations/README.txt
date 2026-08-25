@@ -1188,3 +1188,11 @@ Observacao
 - Regrava o template `role_page_permissions` do `viewer` para permitir apenas paginas de consulta conhecidas e bloquear todas as acoes de escrita/exportacao.
 - Regrava `app_user_page_permissions` dos usuarios `viewer` existentes no mesmo padrao de leitura apenas.
 - Republica `save_user_permissions` para aceitar somente `admin`, `user` e `viewer`; quando o papel alvo e `viewer`, paginas fora da whitelist sao gravadas como bloqueadas e todas as acoes ficam `false`.
+
+386_harden_admin_tenant_links.sql
+- Cria `ensure_app_user_tenant_link` para centralizar criacao/reativacao do vinculo usuario-tenant sem duplicar default ativo.
+- Faz backfill de `app_user_tenants` para usuarios existentes com `tenant_id`, evitando lockout de administradores apos exigir selecao de contrato.
+- Republica `sync_auth_user_to_app_user` para criar/reativar o vinculo quando um usuario nasce ou e sincronizado a partir do Supabase Auth.
+- Republica `user_is_admin_in_tenant` para considerar administradores vinculados via `app_user_tenants`, nao apenas `app_users.tenant_id`.
+- Republica `save_user_permissions` para criar/reativar o vinculo no tenant atual quando o papel salvo for `admin`.
+- Inclui validacao pos-aplicacao que aborta se sobrar administrador ativo sem vinculo ativo no proprio tenant.

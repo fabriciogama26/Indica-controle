@@ -417,3 +417,38 @@ Atualizacao 2026-08-17 - Cod. SAP no cadastro, lista e detalhes
   - Depois: a API retorna `codeIdd`, o formulario permite cadastrar/editar `Cod. SAP`, a lista de Cadastro de Atividades exibe a coluna, o modal `Detalhes da Atividade` exibe o mesmo campo, e a exportacao CSV inclui `Cod. SAP`.
   - Depois: alteracoes em `Cod. SAP` entram em `p_changes.codeIdd` e sao registradas em `app_entity_history` no historico da tela.
   - Multi-tenant: leitura e escrita continuam filtradas por `tenant_id` derivado da sessao, sem confiar em dados do cliente; a migration 372 restringe a RPC nova a `service_role`.
+
+Cadastro em massa
+-----------------
+- Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao, e fica desabilitado enquanto os catalogos da tela carregam.
+- Modelo CSV: `codigo;cod_sap;descricao;tipo_equipe;categoria;grupo;valor;pontos;unidade;alcance`.
+- Colunas obrigatorias: `codigo`, `descricao`, `tipo_equipe`, `categoria`, `grupo`, `valor`, `pontos` e `unidade`. `cod_sap` e `alcance` sao opcionais.
+- `tipo_equipe` e `categoria` sao informados pelo nome e resolvidos contra os catalogos ativos do tenant.
+- `valor` aceita zero ou mais, com virgula ou ponto decimal; `pontos` exige valor maior que zero.
+- `codigo` e normalizado para maiusculo e codigo repetido dentro do arquivo e recusado.
+- Envio: `POST /api/activities` com `action = BATCH_IMPORT` e `rows`.
+- O backend revalida tipo, categoria e o pre-check de codigo duplicado (`precheck_activity_code_conflict`) antes de chamar `saveActivityViaRpc` linha a linha.
+- Erros parciais geram CSV de retorno com `linha`, `coluna`, `valor` e `erro`; as linhas validas sao salvas mesmo assim.
+- Infraestrutura compartilhada do cadastro em massa:
+  - Modal: `src/components/ui/MassImportModal.tsx` (3 etapas: baixar modelo, preencher, enviar).
+  - Orquestracao: `src/hooks/useMassImport.ts` (le o arquivo, chama o parser de dominio, envia o lote e monta o CSV de erros).
+  - Helpers de CSV: `src/lib/utils/massImport.ts` (`readMassImportCsv`, `buildMassImportTemplateCsv`, `createMassImportErrorReport`).
+  - Teto por arquivo: `MASS_IMPORT_ROW_LIMIT` = 500 linhas (`src/lib/constants/massImport.ts`).
+
+Atualizacao 2026-08-25 - Cadastro em massa
+--------------------------------------------------------------------------------------------
+- `Atividades` passa a ter cadastro em massa por CSV, no mesmo padrao ja existente em `Materiais` e `Pessoas`.
+- Antes: so era possivel cadastrar uma atividade por vez pelo formulario.
+- Depois: o CSV cadastra ate 500 atividades por arquivo, com pre-validacao no frontend e CSV de erros por linha.
+- `src/app/api/activities/route.ts`: novo `importActivityBatch`, que reaproveita `parseActivityInput`, `fetchTeamTypeById`,
+  `fetchTypeServiceById`, `precheck_activity_code_conflict` e `saveActivityViaRpc`, com cache por id para nao repetir a mesma
+  consulta de catalogo a cada linha do arquivo.
+- `buildActivitiesCsv` saiu para `src/modules/dashboard/atividades/csv.ts` e os formatadores (`formatMoney`, `formatPoints`,
+  `toInputMoney`, `toInputPoints`, `formatHistoryValue`) para `src/modules/dashboard/atividades/formatters.ts`,
+  mantendo a view dentro do baseline.
+- Arquivos alterados/criados: `src/app/api/activities/route.ts`, `src/modules/dashboard/atividades/ActivitiesPageView.tsx`,
+  `src/modules/dashboard/atividades/massImport.ts`, `src/modules/dashboard/atividades/csv.ts`,
+  `src/modules/dashboard/atividades/formatters.ts`.
+- Validado com `npx tsc --noEmit`, `npm run lint` e `npm run build`. Validacao manual pendente:
+  (1) importar CSV valido e conferir as atividades na lista; (2) importar CSV com `pontos` igual a zero e conferir o CSV de erros;
+  (3) importar CSV com categoria inexistente e conferir a recusa da linha.
