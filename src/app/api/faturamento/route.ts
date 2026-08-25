@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { normalizeText, parsePagination } from "@/lib/server/apiHelpers";
 import { withIdempotency } from "@/lib/server/idempotency";
@@ -672,6 +673,11 @@ async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "faturamento", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const payload = (await request.json().catch(() => null)) as SaveBillingPayload | null;
   const orderId = normalizeUuid(payload?.id);
   const projectId = normalizeUuid(payload?.projectId);
@@ -778,6 +784,11 @@ async function saveBillingOrderBatchPartial(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "faturamento", "import");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const payload = (await request.json().catch(() => null)) as SaveBillingBatchPayload | null;
   const rowsInput = Array.isArray(payload?.rows) ? payload.rows : [];
   if (!rowsInput.length) {
@@ -864,6 +875,12 @@ export async function PATCH(request: NextRequest) {
   const action = normalizeText(payload?.action).toUpperCase();
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const reason = normalizeText(payload?.reason) || null;
+
+  const authorizationError = await authorizePageAction(resolution, "faturamento", action === "CANCELAR" ? "cancel" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
 
   if (!orderId || (action !== "FECHAR" && action !== "CANCELAR" && action !== "ABRIR")) {
     return NextResponse.json({ message: "Informe faturamento e acao valida para atualizar o status." }, { status: 400 });

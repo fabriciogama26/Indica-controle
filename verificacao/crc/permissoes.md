@@ -130,101 +130,90 @@ Liberar uma tela para usuarios comuns exige passo EXPLICITO e posterior ao INSER
 
 ---
 
-## Rotas que usam `requirePageAction`
+## Onde o gate e aplicado
 
-| Rota | PageKey | Acoes usadas |
-|---|---|---|
-| `GET /api/programacao` | `programacao-simples` | `read` |
-| `POST /api/programacao` (BATCH_CREATE) | `programacao-simples` | `create` |
-| `PUT /api/programacao` | `programacao-simples` | `update` |
-| `GET /api/projects` | `projetos` | `read` |
-| `POST /api/projects` | `projetos` | `create` |
-| `PUT /api/projects` | `projetos` | `update` |
-| `PATCH /api/projects` (cancel) | `projetos` | `cancel` |
-| `PATCH /api/projects` (activate) | `projetos` | `update` |
-| `GET /api/mapa-programacao` | `mapa-programacao` | `read` |
-| `GET /api/meta` | `meta` | `read` |
-| `GET /api/stock-transfers/reversal` | `estoque` | `read` |
-| `POST /api/stock-transfers/reversal` | `estoque` | `reverse` |
-| `GET /api/team-stock-operations/reversal` | `estoque-equipes` | `read` |
-| `POST /api/team-stock-operations/reversal` | `estoque-equipes` | `reverse` |
-| `GET /api/dashboard-measurement` | `dashboard-medicao` | `read` |
+A tabela manual que existia aqui foi removida em 2026-08-25: ela listava 15 rotas, estava 13 rotas
+desatualizada e, por so mostrar o lado positivo, nao servia para responder a pergunta que importa
+("esta rota esta protegida?"). Duas fontes substituem ela.
 
-> A tabela acima esta DESATUALIZADA e lista apenas o lado positivo, entao nao serve para concluir
-> que o resto esta coberto. Conferido em 2026-08-25: 13 rotas que usam `requirePageAction` nao
-> aparecem nela — `/api/materials`, `/api/materials/meta`, `/api/apuracao-fator-minimo`,
-> `/api/stock-requisitions` (mais `/cancel`, `/claim`, `/fulfill`), `/api/stock-reversal-requests`,
-> `/api/stock-transfers`, `/api/team-stock-operations` (mais `/day-foremen`, `/import`, `/meta`).
-> Ao atualizar esta secao, atualizar tambem a seguinte: e a ausencia da contraparte negativa que
-> deixou a lacuna invisivel ate 2026-08-25.
+**1. Mapa por handler de escrita** — secao seguinte deste documento, mantida junto com o codigo.
 
----
+**2. Regeneracao** — para conferir o estado real a qualquer momento:
 
-## Rotas de escrita SEM `requirePageAction`
+```bash
+# rotas que aplicam o gate no proprio arquivo
+grep -rln "requirePageAction\|authorizePageAction" src/app/api --include=route.ts
 
-Levantamento de 2026-08-25 sobre `src/app/api/**/route.ts`, considerando gate direto no arquivo da
-rota **ou** no modulo de `src/server/modules/` para onde ela delega (`projects`, `medicao`,
-`programacao-normalizada`, `cronograma-solicitacoes`, `warehouse-addressing`, `dashboard-*`).
+# rotas que delegam: o gate esta no modulo, nao na rota
+grep -rln "requirePageAction" src/server/modules
+```
+
+Um `route.ts` sem ocorrencia **nao** significa rota sem gate: varias delegam para
+`src/server/modules/` (`projects`, `medicao`, `programacao-normalizada`,
+`cronograma-solicitacoes`, `warehouse-addressing`, `dashboard-measurement`,
+`dashboard-portfolio`), onde a autorizacao fica centralizada em `authorization.ts`,
+`handlers.ts` ou `controller.ts`. Qualquer varredura que ignore esse nivel produz falso positivo.
+
+## Cobertura de `requirePageAction` nas rotas de escrita
+
+Ultima varredura: 2026-08-25, sobre `src/app/api/**/route.ts`, considerando gate direto no arquivo
+da rota **ou** no modulo de `src/server/modules/` para onde ela delega.
 
 | Total de rotas com handler de escrita | Com gate | Sem gate |
 |---|---|---|
-| 41 | 23 | 18 |
+| 41 | 37 | 4 |
 
-Das 18 sem gate, 4 usam outro mecanismo de autorizacao e nao sao lacuna:
+As 4 sem gate usam outro mecanismo e nao sao lacuna:
 
 | Rota | Mecanismo |
 |---|---|
-| `POST/DELETE /api/auth/active-tenant` | fluxo anterior a qualquer pagina; `DELETE` exige sessao valida antes de limpar cookie |
+| `POST/DELETE /api/auth/active-tenant` | fluxo anterior a qualquer pagina |
 | `POST /api/auth/local-login` | fluxo anterior a qualquer pagina |
 | `POST /api/app-users/[userId]/invite` | `resolveAdminOperator` |
 | `PUT /api/app-users/[userId]/permissions` | `resolveAdminOperator` |
 
-As 14 restantes validam apenas `resolveAuthenticatedAppUser` (autenticado + escopo de tenant):
+### Helper padrao
 
-| Rota | Handlers |
-|---|---|
-| `/api/activities` | `POST`, `PUT`, `PATCH` |
-| `/api/composicao-equipe` | `POST`, `PUT` |
-| `/api/controle-apr` | `POST`, `PUT`, `PATCH` |
-| `/api/faturamento` | `POST`, `PUT`, `PATCH` |
-| `/api/job-titles` | `POST`, `PUT`, `PATCH` |
-| `/api/locacao` | `POST`, `PUT` |
-| `/api/locacao/activities` | `POST`, `PUT` |
-| `/api/locacao/materials` | `POST`, `PUT` |
-| `/api/medicao` | `POST`, `PUT`, `PATCH` |
-| `/api/medicao-asbuilt` | `POST`, `PUT`, `PATCH` |
-| `/api/people` | `POST`, `PUT`, `PATCH` |
-| `/api/stock-transfers/import` | `POST` |
-| `/api/teams` | `POST`, `PUT`, `PATCH` |
-| `/api/trafo-positions` | `POST` |
+`authorizePageAction(context, pageKey, action)` em `src/lib/server/routeAuthorization.ts` aplica
+`requirePageAction` e devolve a resposta de erro pronta (`{ message, code }`, status 403 ou 500) ou
+`null` para seguir. Usar este helper em rota nova em vez de repetir o bloco.
 
-Nota sobre `/api/medicao`: existe `src/server/modules/medicao/authorization.ts`, mas ele exporta
-apenas `authorizeMeasurementReadOrExportAction`, consumido por `/api/medicao/export` e
-`/api/medicao/programming-sources`. Os handlers de escrita de `/api/medicao` nao passam por ele.
+### Acao por handler
 
-### Por que isso nao e apenas defesa em profundidade
+| Rota | pageKey | create | update | cancel | import |
+|---|---|---|---|---|---|
+| `/api/job-titles` | `cargo` | POST unitario | PUT, PATCH ativar | PATCH cancelar | POST `BATCH_IMPORT` |
+| `/api/teams` | `equipes` | POST unitario | PUT, PATCH ativar/permutar | PATCH cancelar | POST `BATCH_IMPORT` |
+| `/api/activities` | `atividades` | POST unitario | PUT, PATCH ativar | PATCH cancelar | POST `BATCH_IMPORT` |
+| `/api/people` | `pessoas` | POST unitario | PUT, PATCH ativar | PATCH cancelar | POST `BATCH_IMPORT` |
+| `/api/medicao` | `medicao` | POST | PUT, PATCH FECHAR/ABRIR | PATCH CANCELAR | `BATCH_IMPORT_PARTIAL` |
+| `/api/medicao-asbuilt` | `medicao-asbuilt` | POST | PUT, PATCH FECHAR/ABRIR | PATCH CANCELAR | `BATCH_IMPORT_PARTIAL` |
+| `/api/faturamento` | `faturamento` | POST | PUT, PATCH FECHAR/ABRIR | PATCH CANCELAR | `BATCH_IMPORT_PARTIAL` |
+| `/api/controle-apr` | `controle-apr` | POST | PUT, PATCH situacao | — | — |
+| `/api/locacao` (+ `/activities`, `/materials`) | `locacao` | POST | PUT | — | — |
+| `/api/composicao-equipe` | `composicao-equipe` | POST | PUT | — | — |
+| `/api/trafo-positions` | `posicao-trafo` | — | POST (RET) | — | — |
+| `/api/stock-transfers/import` | `entrada` | — | — | — | POST |
 
-`resolveAuthenticatedAppUser` devolve um cliente `service_role`
-(`src/lib/server/appUsersAdmin.ts`), que nao passa por RLS, e as RPCs de escrita desses modulos
-recebem `grant execute ... to service_role` (ex.: `save_job_title_record` /
-`set_job_title_record_status` na migration 371). Nessas 14 rotas, portanto:
+O cadastro em massa usa `import`, nao `create`, e o gate fica **dentro** do ramo do
+`BATCH_IMPORT` — padrao de permissao granular do CLAUDE.md. Isso permite revogar importacao sem
+tirar o cadastro unitario, o que importa porque uma chamada de lote grava ate 500 registros
+(`MASS_IMPORT_ROW_LIMIT`).
 
-1. a matriz de permissoes por pagina/acao nunca e consultada;
-2. a RLS nao funciona como barreira de reserva, porque o cliente a contorna;
-3. o unico controle efetivo e `autenticado + pertence ao tenant`.
+### Checagem manual duplicada, ainda existente
 
-Consequencia a verificar antes de dimensionar a correcao: a migration 385 fechou `viewer` como
-leitura apenas gravando `create/update/cancel/reverse/import/export = false`, mas essas colunas so
-sao lidas por `requirePageAction` — em rota sem gate elas nao chegam a ser consultadas. Confirmar
-em ambiente controlado se um `viewer` autenticado consegue escrever em uma dessas rotas.
+`/api/faturamento` e `/api/medicao-asbuilt` tem `ensureBillingPageAccess` e
+`ensureAsbuiltMeasurementPageAccess`: verificacao propria que consulta apenas `can_access`, ignora
+as colunas granulares e nao consulta `app_pages.default_user_access`. Elas cobrem o `read` dessas
+rotas e dos sub-endpoints de meta/catalogo, e por isso foram mantidas quando os gates de escrita
+entraram. Unificar em `requirePageAction` e limpeza pendente: a ordem de fallback nao e a mesma
+(`requirePageAction` exige `default_user_access = true` antes de olhar `role_page_permissions`),
+entao a troca precisa ser validada contra dado real.
 
-Agravante de alcance: `/api/job-titles`, `/api/teams`, `/api/activities` e `/api/people` aceitam
-`action = BATCH_IMPORT`, entao uma unica chamada sem gate grava ate 500 registros
-(`MASS_IMPORT_ROW_LIMIT`) em vez de um.
+### Lacuna remanescente: gates de leitura
 
-Backlog: item aberto `[Seguranca][Autorizacao]` no topo de `TASKS.md`.
-
----
+Este levantamento cobriu apenas handlers de escrita. A maioria das rotas acima segue sem
+`requirePageAction` com acao `read` nos respectivos `GET`.
 
 ## Historico de migrations relevantes
 

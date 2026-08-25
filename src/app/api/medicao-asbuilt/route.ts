@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { parsePagination } from "@/lib/server/apiHelpers";
 import { fetchProjectServiceCenterMap, PROJECT_SERVICE_CENTER_FALLBACK } from "@/server/modules/projects/serviceCenters";
@@ -744,6 +745,11 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "medicao-asbuilt", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const payload = (await request.json().catch(() => null)) as SaveAsbuiltMeasurementPayload | null;
   const orderId = normalizeUuid(payload?.id);
   const projectId = normalizeUuid(payload?.projectId);
@@ -878,6 +884,11 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
   const resolution = await resolveAsbuiltMeasurementContext(request, "Sessao invalida para importar medicao-asbuilt em lote.");
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizePageAction(resolution, "medicao-asbuilt", "import");
+  if (authorizationError) {
+    return authorizationError;
   }
 
   const payload = (await request.json().catch(() => null)) as SaveAsbuiltMeasurementBatchPayload | null;
@@ -1047,6 +1058,11 @@ export async function PATCH(request: NextRequest) {
   const action = normalizeText(payload?.action).toUpperCase();
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const reason = normalizeText(payload?.reason) || null;
+
+  const authorizationError = await authorizePageAction(resolution, "medicao-asbuilt", action === "CANCELAR" ? "cancel" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
 
   if (!orderId || (action !== "FECHAR" && action !== "CANCELAR" && action !== "ABRIR")) {
     return NextResponse.json({ message: "Informe medicao-asbuilt e acao valida para atualizar o status." }, { status: 400 });

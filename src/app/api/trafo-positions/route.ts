@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import { parsePagination } from "@/lib/server/apiHelpers";
 
 type MaterialRelation = {
@@ -941,6 +942,11 @@ export async function POST(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationError = await authorizePageAction(resolution, "posicao-trafo", "update");
+    if (authorizationError) {
+      return authorizationError;
     }
 
     const payload = (await request.json().catch(() => ({}))) as {

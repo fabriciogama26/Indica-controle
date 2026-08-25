@@ -1,6 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import { parsePagination } from "@/lib/server/apiHelpers";
 
 import type { MeasurementOrderStatus, SaveMeasurementBatchPayload, SaveMeasurementBatchRpcResult, SaveMeasurementPayload, SaveMeasurementRpcResult, SetMeasurementStatusRpcResult, UpdateStatusPayload } from "@/server/modules/medicao/types";
@@ -132,6 +133,11 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
 
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizePageAction(resolution, "medicao", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
   }
 
   const payload = (await request.json().catch(() => null)) as SaveMeasurementPayload | null;
@@ -274,6 +280,11 @@ async function saveMeasurementOrderBatchPartial(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "medicao", "import");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const payload = (await request.json().catch(() => null)) as SaveMeasurementBatchPayload | null;
   const rowsInput = Array.isArray(payload?.rows) ? payload.rows : [];
   if (!rowsInput.length) {
@@ -369,6 +380,12 @@ export async function PATCH(request: NextRequest) {
   const action = normalizeText(payload?.action).toUpperCase();
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const reason = normalizeText(payload?.reason) || null;
+
+  const authorizationError = await authorizePageAction(resolution, "medicao", action === "CANCELAR" ? "cancel" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
 
   if (!orderId || (action !== "FECHAR" && action !== "CANCELAR" && action !== "ABRIR")) {
     return NextResponse.json({ message: "Informe ordem e acao valida para atualizar o status." }, { status: 400 });

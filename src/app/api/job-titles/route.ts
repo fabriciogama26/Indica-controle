@@ -5,6 +5,7 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
 import { parsePagination } from "@/lib/server/apiHelpers";
 import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 
 type JobTitleRow = {
   id: string;
@@ -537,6 +538,11 @@ async function saveJobTitle(request: NextRequest, method: "POST" | "PUT", parsed
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const authorizationError = await authorizePageAction(resolution, "cargo", method === "POST" ? "create" : "update");
+    if (authorizationError) {
+      return authorizationError;
+    }
+
     const { supabase, appUser } = resolution;
     const body = parsedBody ?? ((await request.json().catch(() => ({}))) as SaveJobTitlePayload);
     const jobTitleId = method === "PUT" ? normalizeText(body.id) : null;
@@ -602,6 +608,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const authorizationError = await authorizePageAction(resolution, "cargo", "import");
+    if (authorizationError) {
+      return authorizationError;
+    }
+
     const rows = Array.isArray(body.rows) ? body.rows : [];
     if (!rows.length) {
       return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
@@ -652,6 +663,12 @@ export async function PATCH(request: NextRequest) {
     const jobTitleId = normalizeText(body.id);
     const reason = normalizeText(body.reason);
     const action = normalizeText(body.action).toLowerCase() === "activate" ? "ACTIVATE" : "CANCEL";
+
+    const authorizationError = await authorizePageAction(resolution, "cargo", action === "ACTIVATE" ? "update" : "cancel");
+    if (authorizationError) {
+      return authorizationError;
+    }
+
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
     if (!jobTitleId) {
