@@ -120,6 +120,7 @@ Ordem de aplicacao
 284. 284_clear_interrupted_programming_work_completion_status.sql
 366. 366_create_material_umb_options.sql
 367. 367_update_materials_umb_cjt_to_un.sql
+387. 387_programming_history_tenant_created_index.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1196,3 +1197,8 @@ Observacao
 - Republica `user_is_admin_in_tenant` para considerar administradores vinculados via `app_user_tenants`, nao apenas `app_users.tenant_id`.
 - Republica `save_user_permissions` para aceitar usuario alvo vinculado por `app_user_tenants` no tenant atual e criar/reativar o vinculo quando o papel salvo for `admin`.
 - Inclui validacao pos-aplicacao que aborta se sobrar administrador ativo sem vinculo ativo no proprio tenant.
+
+387_programming_history_tenant_created_index.sql
+- Cria `idx_programming_history_tenant_created` em `programming_history(tenant_id, created_at desc)` para sustentar a leitura de historico de Estado Trabalho usada pela Medicao.
+- Substitui a sugestao crua do Supabase Advisor (`created_at`) por um indice alinhado ao padrao multi-tenant do projeto.
+- Inclui validacao pos-aplicacao para abortar se o indice esperado nao existir.
