@@ -774,11 +774,11 @@ export function BillingPageView() {
         const activityInput = readCsvField(row, headerMap, "codigo_atividade");
         const quantityInput = readCsvField(row, headerMap, "quantidade");
         const rateInput = readCsvField(row, headerMap, "taxa");
-        const observation = readCsvField(row, headerMap, "observacao");
+        const orderNotes = readCsvField(row, headerMap, "observacao");
         const ingressoDateRaw = readCsvField(row, headerMap, "data_ingresso");
         const ingressoDateIso = parseBrDate(ingressoDateRaw);
-        // notas_pedido e opcional — retorna "" se a coluna nao existir no CSV (compatibilidade retroativa)
-        const notasPedido = readCsvField(row, headerMap, "notas_pedido");
+        // `observacao` = nota do CABECALHO e `notas_pedido` = observacao do ITEM — invertido em relacao ao commit 3eba605 (item A3); ver TXT da tela. `notas_pedido` e opcional: retorna "" quando a coluna nao existe no CSV.
+        const itemObservation = readCsvField(row, headerMap, "notas_pedido");
         const project = findProjectOption(projectInput);
         const billingKind = normalizeBillingKind(kindInput);
         const reason = billingKind === "SEM_PRODUCAO" ? findReasonOption(reasonInput) : null;
@@ -803,15 +803,15 @@ export function BillingPageView() {
           continue;
         }
 
-        // groupKey inclui data_ingresso para agrupar pedidos do mesmo projeto/tipo/data; observation e exclusivo de cada item
-        const groupKey = [project.id, billingKind, reason?.id ?? "", ingressoDateIso, notasPedido].join("|");
+        // Mesma chave do indice unico `ux_project_billing_orders_semantic_key` (migration 389): o que agrupa aqui e o que o banco recusa duplicado la. A observacao do item varia por linha e fica de fora.
+        const groupKey = [project.id, billingKind, reason?.id ?? "", ingressoDateIso, orderNotes].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
           billingKind,
           noProductionReasonId: reason?.id ?? "",
           ingressoDate: ingressoDateIso,
-          notes: notasPedido,
+          notes: orderNotes,
           items: [],
         };
 
@@ -821,7 +821,7 @@ export function BillingPageView() {
         }
 
         group.rowNumbers.push(rowNumber);
-        group.items.push({ activityId: activity.id, quantity, rate, observation });
+        group.items.push({ activityId: activity.id, quantity, rate, observation: itemObservation });
         groups.set(groupKey, group);
       }
 
@@ -1196,7 +1196,7 @@ export function BillingPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas do modelo: projeto, tipo_faturamento, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao, data_ingresso. Obrigatorias: projeto, tipo_faturamento, codigo_atividade, quantidade, taxa e data_ingresso. Motivo e obrigatorio somente em Sem producao.</p>
+                    <p>Colunas do modelo: projeto, tipo_faturamento, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao, data_ingresso, notas_pedido. Obrigatorias: projeto, tipo_faturamento, codigo_atividade, quantidade, taxa e data_ingresso. Motivo e obrigatorio somente em Sem producao. <strong>observacao</strong> e a nota do faturamento (cabecalho) e precisa ser igual em todas as linhas do mesmo pedido, porque faz parte do que agrupa as linhas; <strong>notas_pedido</strong> e a observacao de cada item e pode variar linha a linha.</p>
                   </div>
                 </div>
               </section>
