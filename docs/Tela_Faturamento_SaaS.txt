@@ -153,9 +153,9 @@ Atalhos
   - `GET /api/faturamento/meta`
   - `GET /api/faturamento/activities/catalog`
 - Modelo cadastro em massa:
-  - `projeto;tipo_faturamento;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao;data_ingresso`
+  - `projeto;tipo_faturamento;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao;data_ingresso;notas_pedido`
   - Valores obrigatorios: `projeto`, `tipo_faturamento`, `codigo_atividade`, `quantidade`, `taxa` e `data_ingresso`.
-  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
+  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`. `observacao` (nota do cabecalho, participa do agrupamento) e `notas_pedido` (observacao do item) sao opcionais — ver "Atualizacao 2026-08-26 (3)".
   - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
   - Modal no mesmo padrao da Medicao: baixar modelo, preencher planilha e enviar arquivo com acao explicita `Importar planilha`.
 
@@ -554,3 +554,53 @@ ORDEM DE APLICACAO (obrigatoria)
   - `supabase/migrations/389_project_billing_unique_semantic_key.sql` (novo)
 - Validado com `npm run db:security-check` (107 migrations) e `npx tsc --noEmit`.
   Migration NAO aplicada: exige `npm run db:check-link` e a limpeza previa.
+
+Atualizacao 2026-08-26 (3) - Troca de origem: observacao do item x nota do pedido
+----------------------------------------------------------------------------------
+CORRECAO DE REGRA (definida pelo usuario)
+- O commit `3eba605` (migration 259, item A3) tinha definido: `observacao` = por
+  item, `notas_pedido` = nota do pedido (cabecalho). A regra correta e a INVERSA:
+  - coluna `observacao`   -> nota do CABECALHO (`project_billing_orders.notes`)
+  - coluna `notas_pedido` -> observacao do ITEM (`project_billing_order_items.observation`)
+
+CONSEQUENCIA NO AGRUPAMENTO (o ponto que importa)
+- O `groupKey` da importacao decide quais linhas do CSV viram o MESMO faturamento,
+  e ele carrega a nota do cabecalho — nunca a observacao do item. Antes da troca
+  ele usava `notas_pedido`; agora usa `observacao`.
+- A razao e estrutural, nao estetica: a nota do cabecalho e a mesma para todas as
+  linhas de um pedido, entao pode agrupar. A observacao do item varia linha a
+  linha; se ela entrasse no `groupKey`, cada observacao diferente viraria um
+  faturamento separado e a importacao se fragmentaria.
+- Efeito colateral a observar em arquivos antigos: quem preenchia `observacao` por
+  item (a convencao anterior) passa a ver esse texto virar nota de cabecalho E
+  entrar no agrupamento — fragmentando a importacao exatamente como descrito
+  acima. Arquivos no formato novo devem repetir a mesma `observacao` em todas as
+  linhas do mesmo pedido.
+
+RELACAO COM A CHAVE UNICA
+- A migration 389 NAO muda. O indice
+  `ux_project_billing_orders_semantic_key` sempre indexou `notes` (a nota do
+  cabecalho); o que mudou foi so a coluna do CSV que alimenta esse campo. O
+  `groupKey` da tela e a chave do indice continuam sendo a mesma coisa — o que
+  agrupa na importacao e o que o banco recusa duplicado.
+
+ALTERACOES
+- `src/modules/dashboard/faturamento/BillingPageView.tsx`:
+  - `orderNotes` (ex-`observation`) le a coluna `observacao` e alimenta
+    `group.notes` e o `groupKey`.
+  - `itemObservation` (ex-`notasPedido`) le a coluna `notas_pedido` e alimenta
+    `group.items[].observation`.
+  - Texto de ajuda do passo 2 do modal de importacao passa a listar
+    `notas_pedido` entre as colunas do modelo e a explicar o destino de cada uma,
+    incluindo o aviso de que `observacao` precisa ser igual em todas as linhas do
+    mesmo pedido.
+- Sem mudanca de rota, RPC, schema, RLS, grant ou permissao: a troca e de origem
+  do dado dentro do parser do CSV, e os campos de destino no banco sao os mesmos.
+- O CSV de exportacao detalhada nao muda: `observacao_item` e
+  `observacao_faturamento` continuam nomeando os campos armazenados, que seguem
+  com o mesmo significado.
+
+- Arquivos alterados:
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+- Validado com `npx tsc --noEmit`, `npm run lint` (0 erros, baseline de tamanho
+  inalterado) e `npm run build`.
