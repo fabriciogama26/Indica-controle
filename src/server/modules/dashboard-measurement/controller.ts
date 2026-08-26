@@ -221,12 +221,11 @@ function normalizeIsoDate(value: unknown) {
 }
 
 function normalizeCompletionStatus(value: unknown, isPendencia = false) {
-  if (isPendencia) return "PENDENCIA";
-
   const token = normalizeToken(value)
     .replace(/\s+/g, "_");
 
   if (token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO")) return "CONCLUIDO";
+  if (isPendencia) return "PENDENCIA";
   if (
     token === "BENEFICIO_ATINGIDO"
     || token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"

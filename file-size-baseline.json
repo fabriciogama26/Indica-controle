@@ -19,6 +19,6 @@
     "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1065,
     "src/modules/dashboard/projetos/ProjectsPageView.tsx": 4053,
     "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2671,
-    "src/server/modules/dashboard-measurement/controller.ts": 1719
+    "src/server/modules/dashboard-measurement/controller.ts": 1718
   }
 }
