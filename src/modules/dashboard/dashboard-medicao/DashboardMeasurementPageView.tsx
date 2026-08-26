@@ -167,10 +167,10 @@ const metaColors: Record<MetaMode | "value", string> = {
 };
 
 const completionChartColors: Record<string, string> = {
-  Concluidos: "#4b77c7",
-  Parciais: "#f07f2f",
-  "Parcial planejado beneficio atingido": "#17a884",
-  Pendencias: "#e25555",
+  Concluido: "#4b77c7",
+  Parcial: "#f07f2f",
+  "Beneficio atingido": "#17a884",
+  Pendente: "#e25555",
   "Garantia de faturamento minimo": "#7b61ff",
 };
 
@@ -878,7 +878,7 @@ export function DashboardMeasurementPageView() {
   }
 
   const expandedTitle = expandedChart === "completionCycle"
-    ? "Concluidos X parciais no ciclo"
+    ? "Estado Trabalho no ciclo"
     : expandedChart === "completionPeriod"
       ? "Visao geral por periodo"
     : expandedChart === "cycle"
@@ -942,7 +942,7 @@ export function DashboardMeasurementPageView() {
             ))}
           </datalist>
 
-          <label className={styles.field}><span>Status execucao</span><select value={completionStatusDraft} onChange={(event) => setCompletionStatusDraft(event.target.value)} disabled={isLoading}><option value="TODOS">Todos</option><option value="CONCLUIDO">Concluidos</option><option value="PARCIAL">Parciais</option><option value="PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO">Parcial planejado beneficio atingido</option><option value="PENDENCIA">Pendencias</option></select></label>
+          <label className={styles.field}><span>Estado Trabalho</span><select value={completionStatusDraft} onChange={(event) => setCompletionStatusDraft(event.target.value)} disabled={isLoading}><option value="TODOS">Todos</option><option value="CONCLUIDO">Concluido</option><option value="PARCIAL">Parcial</option><option value="BENEFICIO_ATINGIDO">Beneficio atingido</option><option value="PENDENCIA">Pendente</option></select></label>
           <label className={styles.field}><span>Tipo</span><select value={serviceScopeDraft} onChange={(event) => setServiceScopeDraft(event.target.value as ServiceScope)} disabled={isLoading}><option value="ALL">Todos</option><option value="OBRAS">Obras</option><option value="MANUTENCAO">Manutencao</option></select></label>
         </div>
       </article>
@@ -951,10 +951,10 @@ export function DashboardMeasurementPageView() {
         <article className={styles.card}>
         <div className={styles.cardHeader}>
           <div>
-            <h2 className={styles.cardTitle}>Concluidos X parciais no ciclo</h2>
-            <p className={styles.cardSubtitle}>Valores realizados agrupados pelo status economico no ciclo selecionado.</p>
+            <h2 className={styles.cardTitle}>Estado Trabalho no ciclo</h2>
+            <p className={styles.cardSubtitle}>Valores realizados agrupados pelo Estado Trabalho no ciclo selecionado.</p>
           </div>
-          {renderExpandButton("completionCycle", "Concluidos X parciais no ciclo")}
+          {renderExpandButton("completionCycle", "Estado Trabalho no ciclo")}
         </div>
         {renderCompletionTable(cycleCompletionChart, selectedCycleLabel, "dashboard_medicao_status_ciclo", cycleComparison ? {
           value: cycleComparison.value,

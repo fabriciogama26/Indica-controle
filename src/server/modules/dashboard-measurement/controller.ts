@@ -141,6 +141,7 @@ type ProgrammingCompletionRow = {
   execution_date: string;
   status: string;
   work_completion_status: string | null;
+  is_pendencia: boolean | null;
   updated_at: string;
 };
 
@@ -219,18 +220,26 @@ function normalizeIsoDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
-function normalizeCompletionStatus(value: unknown) {
+function normalizeCompletionStatus(value: unknown, isPendencia = false) {
+  if (isPendencia) return "PENDENCIA";
+
   const token = normalizeToken(value)
     .replace(/\s+/g, "_");
 
   if (token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO")) return "CONCLUIDO";
-  if (token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO" || token === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO") {
-    return "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO";
+  if (
+    token === "BENEFICIO_ATINGIDO"
+    || token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
+    || token === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO"
+  ) {
+    return "BENEFICIO_ATINGIDO";
   }
   if (token === "PARCIAL" || token.startsWith("PARCIAL")) return "PARCIAL";
   if (token === "PENDENCIA" || token === "PENDENCIAS" || token.startsWith("PENDEN")) return "PENDENCIA";
   return "NAO_INFORMADO";
 }
+
+function isCompletionFilterStatus(value: string) { return value === "CONCLUIDO" || value === "PARCIAL" || value === "BENEFICIO_ATINGIDO" || value === "PENDENCIA"; }
 
 function normalizeServiceScope(value: unknown): ServiceScope { const token = normalizeToken(value); return token === "MANUTENCAO" ? "MANUTENCAO" : token === "OBRAS" ? "OBRAS" : "ALL"; }
 
@@ -455,7 +464,7 @@ async function fetchProjectCompletionTimeline(params: {
   for (const row of rows as ProgrammingCompletionRow[]) {
     if (isCanceledProgrammingStatus(row.status)) continue;
 
-    const status = normalizeCompletionStatus(row.work_completion_status);
+    const status = normalizeCompletionStatus(row.work_completion_status, row.is_pendencia === true);
     const executionDate = normalizeIsoDate(row.execution_date);
     if (status === "NAO_INFORMADO" || !executionDate) continue;
 
@@ -597,7 +606,10 @@ export async function handleDashboardMeasurementGet(
   const teamIdFilter = normalizeUuid(request.nextUrl.searchParams.get("teamId"));
   const foremanFilter = normalizeText(request.nextUrl.searchParams.get("foreman"));
   const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
-  const completionFilter = normalizeText(request.nextUrl.searchParams.get("completionStatus")).toUpperCase();
+  const completionFilterRaw = normalizeText(request.nextUrl.searchParams.get("completionStatus")).toUpperCase();
+  const completionFilter = completionFilterRaw && completionFilterRaw !== "TODOS"
+    ? normalizeCompletionStatus(completionFilterRaw)
+    : "TODOS";
   const serviceScopeFilter = normalizeServiceScope(request.nextUrl.searchParams.get("serviceScope")), periodServiceScopeFilter = normalizeServiceScope(request.nextUrl.searchParams.get("periodServiceScope"));
   const annualYear = normalizeYear(request.nextUrl.searchParams.get("year")) ?? new Date().getUTCFullYear();
   const annualCycles = buildAnnualCycles(annualYear);
@@ -1063,10 +1075,7 @@ export async function handleDashboardMeasurementGet(
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
-        completionFilter === "CONCLUIDO"
-        || completionFilter === "PARCIAL"
-        || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
-        || completionFilter === "PENDENCIA"
+        isCompletionFilterStatus(completionFilter)
       )
       && cycleOrderCompletionMap.get(order.id) !== completionFilter
     ) return false;
@@ -1082,10 +1091,7 @@ export async function handleDashboardMeasurementGet(
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
-        completionFilter === "CONCLUIDO"
-        || completionFilter === "PARCIAL"
-        || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
-        || completionFilter === "PENDENCIA"
+        isCompletionFilterStatus(completionFilter)
       )
       && periodOrderCompletionMap.get(order.id) !== completionFilter
     ) return false;
@@ -1099,10 +1105,7 @@ export async function handleDashboardMeasurementGet(
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
-        completionFilter === "CONCLUIDO"
-        || completionFilter === "PARCIAL"
-        || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
-        || completionFilter === "PENDENCIA"
+        isCompletionFilterStatus(completionFilter)
       )
       && annualOrderCompletionMap.get(order.id) !== completionFilter
     ) return false;
@@ -1116,10 +1119,7 @@ export async function handleDashboardMeasurementGet(
     if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
-      completionFilter === "CONCLUIDO"
-      || completionFilter === "PARCIAL"
-      || completionFilter === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
-      || completionFilter === "PENDENCIA"
+      isCompletionFilterStatus(completionFilter)
     ) return false;
     return true;
   });
@@ -1300,7 +1300,7 @@ export async function handleDashboardMeasurementGet(
     return new Map<string, CompletionAggregate>([
       ["CONCLUIDO", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
       ["PARCIAL", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
-      ["PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
+      ["BENEFICIO_ATINGIDO", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
       ["PENDENCIA", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
       ["NAO_INFORMADO", { value: 0, orders: 0, projectIds: new Set<string>(), projects: new Map<string, ProjectProductionDetail>() }],
     ]);
@@ -1348,7 +1348,7 @@ export async function handleDashboardMeasurementGet(
       + (minimumBillingGuaranteeTotal?.value ?? 0);
     const chart = [
       {
-        label: "Concluidos",
+        label: "Concluido",
         value: target.get("CONCLUIDO")?.value ?? 0,
         orders: target.get("CONCLUIDO")?.orders ?? 0,
         projectCount: target.get("CONCLUIDO")?.projectIds.size ?? 0,
@@ -1356,7 +1356,7 @@ export async function handleDashboardMeasurementGet(
         percentage: totalValue > 0 ? ((target.get("CONCLUIDO")?.value ?? 0) / totalValue) * 100 : 0,
       },
       {
-        label: "Parciais",
+        label: "Parcial",
         value: target.get("PARCIAL")?.value ?? 0,
         orders: target.get("PARCIAL")?.orders ?? 0,
         projectCount: target.get("PARCIAL")?.projectIds.size ?? 0,
@@ -1364,15 +1364,15 @@ export async function handleDashboardMeasurementGet(
         percentage: totalValue > 0 ? ((target.get("PARCIAL")?.value ?? 0) / totalValue) * 100 : 0,
       },
       {
-        label: "Parcial planejado beneficio atingido",
-        value: target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.value ?? 0,
-        orders: target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.orders ?? 0,
-        projectCount: target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.projectIds.size ?? 0,
-        projects: buildProjectProductionRows(target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.projects ?? new Map<string, ProjectProductionDetail>()),
-        percentage: totalValue > 0 ? ((target.get("PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO")?.value ?? 0) / totalValue) * 100 : 0,
+        label: "Beneficio atingido",
+        value: target.get("BENEFICIO_ATINGIDO")?.value ?? 0,
+        orders: target.get("BENEFICIO_ATINGIDO")?.orders ?? 0,
+        projectCount: target.get("BENEFICIO_ATINGIDO")?.projectIds.size ?? 0,
+        projects: buildProjectProductionRows(target.get("BENEFICIO_ATINGIDO")?.projects ?? new Map<string, ProjectProductionDetail>()),
+        percentage: totalValue > 0 ? ((target.get("BENEFICIO_ATINGIDO")?.value ?? 0) / totalValue) * 100 : 0,
       },
       {
-        label: "Pendencias",
+        label: "Pendente",
         value: target.get("PENDENCIA")?.value ?? 0,
         orders: target.get("PENDENCIA")?.orders ?? 0,
         projectCount: target.get("PENDENCIA")?.projectIds.size ?? 0,

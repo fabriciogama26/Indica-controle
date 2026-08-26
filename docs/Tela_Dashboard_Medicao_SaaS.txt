@@ -5,8 +5,8 @@ Visao geral
 - Tela de indicadores da Medicao baseada nas ordens `COM_PRODUCAO`, com visao financeira por periodo que tambem inclui garantia de faturamento minimo.
 - Consolida valor realizado por ciclo operacional 21 a 20.
 - Compara valor realizado contra a meta cadastrada na tela Meta.
-- Exibe valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias no ciclo completo.
-- Exibe `Visao geral por periodo` com Concluidos, Parciais, Parcial planejado beneficio atingido, Pendencias e Garantia de faturamento minimo no recorte `De/Para`.
+- Exibe valor de Concluido, Parcial, Beneficio atingido e Pendente no ciclo completo, seguindo o Estado Trabalho da Programacao.
+- Exibe `Visao geral por periodo` com Concluido, Parcial, Beneficio atingido, Pendente e Garantia de faturamento minimo no recorte `De/Para`.
 - A `Visao geral por periodo` possui filtro local de `Tipo` (`Todos`, `Obras`, `Manutencao`) no mesmo criterio da Carteira Operacional.
 - O card principal `Filtros` tambem possui `Tipo` (`Todos`, `Obras`, `Manutencao`) para recortar a tela inteira.
 - Exibe visao por encarregado no mesmo estilo de comparacao Valor x Meta.
@@ -49,12 +49,12 @@ Filtros, auto-complete e listagem
   - Equipe
   - Encarregado
   - Supervisor
-  - Status execucao (`Todos`, `Concluidos`, `Parciais`, `Parcial planejado beneficio atingido`, `Pendencias`)
+  - Estado Trabalho (`Todos`, `Concluido`, `Parcial`, `Beneficio atingido`, `Pendente`)
   - Tipo global (`Todos`, `Obras`, `Manutencao`)
   - Tipo local da `Visao geral por periodo` (`Todos`, `Obras`, `Manutencao`)
 - Graficos:
-  - Valor de Concluidos, Parciais, Parcial planejado beneficio atingido e Pendencias no ciclo, com tabela acima, coluna de projetos e exibicao lado a lado com o grafico por periodo em desktop
-  - `Visao geral por periodo` com valor de Concluidos, Parciais, Parcial planejado beneficio atingido, Pendencias e Garantia de faturamento minimo por periodo `De/Para`, cards acima da tabela organizados em linha no desktop, tabela com linha de total, coluna de projetos, cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, exibicao lado a lado em desktop e botao proprio `Filtrar periodo`
+  - Valor de Concluido, Parcial, Beneficio atingido e Pendente no ciclo, com tabela acima, coluna de projetos e exibicao lado a lado com o grafico por periodo em desktop
+  - `Visao geral por periodo` com valor de Concluido, Parcial, Beneficio atingido, Pendente e Garantia de faturamento minimo por periodo `De/Para`, cards acima da tabela organizados em linha no desktop, tabela com linha de total, coluna de projetos, cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, exibicao lado a lado em desktop e botao proprio `Filtrar periodo`
   - Ciclo da medicao com cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, tabela com coluna de projetos e grafico Valor x Projecao de fechamento x Meta
   - Equipes no ciclo com tabela oficial por equipe, tipos vigentes, encarregados historicos, valor realizado e as tres metas
   - Encarregados no ciclo com tabela unica acima e tres visoes:
@@ -65,18 +65,18 @@ Filtros, auto-complete e listagem
 - Cada grafico possui botao circular de ampliacao, abrindo modal com o grafico em area maior.
 - No bloco de encarregados, cada visao possui seu proprio botao de ampliacao.
 - Cada visao de encarregados exibe o ciclo medido no cabecalho do grafico.
-- O filtro `Tipo` global fica no card `Filtros` e restringe `Concluidos X parciais no ciclo`, `Visao geral por periodo`, `Ciclo da medicao` e `Evolucao anual por ciclo`.
+- O filtro `Tipo` global fica no card `Filtros` e restringe `Estado Trabalho no ciclo`, `Visao geral por periodo`, `Ciclo da medicao` e `Evolucao anual por ciclo`.
 - O periodo `De/Para` e o filtro `Tipo` local ficam dentro do grafico `Visao geral por periodo` e restringem somente esse grafico por `Data execucao` e `Tipo de Servico`, sem limitar o resultado ao ciclo selecionado.
 - Os filtros `Tipo` seguem a mesma regra da Carteira Operacional: `Manutencao` casa por texto normalizado contendo `MANUTENCAO` ou `EMERGENCIAL`; `Obras` e o complemento; `Todos` preserva a leitura misturada.
 - A categoria `Garantia de faturamento minimo` soma `project_measurement_orders.minimum_billing_amount` das ordens `SEM_PRODUCAO`, ativas, nao canceladas e com valor positivo.
-- A garantia minima aparece somente quando o filtro `Status execucao` esta em `Todos`, pois nao representa um Estado Trabalho da Programacao.
+- A garantia minima aparece somente quando o filtro `Estado Trabalho` esta em `Todos`, pois nao representa um Estado Trabalho da Programacao.
 - O periodo `De/Para` abre preenchido com o ano calendario corrente, de `01/01` a `31/12`, acompanhando automaticamente a virada do ano.
 - O periodo nao atualiza automaticamente ao digitar; o usuario precisa clicar em `Filtrar`.
 - O filtro `Tipo` local tambem passa pelo botao `Filtrar`.
 - O botao do filtro local da `Visao geral por periodo` exibe apenas `Filtrar` e usa o mesmo visual primario azul dos filtros principais.
 - Os filtros gerais nao atualizam automaticamente ao selecionar/digitar; o usuario precisa clicar em `Filtrar`.
 - Ciclo, tabela/grafico do ciclo e tabela/grafico de encarregados usam o ciclo operacional completo com os filtros gerais selecionados.
-- Filtros gerais como Projeto, Equipe, Encarregado e Status execucao tambem sao respeitados no grafico por periodo.
+- Filtros gerais como Projeto, Equipe, Encarregado e Estado Trabalho tambem sao respeitados no grafico por periodo.
 - Filtro `Supervisor` tambem restringe as consolidacoes do ciclo, periodo e supervisor.
 - Os blocos `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo` possuem select local de semana, sem alterar os filtros gerais do dashboard.
 - O select local de semana possui `Ciclo completo` e as semanas sequenciais do ciclo 21 a 20 (`1ª semana`, `2ª semana`, etc.), conforme a quantidade de semanas existentes no ciclo.
@@ -107,7 +107,7 @@ Filtros, auto-complete e listagem
 - A coluna `Equipes/Ciclo` usa a soma de `Equipes medida` cadastradas na Meta do ciclo, nao a quantidade de equipes que tiveram medicao lancada.
 - Ciclos totalmente zerados nao aparecem no grafico nem na tabela anual.
 - Se o ciclo nao possuir meta cadastrada na tela Meta, a tabela anual mostra `Sem meta` e usa meta zero para calculo visual.
-- O grafico anual respeita os filtros gerais de Projeto e Status execucao, mantendo todas as leituras filtradas por tenant.
+- O grafico anual respeita os filtros gerais de Projeto e Estado Trabalho, mantendo todas as leituras filtradas por tenant.
 - O grafico de ciclo exibe a barra `Projecao de fechamento` entre `Valor` e a meta selecionada.
 - A projecao de fechamento usa `Valor realizado / Dias trabalhados * Dias da meta selecionada`.
 - Quando a meta selecionada for `Meta ciclo trabalhado`, a tela oculta a `Projecao de fechamento`, pois essa meta usa `Média Dias trabalhados` por equipe e nao deve ser misturada com os dias distintos do ciclo.
@@ -130,10 +130,10 @@ Filtros, auto-complete e listagem
 - O card `Projetos no ciclo` do ciclo exibe todos os projetos distintos do ciclo e dos filtros gerais aplicados.
 - O card `Projetos no ciclo (concluidos)` do ciclo exibe somente projetos concluidos no ciclo e nos filtros gerais aplicados.
 - O card `Ordens de Servicos no ciclo` exibe a quantidade de ordens `COM_PRODUCAO` do ciclo e dos filtros gerais aplicados.
-- Na `Visao geral por periodo`, os cards ficam acima da tabela, em linha no desktop e com quebra responsiva; `Ticket medio / Projetos` usa o total do recorte `De/Para`, `Ticket medio / Projetos (concluidos)` usa somente `Concluidos`, e os demais cards usam o total do recorte, incluindo as categorias exibidas na tabela do periodo e a Garantia de faturamento minimo quando aplicavel.
+- Na `Visao geral por periodo`, os cards ficam acima da tabela, em linha no desktop e com quebra responsiva; `Ticket medio / Projetos` usa o total do recorte `De/Para`, `Ticket medio / Projetos (concluidos)` usa somente `Concluido`, e os demais cards usam o total do recorte, incluindo as categorias exibidas na tabela do periodo e a Garantia de faturamento minimo quando aplicavel.
 - As tabelas dos graficos de status exibem linha `Total` no rodape, usando o total de valor, ordens e projetos distintos do recorte para evitar duplicar projetos que aparecam em mais de uma categoria.
-- As tabelas de Concluidos/Parciais/Parcial planejado beneficio atingido/Pendencias, Ciclo da medicao, Equipes no ciclo, Encarregados no ciclo e Supervisor no ciclo exibem a quantidade de projetos distintos do respectivo recorte/linha.
-- Nas tabelas de categoria (`Concluidos X parciais no ciclo` e `Visao geral por periodo`), clicar na linha abre modal com os projetos daquela categoria no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
+- As tabelas de Concluido/Parcial/Beneficio atingido/Pendente, Ciclo da medicao, Equipes no ciclo, Encarregados no ciclo e Supervisor no ciclo exibem a quantidade de projetos distintos do respectivo recorte/linha.
+- Nas tabelas de categoria (`Estado Trabalho no ciclo` e `Visao geral por periodo`), clicar na linha abre modal com os projetos daquela categoria no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
 - Na tabela `Ciclo da medicao`, clicar na linha do ciclo abre modal com todos os projetos atuados no ciclo filtrado, exibindo Projeto, Primeira atuacao, Valor antes do ciclo, Valor no ciclo, Valor acumulado, N de ciclos trabalhados e Semana da primeira atuacao no ciclo.
 - Nas tabelas `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo`, clicar na linha abre modal com os projetos da equipe ou do responsavel no recorte selecionado, exibindo projeto, centro, valor cobrado e ordens.
 - O modal de projetos possui exportacao `Exportar Excel (CSV)` com o mesmo conteudo da tabela.
@@ -162,7 +162,10 @@ Boas praticas
 - Usar ordens `SEM_PRODUCAO`, ativas, nao canceladas e com `minimum_billing_amount > 0` somente na categoria financeira de garantia minima da `Visao geral por periodo`.
 - Excluir obras de teste das consolidacoes.
 - Usar a Meta cadastrada como fonte oficial para comparacao de ciclo.
-- Consolidar `Status execucao` dos graficos `Concluidos X parciais` pelo ultimo `Estado Trabalho` conhecido do projeto ate o fim do recorte analisado; se o projeto nao tiver estado na Programacao, usar o snapshot gravado na ordem de Medicao como fallback.
+- Consolidar `Estado Trabalho` dos graficos de status pelo ultimo `Estado Trabalho` conhecido do projeto ate o fim do recorte analisado; se o projeto nao tiver estado na Programacao, usar o snapshot gravado na ordem de Medicao como fallback.
+- A categoria `Parcial` agrega `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e o legado `PARCIAL`.
+- A categoria `Beneficio atingido` agrega `BENEFICIO_ATINGIDO` e os legados `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`/`PARCIAL_PLANEJADO_BENFICIO_ATINGIDO`.
+- A categoria `Pendente` usa `programming.is_pendencia = true` no modelo normalizado e ainda aceita o legado `PENDENCIA`.
 
 Cancelamento e saldo
 --------------------
@@ -364,7 +367,7 @@ Atualizacao 2026-05
   - Depois:
     - O grafico por periodo passa a se chamar `Visao geral por periodo`.
     - A nova categoria `Garantia de faturamento minimo` soma `minimum_billing_amount` das ordens `SEM_PRODUCAO`, ativas, nao canceladas e com valor positivo no recorte `De/Para`.
-    - A categoria respeita filtros de projeto, equipe, encarregado e supervisor, exclui obras de teste e fica oculta quando um `Status execucao` operacional e selecionado.
+    - A categoria respeita filtros de projeto, equipe, encarregado e supervisor, exclui obras de teste e fica oculta quando um `Estado Trabalho` operacional e selecionado.
     - Indicadores do ciclo, metas, projecao, encarregados e supervisores continuam calculados somente com ordens `COM_PRODUCAO`.
   - Impacto multi-tenant:
     - Sem alteracao de schema/RLS; a nova leitura filtra `project_measurement_orders` pelo `tenant_id` autenticado.
@@ -391,7 +394,7 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
-  - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Status execucao com Pendencias e Parcial planejado beneficio atingido, periodo `De/Para` local da `Visao geral por periodo` com botao `Filtrar periodo`, categoria financeira Garantia de faturamento minimo, tabela oficial `Equipes no ciclo`, checkboxes independentes de metas das equipes e encarregados, filtros locais de semana dos blocos `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, linha de total nas tabelas de status, contagem de projetos nas tabelas, modal de projetos por categoria/equipe/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
+  - Responsavel por: renderizar filtros gerais com aplicacao manual pelo botao `Filtrar`, filtro Projeto digitavel por SOB, filtro Supervisor, filtro Estado Trabalho com Pendente e Beneficio atingido, periodo `De/Para` local da `Visao geral por periodo` com botao `Filtrar periodo`, categoria financeira Garantia de faturamento minimo, tabela oficial `Equipes no ciclo`, checkboxes independentes de metas das equipes e encarregados, filtros locais de semana dos blocos `Equipes no ciclo`, `Encarregados no ciclo` e `Supervisor no ciclo`, seletor de base da meta dos supervisores, supervisor no ciclo, cards de Ticket medio / Projetos, Ticket medio / Servicos, Projetos no ciclo e Ordens de Servicos no ciclo, linha de total nas tabelas de status, contagem de projetos nas tabelas, modal de projetos por categoria/equipe/encarregado/supervisor com exportacao CSV, projecao de fechamento do ciclo, ritmo atual, diferenca prevista, dias dinamicos por meta, legendas, graficos lado a lado, ranking de atingimento, bullet chart, gap financeiro, titulo de ciclo/semana por visao, botoes individuais de ampliar, modal de grafico e tabelas de conclusao/ciclo/encarregados.
 - Caminho: `src/app/api/dashboard-medicao/route.ts`
   - Responsavel por: autenticar e autorizar a leitura, carregar fontes filtradas pelo tenant, montar ciclos 21 a 20, aplicar filtros, calcular status do ciclo e periodo, garantia minima, tickets, ritmo e projecao, adaptar os dados para o modulo server-side de desempenho e montar o retorno da dashboard.
 - Caminho: `src/server/modules/team-performance/calculations.ts`
@@ -911,3 +914,36 @@ Atualizacao 2026-08-21 - Teto de 1.000 linhas em quatro consultas do dashboard
 - Na descoberta de ciclos o corte tirava CICLOS INTEIROS do seletor, tambem os mais antigos.
 - Efeito: numeros anuais e lista de ciclos MUDAM neste dashboard. Os valores novos sao os
   corretos; os anteriores estavam subestimados.
+
+Atualizacao 2026-08-26 - Categorias por Estado Trabalho
+-------------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/dashboard-measurement/controller.ts`
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `verificacao/crc/dashboard_medicao.md`
+  - `TASKS.md`
+- Funcoes/constantes tocadas:
+  - `ProgrammingCompletionTimelineRow`
+  - `fetchWorkCompletionTimelineByProject`
+  - `normalizeCompletionStatus`
+  - `isCompletionFilterStatus`
+  - `buildCompletionChart`
+  - `completionChartColors`
+  - filtro `Estado Trabalho`
+- Antes:
+  - O dashboard ainda tratava `Parcial planejado beneficio atingido` como categoria propria.
+  - `BENEFICIO_ATINGIDO` do modelo normalizado podia cair como `NAO_INFORMADO`.
+  - Pendencias do modelo normalizado dependiam de codigo legado, sem ler `programming.is_pendencia`.
+  - A UI ainda usava o nome `Status execucao` e o subtitulo citava `status economico`.
+- Depois:
+  - `Parcial` agrega `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e o legado `PARCIAL`.
+  - `Beneficio atingido` e separado e agrega `BENEFICIO_ATINGIDO` e os legados com `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`.
+  - `Concluido` permanece separado.
+  - `Pendente` e separado e considera `programming.is_pendencia = true`, mantendo compatibilidade com o legado `PENDENCIA`.
+  - `Garantia de faturamento minimo` permanece separada, apenas para ordens `SEM_PRODUCAO` com `minimum_billing_amount > 0`.
+  - A tela passa a exibir `Estado Trabalho` no filtro e `Estado Trabalho no ciclo` no grafico.
+- Impacto multi-tenant:
+  - Sem alteracao de schema, RLS, grants ou permissoes.
+  - As leituras continuam usando o `tenant_id` autenticado e a rota segue exigindo `dashboard-medicao/read`.
