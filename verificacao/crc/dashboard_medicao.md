@@ -124,4 +124,4 @@ Total: 15 queries, potencial de trazer 20.000 registros brutos
 |---|---|
 | 2026-06 | Criado CRC com identificação dos problemas de performance críticos |
 | 2026-07-05 | `project_measurement_order_items` passou a ser lido em chunks de 200 IDs para evitar falha do Dashboard Medicao em recortes com muitas ordens |
-| 2026-08-26 | Categorias do grafico de Estado Trabalho alinhadas ao modelo normalizado: `Parcial` agrega planejado/nao planejado, `Beneficio atingido` fica separado e `Pendente` passa a considerar `programming.is_pendencia` |
+| 2026-08-26 | Categorias do grafico de Estado Trabalho alinhadas ao modelo normalizado: `Parcial` agrega planejado/nao planejado, `Beneficio atingido` fica separado e `Pendente` passa a considerar `programming.is_pendencia` sem sobrepor pendencia ja `CONCLUIDO` |
