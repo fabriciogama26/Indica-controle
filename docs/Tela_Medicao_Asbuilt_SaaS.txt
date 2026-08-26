@@ -169,6 +169,7 @@ Atualizacao 2026-08-26 - Observacao do item no cadastro em massa
   - O modelo passa a expor `observacao_item`.
   - O importador continua aceitando `observacao`, `observacao_item` ou `obs` como aliases, mas grava o valor apenas em `items[].observation`.
   - O agrupamento do lote ignora a observacao do item e o backend força `notes: null` para importacao em massa.
+  - A API consolida entradas repetidas do mesmo projeto, data de corte, tipo e motivo antes de chamar a RPC, para que observacoes de item diferentes nao gerem medicoes separadas nem erro de duplicidade.
 - Multi-tenant:
   - Sem alteracao de RLS, permissao ou fonte de `tenant_id`; a rota continua resolvendo tenant e usuario pela sessao no servidor.
 
