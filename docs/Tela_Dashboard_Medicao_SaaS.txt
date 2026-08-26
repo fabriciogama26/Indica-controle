@@ -103,7 +103,8 @@ Filtros, auto-complete e listagem
 - Os valores do grafico anual aparecem no tooltip ao passar o mouse; as barras de Medicao com valor positivo exibem rotulo fixo e valores zero nao geram rotulos visuais.
 - O bloco anual exibe cards de `Meta acumulada`, `Previsao acumulada`, `Medicao acumulada` e `Atingimento`; a legenda do grafico fica abaixo do card `Meta acumulada`.
 - O modal ampliado de `Evolucao anual por ciclo` tambem exibe os cards acumulados, a legenda, o grafico e a tabela de detalhamento.
-- A tabela `Detalhamento dos ciclos` exibe inicialmente Ciclo, Meta, Previsao, Medicao, `% Medicao`, Diferenca da meta, Equipes/Ciclo, Projetos e Status, com numeros alinhados a direita, primeira coluna e cabecalho fixos, diferencas coloridas e status em badge.
+- A tabela `Detalhamento dos ciclos` exibe inicialmente Ciclo, Meta, Previsao, Medicao, OS, Ticket medio/OS, `% Medicao`, Diferenca da meta, Equipes/Ciclo, Projetos e Status, com numeros alinhados a direita, primeira coluna e cabecalho fixos, diferencas coloridas e status em badge.
+- Na tabela `Detalhamento dos ciclos`, `OS` usa a quantidade de ordens `COM_PRODUCAO` do ciclo filtrado e `Ticket medio/OS` calcula `Medicao / OS`.
 - A coluna `Equipes/Ciclo` usa a soma de `Equipes medida` cadastradas na Meta do ciclo, nao a quantidade de equipes que tiveram medicao lancada.
 - Ciclos totalmente zerados nao aparecem no grafico nem na tabela anual.
 - Se o ciclo nao possuir meta cadastrada na tela Meta, a tabela anual mostra `Sem meta` e usa meta zero para calculo visual.
@@ -947,3 +948,19 @@ Atualizacao 2026-08-26 - Categorias por Estado Trabalho
 - Impacto multi-tenant:
   - Sem alteracao de schema, RLS, grants ou permissoes.
   - As leituras continuam usando o `tenant_id` autenticado e a rota segue exigindo `dashboard-medicao/read`.
+
+Atualizacao 2026-08-26 - Detalhamento dos ciclos com OS
+-------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `docs/Tela_Dashboard_Medicao_SaaS.txt`
+  - `verificacao/crc/dashboard_medicao.md`
+  - `TASKS.md`
+- Antes:
+  - A tabela `Detalhamento dos ciclos` mostrava valores financeiros e projetos, mas nao exibia a quantidade de OS nem o ticket medio por OS.
+- Depois:
+  - A tabela passa a exibir `OS` e `Ticket medio/OS` ao lado da `Medicao`.
+  - `Ticket medio/OS` e calculado como `Medicao / OS`, usando zero quando o ciclo nao tem ordens.
+- Impacto multi-tenant:
+  - Sem alteracao de API, schema, RLS, grants ou permissoes.
+  - A tela usa `orderCount`, que ja vinha filtrado pelo `tenant_id` autenticado no payload do dashboard.
