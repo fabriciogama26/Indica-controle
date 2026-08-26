@@ -492,6 +492,7 @@ export function AppShell({ children }: PropsWithChildren) {
   }
 
   const displayName = session.user.displayName?.trim() || "Usuario";
+  const tenantLabel = session.user.tenantName?.trim() || session.user.tenantId || "sem contrato";
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -542,8 +543,8 @@ export function AppShell({ children }: PropsWithChildren) {
 
             <div className={styles.userIdentity}>
               <span className={styles.userName}>{displayName}</span>
-              <span className={styles.userMeta}>
-                Tenant: {session.user.tenantId} | Perfil: {normalizedRole || "sem role"}
+              <span className={styles.userMeta} title={`Contrato: ${tenantLabel}`}>
+                Contrato: {tenantLabel} | Perfil: {normalizedRole || "sem role"}
               </span>
             </div>
 
