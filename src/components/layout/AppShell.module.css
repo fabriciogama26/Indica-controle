@@ -227,6 +227,7 @@
 .userIdentity {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .userName {
@@ -236,7 +237,12 @@
 
 .userMeta {
   color: #64748b;
+  display: block;
   font-size: 0.82rem;
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mainContent {
@@ -298,6 +304,11 @@
   .userPanel {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .userMeta {
+    max-width: none;
+    white-space: normal;
   }
 
   .headerActions {

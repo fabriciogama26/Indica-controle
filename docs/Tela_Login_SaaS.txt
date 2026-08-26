@@ -46,6 +46,7 @@ Boas praticas
 - Registrar `TOKEN_EXPIRED` no `login_audit` sempre que a sessao remota precisar ser encerrada por expiracao.
 - Invalidar hidratacoes antigas de sessao quando houver novo login/logout para evitar sobrescrever o usuario atual.
 - Desabilitar cache em `/api/auth/session-access` no frontend para evitar leitura de identidade/permissoes antigas.
+- Hidratar `tenantName` em `/api/auth/session-access` para que o shell exiba o nome do contrato ativo em vez do UUID.
 - Direcionar todo admin remoto para `/selecionar-contrato` apos login.
 - Persistir o contrato ativo apenas via API server-side em cookie `httpOnly`; o front nao deve editar esse estado direto.
 - Resolver tenant no backend por membership: para admin remoto, o cookie indica o tenant ativo e precisa ser validado contra os tenants permitidos ao usuario; `user`/`viewer` ignoram esse cookie e `x-tenant-id` nao e fonte operacional padrao.
@@ -100,7 +101,7 @@ Funcoes principais
 - Caminho: `src/modules/auth/tenant-selector/TenantSelectorPageView.module.css`
   - Responsavel por: layout visual e responsividade da tela de selecao de contrato.
 - Caminho: `src/services/auth/auth.service.ts`
-  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `requestPasswordRecovery`, `clearPersistedSession`, `consumeAuthFeedback`, limpeza do cookie de tenant ativo e sincronizacao de token remoto, preservando `session_ref` da sessao web.
+  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `requestPasswordRecovery`, `clearPersistedSession`, `consumeAuthFeedback`, limpeza do cookie de tenant ativo, hidratacao de `tenantName` e sincronizacao de token remoto, preservando `session_ref` da sessao web.
 - Caminho: `supabase/edge_functions/auth-login-web/index.ts`
   - Responsavel por: exigir gravacao valida de evento `LOGIN` antes de concluir o login remoto e resolver `role_key` via `app_roles`.
 - Caminho: `supabase/edge_functions/logout/index.ts`
@@ -130,6 +131,21 @@ Servicos e integracoes externas
 - Rota local: `src/app/api/auth/local-login/route.ts`
 - Rota de sessao: `src/app/api/auth/session-access/route.ts`
 - Rota de tenant ativo: `src/app/api/auth/active-tenant/route.ts`
+
+Atualizacao 2026-08 - Nome do contrato na sessao
+------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/auth/session-access/route.ts`
+  - `src/services/auth/auth.service.ts`
+  - `src/types/auth.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/components/layout/AppShell.module.css`
+- Comportamento antes/depois:
+  - Antes: a sessao frontend carregava apenas `tenantId`, e o topo exibia o UUID do tenant.
+  - Depois: a sessao tambem carrega `tenantName`, resolvido em `tenants.name`, e o topo exibe o nome do contrato.
+- Impacto multi-tenant:
+  - A leitura do nome usa o `appUser.tenant_id` ja resolvido por `resolveAuthenticatedAppUser`.
+  - Nao ha troca de tenant por body/header nem alteracao de cookie, RLS, grants ou permissoes.
 
 Ajuda contextual
 - O login remoto exige `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e a Edge Function `auth-login-web` publicada.

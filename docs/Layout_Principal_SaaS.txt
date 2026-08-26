@@ -7,6 +7,7 @@ Visao geral
 - Usa menu lateral compacto no padrao SaaS, com icones por item e secoes visuais fixas.
 - Scroll interno: somente a area de conteudo (`mainContent`) deve rolar; sidebar e topbar permanecem fixos no desktop.
 - O nome exibido no bloco `Conectado` usa o campo `display` do usuario autenticado.
+- O contrato exibido no bloco `Conectado` usa `tenantName` da sessao; o UUID fica apenas como fallback tecnico.
 
 Arquitetura
 -----------
@@ -29,6 +30,7 @@ Boas praticas
 - Resolver titulo e subtitulo pela rota atual.
 - Exibir nome do usuario e status de conexao na barra superior, sem confiar na UI para seguranca.
 - Exibir o nome no bloco `Conectado` com base em `app_users.display` (fallback visual para `Usuario` quando vazio).
+- Exibir o nome do contrato no topo, mantendo o `tenant_id` fora da UI principal quando `tenantName` estiver disponivel.
 - Esconder rotas administrativas quando o `role` nao permitir acesso.
 - Respeitar `app_user_page_permissions` quando o usuario tiver permissoes customizadas por tela.
 - Evitar botoes grandes na lateral; a navegacao deve parecer menu de dashboard e nao grade de acoes.
@@ -86,7 +88,7 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: renderizar shell, proteger rotas, exibir usuario conectado, expor o atalho de configuracoes, executar logout, filtrar a navegacao por `pageAccess` e montar o menu lateral com icones por secao.
+  - Responsavel por: renderizar shell, proteger rotas, exibir usuario conectado, exibir contrato ativo por nome, expor o atalho de configuracoes, executar logout, filtrar a navegacao por `pageAccess` e montar o menu lateral com icones por secao.
 - Caminho: `src/app/(dashboard)/layout.tsx`
   - Responsavel por: aplicar o shell em todas as rotas do dashboard.
 
@@ -100,11 +102,11 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: consumo do estado autenticado.
 - Caminho: `src/types/auth.ts`
-  - Responsavel por: manter o `displayName` opcional do usuario autenticado.
+  - Responsavel por: manter `displayName` e `tenantName` opcionais do usuario autenticado.
 
 Servicos e integracoes externas
 - Caminho: `src/services/auth/auth.service.ts`
-  - Responsavel por: limpar sessao, chamar `logout` do Supabase, hidratar `pageAccess` a partir de `/api/auth/session-access` e preparar `display_name` para a sessao.
+  - Responsavel por: limpar sessao, chamar `logout` do Supabase, hidratar `pageAccess` e `tenantName` a partir de `/api/auth/session-access` e preparar `display_name` para a sessao.
 
 Ajuda contextual
 - O shell atual usa protecao client-side e agora tambem respeita timeout por inatividade via `AuthContext`.
@@ -122,3 +124,25 @@ Ajuda contextual
 - Estado atual: a sidebar passa a expor `/mapa-programacao` quando `page_key = mapa-programacao` estiver liberada para o usuario.
 - Estado atual: a sidebar passa a expor a rota `/dash-estoque` como `Dashboard Estoque` quando a `page_key = dash-estoque` estiver liberada para o usuario.
 - Estado atual: a sidebar passa a expor a rota `/consumo-projeto` como `Consumo por Projeto` quando a `page_key = consumo-projeto` estiver liberada para o usuario.
+
+Atualizacao 2026-08 - Contrato no topo
+--------------------------------------
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/components/layout/AppShell.module.css`
+  - `src/types/auth.ts`
+  - `src/services/auth/auth.service.ts`
+  - `src/app/api/auth/session-access/route.ts`
+- Funcoes/hooks/constantes tocadas:
+  - `AppShell`
+  - `AuthUser`
+  - `remoteLogin`
+  - `localLogin`
+  - `hydrateSessionAccess`
+  - `GET /api/auth/session-access`
+- Comportamento antes/depois:
+  - Antes: o bloco de usuario mostrava `Tenant: <uuid>`.
+  - Depois: o bloco mostra `Contrato: <nome do contrato>` e usa o UUID apenas como fallback para sessoes antigas ou ausencia de nome.
+- Impacto multi-tenant:
+  - O contrato exibido vem de `tenants.name` consultado pelo `tenant_id` ja resolvido no servidor.
+  - Nenhum `tenant_id` vindo do cliente foi aceito, e RLS/permissoes nao foram alteradas.
