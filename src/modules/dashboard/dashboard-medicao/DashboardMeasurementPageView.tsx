@@ -801,7 +801,7 @@ export function DashboardMeasurementPageView() {
               <th>Ciclo</th>
               <th>Meta</th>
               <th>Previsao</th>
-              <th>Medicao</th>
+              <th>Medicao</th><th>OS</th><th>Ticket medio/OS</th>
               <th>% Medicao</th>
               <th>Diferenca da meta</th>
               <th>Equipes/Ciclo</th>
@@ -823,7 +823,7 @@ export function DashboardMeasurementPageView() {
                     <td>{item.label}</td>
                     <td className={styles.numericCell}>{formatCompactCurrency(item.metaValue)}</td>
                     <td className={styles.numericCell}>{formatCompactCurrency(item.forecastValue)}</td>
-                    <td className={styles.numericCell}>{formatCompactCurrency(item.measuredValue)}</td>
+                    <td className={styles.numericCell}>{formatCompactCurrency(item.measuredValue)}</td><td className={styles.numericCell}>{item.orderCount}</td><td className={styles.numericCell}>{formatCompactCurrency(item.orderCount > 0 ? item.measuredValue / item.orderCount : 0)}</td>
                     <td className={styles.numericCell}>{formatPercentOneDecimal(item.measuredPercentage)}</td>
                     <td className={`${styles.numericCell} ${measuredDifferenceClass ?? ""}`}>{formatCompactCurrency(item.measuredDifference)}</td>
                     <td className={styles.numericCell}>{item.teamCount}</td>
@@ -838,7 +838,7 @@ export function DashboardMeasurementPageView() {
               })
             ) : (
               <tr>
-                <td colSpan={9} className={styles.emptyRow}>Nenhum ciclo encontrado para o ano selecionado.</td>
+                <td colSpan={11} className={styles.emptyRow}>Nenhum ciclo encontrado para o ano selecionado.</td>
               </tr>
             )}
           </tbody>
