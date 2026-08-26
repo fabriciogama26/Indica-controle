@@ -323,6 +323,7 @@ export type ProgrammingCompletionTimelineRow = {
   execution_date: string;
   status: string;
   work_completion_status: string | null;
+  is_pendencia: boolean | null;
   updated_at: string;
 };
 
@@ -343,12 +344,12 @@ export async function fetchWorkCompletionTimelineByProject(params: {
     const chunk = uniqueIds.slice(index, index + TIMELINE_CHUNK_SIZE);
     const { data, error } = await params.supabase
       .from("programming")
-      .select("project_id, execution_date, status, work_completion_status, updated_at")
+      .select("project_id, execution_date, status, work_completion_status, is_pendencia, updated_at")
       .eq("tenant_id", params.tenantId)
       .in("project_id", chunk)
       .lte("execution_date", params.endDate)
       .neq("status", "CANCELADA")
-      .not("work_completion_status", "is", null)
+      .or("work_completion_status.not.is.null,is_pendencia.eq.true")
       .returns<ProgrammingCompletionTimelineRow[]>();
 
     if (error) return { rows: [], error };
