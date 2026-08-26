@@ -346,3 +346,150 @@ CORRECAO
 - Arquivos alterados:
   - `src/modules/dashboard/faturamento/BillingPageView.tsx`
   - `src/modules/dashboard/faturamento/constants.ts` (constante `EXPORT_PAGE_SIZE`)
+
+Atualizacao 2026-08-26 - Auditoria de brechas: grants de RPC, permissao de export e truncamentos
+------------------------------------------------------------------------------------------------
+Auditoria completa da tela (rotas, PageView e migrations 176/259/260/262/263/278/298/360).
+Correcoes agrupadas por severidade.
+
+CRITICO - RPC SECURITY DEFINER executavel por `authenticated`
+- ACHADO: a migration 298 estabeleceu a politica "RPC SECURITY DEFINER so por
+  service_role" e blindou `save_project_billing_order`, mas deixou de fora tres funcoes
+  do mesmo modulo, que seguiam com o GRANT original da 176 para `authenticated`.
+  Como o anon key e o JWT do usuario estao no browser, `/rest/v1/rpc/...` era alcancavel:
+  1. `set_project_billing_order_status` - sem NENHUMA validacao interna do chamador.
+     Qualquer usuario logado, mesmo SEM a pagina `faturamento` liberada, podia FECHAR,
+     CANCELAR ou REABRIR faturamento, gravando `updated_by`/`canceled_by` com o id de
+     outra pessoa. O `expected_updated_at` nao era barreira: a RLS de leitura permite
+     SELECT a qualquer membro do tenant, entao o valor era lido antes da chamada.
+  2. `save_project_billing_order_batch_partial` - bypass de `can_create`/`can_import`:
+     ate 500 faturamentos por chamada sem passar pelo `authorizePageAction` da rota.
+  3. `append_project_billing_order_history_record` - permitia forjar linha de historico
+     em qualquer tenant, com `created_by` arbitrario.
+- CORRECAO: `supabase/migrations/388_harden_project_billing_rpc_grants.sql` revoga
+  `public`/`anon`/`authenticated` e concede EXECUTE so a `service_role` nas tres, com o
+  bloco `do $$ ... has_function_privilege` de verificacao (mesmo padrao da 298).
+  Alem dos grants:
+  - `set_project_billing_order_status` recriada com o guard de `auth.uid()` que a 278
+    aplicou na funcao irma (defesa em camadas: um GRANT reaberto por engano no futuro
+    nao reabre sozinho a brecha). Corpo restante identico ao da 259.
+  - `save_project_billing_order_batch_partial` recriada com subtransacao por linha
+    (`begin ... exception when others`). Antes, o nome prometia importacao PARCIAL mas
+    qualquer erro SQL de verdade abortava a transacao inteira e o lote virava um 500
+    opaco - o caso real e a colisao de `project_billing_orders_unique_number`, ja que
+    `now()` e constante na transacao e as 500 linhas compartilham o timestamp do numero.
+- `scripts/check-security-definer.ps1`: as notas de `$knownNoRevoke` para as migrations
+  259-262 diziam "Corrigida pelas migrations 278/298", o que era so parcialmente verdade
+  e foi o que silenciou este achado. Passam a citar a 388 para status/batch.
+
+ALTO - `valor_total` e `itens` zerados na listagem e no CSV
+- ACHADO: o agregado de itens da listagem usava `.in("billing_order_id", pagedOrderIds)`
+  cru. Com `pageSize` de ate 500 ordens (o export pede exatamente 500), qualquer pagina
+  com mais de 1.000 itens somados era cortada em silencio pelo PostgREST, e as ordens que
+  ficavam de fora apareciam com `valor_total` e `itens` ZERADOS - na tela e no CSV. O card
+  "Valor total" estava certo (vem da RPC agregada); a linha a linha, nao.
+- CORRECAO: `loadRowsInChunks` (`BILLING_RELATION_CHUNK_SIZE = 100`) com ordem total por
+  `id`, e o erro do agregado passa a abortar a listagem em vez de ser ignorado.
+- `fetchBillingOrderDetail` recebeu o mesmo tratamento com `loadAllRows` (o `totalAmount`
+  do detalhe e a soma desses itens), preservando o fallback de schema legado.
+
+ALTO - permissao `export` nao era verificada
+- ACHADO: as duas exportacoes consomem `GET /api/faturamento`, que so exigia `can_access`.
+  Marcar `can_export = false` nao bloqueava nada em Faturamento, ao contrario de
+  medicao/estornos/stock-balance.
+- CORRECAO: a GET aceita `mode=export` e cobra a acao `export` nesse modo; as duas
+  exportacoes do PageView passam a enviar o parametro.
+
+ALTO - importacao em massa sem `Idempotency-Key`
+- ACHADO: a rota ja envolvia o POST em `withIdempotency` e o cadastro unitario mandava a
+  chave desde 2026-08-15, mas o lote (ate 500 faturamentos) mandava so `authHeaders`. Sem
+  o header o wrapper nao age: duplo clique ou retry duplicava o lote inteiro.
+- CORRECAO: `massImportIdempotency = useIdempotencyKey()`, header enviado no POST do lote,
+  `reset()` apos sucesso E na troca de arquivo (arquivo novo e outra operacao; sem o reset
+  a chave voltaria com payload diferente e o wrapper responderia 409).
+
+MEDIO - `ensureBillingPageAccess` duplicado divergia do `requirePageAction`
+- ACHADO: a funcao estava copiada em `route.ts`, `meta/route.ts` e
+  `activities/catalog/route.ts`, e divergia do helper canonico em dois pontos: pulava o
+  gate `app_pages.default_user_access = true and ativo = true` antes do fallback por role
+  (tela desativada continuava servindo dados) e tratava falha de lookup como "sem
+  registro", caindo para o role em vez de devolver `PAGE_PERMISSION_LOOKUP_FAILED`.
+- CORRECAO: novo `src/server/modules/faturamento/authorization.ts` com
+  `resolveBillingContext(request, { invalidSessionMessage, action })` sobre
+  `requirePageAction`; as tres copias foram removidas. A pagina `faturamento` nasceu na
+  migration 176 (anterior a 245), entao ja tem `default_user_access = true` e
+  `ativo = true` - aplicar o gate nao altera quem tem acesso hoje.
+
+MEDIO - injecao de filtro PostgREST na busca do catalogo
+- ACHADO: o `.or(...)` do catalogo interpolava `q` cru dentro de
+  `code.ilike.%<q>%,description.ilike.%<q>%`. Virgula, ponto e parenteses sao estruturais
+  na gramatica do `or=`: dava para injetar predicados arbitrarios sobre
+  `service_activities` (`?q=x,unit_value.gte.0`) e qualquer busca com virgula quebrava a
+  consulta. O filtro de tenant e AND de topo e nao caia, entao nao havia vazamento
+  cross-tenant.
+- CORRECAO: `quoteFilterValue` envolve o valor em aspas duplas escapando `\` e `"`. Os
+  curingas (`%`, e o `*` que o PostgREST converte em `%`) continuam valendo como antes.
+
+MEDIO - paginacao instavel no export
+- ACHADO: a listagem ordenava so por `updated_at desc`. A importacao em lote GARANTE o
+  empate (`now()` e constante na transacao, entao as 500 ordens nascem com o mesmo
+  `updated_at`), e o laco de exportacao repetia e pulava registros entre as paginas.
+- CORRECAO: desempate por `id` (ordem total).
+
+MEDIO - erro de banco cru devolvido ao cliente
+- ACHADO: `serializeDbError` incluia `code`, `message`, `details` e `hint` do Postgres em
+  todo 500, sem guarda de ambiente - unico lugar do `src/` que fazia isso.
+- CORRECAO: o erro completo vai para `console.error("[FATURAMENTO][DB]", ...)` com
+  `tenantId`/`userId`; o corpo da resposta so carrega `dbError` fora de producao.
+
+BAIXO
+- `normalizeUuid` usava uma regex de "36 caracteres hex ou hifen", que aceitava 36 hifens
+  e so estourava no cast `::uuid` (500 onde o certo e 400). Passa a exigir o formato real
+  de UUID.
+- `loadHistory` nao tinha teto: `.limit(BILLING_HISTORY_LIMIT = 50)`, conforme
+  `guias/guia_backend.md` regra 26 (historico exibido em modal).
+
+ACHADO ADICIONAL (encontrado durante a implementacao)
+- `exportOrdersDetailed` ainda pedia `pageSize=10000` numa unica requisicao - a mesma
+  falha que a Atualizacao 2026-08-21 corrigiu no `exportOrders`, mas que havia passado
+  batido na exportacao de detalhamento. Acima de 500 faturamentos o detalhamento saia
+  truncado em silencio. Corrigido junto: as duas exportacoes agora compartilham
+  `fetchBillingOrdersForExport` em `src/modules/dashboard/faturamento/exportQueries.ts`,
+  para nao voltarem a divergir.
+
+NAO ALTERADO (decisao consciente)
+- Reabrir faturamento fechado (`ABRIR`) continua exigindo `update`, e nao `reverse`.
+  E o mesmo criterio da tela de Medicao (`src/app/api/medicao/route.ts`); mudar so o
+  Faturamento criaria divergencia entre telas irmas. Fica registrado como candidato a
+  revisao conjunta das duas telas.
+- A RLS de `project_billing_orders` permite SELECT a qualquer membro do tenant,
+  independentemente da permissao de pagina. E o desenho vigente em todo o projeto (RLS
+  isola tenant; permissao de pagina e cobrada no Route Handler) e mudar isso e decisao de
+  arquitetura, nao correcao de tela.
+
+- Arquivos alterados:
+  - `supabase/migrations/388_harden_project_billing_rpc_grants.sql` (novo)
+  - `src/server/modules/faturamento/authorization.ts` (novo)
+  - `src/server/modules/faturamento/index.ts` (novo)
+  - `src/modules/dashboard/faturamento/exportQueries.ts` (novo)
+  - `src/app/api/faturamento/route.ts`
+  - `src/app/api/faturamento/meta/route.ts`
+  - `src/app/api/faturamento/activities/catalog/route.ts`
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `scripts/check-security-definer.ps1`
+  - `file-size-baseline.json`
+- Validado com `npx tsc --noEmit`, `npm run lint` (0 erros; `BillingPageView.tsx` encolheu
+  8 linhas liquidas e o baseline foi reduzido com `npm run lint:size:update`),
+  `npm run build` e `npm run db:security-check`.
+
+Mapa de Codigo - complemento 2026-08-26
+- `src/server/modules/faturamento/authorization.ts` -> `BILLING_PAGE_KEY`,
+  `resolveBillingContext(request, { invalidSessionMessage, action })`: autenticacao +
+  autorizacao de pagina unica das tres rotas do modulo.
+- `src/modules/dashboard/faturamento/exportQueries.ts` -> `createApiError` (movido do
+  PageView) e `fetchBillingOrdersForExport({ filters, authHeaders, errorMessage })`:
+  laco de paginacao compartilhado pelas duas exportacoes.
+- `src/app/api/faturamento/route.ts` -> constantes `BILLING_RELATION_CHUNK_SIZE` (100) e
+  `BILLING_HISTORY_LIMIT` (50); `UUID_PATTERN`; `dbErrorResponse` agora aceita
+  `tenantId`/`userId` para o log.
+- `src/app/api/faturamento/activities/catalog/route.ts` -> `quoteFilterValue`.

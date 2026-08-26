@@ -9,7 +9,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
-import { BILLING_PAGE_SIZE, EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { BILLING_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { createApiError, fetchBillingOrdersForExport } from "./exportQueries";
 import type {
   ActivityOption,
   BillingCatalogResponse,
@@ -111,18 +112,16 @@ function formatHistoryValue(value: unknown) {
   return String(value);
 }
 
-function createApiError(payload: { message?: string; dbError?: unknown }, fallback: string) {
-  return Object.assign(new Error(payload.message ?? fallback), {
-    payload,
-    dbError: payload.dbError ?? null,
-  });
-}
-
 export function BillingPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("faturamento");
   const exportCooldown = useExportCooldown();
   const createOrderIdempotency = useIdempotencyKey();
+  // A importacao em massa cria ate 500 faturamentos numa chamada. Sem chave de
+  // idempotencia, um duplo clique ou um retry de rede duplicava o lote inteiro:
+  // a rota ja envelopa o POST em `withIdempotency`, mas o wrapper so age quando o
+  // cliente manda o header.
+  const massImportIdempotency = useIdempotencyKey();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonOption[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityOption[]>([]);
@@ -587,30 +586,11 @@ export function BillingPageView() {
     }
     setIsExporting(true);
     try {
-      // `pageSize=10000` era recusado em silencio: `parsePagination` capa em
-      // `maxPageSize: 500`, entao a exportacao trazia UMA pagina de 500 linhas e se dava
-      // por completa. Agora percorre as paginas ate alcancar `pagination.total`.
-      const exported: BillingListResponse["orders"] = [];
-      let exportPage = 1;
-      let total = 0;
-
-      for (;;) {
-        const params = new URLSearchParams({ page: String(exportPage), pageSize: String(EXPORT_PAGE_SIZE) });
-        if (filters.projectId) params.set("projectId", filters.projectId);
-        if (filters.status !== "TODOS") params.set("status", filters.status);
-        if (filters.billingKind !== "TODOS") params.set("billingKind", filters.billingKind);
-        if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-        const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
-        const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
-        if (!response.ok) throw createApiError(payload, "Falha ao exportar faturamentos.");
-
-        const pageOrders = payload.orders ?? [];
-        total = payload.pagination?.total ?? total;
-        exported.push(...pageOrders);
-
-        if (!pageOrders.length || exported.length >= total) break;
-        exportPage += 1;
-      }
+      const exported = await fetchBillingOrdersForExport({
+        filters,
+        authHeaders,
+        errorMessage: "Falha ao exportar faturamentos.",
+      });
 
       downloadCsv("faturamento.csv", [
         ["numero", "projeto", "data_ingresso", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
@@ -642,16 +622,14 @@ export function BillingPageView() {
     }
     setIsExportingDetails(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "10000" });
-      if (filters.projectId) params.set("projectId", filters.projectId);
-      if (filters.status !== "TODOS") params.set("status", filters.status);
-      if (filters.billingKind !== "TODOS") params.set("billingKind", filters.billingKind);
-      if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-      const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
-      const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
-      if (!response.ok) throw createApiError(payload, "Falha ao exportar detalhamento.");
+      // Antes deste laco compartilhado o detalhamento pedia `pageSize=10000` e
+      // parava nos 500 primeiros faturamentos sem avisar (a rota capa em 500).
+      const exportOrders = await fetchBillingOrdersForExport({
+        filters,
+        authHeaders,
+        errorMessage: "Falha ao exportar detalhamento.",
+      });
 
-      const exportOrders = payload.orders ?? [];
       if (!exportOrders.length) {
         throw new Error("Nenhum faturamento encontrado para exportar detalhamento.");
       }
@@ -854,7 +832,7 @@ export function BillingPageView() {
 
       const response = await fetch("/api/faturamento", {
         method: "POST",
-        headers: authHeaders,
+        headers: { ...authHeaders, "Idempotency-Key": massImportIdempotency.getKey() },
         body: JSON.stringify({
           action: "BATCH_IMPORT_PARTIAL",
           rows: Array.from(groups.values()),
@@ -864,6 +842,9 @@ export function BillingPageView() {
       if (!response.ok) {
         throw createApiError(payload, "Falha ao importar faturamento.");
       }
+
+      // Lote aceito: a proxima importacao e outra operacao e precisa de chave nova.
+      massImportIdempotency.reset();
 
       const apiIssues = (payload.results ?? [])
         .filter((item) => item.success !== true)
@@ -1228,7 +1209,18 @@ export function BillingPageView() {
                   </div>
                 </div>
                 <label className={styles.importDropzone}>
-                  <input type="file" accept=".csv,text/csv" onChange={(event) => setMassImportFile(event.target.files?.[0] ?? null)} disabled={isImporting} />
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => {
+                      // Arquivo novo e outra operacao: sem o reset, a chave gerada para
+                      // a tentativa anterior voltaria com um payload diferente e o
+                      // wrapper de idempotencia recusaria com 409.
+                      massImportIdempotency.reset();
+                      setMassImportFile(event.target.files?.[0] ?? null);
+                    }}
+                    disabled={isImporting}
+                  />
                   <span>{massImportFile ? massImportFile.name : "Clique para selecionar o arquivo CSV"}</span>
                 </label>
                 <div className={styles.actions}>
