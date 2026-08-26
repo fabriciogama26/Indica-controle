@@ -493,3 +493,64 @@ Mapa de Codigo - complemento 2026-08-26
   `BILLING_HISTORY_LIMIT` (50); `UUID_PATTERN`; `dbErrorResponse` agora aceita
   `tenantId`/`userId` para o log.
 - `src/app/api/faturamento/activities/catalog/route.ts` -> `quoteFilterValue`.
+
+Atualizacao 2026-08-26 (2) - Importacao duplicava faturamento entre arquivos
+----------------------------------------------------------------------------
+ACHADO (reportado em uso real, nao pela auditoria anterior)
+- Dois arquivos do mesmo contrato foram importados (R$ 3.976.127,11 e
+  R$ 1.674.806,35) e a tela passou a somar R$ 5.366.906,08 em 146 faturamentos.
+  A diferenca para a soma simples (R$ 5.650.933,46) e exatamente o total das
+  linhas recusadas por duplicidade DENTRO de cada arquivo.
+- CAUSA: a deduplicacao da importacao so existia dentro de UMA chamada. O
+  `groupKey` de `BillingPageView.tsx` agrupa as linhas do CSV por
+  projeto|tipo|motivo|data_ingresso|notas, e a mensagem "Atividade duplicada no
+  mesmo faturamento" so dispara quando o mesmo codigo de atividade se repete
+  dentro desse grupo, no arquivo que esta sendo lido. Nada comparava a linha com
+  o que ja existia no banco, e `save_project_billing_order` sempre faz INSERT
+  quando `p_billing_order_id` e nulo. Importar dois arquivos com sobreposicao
+  criava dois conjuntos completos de faturamentos, sem um unico aviso.
+- Este ponto NAO foi pego pela auditoria da mesma data: ela verificou a validacao
+  DENTRO de uma importacao e nao questionou a ausencia de chave semantica entre
+  importacoes, mesmo com o `TASKS.md` de 2026-08-15 ja registrando que
+  `billing_number` "nunca colide" e que nao havia UNIQUE semantico.
+
+DECISAO DE REGRA (definida pelo usuario)
+- Chave que identifica o mesmo faturamento: projeto + data de ingresso + tipo
+  (com o motivo de sem producao, que faz parte do tipo) + notas do pedido. E a
+  mesma chave que o `groupKey` do importador ja usa. O motivo entra porque, sem
+  ele, o banco recusaria como duplicado um par de faturamentos SEM_PRODUCAO que o
+  importador legitimamente separa por motivos diferentes.
+- Comportamento na colisao: RECUSAR a linha e reportar. Nunca somar itens ao
+  faturamento existente, nunca sobrescrever.
+
+CORRECAO - `supabase/migrations/389_project_billing_unique_semantic_key.sql`
+- Indice unico parcial `ux_project_billing_orders_semantic_key` sobre
+  (tenant_id, project_id, ingresso_date, billing_kind,
+   coalesce(no_production_reason_id, uuid zero), coalesce(btrim(notes), ''))
+  com `where status <> 'CANCELADA'` — cancelar libera a chave para o lancamento
+  correto entrar no lugar.
+- `save_project_billing_order` ganha pre-checagem da chave na criacao, devolvendo
+  409 `DUPLICATE_BILLING_ORDER` com mensagem legivel. A pre-checagem existe SO
+  para a mensagem: a barreira real contra corrida e o indice unico
+  (`guias/guia_sql.md` regra 6). `unique_violation` do indice e traduzida no
+  mesmo 409, tanto no INSERT quanto no UPDATE (editar tambem pode colidir);
+  qualquer outra violacao unica continua subindo como erro de verdade, checada
+  pelo `constraint_name`.
+- `ingresso_date` nula (linhas anteriores a migration 260) nao colide: NULL e
+  sempre distinto num indice unico. Registros legados ficam fora da trava.
+- A mensagem por linha ja chega na lista "Linhas com erro" da tela sem mudanca de
+  frontend: o route mapeia `message` de cada resultado do lote. Um faturamento
+  duplicado com N linhas no CSV produz N linhas de erro, todas com o mesmo texto.
+
+ORDEM DE APLICACAO (obrigatoria)
+- O indice unico nao pode ser criado sobre dados que ja violam a chave. A
+  migration comeca com um bloco `do $$` que conta as violacoes e ABORTA com uma
+  amostra de ate 10 chaves, em vez de falhar no meio com erro de indice.
+- Sequencia correta: (1) limpar/cancelar os duplicados existentes;
+  (2) aplicar 388 e 389; (3) reimportar os arquivos. Aplicar a 389 antes da
+  limpeza e seguro — ela aborta sem escrever nada.
+
+- Arquivos alterados:
+  - `supabase/migrations/389_project_billing_unique_semantic_key.sql` (novo)
+- Validado com `npm run db:security-check` (107 migrations) e `npx tsc --noEmit`.
+  Migration NAO aplicada: exige `npm run db:check-link` e a limpeza previa.
