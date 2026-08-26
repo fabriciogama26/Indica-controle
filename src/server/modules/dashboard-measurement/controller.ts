@@ -145,11 +145,7 @@ type ProgrammingCompletionRow = {
   updated_at: string;
 };
 
-type ProgrammingCompletionTimelineItem = {
-  executionDate: string;
-  status: string;
-  updatedAt: string;
-};
+type ProgrammingCompletionTimelineItem = { executionDate: string; status: string; hasPendingFlag: boolean; updatedAt: string };
 
 type CycleWeek = {
   id: string;
@@ -220,12 +216,11 @@ function normalizeIsoDate(value: unknown) {
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
 }
 
-function normalizeCompletionStatus(value: unknown, isPendencia = false) {
+function normalizeCompletionStatus(value: unknown) {
   const token = normalizeToken(value)
     .replace(/\s+/g, "_");
 
   if (token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO")) return "CONCLUIDO";
-  if (isPendencia) return "PENDENCIA";
   if (
     token === "BENEFICIO_ATINGIDO"
     || token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
@@ -463,14 +458,16 @@ async function fetchProjectCompletionTimeline(params: {
   for (const row of rows as ProgrammingCompletionRow[]) {
     if (isCanceledProgrammingStatus(row.status)) continue;
 
-    const status = normalizeCompletionStatus(row.work_completion_status, row.is_pendencia === true);
+    const status = normalizeCompletionStatus(row.work_completion_status);
+    const hasPendingFlag = row.is_pendencia === true;
     const executionDate = normalizeIsoDate(row.execution_date);
-    if (status === "NAO_INFORMADO" || !executionDate) continue;
+    if ((status === "NAO_INFORMADO" && !hasPendingFlag) || !executionDate) continue;
 
     const current = result.get(row.project_id) ?? [];
     current.push({
       executionDate,
       status,
+      hasPendingFlag,
       updatedAt: row.updated_at,
     });
     result.set(row.project_id, current);
@@ -536,13 +533,15 @@ function resolveProjectCompletionAtWindowEnd(
     return null;
   }
 
+  let pendingFallback: "PENDENCIA" | null = null;
   for (const item of timeline.get(projectId) ?? []) {
     if (item.executionDate <= normalizedWindowEndDate) {
-      return item.status;
+      if (item.status !== "NAO_INFORMADO") return item.status;
+      if (item.hasPendingFlag) pendingFallback = "PENDENCIA";
     }
   }
 
-  return null;
+  return pendingFallback;
 }
 
 function resolveWindowEndDate(orders: MeasurementOrderRow[], fallbackEndDate: string) {

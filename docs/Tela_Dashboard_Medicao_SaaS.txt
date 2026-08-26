@@ -165,7 +165,7 @@ Boas praticas
 - Consolidar `Estado Trabalho` dos graficos de status pelo ultimo `Estado Trabalho` conhecido do projeto ate o fim do recorte analisado; se o projeto nao tiver estado na Programacao, usar o snapshot gravado na ordem de Medicao como fallback.
 - A categoria `Parcial` agrega `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e o legado `PARCIAL`.
 - A categoria `Beneficio atingido` agrega `BENEFICIO_ATINGIDO` e os legados `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`/`PARCIAL_PLANEJADO_BENFICIO_ATINGIDO`.
-- A categoria `Pendente` usa `programming.is_pendencia = true` no modelo normalizado quando a pendencia ainda nao esta `CONCLUIDO`, e ainda aceita o legado `PENDENCIA`.
+- A categoria `Pendente` usa `programming.is_pendencia = true` apenas como fallback quando nao existe Estado Trabalho preenchido no projeto ate o fim do recorte; se o ultimo Estado Trabalho real for `CONCLUIDO`, ele sobrepoe a pendencia. O legado `PENDENCIA` continua aceito.
 
 Cancelamento e saldo
 --------------------
@@ -941,7 +941,7 @@ Atualizacao 2026-08-26 - Categorias por Estado Trabalho
   - `Parcial` agrega `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` e o legado `PARCIAL`.
   - `Beneficio atingido` e separado e agrega `BENEFICIO_ATINGIDO` e os legados com `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO`.
   - `Concluido` permanece separado.
-  - `Pendente` e separado e considera `programming.is_pendencia = true` apenas quando o Estado Trabalho ainda nao e `CONCLUIDO`, mantendo compatibilidade com o legado `PENDENCIA`.
+  - `Pendente` e separado e considera `programming.is_pendencia = true` apenas como fallback quando nao existe Estado Trabalho preenchido no projeto ate o fim do recorte; `CONCLUIDO`, `PARCIAL` e `BENEFICIO_ATINGIDO` sobrepoem a flag de pendencia. O legado `PENDENCIA` continua aceito.
   - `Garantia de faturamento minimo` permanece separada, apenas para ordens `SEM_PRODUCAO` com `minimum_billing_amount > 0`.
   - A tela passa a exibir `Estado Trabalho` no filtro e `Estado Trabalho no ciclo` no grafico.
 - Impacto multi-tenant:
