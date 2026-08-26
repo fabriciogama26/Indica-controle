@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
-import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { resolveBillingContext } from "@/server/modules/faturamento";
 
 type ProjectRow = {
   id: string;
@@ -35,44 +34,16 @@ function dedupeNoProductionReasons(items: NoProductionReasonRow[]) {
   return Array.from(byName.values());
 }
 
-async function ensureBillingPageAccess(resolution: AuthenticatedAppUserContext) {
-  if (resolution.role.isAdmin) return true;
-
-  const userPermission = await resolution.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("user_id", resolution.appUser.id)
-    .eq("page_key", "faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) return Boolean(userPermission.data.can_access);
-  if (!resolution.appUser.role_id) return false;
-
-  const rolePermission = await resolution.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("role_id", resolution.appUser.role_id)
-    .eq("page_key", "faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 export async function GET(request: NextRequest) {
-  const resolution = await resolveAuthenticatedAppUser(request, {
+  const resolved = await resolveBillingContext(request, {
     invalidSessionMessage: "Sessao invalida para carregar metadados do faturamento.",
-    inactiveMessage: "Usuario inativo.",
+    action: "read",
   });
 
-  if ("error" in resolution) {
-    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  if ("errorResponse" in resolved) {
+    return resolved.errorResponse;
   }
-
-  if (!(await ensureBillingPageAccess(resolution))) {
-    return NextResponse.json({ message: "Acesso negado para carregar metadados do faturamento." }, { status: 403 });
-  }
+  const resolution = resolved.context;
 
   const [projectResult, noProductionReasonResult] = await Promise.all([
     resolution.supabase

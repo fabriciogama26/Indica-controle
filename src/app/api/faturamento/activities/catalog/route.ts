@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
-import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { resolveBillingContext } from "@/server/modules/faturamento";
 
 type CatalogRow = {
   id?: string;
@@ -54,45 +53,34 @@ function matchCatalogRow(item: CatalogRow, rawQuery: string) {
   );
 }
 
-async function ensureBillingPageAccess(resolution: AuthenticatedAppUserContext) {
-  if (resolution.role.isAdmin) return true;
-
-  const userPermission = await resolution.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("user_id", resolution.appUser.id)
-    .eq("page_key", "faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) return Boolean(userPermission.data.can_access);
-  if (!resolution.appUser.role_id) return false;
-
-  const rolePermission = await resolution.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("role_id", resolution.appUser.role_id)
-    .eq("page_key", "faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
+/**
+ * Envolve um valor de filtro do PostgREST em aspas duplas, escapando `\` e `"`.
+ *
+ * A gramatica do `or=(...)` e posicional: virgula separa condicoes, parenteses
+ * delimitam o grupo e ponto separa coluna/operador/valor. Interpolar o termo cru
+ * deixava o usuario injetar predicados arbitrarios sobre `service_activities`
+ * (`?q=x,unit_value.gte.0`) e quebrava a busca com qualquer termo que contivesse
+ * virgula. Entre aspas, esses caracteres viram parte do valor.
+ *
+ * Os curingas do `ilike` (`%` e o `*` que o PostgREST converte em `%`) NAO sao
+ * escapados: continuam valendo como hoje dentro do valor citado. O que muda e
+ * so a impossibilidade de encerrar o valor e emendar outra condicao.
+ */
+function quoteFilterValue(value: string) {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const resolution = await resolveAuthenticatedAppUser(request, {
+    const resolved = await resolveBillingContext(request, {
       invalidSessionMessage: "Sessao invalida para pesquisar atividades do faturamento.",
-      inactiveMessage: "Usuario inativo.",
+      action: "read",
     });
 
-    if ("error" in resolution) {
-      return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    if ("errorResponse" in resolved) {
+      return resolved.errorResponse;
     }
-
-    if (!(await ensureBillingPageAccess(resolution))) {
-      return NextResponse.json({ message: "Acesso negado para pesquisar atividades do faturamento." }, { status: 403 });
-    }
+    const resolution = resolved.context;
 
     const query = normalizeText(request.nextUrl.searchParams.get("q"));
     const includeInactive = normalizeText(request.nextUrl.searchParams.get("includeInactive")).toLowerCase() === "true";
@@ -100,11 +88,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ items: [] });
     }
 
+    const likeTerm = quoteFilterValue(`%${query}%`);
     let servicePrimaryQuery = resolution.supabase
       .from("service_activities")
       .select("id, code, description, unit, voice_point, unit_value, ativo")
       .eq("tenant_id", resolution.appUser.tenant_id)
-      .or(`code.ilike.%${query}%,description.ilike.%${query}%`)
+      .or(`code.ilike.${likeTerm},description.ilike.${likeTerm}`)
       .order("code", { ascending: true })
       .limit(40);
     if (!includeInactive) {
