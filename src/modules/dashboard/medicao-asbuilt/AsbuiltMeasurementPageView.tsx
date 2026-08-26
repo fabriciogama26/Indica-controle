@@ -92,7 +92,7 @@ const MASS_IMPORT_HEADER_ALIASES: Record<string, string[]> = {
   codigo_atividade: ["codigo_atividade", "codigo", "atividade", "voz", "code"],
   quantidade: ["quantidade", "qtd", "qty"],
   taxa: ["taxa", "rate"],
-  observacao: ["observacao", "obs", "observacao_item"],
+  observacao_item: ["observacao_item", "observacao", "obs"],
 };
 
 function buildRowId() {
@@ -797,7 +797,7 @@ export function AsbuiltMeasurementPageView() {
         const activityInput = readImportField(row, headerMap, "codigo_atividade");
         const quantityInput = readImportField(row, headerMap, "quantidade");
         const rateInput = readImportField(row, headerMap, "taxa");
-        const observation = readImportField(row, headerMap, "observacao");
+        const itemObservation = readImportField(row, headerMap, "observacao_item");
         const project = findProjectOption(projectInput);
         const serviceCoverageEndDate = parseDateInput(serviceCoverageEndDateInput);
         const asbuiltMeasurementKind = normalizeAsbuiltMeasurementKind(kindInput);
@@ -822,14 +822,14 @@ export function AsbuiltMeasurementPageView() {
           continue;
         }
 
-        const groupKey = [project.id, serviceCoverageEndDate, asbuiltMeasurementKind, reason?.id ?? "", observation].join("|");
+        const groupKey = [project.id, serviceCoverageEndDate, asbuiltMeasurementKind, reason?.id ?? ""].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
           serviceCoverageEndDate,
           asbuiltMeasurementKind,
           noProductionReasonId: reason?.id ?? "",
-          notes: observation,
+          notes: "",
           items: [],
         };
 
@@ -839,7 +839,7 @@ export function AsbuiltMeasurementPageView() {
         }
 
         group.rowNumbers.push(rowNumber);
-        group.items.push({ activityId: activity.id, quantity, rate, observation });
+        group.items.push({ activityId: activity.id, quantity, rate, observation: itemObservation });
         groups.set(groupKey, group);
       }
 
@@ -1220,7 +1220,7 @@ export function AsbuiltMeasurementPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas do modelo: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao. Obrigatorias: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, codigo_atividade, quantidade e taxa. Motivo e obrigatorio somente em Sem producao.</p>
+                    <p>Colunas do modelo: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao_item. Obrigatorias: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, codigo_atividade, quantidade e taxa. Motivo e obrigatorio somente em Sem producao.</p>
                   </div>
                 </div>
               </section>
