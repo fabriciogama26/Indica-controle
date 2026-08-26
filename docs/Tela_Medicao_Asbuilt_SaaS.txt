@@ -144,15 +144,33 @@ Atalhos
   - `GET /api/medicao-asbuilt/meta`
   - `GET /api/medicao-asbuilt/activities/catalog`
 - Modelo cadastro em massa:
-  - `projeto;servicos_considerados_ate;tipo_medicao_asbuilt;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao`
+  - `projeto;servicos_considerados_ate;tipo_medicao_asbuilt;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao_item`
   - Valores obrigatorios: `projeto`, `servicos_considerados_ate`, `tipo_medicao_asbuilt`, `codigo_atividade`, `quantidade` e `taxa`.
   - `servicos_considerados_ate` aceita `YYYY-MM-DD` ou `DD/MM/YYYY`.
-  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
+  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao_item` e opcional e preenche somente a observacao da atividade importada, nao a observacao geral da Medicao Asbuilt.
   - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
   - O importador aceita CSV separado por `;` ou `,`, respeitando campos entre aspas.
-  - O cabecalho aceita aliases operacionais como `sob`/`obra` para `projeto`, `data`/`data_corte` para `servicos_considerados_ate`, `codigo`/`voz` para `codigo_atividade`, `qtd` para `quantidade` e `obs` para `observacao`.
+  - O cabecalho aceita aliases operacionais como `sob`/`obra` para `projeto`, `data`/`data_corte` para `servicos_considerados_ate`, `codigo`/`voz` para `codigo_atividade`, `qtd` para `quantidade` e `obs`/`observacao` para `observacao_item`.
   - Arquivos acima de 5MB sao bloqueados antes da leitura.
   - Linhas com projeto inativo sao rejeitadas e retornam erro no resultado da importacao parcial.
+
+Atualizacao 2026-08-26 - Observacao do item no cadastro em massa
+----------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - `src/modules/dashboard/medicao-asbuilt/constants.ts`
+  - `src/app/api/medicao-asbuilt/route.ts`
+  - `docs/Tela_Medicao_Asbuilt_SaaS.txt`
+  - `TASKS.md`
+- Antes:
+  - A coluna `observacao` do cadastro em massa era usada tambem como `notes` da ordem e entrava na chave de agrupamento do lote.
+  - Linhas do mesmo projeto/data/tipo com observacoes diferentes podiam virar medicoes Asbuilt separadas, e a observacao geral ficava preenchida indevidamente.
+- Depois:
+  - O modelo passa a expor `observacao_item`.
+  - O importador continua aceitando `observacao`, `observacao_item` ou `obs` como aliases, mas grava o valor apenas em `items[].observation`.
+  - O agrupamento do lote ignora a observacao do item e o backend força `notes: null` para importacao em massa.
+- Multi-tenant:
+  - Sem alteracao de RLS, permissao ou fonte de `tenant_id`; a rota continua resolvendo tenant e usuario pela sessao no servidor.
 
 Atualizacao 2026-05
 -------------------

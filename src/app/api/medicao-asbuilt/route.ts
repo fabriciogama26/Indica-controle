@@ -903,7 +903,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     serviceCoverageEndDate: normalizeIsoDate(row.serviceCoverageEndDate),
     asbuiltMeasurementKind: normalizeAsbuiltMeasurementKind(row.asbuiltMeasurementKind),
     noProductionReasonId: normalizeUuid(row.noProductionReasonId),
-    notes: normalizeText(row.notes) || null,
+    notes: null,
     items: hasInvalidAsbuiltMeasurementItemValues(row.items) ? [] : normalizeAsbuiltMeasurementItems(row.items),
   }));
 

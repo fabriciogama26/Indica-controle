@@ -40,7 +40,7 @@ export const IMPORT_TEMPLATE_HEADERS = [
   "codigo_atividade",
   "quantidade",
   "taxa",
-  "observacao",
+  "observacao_item",
 ] as const;
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
