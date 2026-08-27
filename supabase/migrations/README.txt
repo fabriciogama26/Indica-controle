@@ -1207,3 +1207,8 @@ Observacao
 - Cria as RPCs `save_service_center_record` e `set_service_center_record_status` para o cadastro de Centro de Servico.
 - Move cadastro, edicao, ativacao/cancelamento e historico de `project_service_centers` para transacao unica com `SELECT ... FOR UPDATE` e `expectedUpdatedAt`.
 - Mantem as RPCs `SECURITY DEFINER` executaveis apenas por `service_role`, com validacao pos-aplicacao contra grants para `anon`/`authenticated`.
+
+391_create_municipality_rpcs.sql
+- Cria as RPCs `save_municipality_record` e `set_municipality_record_status` para o cadastro de Municipio.
+- Move cadastro, edicao, ativacao/cancelamento e historico de `project_municipalities` para transacao unica com `SELECT ... FOR UPDATE` e `expectedUpdatedAt`.
+- Mantem as RPCs `SECURITY DEFINER` executaveis apenas por `service_role`, com validacao pos-aplicacao contra grants para `anon`/`authenticated`.

@@ -1,0 +1,131 @@
+Tela: Municipio SaaS
+
+Visao geral
+-----------
+- Tela para cadastro e manutencao de municipios por tenant.
+- Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+- Mantem o catalogo `project_municipalities`, consumido por `Projetos`, `Equipes`, `Programacao` e telas operacionais que exibem base.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/municipio/page.tsx`
+- View: `src/modules/dashboard/municipio/MunicipalitiesPageView.tsx`
+- CSV: `src/modules/dashboard/municipio/csv.ts`
+- Fachada frontend: `src/modules/dashboard/municipio/index.ts`
+- API principal: `src/app/api/municipalities/route.ts`
+- Backend: `src/server/modules/municipalities/controller.ts`
+- Fachada backend: `src/server/modules/municipalities/index.ts`
+- Banco: `project_municipalities`, criada por `supabase/migrations/031_create_project_lookup_tables.sql`
+- Historico generico: `app_entity_history`, criada por `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- RPC transacional: `supabase/migrations/391_create_municipality_rpcs.sql`
+
+Cadastro
+--------
+- Campo obrigatorio:
+  - `Nome`
+- Regras:
+  - O nome e normalizado com `trim` antes do envio.
+  - A constraint unica `(tenant_id, name_normalized)` impede duplicidade por tenant.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+- Fluxos:
+  - `POST /api/municipalities` para cadastro.
+  - `PUT /api/municipalities` para edicao.
+  - `PATCH /api/municipalities` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_municipality_record`.
+  - `PATCH` chama `set_municipality_record_status`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Nome, Status, Registrado em, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Botao `Exportar Excel (CSV)` no cabecalho.
+  - Exportacao usa `mode=export` e exige permissao `export` no backend.
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `municipio`
+  - `entity_table`: `project_municipalities`
+  - Modal com paginacao fixa de `5` registros por pagina.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela usa `useAuth()` como unica fonte de sessao no client.
+- Erros da tela sao registrados com `useErrorLogger("municipio")`.
+- Icones de acoes reutilizam `ActionIcon`.
+- Exportacao reutiliza `CsvExportButton` e `downloadCsvFile`.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento/ativacao usa o campo `ativo` de `project_municipalities`.
+- O motivo fica registrado em `app_entity_history`, pois a tabela base nao possui colunas `cancellation_reason`, `canceled_at` e `canceled_by`.
+- Saldo:
+  - Nao se aplica ao modulo de Municipio.
+
+Atalhos
+-------
+- Rota principal: `/municipio`
+- API:
+  - `GET/POST/PUT/PATCH /api/municipalities`
+
+Atualizacao 2026-08
+-------------------
+- Tela `Municipio` saiu de placeholder para implementacao completa de cadastro base.
+- Antes: a rota `/municipio` exibia apenas `ModulePlaceholder`.
+- Depois: `/municipio` permite cadastrar, editar, listar, detalhar, consultar historico, cancelar/ativar e exportar municipios do tenant.
+- Depois: a API `/api/municipalities` aplica autorizacao granular por `page_key = municipio` nas acoes `read`, `create`, `update`, `cancel` e `export`.
+- Depois: alteracoes usam `expectedUpdatedAt` dentro das RPCs com `SELECT ... FOR UPDATE` para evitar sobrescrita silenciosa.
+- Criada a migration `391_create_municipality_rpcs.sql` com `save_municipality_record` e `set_municipality_record_status`, ambas `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`.
+- A tabela, RLS, constraint unica, auditoria basica e permissao de pagina ja existiam nas migrations historicas.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/municipio/page.tsx`
+  - Responsavel por: montar a view operacional da rota `Municipio`.
+- Caminho: `src/modules/dashboard/municipio/MunicipalitiesPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/app/api/municipalities/route.ts`
+  - Responsavel por: expor os handlers HTTP da API.
+- Caminho: `src/server/modules/municipalities/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs transacionais.
+- Caminho: `supabase/migrations/391_create_municipality_rpcs.sql`
+  - Responsavel por: salvar cadastro/status e registrar historico na mesma transacao.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/municipio/MunicipalitiesPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/municipio/csv.ts`
+  - Responsavel por: montar o CSV de municipios.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `municipio`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handler (`/api/municipalities`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/municipio/page.tsx`
+  - `src/app/api/municipalities/route.ts`
+  - `src/modules/dashboard/municipio/MunicipalitiesPageView.tsx`
+  - `src/modules/dashboard/municipio/csv.ts`
+  - `src/modules/dashboard/municipio/index.ts`
+  - `src/server/modules/municipalities/controller.ts`
+  - `src/server/modules/municipalities/index.ts`
+  - `supabase/migrations/391_create_municipality_rpcs.sql`
+  - `docs/Tela_Municipio_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: tela informativa sem persistencia.
+  - Depois: tela operacional completa no padrao SaaS de cadastros.
