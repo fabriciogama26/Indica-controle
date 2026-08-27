@@ -117,9 +117,9 @@ Filtros, auto-complete e listagem
   - Detalhes
   - Historico
   - Editar (somente `ABERTA`)
-  - Fechar (somente `ABERTA`)
-  - Abrir (somente `FECHADA`)
-  - Cancelar (quando diferente de `CANCELADA`)
+  - Fechar (somente `ABERTA`) - acao direta, SEM modal de confirmacao (mesmo padrao da tela `Medicao`); nao exige motivo.
+  - Abrir (somente `FECHADA`) - abre modal e exige motivo com no minimo 10 caracteres.
+  - Cancelar (quando diferente de `CANCELADA`) - abre modal e exige motivo com no minimo 10 caracteres.
 - Exportacao:
   - `Exportar Excel (CSV)` com cooldown de 10 segundos.
   - `Detalhamento (CSV)` exporta uma linha por atividade do faturamento.
@@ -604,3 +604,30 @@ ALTERACOES
   - `src/modules/dashboard/faturamento/BillingPageView.tsx`
 - Validado com `npx tsc --noEmit`, `npm run lint` (0 erros, baseline de tamanho
   inalterado) e `npm run build`.
+
+Atualizacao 2026-08-27 - Fechar faturamento sem modal (padrao da Medicao)
+--------------------------------------------------------------------------
+AJUSTE DE UX (definido pelo usuario)
+- O botao `Fechar` da lista abria um modal de confirmacao sem campo de motivo,
+  apenas com `Cancelar`/`Confirmar`. O modal foi removido: `Fechar` agora dispara
+  o `PATCH /api/faturamento` direto, igual ao botao equivalente da tela `Medicao`
+  (`submitStatusChange(order, "FECHAR")` em `MeasurementPageView.tsx`).
+- `Abrir` e `Cancelar` continuam abrindo o modal, porque o backend exige motivo
+  com no minimo 10 caracteres para essas duas acoes.
+- Implementacao:
+  - `changeStatus(order, action, reason)` passou a receber os dados por parametro
+    em vez de ler apenas de `statusModal`, atendendo o caminho direto e o modal.
+  - `StatusModalState.action` agora e `Exclude<StatusAction, "FECHAR">`, entao o
+    modal nao consegue mais ser aberto com `FECHAR`; o campo `Motivo` deixou de
+    ser condicional.
+  - Botao `Fechar` recebe `disabled={isChangingStatus}` e `changeStatus` ignora
+    chamada concorrente, evitando duplo clique agora que nao ha confirmacao.
+- Sem mudanca de rota, RPC, schema, RLS, grant ou permissao: o `PATCH` com
+  `action: "FECHAR"` (sem motivo) ja era aceito por `src/app/api/faturamento/route.ts`
+  e continua exigindo `expectedUpdatedAt`.
+
+- Arquivos alterados:
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `file-size-baseline.json` (arquivo encolheu de 1248 para 1247 linhas)
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros, 3 warnings
+  pre-existentes, ratchet de tamanho atualizado so para baixo).
