@@ -1202,3 +1202,8 @@ Observacao
 - Cria `idx_programming_history_tenant_created` em `programming_history(tenant_id, created_at desc)` para sustentar a leitura de historico de Estado Trabalho usada pela Medicao.
 - Substitui a sugestao crua do Supabase Advisor (`created_at`) por um indice alinhado ao padrao multi-tenant do projeto.
 - Inclui validacao pos-aplicacao para abortar se o indice esperado nao existir.
+
+390_create_service_center_rpcs.sql
+- Cria as RPCs `save_service_center_record` e `set_service_center_record_status` para o cadastro de Centro de Servico.
+- Move cadastro, edicao, ativacao/cancelamento e historico de `project_service_centers` para transacao unica com `SELECT ... FOR UPDATE` e `expectedUpdatedAt`.
+- Mantem as RPCs `SECURITY DEFINER` executaveis apenas por `service_role`, com validacao pos-aplicacao contra grants para `anon`/`authenticated`.
