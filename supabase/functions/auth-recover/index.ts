@@ -4,13 +4,8 @@
 
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/http.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-session-id',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json; charset=utf-8',
-}
 
 const respond = (
   status: number,
@@ -24,14 +19,18 @@ const respond = (
 
 const normalizeLoginName = (value: unknown) => String(value ?? '').trim().toLowerCase()
 
+// Mesma regra do auth-login-web: cf-connecting-ip vem do proxy e nao pode ser
+// forjado; a entrada mais a esquerda do x-forwarded-for e escrita pelo cliente
+// e nao serve como chave de rate limit. Fallback pela entrada mais a direita.
 const getClientIp = (req: Request) => {
-  const forwarded = req.headers.get('x-forwarded-for')
-  if (forwarded) {
-    const ip = forwarded.split(',')[0]?.trim()
-    if (ip) return ip
-  }
+  const connecting = (req.headers.get('cf-connecting-ip') || '').trim()
+  if (connecting) return connecting
 
-  return req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || ''
+  const forwarded = req.headers.get('x-forwarded-for') || ''
+  const hops = forwarded.split(',').map((value) => value.trim()).filter(Boolean)
+  if (hops.length > 0) return hops[hops.length - 1]
+
+  return (req.headers.get('x-real-ip') || '').trim()
 }
 
 const sha256Hex = async (value: string) => {

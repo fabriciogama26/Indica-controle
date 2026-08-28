@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { fetchWorkCompletionTimelineByProject } from "@/server/modules/programacao-normalizada";
@@ -674,6 +675,17 @@ export async function handleDashboardPortfolioGet(request: NextRequest) {
       { status: authorization.error.status },
     );
   }
+
+  // Dashboard dispara varias RPCs de agregacao por request. Teto generoso o
+  // bastante para navegacao normal (troca de filtro, ciclo, escopo) e curto o
+  // bastante para nao servir de amplificador.
+  const limited = await enforceRateLimit(resolution.supabase, {
+    route: "api.dashboard-carteira-operacional",
+    identity: resolution.appUser.id,
+    maxHits: 60,
+    windowSeconds: 60,
+  });
+  if (limited) return limited;
 
   const tenantId = resolution.appUser.tenant_id;
   const selectedCycleStart = normalizeIsoDate(request.nextUrl.searchParams.get("cycleStart"));

@@ -3,13 +3,8 @@
 
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/http.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-session-id',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json; charset=utf-8',
-}
 
 const respond = (status: number, payload: Record<string, unknown>) =>
   new Response(JSON.stringify(payload), { status, headers: corsHeaders })
@@ -20,9 +15,35 @@ const getBearerToken = (req: Request) => {
   return auth.substring(7).trim()
 }
 
-const safeText = (value: unknown, fallback = '') => {
+// Tetos de tamanho. O payload vem do cliente e era gravado inteiro em
+// app_error_logs, sem limite: um cliente com defeito (ou mal-intencionado)
+// enche a tabela com um punhado de requests.
+const MAX_TEXT_LENGTH = 2_000
+const MAX_STACKTRACE_LENGTH = 8_000
+const MAX_CONTEXT_BYTES = 16_384
+
+const truncate = (text: string, max: number) =>
+  text.length > max ? `${text.slice(0, max)}…[truncado]` : text
+
+const safeText = (value: unknown, fallback = '', max = MAX_TEXT_LENGTH) => {
   const text = String(value ?? '').trim()
-  return text || fallback
+  return truncate(text || fallback, max)
+}
+
+// Serializa o context preservando a forma quando cabe, e degradando para um
+// resumo textual quando nao cabe — assim o log continua util sem virar deposito.
+const safeContext = (body: unknown) => {
+  try {
+    const serialized = JSON.stringify(body ?? {})
+    if (serialized.length <= MAX_CONTEXT_BYTES) return body
+    return {
+      truncated: true,
+      original_length: serialized.length,
+      preview: serialized.slice(0, MAX_CONTEXT_BYTES),
+    }
+  } catch {
+    return { truncated: true, error: 'context_nao_serializavel' }
+  }
 }
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
@@ -63,8 +84,8 @@ serve(async (req) => {
       severity: safeText(body.severity, 'ERROR'),
       screen: safeText(body.screen),
       message: safeText(body.message, 'Erro sem mensagem'),
-      stacktrace: safeText(body.stacktrace),
-      context: body,
+      stacktrace: safeText(body.stacktrace, '', MAX_STACKTRACE_LENGTH),
+      context: safeContext(body),
       created_by: appUser.id,
       updated_by: appUser.id,
     })

@@ -1,7 +1,17 @@
 // _shared/xlsx.ts
 // XLSX parsing utilities shared across import Edge Functions.
 
-import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
+// SheetJS 0.20.3 direto do CDN oficial.
+//
+// A 0.18.5 (antes fixada aqui via esm.sh) carrega duas falhas altas sem
+// correcao publicada no npm: prototype pollution (GHSA-4r6h-8v6p-xvw6,
+// corrigida em 0.19.3) e ReDoS (corrigida em 0.20.2). Estas funcoes parseiam
+// XLSX enviado pelo usuario, entao a versao importa.
+//
+// O caminho e o CDN da SheetJS, nao o npm/esm.sh: a partir da 0.19.3 o projeto
+// deixou de publicar no registry, e o npm ainda serve a 0.18.5 como "latest".
+// A mesma troca foi feita no lado Next, em package.json.
+import * as XLSX from 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs'
 
 export type ParsedRow = {
   line: number
