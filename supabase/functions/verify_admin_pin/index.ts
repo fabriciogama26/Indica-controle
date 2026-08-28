@@ -3,13 +3,8 @@
 
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/http.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-session-id',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json; charset=utf-8',
-}
 
 const respond = (status: number, payload: Record<string, unknown>) =>
   new Response(JSON.stringify(payload), { status, headers: corsHeaders })
@@ -49,9 +44,38 @@ serve(async (req) => {
   const pin = String(body.pin ?? '').trim()
   if (!userId || !pin) return respond(400, { success: false, message: 'Informe user_id e pin.' })
 
+  // Rate limit ANTES de qualquer consulta. Sem isto, o espaco de um PIN de 4 a
+  // 6 digitos e percorrido em minutos: a funcao respondia 200 com
+  // success:false, sem contador e sem bloqueio, entao nada encarecia a
+  // tentativa seguinte. A chave e (auth_user_id | user_id alvo), nao o IP --
+  // quem chama ja esta autenticado, e id de sessao nao se troca a cada request
+  // como um header de IP.
+  const { data: rateData, error: rateError } = await supabase.rpc('rate_limit_check_and_hit', {
+    p_scope: 'auth',
+    p_route: 'auth.admin_pin',
+    p_identity_hash: await sha256Hex(`${authData.user.id}|${userId}`),
+    p_owner_id: null,
+    p_ip_hash: null,
+    p_max_hits: 5,
+    p_window_seconds: 300,
+  })
+
+  if (rateError) {
+    return respond(500, { success: false, message: 'Falha ao validar limite de requisicoes.' })
+  }
+
+  const rateResult = Array.isArray(rateData) ? rateData[0] : rateData
+  if (rateResult?.allowed === false) {
+    const retryAfterSeconds = Number(rateResult.retry_after) || 300
+    return respond(429, {
+      success: false,
+      message: `Muitas tentativas. Tente novamente em ${retryAfterSeconds} segundos.`,
+    })
+  }
+
   const { data: appUser, error } = await supabase
     .from('app_users')
-    .select('id, tenant_id, role_id, ativo, admin_pin_hash')
+    .select('id, tenant_id, role_id, ativo')
     .eq('auth_user_id', authData.user.id)
     .eq('id', userId)
     .maybeSingle()
@@ -70,13 +94,35 @@ serve(async (req) => {
     return respond(403, { success: false, message: 'Acesso restrito a administradores.' })
   }
 
-  const expectedHash = String(appUser.admin_pin_hash ?? '').trim().toLowerCase()
-  if (!expectedHash) {
-    return respond(403, { success: false, message: 'PIN admin nao configurado.' })
+  // A comparacao acontece dentro do banco: o hash nunca sai da tabela, o bcrypt
+  // compara em tempo constante e a RPC revalida vinculo e papel por conta
+  // propria (migration 395). Continuamos enviando o SHA-256, nunca o PIN em
+  // claro -- e por isso o contrato HTTP desta funcao nao muda.
+  const { data: verified, error: verifyError } = await supabase.rpc('verify_admin_pin_secret', {
+    p_auth_user_id: authData.user.id,
+    p_app_user_id: appUser.id,
+    p_pin_sha256: await sha256Hex(pin),
+  })
+
+  if (verifyError) {
+    return respond(500, { success: false, message: 'Falha ao validar PIN.' })
   }
 
-  const incomingHash = await sha256Hex(pin)
-  if (incomingHash !== expectedHash) {
+  if (verified !== true) {
+    // Tentativa falha vira trilha: antes nao havia registro nenhum de forca
+    // bruta contra o PIN. Falha de auditoria nao derruba a resposta.
+    await supabase.from('login_audit').insert({
+      user_id: appUser.id,
+      tenant_id: appUser.tenant_id,
+      event_type: 'ADMIN_PIN',
+      event_at: new Date().toISOString(),
+      status: 'FAILED',
+      reason: 'PIN_INVALID',
+      source: 'APP',
+      created_by: appUser.id,
+      updated_by: appUser.id,
+    })
+
     return respond(200, { success: false, message: 'PIN invalido.' })
   }
 

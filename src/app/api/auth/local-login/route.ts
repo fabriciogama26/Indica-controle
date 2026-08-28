@@ -1,6 +1,14 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
+  // Login local existe apenas para desenvolvimento sem projeto Supabase.
+  // Em producao a rota nao deve sequer anunciar que existe: sem esta guarda,
+  // basta alguem definir LOCAL_AUTH_* no ambiente errado para abrir um caminho
+  // de autenticacao paralelo, sem rate limit e sem registro em login_audit.
+  if (process.env.NODE_ENV === "production") {
+    return new NextResponse(null, { status: 404 });
+  }
+
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const loginName = String(body.login_name ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");

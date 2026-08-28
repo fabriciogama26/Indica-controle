@@ -1219,3 +1219,26 @@ Observacao
 - Cria `idx_programming_tenant_execution_date` em `programming(tenant_id, execution_date)` para leituras da Programacao Normalizada por periodo sem filtro de status.
 - Cria `idx_programming_tenant_project_execution_date` em `programming(tenant_id, project_id, execution_date)` para leituras por projetos especificos e janela de data.
 - Mantem as sugestoes cruas do Advisor como indices tenant-first e deixa `team_compositions` para nova medicao antes de qualquer indice adicional.
+
+393_close_authenticated_write_surface.sql
+- Derruba as policies de INSERT/UPDATE/DELETE/ALL de `authenticated` em `public`, fechando a escrita direta via PostgREST que contornava `authorizePageAction` e as RPCs transacionais.
+- Preserva a leitura antes do drop: toda policy `FOR ALL` cujo tenant nao tenha outra policy de SELECT tem o `USING` original recriado como policy de SELECT.
+- Revoga INSERT/UPDATE/DELETE de `public`/`anon`/`authenticated` no schema e ajusta `ALTER DEFAULT PRIVILEGES` para tabela futura nao nascer aberta; SELECT permanece intocado.
+- Alinha o schema as regras 13 e 14 do `guias/guia_sql.md`, que ja exigiam esse padrao, e estende as tabelas o mesmo hardening que 251/298/388 aplicaram as RPCs.
+- Inclui validacao pos-aplicacao que aborta se sobrar policy/grant de escrita, se alguma tabela perder a leitura, ou se `service_role` perder acesso.
+
+394_harden_function_search_path_post_210.sql
+- Fixa `search_path = public, pg_temp` nas funcoes de `public` criadas depois da 210 e que ficaram com `search_path` mutavel (`user_is_admin_in_tenant`, `tg_programming_set_updated_at`, `tg_programming_capture_anticipated_snapshot`, `tg_programming_clear_snapshot_source`).
+- Varre `pg_proc` em vez de repetir lista fixa, para nao envelhecer como a 210; ignora funcoes pertencentes a extensao (`pg_depend.deptype = 'e'`).
+- Inclui validacao pos-aplicacao que aborta se sobrar funcao de `public` com `search_path` mutavel.
+
+395_harden_admin_pin_storage.sql
+- Adiciona `app_users.admin_pin_secret` com bcrypt (fator 12) aplicado sobre o SHA-256 existente, e faz backfill idempotente a partir de `admin_pin_hash`.
+- Cria `verify_admin_pin_secret(uuid, uuid, text)` `SECURITY DEFINER`, executavel apenas por `service_role`, que revalida vinculo e papel de admin e compara em tempo constante sem o hash sair do banco.
+- Fase EXPAND: mantem `admin_pin_hash` para permitir rollback da Edge Function; enquanto a coluna existir o risco de dump segue aberto.
+- Inclui validacao pos-aplicacao que aborta se sobrar hash sem bcrypt correspondente ou se a RPC ficar exposta a anon/authenticated.
+
+396_drop_legacy_admin_pin_hash.sql
+- Fase CONTRACT. NAO aplicar junto com a 395: exige que a nova versao de `verify_admin_pin` ja esteja publicada e testada.
+- Remove `app_users.admin_pin_hash` e republica `verify_admin_pin_secret` sem o fallback de transicao, deixando o bcrypt como unico caminho.
+- Aborta antes de remover se algum usuario tiver hash antigo sem `admin_pin_secret`, para nao trancar administrador para fora.

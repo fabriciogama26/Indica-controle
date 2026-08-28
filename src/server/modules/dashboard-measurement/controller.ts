@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { fetchWorkCompletionTimelineByProject } from "@/server/modules/programacao-normalizada";
@@ -594,6 +595,17 @@ export async function handleDashboardMeasurementGet(
       { status: authorization.error.status },
     );
   }
+
+  // Mesma politica do Dashboard Carteira Operacional. A chave inclui o pageKey
+  // porque dashboard-medicao e dashboard-equipes compartilham este handler mas
+  // sao telas distintas — contador unico penalizaria quem usa as duas.
+  const limited = await enforceRateLimit(resolution.supabase, {
+    route: `api.${pageKey}`,
+    identity: resolution.appUser.id,
+    maxHits: 60,
+    windowSeconds: 60,
+  });
+  if (limited) return limited;
 
   const tenantId = resolution.appUser.tenant_id;
   const selectedCycleStart = normalizeIsoDate(request.nextUrl.searchParams.get("cycleStart"));

@@ -4,12 +4,9 @@
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import * as XLSX from 'https://esm.sh/xlsx@0.18.5'
+import { corsHeadersFor } from '../_shared/http.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-session-id',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-}
+const corsHeaders = corsHeadersFor('GET, POST, OPTIONS')
 
 const getBearerToken = (req: Request) => {
   const auth = req.headers.get('authorization') || req.headers.get('Authorization') || ''

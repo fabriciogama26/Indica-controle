@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { enforceRateLimit } from "@/lib/server/rateLimit";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 
@@ -213,6 +214,17 @@ async function handleImport(request: NextRequest) {
 
     const authorizationError = await authorizeProjectsAction(resolution, "create");
     if (authorizationError) return authorizationError;
+
+    // Importacao le e parseia XLSX de ate 5MB e grava em lote: e a rota mais
+    // cara do modulo. O teto abaixo cobre retentativa legitima do usuario sem
+    // permitir repeticao continua.
+    const limited = await enforceRateLimit(resolution.supabase, {
+      route: "api.projects.activity-forecast.import",
+      identity: resolution.appUser.id,
+      maxHits: 5,
+      windowSeconds: 60,
+    });
+    if (limited) return limited;
 
     const formData = await request.formData().catch(() => null);
     if (!formData) {
