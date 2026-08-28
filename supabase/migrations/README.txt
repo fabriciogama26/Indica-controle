@@ -121,6 +121,7 @@ Ordem de aplicacao
 366. 366_create_material_umb_options.sql
 367. 367_update_materials_umb_cjt_to_un.sql
 387. 387_programming_history_tenant_created_index.sql
+392. 392_advisor_tenant_first_performance_indexes.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1212,3 +1213,9 @@ Observacao
 - Cria as RPCs `save_municipality_record` e `set_municipality_record_status` para o cadastro de Municipio.
 - Move cadastro, edicao, ativacao/cancelamento e historico de `project_municipalities` para transacao unica com `SELECT ... FOR UPDATE` e `expectedUpdatedAt`.
 - Mantem as RPCs `SECURITY DEFINER` executaveis apenas por `service_role`, com validacao pos-aplicacao contra grants para `anon`/`authenticated`.
+
+392_advisor_tenant_first_performance_indexes.sql
+- Cria `idx_stock_transfer_team_operations_tenant_created` em `stock_transfer_team_operations(tenant_id, created_at desc)` para a listagem geral de Operacoes de Equipe ordenada por criacao.
+- Cria `idx_programming_tenant_execution_date` em `programming(tenant_id, execution_date)` para leituras da Programacao Normalizada por periodo sem filtro de status.
+- Cria `idx_programming_tenant_project_execution_date` em `programming(tenant_id, project_id, execution_date)` para leituras por projetos especificos e janela de data.
+- Mantem as sugestoes cruas do Advisor como indices tenant-first e deixa `team_compositions` para nova medicao antes de qualquer indice adicional.
