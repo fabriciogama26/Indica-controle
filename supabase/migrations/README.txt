@@ -1242,3 +1242,10 @@ Observacao
 - Fase CONTRACT. NAO aplicar junto com a 395: exige que a nova versao de `verify_admin_pin` ja esteja publicada e testada.
 - Remove `app_users.admin_pin_hash` e republica `verify_admin_pin_secret` sem o fallback de transicao, deixando o bcrypt como unico caminho.
 - Aborta antes de remover se algum usuario tiver hash antigo sem `admin_pin_secret`, para nao trancar administrador para fora.
+
+397_fix_admin_pin_search_path.sql
+- Republica `verify_admin_pin_secret` com `search_path = public, extensions, pg_temp`: as migrations 395/396 fixaram `public, pg_temp` e chamam `crypt()` sem qualificar, mas em projeto Supabase o pgcrypto ja vem no schema `extensions` e o `create extension` da 000 foi no-op.
+- Erro era latente: o backfill da 395 funcionou por rodar em bloco `DO`, que herda o search_path da sessao, e a funcao so executa quando a Edge Function `verify_admin_pin` for publicada.
+- Usa os dois schemas no search_path em vez de qualificar `extensions.crypt`, para funcionar tambem em banco reconstruido do zero, onde a 000 cria o pgcrypto em `public`.
+- Validacao pos-aplicacao confere que `proconfig` da funcao inclui `extensions` e que a RPC nao e executavel por `anon`/`authenticated`. O smoke test de hash que acompanha roda em bloco `DO` e portanto herda o search_path da sessao: ele confirma que o pgcrypto existe, nao que resolve de dentro da funcao. A prova real e chamar `verify_admin_pin_secret` para um usuario com `admin_pin_secret` preenchido.
+- A 394 nao precisa de correcao equivalente: nenhuma funcao ajustada por ela usa pgcrypto, operador de extensao ou schema fora de `public`.
