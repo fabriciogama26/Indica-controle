@@ -1157,9 +1157,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   }
 
   const [selectedProjects, team, peopleMap] = await Promise.all([
-    workStatus === "NOT_WORKING"
-      ? Promise.resolve([] as Array<{ id: string; code: string; serviceCenter: string }>)
-      : fetchProjectsByIds(supabase, appUser.tenant_id, projectIds),
+    fetchProjectsByIds(supabase, appUser.tenant_id, projectIds),
     fetchTeamById(supabase, appUser.tenant_id, teamId),
     fetchPeopleSnapshots(supabase, appUser.tenant_id, uniqueMemberPersonIds),
   ]);
@@ -1167,11 +1165,8 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   if (!selectedProjects) {
     return NextResponse.json({ message: "Falha ao validar projetos da composicao." }, { status: 500 });
   }
-  if (workStatus === "WORKING" && selectedProjects.length !== projectIds.length) {
+  if (selectedProjects.length !== projectIds.length) {
     return NextResponse.json({ message: "Um ou mais projetos sao invalidos ou inativos para o tenant atual." }, { status: 422 });
-  }
-  if (workStatus === "NOT_WORKING" && projectIds.length) {
-    return NextResponse.json({ message: "Projeto nao deve ser informado quando a equipe nao atuou." }, { status: 400 });
   }
   const primaryProject = selectedProjects[0] ?? null;
   if (!team) {
@@ -1316,8 +1311,8 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     p_actor_user_id: appUser.id,
     p_composition_id: method === "PUT" ? compositionId : null,
     p_composition_date: compositionDate,
-    p_project_id: workStatus === "NOT_WORKING" ? null : primaryProject?.id ?? null,
-    p_project_ids: workStatus === "NOT_WORKING" ? [] : selectedProjects.map((project) => project.id),
+    p_project_id: primaryProject?.id ?? null,
+    p_project_ids: selectedProjects.map((project) => project.id),
     p_team_id: teamId,
     p_foreman_person_id: foremanPersonId,
     p_work_status: workStatus,
@@ -1373,14 +1368,15 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
 
   const saveResult = (rpcData ?? {}) as SaveTeamCompositionRpcResult;
   if (saveResult.success !== true) {
-    const requiresProjectlessMigration = workStatus === "NOT_WORKING"
-      && ["INVALID_PROJECT", "PROJECT_REQUIRED"].includes(normalizeText(saveResult.reason).toUpperCase());
+    const requiresOptionalProjectMigration = workStatus === "NOT_WORKING"
+      && projectIds.length > 0
+      && normalizeText(saveResult.reason).toUpperCase() === "PROJECT_NOT_ALLOWED";
     return NextResponse.json(
       {
-        message: requiresProjectlessMigration
-          ? "Aplique a migration 225_allow_not_working_composition_without_project.sql para salvar equipe sem atuacao e sem Projeto."
+        message: requiresOptionalProjectMigration
+          ? "Aplique a migration 405_allow_not_working_composition_with_optional_project.sql para salvar equipe sem atuacao com Projeto opcional."
           : saveResult.message ?? "Falha ao salvar composicao de equipe.",
-        reason: requiresProjectlessMigration ? "RPC_SCHEMA_OUTDATED" : saveResult.reason ?? null,
+        reason: requiresOptionalProjectMigration ? "RPC_SCHEMA_OUTDATED" : saveResult.reason ?? null,
       },
       { status: Number(saveResult.status ?? 400) },
     );

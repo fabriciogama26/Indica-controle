@@ -545,8 +545,6 @@ export function TeamCompositionPageView() {
       return {
         ...current,
         workStatus,
-        projectCode: "",
-        projectIds: [],
         personSearch: "",
         members: foreman
           ? [{
@@ -571,10 +569,6 @@ export function TeamCompositionPageView() {
   }
 
   function addProject() {
-    if (form.workStatus === "NOT_WORKING") {
-      setFeedback({ type: "error", message: "Equipe que nao atuou nao deve possuir projeto." });
-      return;
-    }
     const project = findProjectBySearch(form.projectCode);
     if (!project) {
       setFeedback({ type: "error", message: "Selecione um Projeto valido para adicionar." });
@@ -700,7 +694,7 @@ export function TeamCompositionPageView() {
       setFeedback({ type: "error", message: "Sessao invalida para salvar composicao." });
       return;
     }
-    const selectedProjects = form.workStatus === "NOT_WORKING" ? [] : selectedFormProjects;
+    const selectedProjects = selectedFormProjects;
     const missingFields = [
       !form.compositionDate ? "Data" : "",
       form.workStatus === "WORKING" && selectedProjects.length === 0 ? "Ao menos um Projeto valido" : "",
@@ -717,7 +711,7 @@ export function TeamCompositionPageView() {
       return;
     }
 
-    if ((form.workStatus === "WORKING" && selectedProjects.length !== form.projectIds.length) || !selectedTeam) {
+    if (selectedProjects.length !== form.projectIds.length || !selectedTeam) {
       setFeedback({ type: "error", message: "Projeto ou equipe invalida para salvar." });
       return;
     }
@@ -996,12 +990,11 @@ export function TeamCompositionPageView() {
                   list="composicao-project-list"
                   value={form.projectCode}
                   onChange={(event) => setForm((current) => ({ ...current, projectCode: event.target.value }))}
-                  placeholder={form.workStatus === "NOT_WORKING" ? "Nao exigido para equipe sem atuacao" : "Digite o SOB"}
-                  disabled={form.workStatus === "NOT_WORKING"}
+                  placeholder={form.workStatus === "NOT_WORKING" ? "Opcional para equipe sem atuacao" : "Digite o SOB"}
                 />
               </label>
               <div className={styles.memberActions}>
-                <button type="button" className={styles.secondaryButton} onClick={addProject} disabled={form.workStatus === "NOT_WORKING"}>Adicionar</button>
+                <button type="button" className={styles.secondaryButton} onClick={addProject}>Adicionar</button>
               </div>
             </div>
             <div className={styles.selectedProjectList}>
@@ -1009,10 +1002,10 @@ export function TeamCompositionPageView() {
                 <div key={project.id} className={styles.selectedProjectItem}>
                   <span>{project.code}</span>
                   <small>{formatOptional(project.serviceCenter)}</small>
-                  <button type="button" className={styles.dangerButton} onClick={() => removeProject(project.id)} disabled={form.workStatus === "NOT_WORKING"}>Remover</button>
+                  <button type="button" className={styles.dangerButton} onClick={() => removeProject(project.id)}>Remover</button>
                 </div>
               )) : (
-                <p className={styles.tableHint}>{form.workStatus === "NOT_WORKING" ? "Sem projeto para equipe sem atuacao." : "Nenhum projeto adicionado."}</p>
+                <p className={styles.tableHint}>{form.workStatus === "NOT_WORKING" ? "Projeto opcional para equipe sem atuacao." : "Nenhum projeto adicionado."}</p>
               )}
             </div>
           </section>

@@ -133,6 +133,12 @@ Ordem de aplicacao
 397. 397_fix_admin_pin_search_path.sql
 398. 398_stock_requisition_requested_by_date_index.sql
 399. 399_create_missing_foreign_key_indexes_post_301.sql
+400. 400_programming_team_programmed_foreman_snapshot.sql
+401. 401_create_activity_type_page_and_team_type_rpcs.sql
+402. 402_move_team_type_screen_to_tipo_equipe.sql
+403. 403_create_activity_category_page_and_rpcs.sql
+404. 404_create_activity_group_catalog_and_page.sql
+405. 405_allow_not_working_composition_with_optional_project.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1319,3 +1325,9 @@ Observacao
 - Cancelamento recusado com `ACTIVITY_GROUP_IN_USE` enquanto houver atividade ativa vinculada.
 - Cadastra a pagina `grupo-atividade` com `default_user_access = false`; a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
 - Validacao pos-aplicacao aborta se: as RPCs ficarem executaveis por `anon`/`authenticated`; sobrar assinatura antiga de `save_service_activity_record`; a pagina nao for cadastrada; ou sobrar atividade ativa com `group_name` preenchido e `group_id` nulo.
+
+405_allow_not_working_composition_with_optional_project.sql
+- Republica `save_team_composition_record` por patch dinamico para permitir Projetos em composicoes `NOT_WORKING`, mantendo a lista vazia como caso valido.
+- `WORKING` continua exigindo ao menos um Projeto; `NOT_WORKING` passa a validar projetos somente quando informados, recusando lista invalida, duplicada ou fora do tenant.
+- Quando `NOT_WORKING` tem Projeto, a RPC persiste `project_id`, snapshots agregados e linhas em `team_composition_projects`; sem Projeto, continua gravando `project_id = null`.
+- Reaplica revoke de `public`/`anon`/`authenticated`, concede EXECUTE apenas a `service_role` e aborta se o trecho antigo `PROJECT_NOT_ALLOWED` continuar na funcao.
