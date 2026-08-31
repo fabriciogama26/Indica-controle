@@ -126,3 +126,4 @@ Total: 15 queries, potencial de trazer 20.000 registros brutos
 | 2026-07-05 | `project_measurement_order_items` passou a ser lido em chunks de 200 IDs para evitar falha do Dashboard Medicao em recortes com muitas ordens |
 | 2026-08-26 | Categorias do grafico de Estado Trabalho alinhadas ao modelo normalizado: `Parcial` agrega planejado/nao planejado, `Beneficio atingido` fica separado e `Pendente` usa `programming.is_pendencia` so como fallback quando nao existe Estado Trabalho preenchido no projeto |
 | 2026-08-26 | Tabela `Detalhamento dos ciclos` passou a exibir `OS` e `Ticket medio/OS`, usando o `orderCount` ja retornado pelo consolidado anual |
+| 2026-08-31 | Tipos locais do backend extraidos de `src/server/modules/dashboard-measurement/controller.ts` para `types.ts`; sem mudanca funcional, apenas reducao do controller no ratchet de tamanho |
