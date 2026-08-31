@@ -29,6 +29,7 @@ import {
   normalizePositiveInteger,
   normalizeText,
   normalizeUniqueTextArray,
+  normalizeUuid,
 } from "./normalizers";
 import type {
   AddTeamPayload,
@@ -231,9 +232,15 @@ export async function addProgrammingTeam(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as AddTeamPayload | null;
   const programmingId = normalizeText(payload?.programmingId);
   const teamId = normalizeText(payload?.teamId);
+  const programmedForemanRaw = normalizeText(payload?.programmedForemanPersonId);
+  const programmedForemanPersonId = programmedForemanRaw ? normalizeUuid(programmedForemanRaw) : null;
 
   if (!programmingId || !teamId) {
     return NextResponse.json({ message: "Informe a etapa e a equipe a adicionar." }, { status: 400 });
+  }
+
+  if (programmedForemanRaw && !programmedForemanPersonId) {
+    return NextResponse.json({ message: "Encarregado programado invalido." }, { status: 400 });
   }
 
   const result = await addProgrammingTeamViaRpc({
@@ -242,7 +249,7 @@ export async function addProgrammingTeam(request: NextRequest) {
     actorUserId: resolution.appUser.id,
     programmingId,
     teamId,
-    programmedForemanPersonId: normalizeNullableText(payload?.programmedForemanPersonId),
+    programmedForemanPersonId,
   });
 
   if (!result.ok) {

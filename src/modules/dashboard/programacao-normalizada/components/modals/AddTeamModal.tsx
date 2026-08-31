@@ -1,5 +1,5 @@
 import styles from "../../ProgrammingNormalizedPageView.module.css";
-import type { AddTeamCheckState, TeamItem } from "../../types";
+import type { AddTeamCheckState, ForemanItem, TeamItem } from "../../types";
 
 // A janela (data + hora inicio/fim) e da ETAPA, nao da equipe: `programming_team`
 // guarda so identidade + status. Por isso os horarios aparecem aqui como leitura —
@@ -20,7 +20,9 @@ function checkFeedbackClass(status: AddTeamCheckState["status"]) {
 export function AddTeamModal(props: {
   isOpen: boolean;
   availableTeams: TeamItem[];
+  foremanOptions: ForemanItem[];
   selectedTeamId: string;
+  selectedForemanId: string;
   isSubmitting: boolean;
   executionDate: string | null;
   startTime: string | null;
@@ -29,11 +31,14 @@ export function AddTeamModal(props: {
   onClose: () => void;
   onConfirm: () => void;
   onSelectedTeamIdChange: (value: string) => void;
+  onSelectedForemanIdChange: (value: string) => void;
 }) {
   const {
     isOpen,
     availableTeams,
+    foremanOptions,
     selectedTeamId,
+    selectedForemanId,
     isSubmitting,
     executionDate,
     startTime,
@@ -42,6 +47,7 @@ export function AddTeamModal(props: {
     onClose,
     onConfirm,
     onSelectedTeamIdChange,
+    onSelectedForemanIdChange,
   } = props;
   if (!isOpen) return null;
 
@@ -73,6 +79,16 @@ export function AddTeamModal(props: {
             </select>
           </label>
 
+          <label className={styles.field}>
+            <span>Encarregado programado</span>
+            <select value={selectedForemanId} onChange={(event) => onSelectedForemanIdChange(event.target.value)} disabled={isSubmitting || !selectedTeamId}>
+              <option value="" disabled>Selecionar encarregado...</option>
+              {foremanOptions.map((foreman) => (
+                <option key={foreman.id} value={foreman.id}>{foreman.name}</option>
+              ))}
+            </select>
+          </label>
+
           {check.status !== "idle" && (
             <p className={checkFeedbackClass(check.status)} role="status" aria-live="polite">
               {isChecking ? "Verificando disponibilidade da equipe..." : check.message}
@@ -83,7 +99,7 @@ export function AddTeamModal(props: {
             type="button"
             className={styles.buttonPrimary}
             onClick={onConfirm}
-            disabled={isSubmitting || isChecking || isBlocked || !selectedTeamId}
+            disabled={isSubmitting || isChecking || isBlocked || !selectedTeamId || !selectedForemanId}
           >
             Concluir
           </button>
