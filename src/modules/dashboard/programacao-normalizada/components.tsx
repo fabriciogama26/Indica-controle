@@ -429,6 +429,7 @@ export function StageFormPanel(props: {
   canSubmit: boolean;
   teamOptions: TeamItem[];
   foremanOptions: ForemanItem[];
+  allowBlankForemanTeamIds?: string[];
   sgdTypes: SgdTypeItem[];
   electricalEqCatalog: ElectricalEqCatalogItem[];
   supportOptions: SupportOptionItem[];
@@ -449,6 +450,7 @@ export function StageFormPanel(props: {
     canSubmit,
     teamOptions,
     foremanOptions,
+    allowBlankForemanTeamIds = [],
     sgdTypes,
     electricalEqCatalog,
     supportOptions,
@@ -478,7 +480,8 @@ export function StageFormPanel(props: {
     const team = teamOptions.find((item) => item.id === teamId);
     setForm((current) => {
       if (current.teamIds.includes(teamId)) {
-        const { [teamId]: _removed, ...teamForemanIds } = current.teamForemanIds;
+        const teamForemanIds = { ...current.teamForemanIds };
+        delete teamForemanIds[teamId];
         return { ...current, teamIds: current.teamIds.filter((item) => item !== teamId), teamForemanIds };
       }
 
@@ -495,6 +498,8 @@ export function StageFormPanel(props: {
     ? teamOptions.filter((team) => team.name.toLowerCase().includes(teamSearchLower))
     : teamOptions;
   const selectedTeamOptions = teamOptions.filter((team) => form.teamIds.includes(team.id));
+  const allowBlankForemanTeamIdSet = new Set(allowBlankForemanTeamIds);
+  const teamsMissingForeman = selectedTeamOptions.filter((team) => !form.teamForemanIds[team.id] && !allowBlankForemanTeamIdSet.has(team.id));
 
   function markVisibleTeams() {
     setForm((current) => {
@@ -748,7 +753,9 @@ export function StageFormPanel(props: {
                     onChange={(event) => setTeamForeman(team.id, event.target.value)}
                     disabled={isSubmitting}
                   >
-                    <option value="">Selecionar encarregado...</option>
+                    <option value="" disabled={!allowBlankForemanTeamIdSet.has(team.id)}>
+                      {allowBlankForemanTeamIdSet.has(team.id) ? "Manter sem encarregado historico" : "Selecionar encarregado..."}
+                    </option>
                     {foremanOptions.map((foreman) => (
                       <option key={foreman.id} value={foreman.id}>{foreman.name}</option>
                     ))}
@@ -756,6 +763,9 @@ export function StageFormPanel(props: {
                 </label>
               ))}
             </div>
+          ) : null}
+          {teamsMissingForeman.length ? (
+            <p className={`${styles.feedback} ${styles.feedbackError}`}>Selecione o encarregado programado das equipes marcadas.</p>
           ) : null}
         </div>
       </section>

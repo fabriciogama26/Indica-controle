@@ -139,6 +139,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
   const [addTeamTarget, setAddTeamTarget] = useState<ProgrammingStage | null>(null);
   const [addTeamSelectedId, setAddTeamSelectedId] = useState("");
+  const [addTeamSelectedForemanId, setAddTeamSelectedForemanId] = useState("");
 
   const { canComplete, canPendencia, canCorrectDate } = useProgrammingGranularPermissions();
   const { meta } = useProgrammingMeta({ accessToken, onError: logError });
@@ -151,7 +152,21 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
   const teams = meta?.teams ?? [];
   const reasonOptions = meta?.reasonOptions ?? [];
   const sortedStages = useMemo(() => sortStagesByDate(stages), [stages]);
+  const editingStage = useMemo(() => stages.find((item) => item.id === editingStageId) ?? null, [editingStageId, stages]);
   const activeCompletedStage = useMemo(() => findActiveCompletedStage(stages), [stages]);
+  const allowBlankForemanTeamIds = useMemo(
+    () =>
+      editingStage
+        ? editingStage.teams
+            .filter((team) => team.status === "ATIVA" && !team.programmedForemanPersonId)
+            .map((team) => team.teamId)
+        : [],
+    [editingStage],
+  );
+  const canSubmitTeamForemen = useMemo(() => {
+    const blankAllowed = new Set(allowBlankForemanTeamIds);
+    return form.teamIds.every((teamId) => Boolean(form.teamForemanIds[teamId]) || blankAllowed.has(teamId));
+  }, [allowBlankForemanTeamIds, form.teamForemanIds, form.teamIds]);
   const addTeamAvailableTeams = addTeamTarget
     ? teams.filter((team) => !addTeamTarget.teams.some((active) => active.teamId === team.id && active.status === "ATIVA"))
     : [];
@@ -161,17 +176,24 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
   function openAddTeamModal(stage: ProgrammingStage) {
     setAddTeamTarget(stage);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
   }
 
   function closeAddTeamModal() {
     setAddTeamTarget(null);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
+  }
+
+  function selectTeamToAdd(teamId: string) {
+    const selectedTeam = teams.find((team) => team.id === teamId);
+    setAddTeamSelectedId(teamId);
+    setAddTeamSelectedForemanId(selectedTeam?.foremanId ?? "");
   }
 
   async function confirmAddTeam() {
-    if (!addTeamTarget || !addTeamSelectedId) return;
-    const selectedTeam = teams.find((team) => team.id === addTeamSelectedId);
-    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, selectedTeam?.foremanId ?? null);
+    if (!addTeamTarget || !addTeamSelectedId || !addTeamSelectedForemanId) return;
+    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, addTeamSelectedForemanId);
     if (result.ok) closeAddTeamModal();
   }
 
@@ -249,9 +271,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
     };
 
     if (editingStageId) {
-      const currentStage = stages.find((item) => item.id === editingStageId);
       const result = await actions.saveStage(
-        { ...baseFields, executionDate: form.executionDate, programmingId: editingStageId, expectedUpdatedAt: currentStage?.updatedAt },
+        { ...baseFields, executionDate: form.executionDate, programmingId: editingStageId, expectedUpdatedAt: editingStage?.updatedAt },
         true,
       );
       if (result.ok) cancelEdit();
@@ -455,9 +476,11 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
               campoEletrico: form.campoEletrico,
               serviceDescription: form.serviceDescription,
             }) && isTimeRangeValid(form.startTime, form.endTime)
+              && canSubmitTeamForemen
           }
           teamOptions={teams}
           foremanOptions={meta?.foremen ?? []}
+          allowBlankForemanTeamIds={allowBlankForemanTeamIds}
           sgdTypes={meta?.sgdTypes ?? []}
           electricalEqCatalog={meta?.electricalEqCatalog ?? []}
           supportOptions={meta?.supportOptions ?? []}
@@ -605,7 +628,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       <AddTeamModal
         isOpen={Boolean(addTeamTarget)}
         availableTeams={addTeamAvailableTeams}
+        foremanOptions={meta?.foremen ?? []}
         selectedTeamId={addTeamSelectedId}
+        selectedForemanId={addTeamSelectedForemanId}
         isSubmitting={actions.isSubmitting}
         executionDate={addTeamTarget?.executionDate ?? null}
         startTime={addTeamTarget?.startTime ?? null}
@@ -613,7 +638,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         check={addTeamCheck}
         onClose={closeAddTeamModal}
         onConfirm={confirmAddTeam}
-        onSelectedTeamIdChange={setAddTeamSelectedId}
+        onSelectedTeamIdChange={selectTeamToAdd}
+        onSelectedForemanIdChange={setAddTeamSelectedForemanId}
       />
 
       <DetailsModal target={detailsTarget} onClose={() => setDetailsTarget(null)} />

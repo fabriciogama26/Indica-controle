@@ -1693,9 +1693,10 @@ Atualizacao 2026-08-31 - Encarregado programado por alocacao
   programada com Joao para 05/09 e depois o cadastro da equipe mudasse para Carlos,
   a programacao passava a parecer planejada com Carlos, perdendo o historico real.
 - Depois: `programming_team` guarda `programmed_foreman_person_id` e
-  `programmed_foreman_name_snapshot`. Ao selecionar equipe no formulario, a tela
-  preenche o encarregado atual da equipe; o programador pode trocar antes de salvar.
-  O valor salvo fica na propria alocacao da etapa.
+  `programmed_foreman_name_snapshot`. Ao selecionar equipe no formulario ou no
+  modal `Adicionar equipe`, a tela preenche o encarregado atual da equipe; o
+  programador pode trocar antes de salvar. O valor salvo fica na propria alocacao
+  da etapa.
 - Conceitos separados:
   - Encarregado da Equipe: padrao atual em `/equipes`.
   - Encarregado Programado: snapshot salvo em `programming_team`.
@@ -1705,6 +1706,15 @@ Atualizacao 2026-08-31 - Encarregado programado por alocacao
   existente grava `UPDATE_PROGRAMMED_FOREMAN` em `programming_history`, com De/Para
   do nome e do id. A RPC exige motivo somente quando essa troca acontece; editar
   outros campos continua podendo usar motivo vazio.
+- Atomicidade: a RPC valida motivo, encarregado e conflito de agenda antes da
+  primeira escrita. Assim, falta de motivo ou encarregado invalido nao deixa
+  cabecalho/equipes parcialmente gravados.
+- Dado legado sem snapshot: uma alocacao existente sem encarregado programado pode
+  ser preservada em edicoes que nao mexem no encarregado. Se o usuario tentar
+  limpar explicitamente o campo, a RPC recusa; para nova alocacao o encarregado e
+  obrigatorio.
+- Catalogo: a lista de encarregados ativos usa leitura paginada (`loadAllRows`) e
+  ordenacao estavel, evitando corte silencioso acima de 1.000 pessoas/cargos.
 - Backfill: a migration usa `team_foreman_history` na data de criacao da alocacao
   (`programming_team.created_at::date`), nao na data de execucao, porque a regra e
   quem estava previsto quando a programacao foi feita.

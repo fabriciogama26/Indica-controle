@@ -686,7 +686,7 @@ export async function fetchProgrammingStagesForMeasurementSources(params: {
     .from("programming")
     .select(`
       id, project_id, execution_date, status, campo_eletrico, work_completion_status,
-      programming_team ( team_id, status ),
+      programming_team ( team_id, status, programmed_foreman_person_id, programmed_foreman_name_snapshot ),
       programming_activity ( id, service_activity_id, quantity, is_active )
     `)
     .eq("tenant_id", params.tenantId)

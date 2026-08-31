@@ -253,21 +253,26 @@ begin
         and pt.status = 'ATIVA'
       limit 1;
 
-      if v_foreman_key_present and v_foreman_raw is not null then
+      if v_existing_team_row.id is not null and not v_foreman_key_present then
+        v_programmed_foreman_id := v_existing_team_row.programmed_foreman_person_id;
+        v_programmed_foreman_name := v_existing_team_row.programmed_foreman_name_snapshot;
+      elsif v_foreman_key_present and v_foreman_raw is null then
+        return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_PROGRAMMED_FOREMAN',
+          'message', 'Selecione o encarregado programado para uma das equipes.');
+      elsif v_foreman_key_present and v_foreman_raw is not null then
         begin
           v_programmed_foreman_id := v_foreman_raw::uuid;
         exception when invalid_text_representation then
           return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_PROGRAMMED_FOREMAN',
             'message', 'Encarregado programado invalido para uma das equipes.');
         end;
-      elsif v_existing_team_row.id is not null and v_existing_team_row.programmed_foreman_person_id is not null then
-        v_programmed_foreman_id := v_existing_team_row.programmed_foreman_person_id;
-        v_programmed_foreman_name := v_existing_team_row.programmed_foreman_name_snapshot;
       else
         v_programmed_foreman_id := v_team_row.foreman_person_id;
       end if;
 
-      if v_existing_team_row.id is not null
+      if v_existing_team_row.id is not null and not v_foreman_key_present then
+        null;
+      elsif v_existing_team_row.id is not null
          and v_programmed_foreman_id is not distinct from v_existing_team_row.programmed_foreman_person_id
          and v_existing_team_row.programmed_foreman_name_snapshot is not null then
         v_programmed_foreman_name := v_existing_team_row.programmed_foreman_name_snapshot;
@@ -278,9 +283,17 @@ begin
         limit 1;
       end if;
 
-      if v_programmed_foreman_id is null or nullif(btrim(coalesce(v_programmed_foreman_name, '')), '') is null then
+      if not (v_existing_team_row.id is not null and not v_foreman_key_present)
+         and (v_programmed_foreman_id is null or nullif(btrim(coalesce(v_programmed_foreman_name, '')), '') is null) then
         return jsonb_build_object('success', false, 'status', 400, 'reason', 'INVALID_PROGRAMMED_FOREMAN',
           'message', 'Encarregado programado invalido ou inativo para uma das equipes.');
+      end if;
+
+      if v_existing_team_row.id is not null
+         and v_existing_team_row.programmed_foreman_person_id is distinct from v_programmed_foreman_id
+         and v_history_reason is null then
+        return jsonb_build_object('success', false, 'status', 400, 'reason', 'REASON_REQUIRED',
+          'message', 'Informe o motivo da alteracao do encarregado programado.');
       end if;
 
       select * into v_conflict
@@ -450,16 +463,20 @@ begin
       v_foreman_raw := nullif(btrim(coalesce(p_team_foremen ->> v_team_id::text, '')), '');
       v_foreman_key_present := coalesce(p_team_foremen ? v_team_id::text, false);
 
-      if v_foreman_key_present and v_foreman_raw is not null then
-        v_programmed_foreman_id := v_foreman_raw::uuid;
-      elsif v_existing_team_row.id is not null and v_existing_team_row.programmed_foreman_person_id is not null then
+      if v_existing_team_row.id is not null and not v_foreman_key_present then
         v_programmed_foreman_id := v_existing_team_row.programmed_foreman_person_id;
         v_programmed_foreman_name := v_existing_team_row.programmed_foreman_name_snapshot;
+      elsif v_foreman_key_present and v_foreman_raw is null then
+        raise exception 'INVALID_PROGRAMMED_FOREMAN';
+      elsif v_foreman_key_present and v_foreman_raw is not null then
+        v_programmed_foreman_id := v_foreman_raw::uuid;
       else
         v_programmed_foreman_id := v_team_row.foreman_person_id;
       end if;
 
-      if v_existing_team_row.id is not null
+      if v_existing_team_row.id is not null and not v_foreman_key_present then
+        null;
+      elsif v_existing_team_row.id is not null
          and v_programmed_foreman_id is not distinct from v_existing_team_row.programmed_foreman_person_id
          and v_existing_team_row.programmed_foreman_name_snapshot is not null then
         v_programmed_foreman_name := v_existing_team_row.programmed_foreman_name_snapshot;
@@ -472,11 +489,6 @@ begin
 
       if v_existing_team_row.id is not null then
         if v_existing_team_row.programmed_foreman_person_id is distinct from v_programmed_foreman_id then
-          if v_history_reason is null then
-            return jsonb_build_object('success', false, 'status', 400, 'reason', 'REASON_REQUIRED',
-              'message', 'Informe o motivo da alteracao do encarregado programado.');
-          end if;
-
           update public.programming_team
           set
             programmed_foreman_person_id = v_programmed_foreman_id,

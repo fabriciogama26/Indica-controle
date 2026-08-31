@@ -86,6 +86,7 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
 
   const [addTeamTarget, setAddTeamTarget] = useState<StageListItem | null>(null);
   const [addTeamSelectedId, setAddTeamSelectedId] = useState("");
+  const [addTeamSelectedForemanId, setAddTeamSelectedForemanId] = useState("");
 
   const [detailsTarget, setDetailsTarget] = useState<ProgrammingStage | null>(null);
 
@@ -103,7 +104,7 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
   const addTeamCheck = useAddTeamPrecheck({ accessToken, programmingId: addTeamTarget?.id ?? null, teamId: addTeamSelectedId });
 
   const projects = meta?.projects ?? [];
-  const teams = meta?.teams ?? [];
+  const teams = useMemo(() => meta?.teams ?? [], [meta?.teams]);
   const reasonOptions = meta?.reasonOptions ?? [];
   const sgdTypes = meta?.sgdTypes ?? [];
   const electricalEqCatalog = meta?.electricalEqCatalog ?? [];
@@ -428,17 +429,24 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
   function openAddTeamModal(stage: StageListItem) {
     setAddTeamTarget(stage);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
   }
 
   function closeAddTeamModal() {
     setAddTeamTarget(null);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
+  }
+
+  function selectTeamToAdd(teamId: string) {
+    const selectedTeam = teams.find((team) => team.id === teamId);
+    setAddTeamSelectedId(teamId);
+    setAddTeamSelectedForemanId(selectedTeam?.foremanId ?? "");
   }
 
   async function confirmAddTeam() {
-    if (!addTeamTarget || !addTeamSelectedId) return;
-    const selectedTeam = teams.find((team) => team.id === addTeamSelectedId);
-    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, selectedTeam?.foremanId ?? null);
+    if (!addTeamTarget || !addTeamSelectedId || !addTeamSelectedForemanId) return;
+    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, addTeamSelectedForemanId);
     if (result.ok) closeAddTeamModal();
   }
 
@@ -659,7 +667,9 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
       <AddTeamModal
         isOpen={Boolean(addTeamTarget)}
         availableTeams={addTeamAvailableTeams}
+        foremanOptions={meta?.foremen ?? []}
         selectedTeamId={addTeamSelectedId}
+        selectedForemanId={addTeamSelectedForemanId}
         isSubmitting={actions.isSubmitting}
         executionDate={addTeamTarget?.executionDate ?? null}
         startTime={addTeamTarget?.startTime ?? null}
@@ -667,7 +677,8 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
         check={addTeamCheck}
         onClose={closeAddTeamModal}
         onConfirm={confirmAddTeam}
-        onSelectedTeamIdChange={setAddTeamSelectedId}
+        onSelectedTeamIdChange={selectTeamToAdd}
+        onSelectedForemanIdChange={setAddTeamSelectedForemanId}
       />
 
       <HistoryModal

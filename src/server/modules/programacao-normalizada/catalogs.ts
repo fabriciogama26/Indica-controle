@@ -1,5 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
+
 import type {
   PersonRow,
   ForemanCatalogRow,
@@ -28,6 +30,8 @@ const _workCompletionCatalogCache = new Map<string, CacheEntry<ProgrammingWorkCo
 const _reasonCatalogCache = new Map<string, CacheEntry<ProgrammingReasonCatalogRow[]>>();
 const _supportItemsCache = new Map<string, CacheEntry<ProgrammingSupportItemRow[]>>();
 const _foremenCache = new Map<string, CacheEntry<ForemanCatalogRow[]>>();
+
+type JobTitleIdRow = { id: string };
 
 const FOREMAN_JOB_TITLE_FILTER = "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%";
 
@@ -79,24 +83,32 @@ export async function fetchForemen(supabase: SupabaseClient, tenantId: string) {
   const cached = _foremenCache.get(tenantId);
   if (cached && Date.now() < cached.expiresAt) return cached.data;
 
-  const { data: jobTitles, error: jobTitleError } = await supabase
-    .from("job_titles")
-    .select("id")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .or(FOREMAN_JOB_TITLE_FILTER)
-    .returns<Array<{ id: string }>>();
+  const { data: jobTitles, error: jobTitleError } = await loadAllRows<JobTitleIdRow>((from, to) =>
+    supabase
+      .from("job_titles")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .or(FOREMAN_JOB_TITLE_FILTER)
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<JobTitleIdRow[]>(),
+  );
 
   if (jobTitleError || !jobTitles?.length) return [] as ForemanCatalogRow[];
 
-  const { data, error } = await supabase
-    .from("people")
-    .select("id, nome")
-    .eq("tenant_id", tenantId)
-    .eq("ativo", true)
-    .in("job_title_id", jobTitles.map((item) => item.id))
-    .order("nome", { ascending: true })
-    .returns<ForemanCatalogRow[]>();
+  const { data, error } = await loadAllRows<ForemanCatalogRow>((from, to) =>
+    supabase
+      .from("people")
+      .select("id, nome")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .in("job_title_id", jobTitles.map((item) => item.id))
+      .order("nome", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<ForemanCatalogRow[]>(),
+  );
 
   if (error) return [] as ForemanCatalogRow[];
 
