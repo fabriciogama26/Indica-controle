@@ -452,3 +452,19 @@ Atualizacao 2026-08-25 - Cadastro em massa
 - Validado com `npx tsc --noEmit`, `npm run lint` e `npm run build`. Validacao manual pendente:
   (1) importar CSV valido e conferir as atividades na lista; (2) importar CSV com `pontos` igual a zero e conferir o CSV de erros;
   (3) importar CSV com categoria inexistente e conferir a recusa da linha.
+
+Atualizacao 2026-08-31 - Tipo passa a ter tela propria de cadastro
+-----------------------------------------------------------------
+- Etapa 1 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo` de `Atividades`.
+- Nenhum arquivo de `Atividades` foi alterado nesta etapa: o campo `Tipo` ja era um `select` alimentado por
+  `team_types` atraves de `/api/activities/meta`, e continua igual.
+- Antes: o catalogo por tras do campo `Tipo` nao tinha tela nenhuma; incluir ou renomear um tipo exigia acesso direto ao banco.
+- Depois: a tela `/tipo-atividade` (Cadastro Base) cadastra, edita, cancela/ativa e audita esse catalogo.
+  Detalhe completo em `docs/Tela_Tipo_Atividade_SaaS.txt`.
+- Efeito colateral esperado no formulario: um tipo cancelado em `/tipo-atividade` some do `select` `Tipo`, porque
+  `/api/activities/meta` ja filtrava por `ativo = true`. Para evitar que uma atividade antiga fique impossivel de
+  reeditar, a RPC `set_team_type_record_status` recusa o cancelamento (`TEAM_TYPE_IN_USE`) enquanto houver atividade
+  ativa apontando para o tipo.
+- Situacao dos outros dois campos nesta etapa:
+  - `Categoria`: continua lendo `types_service_activities`, ainda sem tela (etapa 2).
+  - `Grupo`: continua texto livre em `service_activities.group_name` (etapa 3).

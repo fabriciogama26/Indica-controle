@@ -1,0 +1,1 @@
+export { ActivityTypesPageView } from "./ActivityTypesPageView";
