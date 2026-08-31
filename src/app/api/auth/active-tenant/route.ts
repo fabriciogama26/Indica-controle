@@ -156,17 +156,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
-  const resolution = await resolveAuthenticatedAppUser(request, {
-    invalidSessionMessage: "Sessao invalida para limpar contrato ativo.",
-    inactiveMessage: "Usuario inativo.",
-    ignoreActiveTenantCookie: true,
-    allowAdminWithoutActiveTenant: true,
-  });
-  if ("error" in resolution) {
-    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
-  }
-
+export async function DELETE() {
   const response = NextResponse.json({ success: true }, { headers: NO_STORE_HEADERS });
   response.cookies.set(ACTIVE_TENANT_COOKIE_NAME, "", {
     ...buildCookieOptions(),

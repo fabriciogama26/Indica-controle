@@ -28,7 +28,7 @@
 | `src/lib/server/pageAuthorization.ts` | Verificação de permissão por page_key e action |
 | `src/app/api/auth/local-login/route.ts` | Login local (desenvolvimento) |
 | `src/app/api/auth/session-access/route.ts` | Carrega permissões da sessão |
-| `src/app/api/auth/active-tenant/route.ts` | Lista contratos do admin e grava/limpa cookie `httpOnly` do tenant ativo |
+| `src/app/api/auth/active-tenant/route.ts` | Lista contratos do admin, grava o cookie `httpOnly` do tenant ativo e limpa esse cookie de forma idempotente |
 
 ---
 
@@ -43,7 +43,7 @@
    → retorna user, tenantName, pageAccess, hasCustomPermissions
 5. AuthContext armazena a sessão completa
 6. Admin remoto acessa /selecionar-contrato
-   → GET/POST /api/auth/active-tenant grava cookie INDICA.activeTenantId
+   → GET/POST /api/auth/active-tenant le/grava cookie INDICA.activeTenantId
 7. useAuth() expõe para todos os componentes
 
 Idle Timeout:
@@ -93,6 +93,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 5. **Cookie inválido:** cookie de tenant que não pertence mais ao usuário é ignorado e limpo em `/api/auth/session-access`; não deve causar 403 persistente.
 6. **Permissões customizadas:** Se o usuário tem entradas em `app_user_page_permissions`, elas sobrescrevem o padrão da role.
 7. **Token expirado:** `TOKEN_EXPIRED` limpa sessão sem chamar `supabase.auth.signOut()` (para evitar loop).
+8. **Limpeza de tenant ativo:** `DELETE /api/auth/active-tenant` apenas expira o cookie `INDICA.activeTenantId` e deve ser idempotente mesmo sem sessao valida. Nao lista nem grava tenant; `GET` e `POST` continuam autenticados e restritos a admin.
 
 ---
 
@@ -123,6 +124,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 
 | Data | O que mudou |
 |---|---|
+| 2026-08-31 | `DELETE /api/auth/active-tenant` passou a expirar o cookie de forma idempotente mesmo sem sessao valida, removendo 401 ruidoso no logout/token expirado; `GET` e `POST` seguem protegidos |
 | 2026-08-26 | `/api/auth/session-access` passou a devolver `tenantName` de `tenants.name`; a sessao frontend hidrata o campo e o `AppShell` mostra `Contrato: nome` no lugar do UUID do tenant |
 | 2026-08-25 | Migration 386 fecha brecha de `app_user_tenants`: backfill de vinculos, sync futuro, `save_user_permissions` cria/reativa vinculo de admin; header de tenant deixa de ser fonte operacional e cookie invalido passa a ser limpo |
 | 2026-08-25 | Criada seleção inicial de contrato para admin; vínculos de admin vêm obrigatoriamente de `app_user_tenants`, e tenant ativo pode vir de cookie `httpOnly`, sempre validado contra membership no servidor |
