@@ -132,6 +132,7 @@ Ordem de aplicacao
 396. 396_drop_legacy_admin_pin_hash.sql
 397. 397_fix_admin_pin_search_path.sql
 398. 398_stock_requisition_requested_by_date_index.sql
+399. 399_create_missing_foreign_key_indexes_post_301.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1264,3 +1265,8 @@ Observacao
 - Cria `idx_stock_requisition_requests_tenant_requested_date_created` em `stock_requisition_requests(tenant_id, requested_by, request_date desc, created_at desc)`, parcial para `requested_by is not null`.
 - Substitui a sugestao crua do Supabase Advisor (`request_date`) por um indice tenant-first para a aba "minhas requisicoes", que filtra por solicitante e ordena por data/criacao.
 - Inclui validacao pos-aplicacao para abortar se o indice esperado nao existir.
+
+399_create_missing_foreign_key_indexes_post_301.sql
+- Repete a varredura dinamica da 301 para criar indices faltantes de FKs publicas adicionadas depois daquela leva.
+- Fecha a nova remessa de alertas INFO `unindexed_foreign_keys` do Supabase Advisor sem listar manualmente as 62 constraints do relatorio.
+- Mantem `unused_index` fora do escopo: remocao de indice continua exigindo auditoria separada de workload, janela de estatisticas, constraints e fluxos raros.
