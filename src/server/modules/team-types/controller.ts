@@ -13,7 +13,7 @@ import {
 } from "@/lib/server/apiHelpers";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
 
-type ActivityTypeRow = {
+type TeamTypeRow = {
   id: string;
   name: string;
   ativo: boolean;
@@ -29,7 +29,7 @@ type AppUserRow = {
   login_name: string | null;
 };
 
-type ActivityTypeHistoryRow = {
+type TeamTypeHistoryRow = {
   id: string;
   change_type: "UPDATE" | "CANCEL" | "ACTIVATE";
   reason: string | null;
@@ -38,20 +38,20 @@ type ActivityTypeHistoryRow = {
   created_by: string | null;
 };
 
-type SaveActivityTypePayload = {
+type SaveTeamTypePayload = {
   id?: string | null;
   name?: string | null;
   expectedUpdatedAt?: string | null;
 };
 
-type UpdateActivityTypeStatusPayload = {
+type UpdateTeamTypeStatusPayload = {
   id?: string | null;
   reason?: string | null;
   action?: "cancel" | "activate";
   expectedUpdatedAt?: string | null;
 };
 
-type ActivityTypeSaveRpcResult = {
+type TeamTypeSaveRpcResult = {
   success?: boolean;
   status?: number;
   reason?: string;
@@ -71,17 +71,17 @@ function parseStatusFilter(value: string | null) {
   return null;
 }
 
-async function fetchActivityTypeById(
+async function fetchTeamTypeById(
   supabase: SupabaseClient,
   tenantId: string,
-  activityTypeId: string,
+  teamTypeId: string,
 ) {
   const { data, error } = await supabase
     .from("team_types")
     .select("id, name, ativo, created_by, updated_by, created_at, updated_at")
     .eq("tenant_id", tenantId)
-    .eq("id", activityTypeId)
-    .maybeSingle<ActivityTypeRow>();
+    .eq("id", teamTypeId)
+    .maybeSingle<TeamTypeRow>();
 
   if (error || !data) {
     return null;
@@ -90,49 +90,49 @@ async function fetchActivityTypeById(
   return data;
 }
 
-async function saveActivityTypeViaRpc(params: {
+async function saveTeamTypeViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
   actorUserId: string;
-  activityTypeId: string | null;
+  teamTypeId: string | null;
   name: string;
   expectedUpdatedAt: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_team_type_record", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
-    p_team_type_id: params.activityTypeId,
+    p_team_type_id: params.teamTypeId,
     p_name: params.name,
     p_expected_updated_at: params.expectedUpdatedAt,
   });
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao salvar tipo de atividade.", reason: null } as const;
+    return { ok: false, status: 500, message: "Falha ao salvar tipo de equipe.", reason: null } as const;
   }
 
-  const result = (data ?? {}) as ActivityTypeSaveRpcResult;
+  const result = (data ?? {}) as TeamTypeSaveRpcResult;
   if (result.success !== true) {
     return {
       ok: false,
       status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao salvar tipo de atividade.",
+      message: result.message ?? "Falha ao salvar tipo de equipe.",
       reason: result.reason ?? null,
     } as const;
   }
 
   return {
     ok: true,
-    activityTypeId: result.team_type_id ?? null,
+    teamTypeId: result.team_type_id ?? null,
     updatedAt: result.updated_at ?? null,
-    message: result.message ?? "Tipo de atividade salvo com sucesso.",
+    message: result.message ?? "Tipo de equipe salvo com sucesso.",
   } as const;
 }
 
-async function setActivityTypeStatusViaRpc(params: {
+async function setTeamTypeStatusViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
   actorUserId: string;
-  activityTypeId: string;
+  teamTypeId: string;
   action: "ACTIVATE" | "CANCEL";
   reason: string;
   expectedUpdatedAt: string | null;
@@ -140,31 +140,31 @@ async function setActivityTypeStatusViaRpc(params: {
   const { data, error } = await params.supabase.rpc("set_team_type_record_status", {
     p_tenant_id: params.tenantId,
     p_actor_user_id: params.actorUserId,
-    p_team_type_id: params.activityTypeId,
+    p_team_type_id: params.teamTypeId,
     p_action: params.action,
     p_reason: params.reason,
     p_expected_updated_at: params.expectedUpdatedAt,
   });
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao atualizar status do tipo de atividade.", reason: null } as const;
+    return { ok: false, status: 500, message: "Falha ao atualizar status do tipo de equipe.", reason: null } as const;
   }
 
-  const result = (data ?? {}) as ActivityTypeSaveRpcResult;
+  const result = (data ?? {}) as TeamTypeSaveRpcResult;
   if (result.success !== true) {
     return {
       ok: false,
       status: Number(result.status ?? 400),
-      message: result.message ?? "Falha ao atualizar status do tipo de atividade.",
+      message: result.message ?? "Falha ao atualizar status do tipo de equipe.",
       reason: result.reason ?? null,
     } as const;
   }
 
   return {
     ok: true,
-    activityTypeId: result.team_type_id ?? null,
+    teamTypeId: result.team_type_id ?? null,
     updatedAt: result.updated_at ?? null,
-    message: result.message ?? "Status do tipo de atividade atualizado com sucesso.",
+    message: result.message ?? "Status do tipo de equipe atualizado com sucesso.",
   } as const;
 }
 
@@ -187,10 +187,10 @@ async function fetchUsersByIds(supabase: SupabaseClient, tenantId: string, userI
   return data ?? [];
 }
 
-export async function handleGetActivityTypes(request: NextRequest) {
+export async function handleGetTeamTypes(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para consultar tipos de atividade.",
+      invalidSessionMessage: "Sessao invalida para consultar tipos de equipe.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -199,11 +199,11 @@ export async function handleGetActivityTypes(request: NextRequest) {
     }
 
     const params = request.nextUrl.searchParams;
-    const historyActivityTypeId = normalizeText(params.get("historyActivityTypeId"));
+    const historyTeamTypeId = normalizeText(params.get("historyTeamTypeId"));
     const isExport = normalizeText(params.get("mode")).toLowerCase() === "export";
     const authorizationError = await authorizePageAction(
       resolution,
-      "tipo-atividade",
+      "tipo-equipe",
       isExport ? "export" : "read",
     );
 
@@ -213,10 +213,10 @@ export async function handleGetActivityTypes(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
 
-    if (historyActivityTypeId) {
-      const activityType = await fetchActivityTypeById(supabase, appUser.tenant_id, historyActivityTypeId);
-      if (!activityType) {
-        return NextResponse.json({ message: "Tipo de atividade nao encontrado." }, { status: 404 });
+    if (historyTeamTypeId) {
+      const teamType = await fetchTeamTypeById(supabase, appUser.tenant_id, historyTeamTypeId);
+      if (!teamType) {
+        return NextResponse.json({ message: "Tipo de equipe nao encontrado." }, { status: 404 });
       }
 
       const historyPage = parsePositiveInteger(params.get("historyPage"), 1);
@@ -228,15 +228,15 @@ export async function handleGetActivityTypes(request: NextRequest) {
         .from("app_entity_history")
         .select("id, change_type, reason, changes, created_at, created_by", { count: "exact" })
         .eq("tenant_id", appUser.tenant_id)
-        .eq("module_key", "tipo-atividade")
+        .eq("module_key", "tipo-equipe")
         .eq("entity_table", "team_types")
-        .eq("entity_id", historyActivityTypeId)
+        .eq("entity_id", historyTeamTypeId)
         .order("created_at", { ascending: false })
         .range(historyFrom, historyTo)
-        .returns<ActivityTypeHistoryRow[]>();
+        .returns<TeamTypeHistoryRow[]>();
 
       if (historyError) {
-        return NextResponse.json({ message: "Falha ao carregar historico do tipo de atividade." }, { status: 500 });
+        return NextResponse.json({ message: "Falha ao carregar historico do tipo de equipe." }, { status: 500 });
       }
 
       const userIds = Array.from(
@@ -246,10 +246,10 @@ export async function handleGetActivityTypes(request: NextRequest) {
       const userDisplayMap = buildUserDisplayMap(users);
 
       return NextResponse.json({
-        activityType: {
-          id: activityType.id,
-          name: activityType.name,
-          isActive: activityType.ativo,
+        teamType: {
+          id: teamType.id,
+          name: teamType.name,
+          isActive: teamType.ativo,
         },
         history: (historyData ?? []).map((entry) => ({
           id: entry.id,
@@ -288,10 +288,10 @@ export async function handleGetActivityTypes(request: NextRequest) {
       .order("ativo", { ascending: false })
       .order("name", { ascending: true })
       .range(from, to)
-      .returns<ActivityTypeRow[]>();
+      .returns<TeamTypeRow[]>();
 
     if (error) {
-      return NextResponse.json({ message: "Falha ao listar tipos de atividade." }, { status: 500 });
+      return NextResponse.json({ message: "Falha ao listar tipos de equipe." }, { status: 500 });
     }
 
     const userIds = Array.from(
@@ -306,7 +306,7 @@ export async function handleGetActivityTypes(request: NextRequest) {
     const userLoginNameMap = buildUserLoginNameMap(users);
 
     return NextResponse.json({
-      activityTypes: (data ?? []).map((row) => ({
+      teamTypes: (data ?? []).map((row) => ({
         id: row.id,
         name: row.name,
         isActive: Boolean(row.ativo),
@@ -322,14 +322,14 @@ export async function handleGetActivityTypes(request: NextRequest) {
       },
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao listar tipos de atividade." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao listar tipos de equipe." }, { status: 500 });
   }
 }
 
-export async function handleCreateActivityType(request: NextRequest) {
+export async function handleCreateTeamType(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para cadastrar tipo de atividade.",
+      invalidSessionMessage: "Sessao invalida para cadastrar tipo de equipe.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -337,24 +337,24 @@ export async function handleCreateActivityType(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    const authorizationError = await authorizePageAction(resolution, "tipo-atividade", "create");
+    const authorizationError = await authorizePageAction(resolution, "tipo-equipe", "create");
     if (authorizationError) {
       return authorizationError;
     }
 
     const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as SaveActivityTypePayload;
+    const body = (await request.json().catch(() => ({}))) as SaveTeamTypePayload;
     const name = normalizeText(body.name);
 
     if (!name) {
-      return NextResponse.json({ message: "Informe o nome do tipo de atividade." }, { status: 400 });
+      return NextResponse.json({ message: "Informe o nome do tipo de equipe." }, { status: 400 });
     }
 
-    const saveResult = await saveActivityTypeViaRpc({
+    const saveResult = await saveTeamTypeViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
-      activityTypeId: null,
+      teamTypeId: null,
       name,
       expectedUpdatedAt: null,
     });
@@ -368,19 +368,19 @@ export async function handleCreateActivityType(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      activityTypeId: saveResult.activityTypeId,
+      teamTypeId: saveResult.teamTypeId,
       updatedAt: saveResult.updatedAt,
       message: saveResult.message,
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao cadastrar tipo de atividade." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao cadastrar tipo de equipe." }, { status: 500 });
   }
 }
 
-export async function handleUpdateActivityType(request: NextRequest) {
+export async function handleUpdateTeamType(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para editar tipo de atividade.",
+      invalidSessionMessage: "Sessao invalida para editar tipo de equipe.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -388,34 +388,34 @@ export async function handleUpdateActivityType(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    const authorizationError = await authorizePageAction(resolution, "tipo-atividade", "update");
+    const authorizationError = await authorizePageAction(resolution, "tipo-equipe", "update");
     if (authorizationError) {
       return authorizationError;
     }
 
     const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as SaveActivityTypePayload;
-    const activityTypeId = normalizeText(body.id);
+    const body = (await request.json().catch(() => ({}))) as SaveTeamTypePayload;
+    const teamTypeId = normalizeText(body.id);
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const name = normalizeText(body.name);
 
-    if (!activityTypeId) {
-      return NextResponse.json({ message: "Tipo de atividade invalido para edicao." }, { status: 400 });
+    if (!teamTypeId) {
+      return NextResponse.json({ message: "Tipo de equipe invalido para edicao." }, { status: 400 });
     }
 
     if (!expectedUpdatedAt) {
-      return NextResponse.json({ message: "Atualize a lista antes de editar o tipo de atividade." }, { status: 400 });
+      return NextResponse.json({ message: "Atualize a lista antes de editar o tipo de equipe." }, { status: 400 });
     }
 
     if (!name) {
-      return NextResponse.json({ message: "Informe o nome do tipo de atividade." }, { status: 400 });
+      return NextResponse.json({ message: "Informe o nome do tipo de equipe." }, { status: 400 });
     }
 
-    const saveResult = await saveActivityTypeViaRpc({
+    const saveResult = await saveTeamTypeViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
-      activityTypeId,
+      teamTypeId,
       name,
       expectedUpdatedAt,
     });
@@ -429,19 +429,19 @@ export async function handleUpdateActivityType(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      activityTypeId: saveResult.activityTypeId,
+      teamTypeId: saveResult.teamTypeId,
       updatedAt: saveResult.updatedAt,
       message: saveResult.message,
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao editar tipo de atividade." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao editar tipo de equipe." }, { status: 500 });
   }
 }
 
-export async function handleUpdateActivityTypeStatus(request: NextRequest) {
+export async function handleUpdateTeamTypeStatus(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
-      invalidSessionMessage: "Sessao invalida para atualizar status do tipo de atividade.",
+      invalidSessionMessage: "Sessao invalida para atualizar status do tipo de equipe.",
       inactiveMessage: "Usuario inativo.",
     });
 
@@ -450,14 +450,14 @@ export async function handleUpdateActivityTypeStatus(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as UpdateActivityTypeStatusPayload;
-    const activityTypeId = normalizeText(body.id);
+    const body = (await request.json().catch(() => ({}))) as UpdateTeamTypeStatusPayload;
+    const teamTypeId = normalizeText(body.id);
     const reason = normalizeText(body.reason);
     const action = normalizeText(body.action).toLowerCase() === "activate" ? "ACTIVATE" : "CANCEL";
 
     const authorizationError = await authorizePageAction(
       resolution,
-      "tipo-atividade",
+      "tipo-equipe",
       action === "ACTIVATE" ? "update" : "cancel",
     );
 
@@ -467,13 +467,13 @@ export async function handleUpdateActivityTypeStatus(request: NextRequest) {
 
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
 
-    if (!activityTypeId) {
-      return NextResponse.json({ message: "Tipo de atividade invalido para atualizar status." }, { status: 400 });
+    if (!teamTypeId) {
+      return NextResponse.json({ message: "Tipo de equipe invalido para atualizar status." }, { status: 400 });
     }
 
     if (!expectedUpdatedAt) {
       return NextResponse.json(
-        { message: "Atualize a lista antes de alterar o status do tipo de atividade." },
+        { message: "Atualize a lista antes de alterar o status do tipo de equipe." },
         { status: 400 },
       );
     }
@@ -485,11 +485,11 @@ export async function handleUpdateActivityTypeStatus(request: NextRequest) {
       );
     }
 
-    const statusResult = await setActivityTypeStatusViaRpc({
+    const statusResult = await setTeamTypeStatusViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
-      activityTypeId,
+      teamTypeId,
       reason,
       action,
       expectedUpdatedAt,
@@ -504,11 +504,11 @@ export async function handleUpdateActivityTypeStatus(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      activityTypeId: statusResult.activityTypeId,
+      teamTypeId: statusResult.teamTypeId,
       updatedAt: statusResult.updatedAt,
       message: statusResult.message,
     });
   } catch {
-    return NextResponse.json({ message: "Falha ao atualizar status do tipo de atividade." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao atualizar status do tipo de equipe." }, { status: 500 });
   }
 }

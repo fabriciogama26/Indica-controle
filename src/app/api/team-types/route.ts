@@ -1,11 +1,11 @@
 import {
-  handleCreateActivityType,
-  handleGetActivityTypes,
-  handleUpdateActivityType,
-  handleUpdateActivityTypeStatus,
-} from "@/server/modules/activity-types";
+  handleCreateTeamType,
+  handleGetTeamTypes,
+  handleUpdateTeamType,
+  handleUpdateTeamTypeStatus,
+} from "@/server/modules/team-types";
 
-export const GET = handleGetActivityTypes;
-export const POST = handleCreateActivityType;
-export const PUT = handleUpdateActivityType;
-export const PATCH = handleUpdateActivityTypeStatus;
+export const GET = handleGetTeamTypes;
+export const POST = handleCreateTeamType;
+export const PUT = handleUpdateTeamType;
+export const PATCH = handleUpdateTeamTypeStatus;

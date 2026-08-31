@@ -1,6 +1,6 @@
 export {
-  handleCreateActivityType,
-  handleGetActivityTypes,
-  handleUpdateActivityType,
-  handleUpdateActivityTypeStatus,
+  handleCreateTeamType,
+  handleGetTeamTypes,
+  handleUpdateTeamType,
+  handleUpdateTeamTypeStatus,
 } from "./controller";

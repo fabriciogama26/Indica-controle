@@ -46,7 +46,6 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/centro-servico", pageKey: "centro-servico" },
   { prefix: "/contrato", pageKey: "contrato" },
   { prefix: "/atividades", pageKey: "atividades" },
-  { prefix: "/tipo-atividade", pageKey: "tipo-atividade" },
   { prefix: "/tipo-equipe", pageKey: "tipo-equipe" },
   { prefix: "/imei", pageKey: "imei" },
   { prefix: "/tipo-servico", pageKey: "tipo-servico" },

@@ -1,48 +1,106 @@
-﻿Tela: Tipo de Equipe SaaS
+Tela: Tipo de Equipe SaaS
 
 Visao geral
 -----------
-- Tela placeholder em `Cadastro Base` para o dominio de tipos de equipes.
-- Nesta etapa, a tela existe para navegacao/permissao; o CRUD dedicado ainda nao foi implementado.
-- O dominio ja existe em banco na tabela `team_types` e e consumido no cadastro de `Equipes`.
+- Tela de `Cadastro Base` para manter o catalogo `team_types` por tenant.
+- Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+- E o unico CRUD de `team_types` no sistema. O mesmo catalogo alimenta dois campos com nomes diferentes na interface:
+  - `Tipo` no cadastro de `Equipes` (`teams.team_type_id`);
+  - `Tipo` no cadastro de `Atividades` (`service_activities.team_type_id`).
+- Tambem e lido por `Meta`, `Medicao`, `Apuracao Fator Minimo` e pelos catalogos de `Locacao` e `Previsao de Atividades`.
+  Renomear um tipo aqui muda o rotulo exibido em todas essas telas.
 
 Arquitetura
 -----------
 - Rota: `src/app/(dashboard)/tipo-equipe/page.tsx`
-- Componente atual: `src/components/ui/ModulePlaceholder.tsx`
+- View: `src/modules/dashboard/tipo-equipe/TeamTypesPageView.tsx`
+- CSV: `src/modules/dashboard/tipo-equipe/csv.ts`
+- Fachada frontend: `src/modules/dashboard/tipo-equipe/index.ts`
+- API principal: `src/app/api/team-types/route.ts`
+- Backend: `src/server/modules/team-types/controller.ts`
+- Fachada backend: `src/server/modules/team-types/index.ts`
+- Estilos: reutiliza `src/modules/dashboard/pessoas/PeoplePageView.module.css`, mesmo padrao de `Centro de Servico`
 - Integracao de menu: `src/components/layout/AppShell.tsx`
 - Guard de rota: `src/lib/auth/authorization.ts`
 - Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-- Base SQL: `supabase/migrations/053_create_team_types_and_link_teams.sql`
+- Banco: `team_types`, criada por `supabase/migrations/053_create_team_types_and_link_teams.sql`
+- Historico generico: `app_entity_history`, criada por `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- RPC transacional: `supabase/migrations/402_move_team_type_screen_to_tipo_equipe.sql`
+  (a versao anterior das mesmas RPCs nasceu em `supabase/migrations/401_create_activity_type_page_and_team_type_rpcs.sql`)
 
 Cadastro
 --------
-- Nao implementado nesta etapa (placeholder).
-- Dominio existente em banco:
-  - `team_types.id`
-  - `team_types.tenant_id`
-  - `team_types.name`
-  - `team_types.ativo`
+- Campo obrigatorio:
+  - `Nome`
+- Regras:
+  - O nome e normalizado com `trim` antes do envio.
+  - A constraint unica `(tenant_id, name)` de `team_types` e case-sensitive; a RPC faz uma checagem adicional por
+    `upper(btrim(name))` para bloquear duplicidade que difere so em caixa ou espaco.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+- Fluxos:
+  - `POST /api/team-types` para cadastro.
+  - `PUT /api/team-types` para edicao.
+  - `PATCH /api/team-types` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_team_type_record`.
+  - `PATCH` chama `set_team_type_record_status`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
-- Nao implementado nesta etapa (placeholder).
+- Filtros:
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Nome, Status, Registrado em, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Botao `Exportar Excel (CSV)` no cabecalho.
+  - Exportacao usa `mode=export` e exige permissao `export` no backend.
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `tipo-equipe`
+  - `entity_table`: `team_types`
+  - Modal com paginacao fixa de `5` registros por pagina.
 
 Boas praticas
 -------------
-- Quando evoluir para CRUD, manter validacao de unicidade por tenant (`tenant_id`, `name`).
-- Manter RLS e escopo por tenant em todas as operacoes.
-- Reusar padrao visual/comportamental da tela `Projetos` para cadastro/lista/modais.
-- Manter pagina `tipo-equipe` integrada ao fluxo de permissoes por pagina.
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela usa `useAuth()` como unica fonte de sessao no client.
+- Erros da tela sao registrados com `useErrorLogger("tipo-equipe")`.
+- Icones de acoes reutilizam `ActionIcon`.
+- Exportacao reutiliza `CsvExportButton` e `downloadCsvFile`.
+
+Permissao
+---------
+- `page_key`: `tipo-equipe`, ja existente desde a migration `053`.
+- Acoes cobradas no backend: `read`, `create`, `update`, `cancel` e `export`.
+- Enquanto a rota era placeholder, `default_user_access = true` (migration `245`) e o backfill da `253`
+  (`can_create = can_access`, etc.) deixavam praticamente todo usuario nao-admin com as acoes de escrita ligadas.
+  Isso era inofensivo numa tela sem persistencia, mas nao num CRUD real.
+- Por isso a migration `402` revoga `can_create`, `can_update`, `can_cancel` e `can_export` de `tipo-equipe`
+  para usuarios nao administradores, PRESERVANDO `can_access`: quem enxergava a tela continua enxergando e
+  consultando; escrever passa a exigir liberacao explicita em `/permissoes`.
+- Administrador nao e afetado: `requirePageAction` libera antes de consultar a matriz.
 
 Cancelamento e saldo
 --------------------
-- Nao se aplica nesta etapa.
+- Cancelamento/ativacao usa o campo `ativo` de `team_types`.
+- O motivo fica registrado em `app_entity_history`, pois a tabela base nao possui colunas
+  `cancellation_reason`, `canceled_at` e `canceled_by`.
+- Guarda de vinculo: o cancelamento e recusado com `TEAM_TYPE_IN_USE` enquanto existir atividade ativa
+  (`service_activities`) ou equipe ativa (`teams`) apontando para o tipo. Sem essa guarda, inativar um tipo
+  em uso tiraria a opcao dos selects sem tocar nos registros ja gravados, deixando cadastro antigo impossivel
+  de reeditar.
+- A tela fecha o modal de status quando recebe `TEAM_TYPE_IN_USE`, para a mensagem nao ficar atras do overlay.
+- Saldo:
+  - Nao se aplica ao modulo de tipo de equipe.
 
 Atalhos
 -------
-- Rota ativa: `/tipo-equipe`
-- Exibida na secao `Cadastro Base` da sidebar.
+- Rota principal: `/tipo-equipe`
+- API:
+  - `GET/POST/PUT/PATCH /api/team-types`
 
 Atualizacao 2026-03
 -------------------
@@ -51,36 +109,91 @@ Atualizacao 2026-03
 - Pagina `tipo-equipe` adicionada em `app_pages`, `role_page_permissions` e `app_user_page_permissions`.
 - Tabela `teams` passou a exigir `team_type_id`.
 
+Atualizacao 2026-08-31 - Placeholder vira CRUD real
+---------------------------------------------------
+- Antes: `/tipo-equipe` exibia apenas `ModulePlaceholder`; `team_types` so podia ser mantida direto no banco.
+- Depois: `/tipo-equipe` permite cadastrar, editar, listar, detalhar, consultar historico, cancelar/ativar e exportar.
+- Contexto: a tela nasceu na etapa 1 do trabalho de dar cadastro proprio aos campos `Tipo`, `Categoria` e `Grupo`
+  de `Atividades`, publicada como `/tipo-atividade` pela migration `401`. Como `Tipo de Atividade` e `Tipo de Equipe`
+  sao a MESMA informacao — as duas apontavam para `public.team_types` — a tela foi consolidada aqui e o page_key
+  `tipo-atividade` foi aposentado, para nao existirem dois CRUDs concorrentes do mesmo dominio.
+- A migration `401` NAO foi editada: ja estava commitada e publicada, e poderia ter sido aplicada em algum ambiente
+  (`guias/guia_sql.md` regra 2). A correcao veio na `402`, que:
+  - republica `save_team_type_record` e `set_team_type_record_status` gravando `module_key = 'tipo-equipe'`,
+    sem mudar assinatura;
+  - migra o historico ja gravado como `tipo-atividade` para `tipo-equipe`, para a tela nao perder auditoria;
+  - aposenta `tipo-atividade` no padrao da `364` (desativa em `app_pages` e revoga permissoes, sem deletar a linha,
+    para nao zerar o `page_key` de `app_user_permission_history`);
+  - revoga as acoes de escrita de `tipo-equipe` para nao administradores (ver secao `Permissao`).
+- Se a `401` nunca tiver sido aplicada, os blocos da `402` que tratam de `tipo-atividade` viram no-op.
+- Renomeacoes de codigo em relacao a etapa 1: `activity-types` -> `team-types`,
+  `ActivityTypesPageView` -> `TeamTypesPageView`, `/api/activity-types` -> `/api/team-types`,
+  `src/modules/dashboard/tipo-atividade` -> `src/modules/dashboard/tipo-equipe`.
+- `docs/Tela_Tipo_Atividade_SaaS.txt` foi removido; seu conteudo esta consolidado neste arquivo.
+- Nenhuma alteracao em `Atividades`: o campo `Tipo` ja consumia `team_types` via `/api/activities/meta`.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/app/(dashboard)/tipo-equipe/page.tsx`
-  - Responsavel por: expor a rota de `Tipo de Equipe` com placeholder nesta etapa.
+  - Responsavel por: montar a view operacional da rota `Tipo de Equipe`.
+- Caminho: `src/modules/dashboard/tipo-equipe/TeamTypesPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/app/api/team-types/route.ts`
+  - Responsavel por: expor os handlers HTTP da API.
+- Caminho: `src/server/modules/team-types/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs transacionais.
+- Caminho: `supabase/migrations/402_move_team_type_screen_to_tipo_equipe.sql`
+  - Responsavel por: RPCs de salvar/status com `module_key = tipo-equipe`, guarda de vinculo no cancelamento,
+    migracao do historico, aposentadoria de `tipo-atividade` e revogacao de escrita para nao-admin.
 - Caminho: `supabase/migrations/053_create_team_types_and_link_teams.sql`
   - Responsavel por: criar `team_types`, vincular em `teams` e incluir `tipo-equipe` na matriz de permissao.
 
 Constantes e configuracoes
+- Caminho: `src/modules/dashboard/tipo-equipe/TeamTypesPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`,
+    `HISTORY_FIELD_LABELS`.
 - Caminho: `src/components/layout/AppShell.tsx`
-  - Responsavel por: incluir atalho de menu para `/tipo-equipe`.
+  - Responsavel por: atalho de menu e titulo/subtitulo da rota `/tipo-equipe`.
 - Caminho: `src/lib/auth/authorization.ts`
-  - Responsavel por: mapear rota `/tipo-equipe` para `page_key = tipo-equipe`.
+  - Responsavel por: mapear `/tipo-equipe` para o `page_key` `tipo-equipe`.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
-  - Responsavel por: incluir `tipo-equipe` no catalogo da tela de permissoes.
+  - Responsavel por: expor o card de liberacao granular da tela.
 
 Funcoes utilitarias relacionadas
-- Caminho: `src/components/ui/ModulePlaceholder.tsx`
-  - Responsavel por: layout padrao de telas ainda nao implementadas.
+- Caminho: `src/modules/dashboard/tipo-equipe/csv.ts`
+  - Responsavel por: montar o CSV de tipos de equipe.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `tipo-equipe`.
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS (`team_types`).
+- Next.js Route Handler (`/api/team-types`).
 
 Ajuda contextual
 - Arquivos alterados/criados:
-  - `src/app/(dashboard)/tipo-equipe/page.tsx` (novo)
-  - `supabase/migrations/053_create_team_types_and_link_teams.sql` (novo)
-  - `src/components/layout/AppShell.tsx`
+  - `src/app/(dashboard)/tipo-equipe/page.tsx`
+  - `src/app/api/team-types/route.ts`
+  - `src/modules/dashboard/tipo-equipe/TeamTypesPageView.tsx`
+  - `src/modules/dashboard/tipo-equipe/csv.ts`
+  - `src/modules/dashboard/tipo-equipe/index.ts`
+  - `src/server/modules/team-types/controller.ts`
+  - `src/server/modules/team-types/index.ts`
   - `src/lib/auth/authorization.ts`
+  - `src/components/layout/AppShell.tsx`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/402_move_team_type_screen_to_tipo_equipe.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Tipo_Equipe_SaaS.txt`
+  - `docs/Tela_Cadastro_Base_SaaS.txt`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `TASKS.md`
+- Removidos:
+  - `src/app/(dashboard)/tipo-atividade/page.tsx`
+  - `docs/Tela_Tipo_Atividade_SaaS.txt`
 - Comportamento antes/depois:
-  - Antes: nao existia rota nem dominio versionado para tipo de equipe.
-  - Depois: rota existe em `Cadastro Base`, dominio esta no banco e o cadastro de equipes consome esse tipo.
+  - Antes: rota placeholder sem persistencia, e um segundo CRUD do mesmo dominio em `/tipo-atividade`.
+  - Depois: um unico cadastro de `team_types`, em `/tipo-equipe`, com historico, guarda de vinculo no
+    cancelamento e escrita restrita a administrador ate liberacao explicita.

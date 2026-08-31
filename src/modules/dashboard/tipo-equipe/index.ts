@@ -1,1 +1,1 @@
-export { ActivityTypesPageView } from "./ActivityTypesPageView";
+export { TeamTypesPageView } from "./TeamTypesPageView";
