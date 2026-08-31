@@ -152,6 +152,7 @@ const permissionCatalog = [
   { pageKey: "prioridade", label: "Prioridade", path: "/prioridade", section: "Cadastro Base" },
   { pageKey: "centro-servico", label: "Centro de Servico", path: "/centro-servico", section: "Cadastro Base" },
   { pageKey: "contrato", label: "Contrato", path: "/contrato", section: "Cadastro Base" },
+  { pageKey: "tipo-atividade", label: "Tipo de Atividade", path: "/tipo-atividade", section: "Cadastro Base" },
   { pageKey: "tipo-equipe", label: "Tipo de Equipe", path: "/tipo-equipe", section: "Cadastro Base" },
   { pageKey: "imei", label: "Imei", path: "/imei", section: "Cadastro Base" },
   { pageKey: "tipo-servico", label: "Tipo de Servico", path: "/tipo-servico", section: "Cadastro Base" },

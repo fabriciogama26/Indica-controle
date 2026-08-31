@@ -1270,3 +1270,11 @@ Observacao
 - Repete a varredura dinamica da 301 para criar indices faltantes de FKs publicas adicionadas depois daquela leva.
 - Fecha a nova remessa de alertas INFO `unindexed_foreign_keys` do Supabase Advisor sem listar manualmente as 62 constraints do relatorio.
 - Mantem `unused_index` fora do escopo: remocao de indice continua exigindo auditoria separada de workload, janela de estatisticas, constraints e fluxos raros.
+
+401_create_activity_type_page_and_team_type_rpcs.sql
+- Cadastra a pagina `tipo-atividade` em `app_pages` (secao Cadastro Base) com `default_user_access = false`, seguindo a 245: tela nova nasce liberada so para administrador e depende de liberacao explicita em `/permissoes`. Por isso a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_team_type_record` e `set_team_type_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no mesmo padrao transacional da 390/391: `SELECT ... FOR UPDATE`, comparacao de `expected_updated_at` e escrita em `app_entity_history` na mesma transacao.
+- A tela `Tipo de Atividade` administra o catalogo existente `team_types` (origem do campo `Tipo` em `Atividades`), sem tabela nova e sem migracao de dados.
+- `team_types` tem unique `(tenant_id, name)` case-sensitive; a RPC de salvar faz checagem extra por `upper(btrim(name))` para recusar duplicidade que difere so em caixa/espaco, que o indice deixaria passar.
+- Cancelamento e recusado com `TEAM_TYPE_IN_USE` enquanto houver `service_activities` ou `teams` ativos apontando para o tipo: inativar um tipo em uso tiraria a opcao do select sem tocar nos registros gravados.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada.
