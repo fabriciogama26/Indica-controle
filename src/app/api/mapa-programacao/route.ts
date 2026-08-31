@@ -444,13 +444,14 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
       // Etapa (linha de `programming`) tem N equipes em `programming_team`, nao
       // mais uma so (achado da auditoria: mostrar uma equipe so escondia as
       // demais quando a etapa tinha mais de uma equipe ativa).
-      const latestActiveTeamIds = (latest?.programming_team ?? [])
-        .filter((team) => team.status === "ATIVA")
-        .map((team) => normalizeText(team.team_id))
-        .filter(Boolean);
+      const latestActiveTeams = (latest?.programming_team ?? [])
+        .filter((team) => team.status === "ATIVA" && normalizeText(team.team_id));
+      const latestActiveTeamIds = latestActiveTeams.map((team) => normalizeText(team.team_id));
       const latestTeamNames = Array.from(new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.name ?? teamId)));
       const latestForemanNames = Array.from(
-        new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.foremanName ?? "Sem encarregado")),
+        new Set(
+          latestActiveTeams.map((team) => normalizeText(team.programmed_foreman_name_snapshot) || teamMap.get(normalizeText(team.team_id))?.foremanName || "Sem encarregado"),
+        ),
       );
       // `programmingCount` (linhas legadas, uma por equipe) e `stageCount`
       // (chaves distintas de etapa) colapsam no modelo normalizado: uma linha

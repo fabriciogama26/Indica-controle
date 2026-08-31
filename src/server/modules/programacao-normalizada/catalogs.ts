@@ -2,6 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 import type {
   PersonRow,
+  ForemanCatalogRow,
   ProgrammingEqCatalogRow,
   ProgrammingReasonCatalogRow,
   ProgrammingSgdTypeRow,
@@ -26,12 +27,16 @@ const _eqCatalogCache = new Map<string, CacheEntry<ProgrammingEqCatalogRow[]>>()
 const _workCompletionCatalogCache = new Map<string, CacheEntry<ProgrammingWorkCompletionCatalogRow[]>>();
 const _reasonCatalogCache = new Map<string, CacheEntry<ProgrammingReasonCatalogRow[]>>();
 const _supportItemsCache = new Map<string, CacheEntry<ProgrammingSupportItemRow[]>>();
+const _foremenCache = new Map<string, CacheEntry<ForemanCatalogRow[]>>();
+
+const FOREMAN_JOB_TITLE_FILTER = "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%";
 
 export type BoardTeamEntry = {
   id: string;
   name: string;
   vehiclePlate: string;
   teamTypeName: string;
+  foremanId: string | null;
   foremanName: string;
   serviceCenterName: string;
 };
@@ -64,9 +69,40 @@ async function buildBoardTeamEntries(supabase: SupabaseClient, tenantId: string,
     name: normalizeText(team.name),
     vehiclePlate: normalizeText(team.vehicle_plate),
     teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
-    foremanName: foremanMap.get(team.foreman_person_id) ?? "Sem encarregado",
+    foremanId: team.foreman_person_id ?? null,
+    foremanName: team.foreman_person_id ? foremanMap.get(team.foreman_person_id) ?? "Sem encarregado" : "Sem encarregado",
     serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
   }));
+}
+
+export async function fetchForemen(supabase: SupabaseClient, tenantId: string) {
+  const cached = _foremenCache.get(tenantId);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
+  const { data: jobTitles, error: jobTitleError } = await supabase
+    .from("job_titles")
+    .select("id")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .or(FOREMAN_JOB_TITLE_FILTER)
+    .returns<Array<{ id: string }>>();
+
+  if (jobTitleError || !jobTitles?.length) return [] as ForemanCatalogRow[];
+
+  const { data, error } = await supabase
+    .from("people")
+    .select("id, nome")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .in("job_title_id", jobTitles.map((item) => item.id))
+    .order("nome", { ascending: true })
+    .returns<ForemanCatalogRow[]>();
+
+  if (error) return [] as ForemanCatalogRow[];
+
+  const result = data ?? [];
+  _foremenCache.set(tenantId, { data: result, expiresAt: Date.now() + CATALOG_TTL_MS });
+  return result;
 }
 
 // project.city/service_center/etc. sao FK uuid (migration 038) — o texto exibivel

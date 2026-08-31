@@ -1685,3 +1685,55 @@ Atualizacao 2026-08-20 - Nome de equipe cancelada na listagem
   - Abrir `/programacao-normalizada` no periodo da etapa e conferir que o chip exibe o nome da
     equipe, nao o UUID.
   - Abrir o plano do projeto e o modal Detalhes da etapa e conferir o mesmo comportamento.
+
+Atualizacao 2026-08-31 - Encarregado programado por alocacao
+------------------------------------------------------------
+- Problema: a Programacao mostrava o encarregado pela equipe atual
+  (`programming_team.team_id -> teams.foreman_person_id`). Se a Equipe 10 fosse
+  programada com Joao para 05/09 e depois o cadastro da equipe mudasse para Carlos,
+  a programacao passava a parecer planejada com Carlos, perdendo o historico real.
+- Depois: `programming_team` guarda `programmed_foreman_person_id` e
+  `programmed_foreman_name_snapshot`. Ao selecionar equipe no formulario, a tela
+  preenche o encarregado atual da equipe; o programador pode trocar antes de salvar.
+  O valor salvo fica na propria alocacao da etapa.
+- Conceitos separados:
+  - Encarregado da Equipe: padrao atual em `/equipes`.
+  - Encarregado Programado: snapshot salvo em `programming_team`.
+  - Encarregado Executado: segue vindo da Composicao de Equipe do dia
+    (`team_compositions.foreman_person_id`).
+- Historico: trocar o encarregado programado de uma equipe ativa em uma etapa
+  existente grava `UPDATE_PROGRAMMED_FOREMAN` em `programming_history`, com De/Para
+  do nome e do id. A RPC exige motivo somente quando essa troca acontece; editar
+  outros campos continua podendo usar motivo vazio.
+- Backfill: a migration usa `team_foreman_history` na data de criacao da alocacao
+  (`programming_team.created_at::date`), nao na data de execucao, porque a regra e
+  quem estava previsto quando a programacao foi feita.
+- Exportacoes e detalhe: CSV ENEL/ENEL NOVO e modal Detalhes usam o encarregado
+  programado salvo; o encarregado atual da equipe fica apenas como fallback para
+  dado legado sem snapshot.
+- Impacto multi-tenant e seguranca: todas as leituras/escritas seguem filtrando
+  `tenant_id` no servidor. As RPCs republicadas continuam `SECURITY DEFINER` com
+  EXECUTE apenas para `service_role`; a validacao de encarregado novo aceita somente
+  pessoa ativa do tenant com cargo ativo contendo `ENCARREGADO`.
+
+Atualizacao 2026-08-31 - Destaque visual do encarregado programado
+------------------------------------------------------------------
+- Problema: o bloco de selecao do encarregado aparecia so quando havia equipe
+  marcada, sem titulo e sem destaque, entao o programador nao percebia que aquele
+  select define o encarregado PROGRAMADO (snapshot da alocacao) e nao o cadastro
+  da equipe.
+- Depois, no formulario de etapa (secao Equipes, bloco `foremanAssignmentList` de
+  `components.tsx`):
+  - contorno vermelho (2px `#d92d20`) no bloco inteiro e no proprio `select` de
+    encarregado de cada equipe selecionada;
+  - cabecalho "Encarregado programado" com icone de informacao (`ActionIcon
+    name="info"`), com `title`/`aria-label` explicando a funcao do campo:
+    vem preenchido com o encarregado padrao da equipe, pode ser trocado antes de
+    salvar, fica salvo na alocacao da etapa e nao muda se o cadastro da equipe
+    mudar depois; trocar em etapa ja existente exige preencher o motivo da troca.
+- Escopo: mudanca so visual/acessibilidade. Nenhuma alteracao de contrato de API,
+  RPC, payload, permissao ou regra de negocio.
+- Validacao manual: abrir o formulario de etapa, marcar uma equipe e conferir que
+  o bloco aparece com contorno vermelho e o icone de informacao mostra o texto no
+  hover e via leitor de tela; desmarcar todas as equipes e conferir que o bloco
+  some como antes.

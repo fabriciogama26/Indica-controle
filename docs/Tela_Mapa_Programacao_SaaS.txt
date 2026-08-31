@@ -680,3 +680,16 @@ Atualizacao 2026-08-25 - Equipes sem programacao por dia
   a pagina visivel.
 - Sem migration, RLS, grant ou permissao nova. `tenant_id` continua derivado da
   sessao autenticada e a rota segue protegida por `mapa-programacao/read`.
+
+Atualizacao 2026-08-31 - Encarregado planejado vindo da Programacao
+-------------------------------------------------------------------
+- O Mapa passa a consolidar o encarregado da ultima programacao ativa pelo snapshot
+  salvo em `programming_team.programmed_foreman_name_snapshot`.
+- Antes, a coluna/lista de encarregados era resolvida pelo cadastro atual da equipe.
+  Isso fazia uma obra historica mudar de Joao para Carlos so porque a equipe teve
+  o encarregado padrao alterado depois da programacao.
+- Fallback: se a alocacao ainda nao tiver snapshot (dado legado sem migration
+  aplicada), o Mapa continua usando o encarregado atual da equipe para nao deixar a
+  tela vazia.
+- Sem mudanca de permissao: a rota continua sob `mapa-programacao/read` e a leitura
+  ampla da fachada normalizada segue filtrada por `tenant_id`.

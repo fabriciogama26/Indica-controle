@@ -44,12 +44,15 @@ function findDocumentEntry(documents: StageDocument[], documentType: StageDocume
 // Usado tanto por Editar (mesma data) quanto por "Nova etapa a partir desta"
 // (mesmo cadastro, data em branco para o usuario preencher).
 function buildFormFromStage(stage: ProgrammingStage, params: { executionDate: string }) {
+  const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
+
   return {
     projectId: stage.projectId,
     projectSearch: "",
     executionDate: params.executionDate,
     isPendencia: false,
-    teamIds: stage.teams.filter((team) => team.status === "ATIVA").map((team) => team.teamId),
+    teamIds: activeTeams.map((team) => team.teamId),
+    teamForemanIds: Object.fromEntries(activeTeams.map((team) => [team.teamId, team.programmedForemanPersonId ?? ""])),
     teamSearch: "",
     serviceDescription: stage.serviceDescription,
     period: stage.period ?? ("INTEGRAL" as const),
@@ -83,6 +86,7 @@ function buildFormFromStage(stage: ProgrammingStage, params: { executionDate: st
       pi: findDocumentEntry(stage.documents, "PI"),
       pep: findDocumentEntry(stage.documents, "PEP"),
     },
+    historyReason: "",
   };
 }
 
@@ -166,7 +170,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
   async function confirmAddTeam() {
     if (!addTeamTarget || !addTeamSelectedId) return;
-    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId);
+    const selectedTeam = teams.find((team) => team.id === addTeamSelectedId);
+    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, selectedTeam?.foremanId ?? null);
     if (result.ok) closeAddTeamModal();
   }
 
@@ -191,6 +196,11 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         ? {
             ...createInitialForm(today),
             teamIds: lastStage.teams.filter((team) => team.status === "ATIVA").map((team) => team.teamId),
+            teamForemanIds: Object.fromEntries(
+              lastStage.teams
+                .filter((team) => team.status === "ATIVA")
+                .map((team) => [team.teamId, team.programmedForemanPersonId ?? ""]),
+            ),
             serviceDescription: lastStage.serviceDescription,
             period: lastStage.period ?? "INTEGRAL",
             startTime: (lastStage.startTime ?? "").slice(0, 5),
@@ -228,6 +238,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       trafoQty: form.trafoQty,
       redeQty: form.redeQty,
       note: form.note,
+      historyReason: form.historyReason,
+      teamForemanIds: form.teamForemanIds,
       // Sem a permissao a checkbox nem e renderizada; forcar false aqui garante
       // que nenhum caminho de reset/heranca de formulario mande a flag invisivel
       // para o backend (padrao de permissao granular do CLAUDE.md, item 2).
@@ -445,6 +457,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
             }) && isTimeRangeValid(form.startTime, form.endTime)
           }
           teamOptions={teams}
+          foremanOptions={meta?.foremen ?? []}
           sgdTypes={meta?.sgdTypes ?? []}
           electricalEqCatalog={meta?.electricalEqCatalog ?? []}
           supportOptions={meta?.supportOptions ?? []}

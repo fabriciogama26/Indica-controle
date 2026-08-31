@@ -1271,6 +1271,13 @@ Observacao
 - Fecha a nova remessa de alertas INFO `unindexed_foreign_keys` do Supabase Advisor sem listar manualmente as 62 constraints do relatorio.
 - Mantem `unused_index` fora do escopo: remocao de indice continua exigindo auditoria separada de workload, janela de estatisticas, constraints e fluxos raros.
 
+400_programming_team_programmed_foreman_snapshot.sql
+- Adiciona `programmed_foreman_person_id` e `programmed_foreman_name_snapshot` em `programming_team`, com FK tenant-aware para `people` e indice tenant-first.
+- Faz backfill usando `team_foreman_history` pela data de criacao da alocacao, preservando quem era o encarregado previsto quando a programacao foi registrada.
+- Republica `save_project_programming_stage`, `add_project_programming_team` e `postpone_project_programming_team` para gravar/preservar o encarregado programado na alocacao.
+- Cria `resolve_programmed_foreman_for_team` para validar novos encarregados contra pessoa ativa do tenant com cargo ativo de Encarregado.
+- Trocas de encarregado programado gravam `UPDATE_PROGRAMMED_FOREMAN` em `programming_history` e exigem motivo; alteracoes de outros campos continuam aceitando motivo vazio.
+
 401_create_activity_type_page_and_team_type_rpcs.sql
 - Cadastra a pagina `tipo-atividade` em `app_pages` (secao Cadastro Base) com `default_user_access = false`, seguindo a 245: tela nova nasce liberada so para administrador e depende de liberacao explicita em `/permissoes`. Por isso a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
 - Cria `save_team_type_record` e `set_team_type_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no mesmo padrao transacional da 390/391: `SELECT ... FOR UPDATE`, comparacao de `expected_updated_at` e escrita em `app_entity_history` na mesma transacao.
@@ -1278,3 +1285,12 @@ Observacao
 - `team_types` tem unique `(tenant_id, name)` case-sensitive; a RPC de salvar faz checagem extra por `upper(btrim(name))` para recusar duplicidade que difere so em caixa/espaco, que o indice deixaria passar.
 - Cancelamento e recusado com `TEAM_TYPE_IN_USE` enquanto houver `service_activities` ou `teams` ativos apontando para o tipo: inativar um tipo em uso tiraria a opcao do select sem tocar nos registros gravados.
 - Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada.
+
+402_move_team_type_screen_to_tipo_equipe.sql
+- Consolida a tela de cadastro de `team_types` em `/tipo-equipe` e aposenta o page_key `tipo-atividade` criado pela 401: `Tipo de Atividade` e `Tipo de Equipe` sao a mesma informacao, as duas telas apontavam para a mesma tabela.
+- A 401 NAO foi editada (guia_sql regra 2: ja estava commitada/publicada e pode ter sido aplicada); a correcao e para a frente. Se a 401 nunca tiver sido aplicada, os blocos que tratam de `tipo-atividade` viram no-op.
+- Republica `save_team_type_record` e `set_team_type_record_status` gravando `module_key = 'tipo-equipe'`, sem mudar assinatura. O revoke/grant e repetido porque `create or replace` so preserva privilegio de funcao que ja existia — se a 401 nao rodou, a funcao nasce aqui e nasceria executavel por public.
+- Migra `app_entity_history` de `module_key = 'tipo-atividade'` para `'tipo-equipe'` (filtrando `entity_table = 'team_types'`), para a tela nao perder a auditoria feita antes da consolidacao.
+- Aposenta `tipo-atividade` no padrao da 364: desativa em `app_pages`, revoga permissoes e grava `app_user_permission_history`, sem deletar a linha — deletar zeraria o `page_key` do historico de permissao, que tem `on delete set null`.
+- Revoga `can_create`/`can_update`/`can_cancel`/`can_export` de `tipo-equipe` para usuarios e papeis nao administradores, PRESERVANDO `can_access`. Motivo: a 245 deu `default_user_access = true` a essa pagina e a 253 fez backfill de `can_create = can_access`; enquanto a rota era placeholder isso era inofensivo, mas ao virar CRUD real todo nao-admin ganharia poder de renomear e cancelar tipos usados por Equipes, Meta, Medicao e Atividades sem nenhuma acao do administrador.
+- Validacao pos-aplicacao aborta se: as RPCs ficarem executaveis por `anon`/`authenticated`; `tipo-equipe` nao estiver ativa; sobrar historico de `team_types` no module_key antigo; `tipo-atividade` continuar ativo; ou sobrar permissao de escrita em `tipo-equipe` para nao-admin.

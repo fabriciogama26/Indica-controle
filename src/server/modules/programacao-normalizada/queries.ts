@@ -822,6 +822,8 @@ export async function fetchProgrammingWorkCompletionHistoryForMeasurement(params
 export type ProgrammingMapTeamRow = {
   team_id: string;
   status: string;
+  programmed_foreman_person_id: string | null;
+  programmed_foreman_name_snapshot: string | null;
 };
 
 export type ProgrammingMapStageRow = {
@@ -848,7 +850,7 @@ export type ProgrammingMapStageRow = {
 };
 
 const MAP_STAGE_SELECT =
-  "id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, classification_snapshot_execution_date, classification_snapshot_number, classification_snapshot_unica, classification_snapshot_final, programming_team(team_id, status)";
+  "id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, classification_snapshot_execution_date, classification_snapshot_number, classification_snapshot_unica, classification_snapshot_final, programming_team(team_id, status, programmed_foreman_person_id, programmed_foreman_name_snapshot)";
 const MAP_STAGE_ROW_LIMIT = 5000;
 
 export async function fetchProgrammingStagesForMap(params: {

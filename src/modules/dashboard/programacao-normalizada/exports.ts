@@ -50,7 +50,15 @@ function formatInfoStatusEtapaFromDisplay(stage: StageListItem) {
 
 function resolveTeamItems(stage: StageListItem, teamMap: Map<string, TeamItem>) {
   return activeTeamsOf(stage)
-    .map((team) => teamMap.get(team.teamId))
+    .map((team) => {
+      const catalogTeam = teamMap.get(team.teamId);
+      if (!catalogTeam) return null;
+      return {
+        ...catalogTeam,
+        foremanId: team.programmedForemanPersonId ?? catalogTeam.foremanId,
+        foremanName: team.programmedForemanName || catalogTeam.foremanName,
+      };
+    })
     .filter((team): team is TeamItem => Boolean(team));
 }
 
