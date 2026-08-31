@@ -1294,3 +1294,14 @@ Observacao
 - Aposenta `tipo-atividade` no padrao da 364: desativa em `app_pages`, revoga permissoes e grava `app_user_permission_history`, sem deletar a linha — deletar zeraria o `page_key` do historico de permissao, que tem `on delete set null`.
 - Revoga `can_create`/`can_update`/`can_cancel`/`can_export` de `tipo-equipe` para usuarios e papeis nao administradores, PRESERVANDO `can_access`. Motivo: a 245 deu `default_user_access = true` a essa pagina e a 253 fez backfill de `can_create = can_access`; enquanto a rota era placeholder isso era inofensivo, mas ao virar CRUD real todo nao-admin ganharia poder de renomear e cancelar tipos usados por Equipes, Meta, Medicao e Atividades sem nenhuma acao do administrador.
 - Validacao pos-aplicacao aborta se: as RPCs ficarem executaveis por `anon`/`authenticated`; `tipo-equipe` nao estiver ativa; sobrar historico de `team_types` no module_key antigo; `tipo-atividade` continuar ativo; ou sobrar permissao de escrita em `tipo-equipe` para nao-admin.
+
+403_create_activity_category_page_and_rpcs.sql
+- Etapa 2 de 3 do trabalho de dar tela de Cadastro Base aos campos Tipo/Categoria/Grupo de Atividades.
+- Cadastra a pagina `categoria-atividade` em `app_pages` (secao Cadastro Base) com `default_user_access = false`, seguindo a 245. Por isso a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_activity_category_record` e `set_activity_category_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no mesmo padrao transacional da 390/391/402.
+- A tela administra o catalogo existente `types_service_activities` (origem do campo `Categoria` em Atividades, coluna `service_activities.type_service`), sem tabela nova e sem migracao de dados.
+- Pagina nova e nao reaproveitamento de `/tipo-servico`: aquele placeholder e reservado para `project_service_types`, o Tipo de Servico do PROJETO, lido por Projetos/Medicao/Apuracao Fator Minimo/Mapa Programacao. Tabelas e dominios diferentes, entao aqui nao ha o CRUD duplicado que a 402 teve de resolver.
+- `types_service_activities_tenant_name_key` e unique `(tenant_id, name)` case-sensitive; a RPC de salvar faz checagem extra por `upper(btrim(name))` para recusar duplicidade que difere so em caixa/espaco.
+- Cancelamento e recusado com `ACTIVITY_CATEGORY_IN_USE` enquanto houver `service_activities` ativa apontando para a categoria: `Categoria` e obrigatoria no formulario e o meta so lista `ativo = true`, entao inativar em uso deixaria a atividade antiga impossivel de reeditar.
+- `sort_order` nao e exposto na tela: a coluna existe desde a 145, mas nenhum leitor do catalogo ordena por ela. Cadastro novo fica com o default 100.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada.

@@ -1,0 +1,202 @@
+Tela: Categoria de Atividade SaaS
+
+Visao geral
+-----------
+- Tela de `Cadastro Base` para manter o catalogo que alimenta o campo `Categoria` da tela `Atividades`.
+- Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+- Administra a tabela existente `types_service_activities`, origem do campo `Categoria`
+  (`service_activities.type_service`). Nao houve tabela nova nem migracao de dados.
+- Leitores do catalogo: `Atividades` (`/api/activities/meta` e `/api/activities`) e
+  `Dash Operacional Faturamento`. Renomear uma categoria aqui muda o rotulo exibido nesses lugares.
+
+Por que pagina nova, e nao a `/tipo-servico` existente
+-------------------------------------------------------
+- `/tipo-servico` e o placeholder reservado para `project_service_types`, o Tipo de Servico do PROJETO,
+  lido por `Projetos`, `Medicao`, `Apuracao Fator Minimo` e `Mapa Programacao`.
+- Sao tabelas e dominios diferentes: `types_service_activities` so e lida por `Atividades` e pelo
+  `Dash Operacional Faturamento`.
+- Por isso, ao contrario do que ocorreu na etapa 1 com `tipo-atividade`/`tipo-equipe`, aqui nao existia
+  tela concorrente para reaproveitar, e a criacao de um `page_key` novo nao gera CRUD duplicado.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/categoria-atividade/page.tsx`
+- View: `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
+- CSV: `src/modules/dashboard/categoria-atividade/csv.ts`
+- Fachada frontend: `src/modules/dashboard/categoria-atividade/index.ts`
+- API principal: `src/app/api/activity-categories/route.ts`
+- Backend: `src/server/modules/activity-categories/controller.ts`
+- Fachada backend: `src/server/modules/activity-categories/index.ts`
+- Estilos: reutiliza `src/modules/dashboard/pessoas/PeoplePageView.module.css`, mesmo padrao de `Centro de Servico`
+- Integracao de menu: `src/components/layout/AppShell.tsx`
+- Guard de rota: `src/lib/auth/authorization.ts`
+- Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Banco: `types_service_activities`, criada por
+  `supabase/migrations/145_create_types_service_activities_and_link_service_activities.sql`
+- Historico generico: `app_entity_history`, criada por
+  `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- RPC transacional e cadastro da pagina: `supabase/migrations/403_create_activity_category_page_and_rpcs.sql`
+
+Cadastro
+--------
+- Campo obrigatorio:
+  - `Nome`
+- Regras:
+  - O nome e normalizado com `trim` antes do envio.
+  - A constraint unica `types_service_activities_tenant_name_key` e `(tenant_id, name)`, case-sensitive;
+    a RPC faz uma checagem adicional por `upper(btrim(name))` para bloquear duplicidade que difere so em
+    caixa ou espaco.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+- `sort_order` NAO e exposto na tela. A coluna existe em `types_service_activities` desde a `145`, mas
+  nenhum leitor do catalogo ordena por ela — todos ordenam por `name`. Cadastro novo fica com o default
+  `100`. Expor o campo adicionaria um controle sem efeito observavel.
+- Fluxos:
+  - `POST /api/activity-categories` para cadastro.
+  - `PUT /api/activity-categories` para edicao.
+  - `PATCH /api/activity-categories` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_activity_category_record`.
+  - `PATCH` chama `set_activity_category_record_status`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Nome, Status, Registrado em, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Botao `Exportar Excel (CSV)` no cabecalho.
+  - Exportacao usa `mode=export` e exige permissao `export` no backend.
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `categoria-atividade`
+  - `entity_table`: `types_service_activities`
+  - Modal com paginacao fixa de `5` registros por pagina.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela usa `useAuth()` como unica fonte de sessao no client.
+- Erros da tela sao registrados com `useErrorLogger("categoria-atividade")`.
+- Icones de acoes reutilizam `ActionIcon`.
+- Exportacao reutiliza `CsvExportButton` e `downloadCsvFile`.
+
+Permissao
+---------
+- `page_key`: `categoria-atividade`, criado pela migration `403`.
+- Acoes cobradas no backend: `read`, `create`, `update`, `cancel` e `export`.
+- A pagina entra com `default_user_access = false`, seguindo a migration `245`: nasce liberada apenas para
+  administradores e precisa de liberacao explicita em `/permissoes` para os demais papeis.
+- Por isso `categoria-atividade` NAO foi incluida em `DEFAULT_USER_PAGE_ACCESS` no `authorization.ts`:
+  aquela lista so aceita chave cujo `default_user_access` no banco seja `true`.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento/ativacao usa o campo `ativo` de `types_service_activities`.
+- O motivo fica registrado em `app_entity_history`, pois a tabela base nao possui colunas
+  `cancellation_reason`, `canceled_at` e `canceled_by`.
+- Guarda de vinculo: o cancelamento e recusado com `ACTIVITY_CATEGORY_IN_USE` enquanto existir atividade
+  ativa (`service_activities.type_service`) apontando para a categoria. `Categoria` e campo obrigatorio no
+  formulario de `Atividades` e `/api/activities/meta` so lista categoria com `ativo = true`; sem essa guarda,
+  inativar uma categoria em uso deixaria a atividade antiga impossivel de reeditar.
+- A tela fecha o modal de status quando recebe `ACTIVITY_CATEGORY_IN_USE`, para a mensagem nao ficar atras
+  do overlay.
+- O `Dash Operacional Faturamento` resolve o nome da categoria por id, sem filtrar `ativo`, entao
+  cancelamento nao quebra a exibicao historica daquele painel.
+- Saldo:
+  - Nao se aplica ao modulo de categoria de atividade.
+
+Atalhos
+-------
+- Rota principal: `/categoria-atividade`
+- API:
+  - `GET/POST/PUT/PATCH /api/activity-categories`
+
+Atualizacao 2026-08-31
+----------------------
+- Etapa 2 de 3 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo` de
+  `Atividades`.
+- Antes: o catalogo por tras do campo `Categoria` nao tinha tela nenhuma; incluir ou renomear uma categoria
+  exigia acesso direto ao banco. A tabela existia desde a `145`, com seed de POSTE, ESTRUTURA,
+  CONDUTOR(REDE), EMENDA, EQUIPAMENTO, MQS CHAVES/PARA-RAIO, MANUTENCAO, RAMAL / CAIXA DAE, GERADOR, PODA
+  e OUTROS.
+- Depois: `/categoria-atividade` permite cadastrar, editar, listar, detalhar, consultar historico,
+  cancelar/ativar e exportar as categorias do tenant.
+- Depois: a API `/api/activity-categories` aplica autorizacao granular por `page_key = categoria-atividade`.
+- Depois: alteracoes usam `expectedUpdatedAt` dentro das RPCs com `SELECT ... FOR UPDATE` para evitar
+  sobrescrita silenciosa.
+- Criada a migration `403_create_activity_category_page_and_rpcs.sql` com `save_activity_category_record` e
+  `set_activity_category_record_status`, ambas `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`,
+  e o cadastro da pagina em `app_pages`.
+- A tabela, sua RLS, a constraint unica e o trigger de auditoria (`trg_types_service_activities_audit`,
+  que mantem `updated_at` e sustenta o controle de concorrencia) ja existiam desde a `145`.
+- Nenhuma alteracao foi feita em `Atividades`: o campo `Categoria` ja consumia `types_service_activities`
+  via `/api/activities/meta`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/categoria-atividade/page.tsx`
+  - Responsavel por: montar a view operacional da rota `Categoria de Atividade`.
+- Caminho: `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/app/api/activity-categories/route.ts`
+  - Responsavel por: expor os handlers HTTP da API.
+- Caminho: `src/server/modules/activity-categories/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs transacionais.
+- Caminho: `supabase/migrations/403_create_activity_category_page_and_rpcs.sql`
+  - Responsavel por: salvar cadastro/status, bloquear cancelamento de categoria em uso, registrar historico
+    na mesma transacao e cadastrar a pagina.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`,
+    `HISTORY_FIELD_LABELS`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/categoria-atividade` para o `page_key` `categoria-atividade`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: atalho na secao `Cadastro Base` e titulo/subtitulo da rota.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: expor o card de liberacao granular da tela.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/categoria-atividade/csv.ts`
+  - Responsavel por: montar o CSV de categorias de atividade.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `categoria-atividade`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS (`types_service_activities`).
+- Next.js Route Handler (`/api/activity-categories`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/categoria-atividade/page.tsx`
+  - `src/app/api/activity-categories/route.ts`
+  - `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
+  - `src/modules/dashboard/categoria-atividade/csv.ts`
+  - `src/modules/dashboard/categoria-atividade/index.ts`
+  - `src/server/modules/activity-categories/controller.ts`
+  - `src/server/modules/activity-categories/index.ts`
+  - `src/lib/auth/authorization.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `supabase/migrations/403_create_activity_category_page_and_rpcs.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Categoria_Atividade_SaaS.txt`
+  - `docs/Tela_Cadastro_Base_SaaS.txt`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: catalogo de categorias sem tela, mantido apenas por migration/banco.
+  - Depois: tela operacional completa no padrao SaaS de cadastros, com historico e guarda de vinculo no
+    cancelamento.
+- Proxima etapa do mesmo trabalho:
+  - Etapa 3: tela `Grupo de Atividade`, com tabela nova e `group_id` em `service_activities`, mantendo
+    `group_name` como snapshot para nao quebrar a RPC de faturamento minimo
+    (`212_measurement_minimum_billing_guarantee.sql`).

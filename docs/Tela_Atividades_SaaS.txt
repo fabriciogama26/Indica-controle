@@ -471,3 +471,21 @@ Atualizacao 2026-08-31 - Tipo passa a ter tela propria de cadastro
 - Situacao dos outros dois campos nesta etapa:
   - `Categoria`: continua lendo `types_service_activities`, ainda sem tela (etapa 2).
   - `Grupo`: continua texto livre em `service_activities.group_name` (etapa 3).
+
+Atualizacao 2026-08-31 - Categoria passa a ter tela propria de cadastro
+-----------------------------------------------------------------------
+- Etapa 2 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo`.
+- Nenhum arquivo de `Atividades` foi alterado nesta etapa: o campo `Categoria` ja era um `select`
+  alimentado por `types_service_activities` atraves de `/api/activities/meta`, e continua igual.
+- Antes: o catalogo por tras do campo `Categoria` nao tinha tela nenhuma; incluir ou renomear uma
+  categoria exigia acesso direto ao banco.
+- Depois: a tela `/categoria-atividade` (Cadastro Base) cadastra, edita, cancela/ativa e audita esse
+  catalogo. Detalhe completo em `docs/Tela_Categoria_Atividade_SaaS.txt`.
+- Nao foi reaproveitada a rota `/tipo-servico`: aquele placeholder e de `project_service_types`, o Tipo
+  de Servico do PROJETO, outro dominio com outros leitores.
+- Efeito colateral esperado no formulario: uma categoria cancelada em `/categoria-atividade` some do
+  `select` `Categoria`, porque `/api/activities/meta` ja filtrava por `ativo = true`. Como `Categoria` e
+  campo obrigatorio, a RPC `set_activity_category_record_status` recusa o cancelamento
+  (`ACTIVITY_CATEGORY_IN_USE`) enquanto houver atividade ativa apontando para a categoria.
+- Situacao do campo restante:
+  - `Grupo`: continua texto livre em `service_activities.group_name` (etapa 3).
