@@ -506,7 +506,7 @@ export function StageFormPanel(props: {
       const nextTeamIds = Array.from(new Set([...current.teamIds, ...visibleTeamOptions.map((team) => team.id)]));
       const nextForemen = { ...current.teamForemanIds };
       for (const team of visibleTeamOptions) {
-        if (!nextForemen[team.id]) nextForemen[team.id] = team.foremanId ?? "";
+        if (!(team.id in nextForemen)) nextForemen[team.id] = team.foremanId ?? "";
       }
       return { ...current, teamIds: nextTeamIds, teamForemanIds: nextForemen };
     });

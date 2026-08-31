@@ -9,7 +9,7 @@ function missingRpcResult(rpcName: string) {
     ok: false as const,
     status: 409,
     reason: "RPC_NOT_AVAILABLE",
-    message: `Seu ambiente ainda nao tem a funcao ${rpcName} aplicada. Aplique as migrations 310/311.`,
+    message: `Seu ambiente ainda nao tem a funcao ${rpcName} aplicada. Aplique as migrations da Programacao Normalizada, incluindo a 400.`,
   };
 }
 
