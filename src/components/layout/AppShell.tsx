@@ -80,6 +80,7 @@ const menuSections = [
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
       { href: "/categoria-atividade", label: "Categoria de Atividade", icon: "settings" },
+      { href: "/grupo-atividade", label: "Grupo de Atividade", icon: "settings" },
       { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
@@ -259,6 +260,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/categoria-atividade": {
     title: "Categoria de Atividade",
     subtitle: "Cadastro base das categorias que alimentam o campo Categoria em Atividades.",
+  },
+  "/grupo-atividade": {
+    title: "Grupo de Atividade",
+    subtitle: "Cadastro base dos grupos que alimentam o campo Grupo em Atividades.",
   },
   "/tipo-equipe": {
     title: "Tipo de Equipe",

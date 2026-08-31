@@ -14,6 +14,7 @@ import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import type { MassImportRowResult } from "@/lib/utils/massImport";
+import { CatalogSelectField } from "./CatalogSelectField";
 import { buildActivitiesCsv } from "./csv";
 import { formatHistoryValue, formatMoney, formatPoints, toInputMoney, toInputPoints } from "./formatters";
 import {
@@ -32,7 +33,8 @@ type ActivityItem = {
   teamTypeName: string;
   categoryId: string;
   categoryName: string;
-  group: string;
+  groupId: string;
+  groupName: string;
   value: number;
   voicePoint: number | null;
   unit: string;
@@ -58,7 +60,7 @@ type ActivityHistoryEntry = {
 
 type ActivityFormState = {
   id: string | null; code: string; codeIdd: string; description: string; teamTypeId: string; categoryId: string;
-  group: string; value: string; voicePoint: string; unit: string; scope: string; updatedAt: string;
+  groupId: string; value: string; voicePoint: string; unit: string; scope: string; updatedAt: string;
 };
 
 type ActivityFilterState = {
@@ -91,6 +93,7 @@ type ActivityHistoryResponse = {
 type ActivitiesMetaResponse = {
   teamTypes?: TeamTypeOption[];
   categories?: CategoryOption[];
+  groups?: CategoryOption[];
   message?: string;
 };
 
@@ -115,7 +118,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 
 const INITIAL_FORM: ActivityFormState = {
   id: null, code: "", codeIdd: "", description: "", teamTypeId: "", categoryId: "",
-  group: "", value: "", voicePoint: "", unit: "", scope: "", updatedAt: "",
+  groupId: "", value: "", voicePoint: "", unit: "", scope: "", updatedAt: "",
 };
 
 const INITIAL_FILTERS: ActivityFilterState = {
@@ -175,6 +178,7 @@ export function ActivitiesPageView() {
   const [activeFilters, setActiveFilters] = useState<ActivityFilterState>(INITIAL_FILTERS);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [groups, setGroups] = useState<CategoryOption[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -216,6 +220,7 @@ export function ActivitiesPageView() {
       if (!response.ok) {
         setTeamTypes([]);
         setCategories([]);
+        setGroups([]);
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao carregar metadados de atividades.",
@@ -225,9 +230,11 @@ export function ActivitiesPageView() {
 
       setTeamTypes(data.teamTypes ?? []);
       setCategories(data.categories ?? []);
+      setGroups(data.groups ?? []);
     } catch {
       setTeamTypes([]);
       setCategories([]);
+      setGroups([]);
       setFeedback({
         type: "error",
         message: "Falha ao carregar metadados de atividades.",
@@ -337,8 +344,8 @@ export function ActivitiesPageView() {
   }, [activeFilters, loadActivities, page]);
 
   const parseMassImportCsv = useCallback(
-    (content: string, fileName: string) => parseActivityMassImportCsv({ content, fileName, teamTypes, categories }),
-    [categories, teamTypes],
+    (content: string, fileName: string) => parseActivityMassImportCsv({ content, fileName, teamTypes, categories, groups }),
+    [categories, groups, teamTypes],
   );
 
   const submitMassImport = useCallback(
@@ -382,6 +389,7 @@ export function ActivitiesPageView() {
       if (code === "DUPLICATE_ACTIVITY_CODE") return "codigo";
       if (code === "INVALID_TEAM_TYPE") return "tipo_equipe";
       if (code === "INVALID_CATEGORY") return "categoria";
+      if (code === "INVALID_GROUP") return "grupo";
       return "salvamento";
     },
     onImported: async () => {
@@ -422,7 +430,7 @@ export function ActivitiesPageView() {
       description: activity.description,
       teamTypeId: activity.teamTypeId,
       categoryId: activity.categoryId,
-      group: activity.group,
+      groupId: activity.groupId,
       value: toInputMoney(activity.value),
       voicePoint: toInputPoints(activity.voicePoint),
       unit: activity.unit,
@@ -482,7 +490,7 @@ export function ActivitiesPageView() {
         description: normalizeText(form.description),
         teamTypeId: normalizeText(form.teamTypeId),
         categoryId: normalizeText(form.categoryId),
-        group: normalizeText(form.group),
+        groupId: normalizeText(form.groupId),
         value: form.value,
         voicePoint: form.voicePoint,
         unit: normalizeText(form.unit),
@@ -719,60 +727,29 @@ export function ActivitiesPageView() {
             />
           </label>
 
-          <label className={styles.field}>
-            <span>
-              Tipo <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.teamTypeId}
-              onChange={(event) => setForm((current) => ({ ...current, teamTypeId: event.target.value }))}
-              required
-              disabled={isLoadingMeta}
-            >
-              <option value="" disabled>
-                {isLoadingMeta ? "Carregando..." : "Selecione"}
-              </option>
-              {teamTypes.map((teamType) => (
-                <option key={teamType.id} value={teamType.id}>
-                  {teamType.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CatalogSelectField
+            label="Tipo"
+            value={form.teamTypeId}
+            options={teamTypes}
+            isLoading={isLoadingMeta}
+            onChange={(teamTypeId) => setForm((current) => ({ ...current, teamTypeId }))}
+          />
 
-          <label className={styles.field}>
-            <span>
-              Categoria <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.categoryId}
-              onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}
-              required
-              disabled={isLoadingMeta}
-            >
-              <option value="" disabled>
-                {isLoadingMeta ? "Carregando..." : "Selecione"}
-              </option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CatalogSelectField
+            label="Categoria"
+            value={form.categoryId}
+            options={categories}
+            isLoading={isLoadingMeta}
+            onChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))}
+          />
 
-          <label className={styles.field}>
-            <span>
-              Grupo <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.group}
-              onChange={(event) => setForm((current) => ({ ...current, group: event.target.value }))}
-              placeholder="Grupo da atividade"
-              required
-            />
-          </label>
+          <CatalogSelectField
+            label="Grupo"
+            value={form.groupId}
+            options={groups}
+            isLoading={isLoadingMeta}
+            onChange={(groupId) => setForm((current) => ({ ...current, groupId }))}
+          />
 
           <label className={`${styles.field} ${styles.fieldWide}`}>
             <span>Alcance</span>
@@ -1103,7 +1080,7 @@ export function ActivitiesPageView() {
                 <div><strong>Descricao:</strong> {detailActivity.description}</div>
                 <div><strong>Tipo:</strong> {detailActivity.teamTypeName}</div>
                 <div><strong>Categoria:</strong> {detailActivity.categoryName}</div>
-                <div><strong>Grupo:</strong> {detailActivity.group || "-"}</div>
+                <div><strong>Grupo:</strong> {detailActivity.groupName || "-"}</div>
                 <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
                 <div><strong>Pontos:</strong> {formatPoints(detailActivity.voicePoint)}</div>
                 <div><strong>Unidade:</strong> {detailActivity.unit}</div>

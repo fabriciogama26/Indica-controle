@@ -29,6 +29,7 @@ type ActivityRow = {
   description: string;
   team_type_id: string;
   type_service: string;
+  group_id: string | null;
   group_name: string | null;
   unit_value: number | string;
   voice_point: number | string | null;
@@ -60,6 +61,11 @@ type TypeServiceActivityRow = {
   name: string;
 };
 
+type ActivityGroupRow = {
+  id: string;
+  name: string;
+};
+
 type ActivityHistoryRow = {
   id: string;
   change_type: "UPDATE" | "CANCEL" | "ACTIVATE";
@@ -80,7 +86,7 @@ type CreateActivityPayload = {
   description: string;
   teamTypeId: string;
   categoryId: string;
-  group: string;
+  groupId: string;
   value: string | number;
   voicePoint: string | number;
   unit: string;
@@ -158,7 +164,7 @@ function parseActivityInput(payload: Partial<CreateActivityPayload>) {
     description: normalizeText(payload.description),
     teamTypeId: normalizeText(payload.teamTypeId),
     categoryId: normalizeText(payload.categoryId),
-    group: normalizeNullableText(payload.group),
+    groupId: normalizeText(payload.groupId),
     value: normalizeDecimal(payload.value),
     voicePoint: normalizePositiveDecimal(payload.voicePoint),
     unit: normalizeText(payload.unit),
@@ -228,7 +234,7 @@ async function fetchActivityById(
   const { data, error } = await supabase
     .from("service_activities")
     .select(
-      "id, code, code_idd, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, code, code_idd, description, team_type_id, type_service, group_id, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", activityId)
@@ -287,6 +293,29 @@ async function fetchTypeServiceById(
   };
 }
 
+async function fetchActivityGroupById(
+  supabase: SupabaseClient,
+  tenantId: string,
+  activityGroupId: string,
+) {
+  const { data, error } = await supabase
+    .from("activity_groups")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .eq("id", activityGroupId)
+    .maybeSingle<ActivityGroupRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: normalizeText(data.name),
+  };
+}
+
 async function saveActivityViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -297,7 +326,7 @@ async function saveActivityViaRpc(params: {
   description: string;
   teamTypeId: string;
   categoryId: string;
-  group: string | null;
+  groupId: string;
   value: number;
   voicePoint: number;
   unit: string;
@@ -314,7 +343,7 @@ async function saveActivityViaRpc(params: {
     p_description: params.description,
     p_team_type_id: params.teamTypeId,
     p_type_service: params.categoryId,
-    p_group_name: params.group,
+    p_group_id: params.groupId,
     p_unit_value: params.value,
     p_voice_point: params.voicePoint,
     p_unit: params.unit,
@@ -350,6 +379,7 @@ async function importActivityBatch(params: {
   const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
   const validTeamTypeIds = new Map<string, boolean>();
   const validCategoryIds = new Map<string, boolean>();
+  const validGroupIds = new Map<string, boolean>();
   let savedCount = 0;
 
   for (const [index, row] of params.rows.entries()) {
@@ -361,7 +391,7 @@ async function importActivityBatch(params: {
       || !input.description
       || !input.teamTypeId
       || !input.categoryId
-      || !input.group
+      || !input.groupId
       || input.value === null
       || input.voicePoint === null
       || !input.unit
@@ -399,6 +429,18 @@ async function importActivityBatch(params: {
       continue;
     }
 
+    if (!validGroupIds.has(input.groupId)) {
+      validGroupIds.set(
+        input.groupId,
+        Boolean(await fetchActivityGroupById(params.supabase, params.tenantId, input.groupId)),
+      );
+    }
+
+    if (!validGroupIds.get(input.groupId)) {
+      results.push({ rowNumber, success: false, message: "Grupo invalido para o tenant atual.", code: "INVALID_GROUP" });
+      continue;
+    }
+
     const { data: precheck, error: precheckError } = await params.supabase.rpc("precheck_activity_code_conflict", {
       p_tenant_id: params.tenantId,
       p_activity_id: null,
@@ -427,7 +469,7 @@ async function importActivityBatch(params: {
       description: input.description,
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
-      group: input.group,
+      groupId: input.groupId,
       value: input.value as number,
       voicePoint: input.voicePoint as number,
       unit: input.unit,
@@ -580,7 +622,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("service_activities")
       .select(
-        "id, code, code_idd, description, team_type_id, type_service, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, code, code_idd, description, team_type_id, type_service, group_id, group_name, unit_value, voice_point, unit, scope, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -690,7 +732,8 @@ export async function GET(request: NextRequest) {
         teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
         categoryId: row.type_service,
         categoryName: typeServiceMap.get(row.type_service) ?? "Nao identificado",
-        group: row.group_name ?? "",
+        groupId: row.group_id ?? "",
+        groupName: row.group_name ?? "",
         value: Number(row.unit_value ?? 0),
         voicePoint: row.voice_point === null ? null : Number(row.voice_point ?? 0),
         unit: row.unit,
@@ -776,7 +819,7 @@ export async function POST(request: NextRequest) {
       || !input.description
       || !input.teamTypeId
       || !input.categoryId
-      || !input.group
+      || !input.groupId
       || input.value === null
       || input.voicePoint === null
       || !input.unit
@@ -793,6 +836,10 @@ export async function POST(request: NextRequest) {
 
     if (!(await fetchTypeServiceById(supabase, appUser.tenant_id, input.categoryId))) {
       return NextResponse.json({ message: "Categoria invalida para o tenant atual." }, { status: 422 });
+    }
+
+    if (!(await fetchActivityGroupById(supabase, appUser.tenant_id, input.groupId))) {
+      return NextResponse.json({ message: "Grupo invalido para o tenant atual." }, { status: 422 });
     }
 
     const { data: precheck, error: precheckError } = await supabase.rpc("precheck_activity_code_conflict", {
@@ -821,7 +868,7 @@ export async function POST(request: NextRequest) {
       description: input.description,
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
-      group: input.group,
+      groupId: input.groupId,
       value: unitValue,
       voicePoint,
       unit: input.unit,
@@ -876,7 +923,7 @@ export async function PUT(request: NextRequest) {
       || !input.description
       || !input.teamTypeId
       || !input.categoryId
-      || !input.group
+      || !input.groupId
       || input.value === null
       || input.voicePoint === null
       || !input.unit
@@ -914,6 +961,11 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Categoria invalida para o tenant atual." }, { status: 422 });
     }
 
+    const nextActivityGroup = await fetchActivityGroupById(supabase, appUser.tenant_id, input.groupId);
+    if (!nextActivityGroup) {
+      return NextResponse.json({ message: "Grupo invalido para o tenant atual." }, { status: 422 });
+    }
+
     const { data: precheck, error: precheckError } = await supabase.rpc("precheck_activity_code_conflict", {
       p_tenant_id: appUser.tenant_id,
       p_activity_id: activityId,
@@ -936,7 +988,9 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "description", currentActivity.description, input.description);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
     addChange(changes, "categoryName", currentTypeService?.name ?? null, nextTypeService.name);
-    addChange(changes, "group", currentActivity.group_name, input.group);
+    // O historico continua guardando o NOME do grupo, nao o id: e o que a tela
+    // exibe. `group_name` da linha atual ja e o snapshot do nome anterior.
+    addChange(changes, "group", currentActivity.group_name, nextActivityGroup.name);
     addDecimalChange(changes, "value", currentActivity.unit_value, unitValue, 2);
     addDecimalChange(changes, "voicePoint", currentActivity.voice_point, voicePoint, 6);
     addChange(changes, "unit", currentActivity.unit, input.unit);
@@ -956,7 +1010,7 @@ export async function PUT(request: NextRequest) {
       description: input.description,
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
-      group: input.group,
+      groupId: input.groupId,
       value: unitValue,
       voicePoint,
       unit: input.unit,
