@@ -4,7 +4,7 @@
     "src/app/api/dash-operacional-faturamento/route.ts": 2406,
     "src/app/api/projects/route.ts": 1728,
     "src/modules/dashboard/atividades/ActivitiesPageView.tsx": 1244,
-    "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1310,
+    "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1303,
     "src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx": 2319,
     "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1706,
     "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3662,
