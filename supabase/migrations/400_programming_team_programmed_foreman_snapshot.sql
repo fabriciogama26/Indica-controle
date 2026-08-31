@@ -95,7 +95,6 @@ as $$
    )
   where t.id = p_team_id
     and t.tenant_id = p_tenant_id
-    and t.ativo = true
   limit 1
 $$;
 
@@ -231,15 +230,6 @@ begin
   if p_team_ids is not null then
     foreach v_team_id in array p_team_ids
     loop
-      select * into v_team_row
-      from public.teams t
-      where t.id = v_team_id and t.tenant_id = p_tenant_id and t.ativo = true;
-
-      if v_team_row.id is null then
-        return jsonb_build_object('success', false, 'status', 400, 'reason', 'TEAM_NOT_FOUND',
-          'message', 'Equipe nao encontrada ou inativa para este tenant.');
-      end if;
-
       v_programmed_foreman_id := null;
       v_programmed_foreman_name := null;
       v_foreman_raw := nullif(btrim(coalesce(p_team_foremen ->> v_team_id::text, '')), '');
@@ -252,6 +242,18 @@ begin
         and pt.team_id = v_team_id
         and pt.status = 'ATIVA'
       limit 1;
+
+      select * into v_team_row
+      from public.teams t
+      where t.id = v_team_id
+        and t.tenant_id = p_tenant_id
+        and (t.ativo = true or v_existing_team_row.id is not null)
+      for share;
+
+      if v_team_row.id is null then
+        return jsonb_build_object('success', false, 'status', 400, 'reason', 'TEAM_NOT_FOUND',
+          'message', 'Equipe nao encontrada ou inativa para este tenant.');
+      end if;
 
       if v_existing_team_row.id is not null and not v_foreman_key_present then
         v_programmed_foreman_id := v_existing_team_row.programmed_foreman_person_id;
@@ -446,10 +448,6 @@ begin
 
     foreach v_team_id in array p_team_ids
     loop
-      select * into v_team_row
-      from public.teams t
-      where t.id = v_team_id and t.tenant_id = p_tenant_id and t.ativo = true;
-
       select * into v_existing_team_row
       from public.programming_team pt
       where pt.programming_id = v_programming_id
@@ -457,6 +455,16 @@ begin
         and pt.team_id = v_team_id
         and pt.status = 'ATIVA'
       limit 1;
+
+      select * into v_team_row
+      from public.teams t
+      where t.id = v_team_id
+        and t.tenant_id = p_tenant_id
+        and (t.ativo = true or v_existing_team_row.id is not null);
+
+      if v_team_row.id is null then
+        raise exception 'TEAM_NOT_FOUND';
+      end if;
 
       v_programmed_foreman_id := null;
       v_programmed_foreman_name := null;
@@ -665,9 +673,14 @@ begin
       'message', 'Projeto concluido: reabra antes de adicionar equipe.');
   end if;
 
-  if not exists (
-    select 1 from public.teams t where t.id = p_team_id and t.tenant_id = p_tenant_id and t.ativo = true
-  ) then
+  perform 1
+  from public.teams t
+  where t.id = p_team_id
+    and t.tenant_id = p_tenant_id
+    and t.ativo = true
+  for share;
+
+  if not found then
     return jsonb_build_object('success', false, 'status', 400, 'reason', 'TEAM_NOT_FOUND',
       'message', 'Equipe nao encontrada ou inativa para este tenant.');
   end if;

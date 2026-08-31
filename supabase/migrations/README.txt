@@ -1277,6 +1277,7 @@ Observacao
 - Republica `save_project_programming_stage`, `add_project_programming_team` e `postpone_project_programming_team` para gravar/preservar o encarregado programado na alocacao.
 - Cria `resolve_programmed_foreman_for_team` para validar novos encarregados contra pessoa ativa do tenant com cargo ativo de Encarregado.
 - Trocas de encarregado programado gravam `UPDATE_PROGRAMMED_FOREMAN` em `programming_history` e exigem motivo; alteracoes de outros campos continuam aceitando motivo vazio.
+- Hardening: editar uma etapa com equipe ja vinculada nao exige que essa equipe ainda esteja ativa no cadastro; `ativo = true` segue exigido somente para nova inclusao. Valor vazio explicito de encarregado programado e recusado pela API/RPC, e o formulario nao sobrescreve vazio historico ao marcar equipes visiveis.
 
 401_create_activity_type_page_and_team_type_rpcs.sql
 - Cadastra a pagina `tipo-atividade` em `app_pages` (secao Cadastro Base) com `default_user_access = false`, seguindo a 245: tela nova nasce liberada so para administrador e depende de liberacao explicita em `/permissoes`. Por isso a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.

@@ -93,16 +93,17 @@ function normalizeActivitiesPayload(activities: SaveProgrammingStagePayload["act
 }
 
 function normalizeTeamForemanPayload(teamForemanIds: SaveProgrammingStagePayload["teamForemanIds"] | undefined, teamIds: string[] | null) {
-  if (!teamForemanIds || typeof teamForemanIds !== "object" || !teamIds?.length) return {};
+  if (!teamForemanIds || typeof teamForemanIds !== "object" || !teamIds?.length) return { value: {} as Record<string, string>, hasEmptyForeman: false };
 
   const allowedTeamIds = new Set(teamIds);
   const normalized: Record<string, string> = {};
   for (const [teamIdRaw, foremanIdRaw] of Object.entries(teamForemanIds)) {
     const teamId = normalizeText(teamIdRaw);
     const foremanId = normalizeText(foremanIdRaw);
+    if (teamId && allowedTeamIds.has(teamId) && !foremanId) return { value: normalized, hasEmptyForeman: true };
     if (teamId && foremanId && allowedTeamIds.has(teamId)) normalized[teamId] = foremanId;
   }
-  return normalized;
+  return { value: normalized, hasEmptyForeman: false };
 }
 
 export async function authorizeProgrammingNormalizadaAction(context: AuthenticatedAppUserContext, action: PageAction) {
@@ -160,7 +161,11 @@ export async function saveProgrammingStage(request: NextRequest, method: "POST" 
   }
 
   const teamIds = payload?.teamIds === undefined ? null : normalizeUniqueTextArray(payload.teamIds);
-  const teamForemanIds = normalizeTeamForemanPayload(payload?.teamForemanIds, teamIds);
+  const teamForemanResult = normalizeTeamForemanPayload(payload?.teamForemanIds, teamIds);
+  if (teamForemanResult.hasEmptyForeman) {
+    return NextResponse.json({ message: "Selecione o encarregado programado para uma das equipes." }, { status: 400 });
+  }
+  const teamForemanIds = teamForemanResult.value;
 
   const result = await saveProgrammingStageViaRpc({
     supabase: resolution.supabase,

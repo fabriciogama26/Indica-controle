@@ -1747,3 +1747,25 @@ Atualizacao 2026-08-31 - Destaque visual do encarregado programado
   o bloco aparece com contorno vermelho e o icone de informacao mostra o texto no
   hover e via leitor de tela; desmarcar todas as equipes e conferir que o bloco
   some como antes.
+
+Atualizacao 2026-08-31 - Hardening de brechas do encarregado programado
+-----------------------------------------------------------------------
+- Brecha 1 fechada: uma programacao antiga com equipe depois inativada/cancelada
+  no cadastro continuava aparecendo na leitura, mas podia travar ao editar outro
+  campo porque `save_project_programming_stage` exigia `teams.ativo = true` para
+  todos os `teamIds` enviados. Agora a RPC permite preservar/corrigir equipe que
+  ja esta ativa naquela etapa em `programming_team`; equipe inativa continua
+  proibida para nova inclusao.
+- Brecha 2 fechada: a API descartava `teamForemanIds` vazios antes da RPC, entao
+  um cliente manual podia enviar encarregado programado `""` e obter "sem
+  alteracao" em vez de erro. Agora valor vazio explicito para equipe selecionada
+  retorna 400 e exige escolha valida.
+- Brecha 3 fechada: o botao "Marcar visiveis" preenchia o encarregado atual da
+  equipe quando o valor salvo no formulario era vazio legado. Agora ele so aplica
+  default quando a equipe ainda nao possui chave em `teamForemanIds`, preservando
+  o vazio historico.
+- Diagnostico mantido: o backfill da migration 400 usa `team_foreman_history` por
+  data (`valid_from`/`valid_to`). Se houve mais de uma troca de encarregado da
+  mesma equipe no mesmo dia, o passado nao tem granularidade suficiente para
+  reconstruir a hora exata; o fluxo novo nao sofre disso porque salva o snapshot
+  no momento da programacao.
