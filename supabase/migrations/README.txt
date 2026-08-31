@@ -121,7 +121,17 @@ Ordem de aplicacao
 366. 366_create_material_umb_options.sql
 367. 367_update_materials_umb_cjt_to_un.sql
 387. 387_programming_history_tenant_created_index.sql
+388. 388_harden_project_billing_rpc_grants.sql
+389. 389_project_billing_unique_semantic_key.sql
+390. 390_create_service_center_rpcs.sql
+391. 391_create_municipality_rpcs.sql
 392. 392_advisor_tenant_first_performance_indexes.sql
+393. 393_close_authenticated_write_surface.sql
+394. 394_harden_function_search_path_post_210.sql
+395. 395_harden_admin_pin_storage.sql
+396. 396_drop_legacy_admin_pin_hash.sql
+397. 397_fix_admin_pin_search_path.sql
+398. 398_stock_requisition_requested_by_date_index.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1249,3 +1259,8 @@ Observacao
 - Usa os dois schemas no search_path em vez de qualificar `extensions.crypt`, para funcionar tambem em banco reconstruido do zero, onde a 000 cria o pgcrypto em `public`.
 - Validacao pos-aplicacao confere que `proconfig` da funcao inclui `extensions` e que a RPC nao e executavel por `anon`/`authenticated`. O smoke test de hash que acompanha roda em bloco `DO` e portanto herda o search_path da sessao: ele confirma que o pgcrypto existe, nao que resolve de dentro da funcao. A prova real e chamar `verify_admin_pin_secret` para um usuario com `admin_pin_secret` preenchido.
 - A 394 nao precisa de correcao equivalente: nenhuma funcao ajustada por ela usa pgcrypto, operador de extensao ou schema fora de `public`.
+
+398_stock_requisition_requested_by_date_index.sql
+- Cria `idx_stock_requisition_requests_tenant_requested_date_created` em `stock_requisition_requests(tenant_id, requested_by, request_date desc, created_at desc)`, parcial para `requested_by is not null`.
+- Substitui a sugestao crua do Supabase Advisor (`request_date`) por um indice tenant-first para a aba "minhas requisicoes", que filtra por solicitante e ordena por data/criacao.
+- Inclui validacao pos-aplicacao para abortar se o indice esperado nao existir.
