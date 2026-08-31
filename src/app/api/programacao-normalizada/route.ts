@@ -203,6 +203,8 @@ function mapStageRowToDto(
       participationReason: normalizeText(team.participation_reason) || null,
       statusChangedAt: team.status_changed_at,
       movedToId: team.moved_to_id,
+      programmedForemanPersonId: team.programmed_foreman_person_id,
+      programmedForemanName: normalizeText(team.programmed_foreman_name_snapshot) || teamMap.get(team.team_id)?.foremanName || "Sem encarregado",
       updatedAt: team.updated_at,
     })),
     activities: (stage.programming_activity ?? []).map((activity) => ({

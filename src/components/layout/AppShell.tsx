@@ -79,7 +79,6 @@ const menuSections = [
       { href: "/prioridade", label: "Prioridade", icon: "settings" },
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
-      { href: "/tipo-atividade", label: "Tipo de Atividade", icon: "settings" },
       { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
@@ -256,13 +255,9 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Atividades",
     subtitle: "Cadastro de atividades de contratos e servicos.",
   },
-  "/tipo-atividade": {
-    title: "Tipo de Atividade",
-    subtitle: "Cadastro base dos tipos que alimentam o campo Tipo em Atividades.",
-  },
   "/tipo-equipe": {
     title: "Tipo de Equipe",
-    subtitle: "Cadastro base dos tipos de equipes.",
+    subtitle: "Cadastro base dos tipos de equipes, usados tambem no campo Tipo de Atividades.",
   },
   "/imei": {
     title: "Imei",

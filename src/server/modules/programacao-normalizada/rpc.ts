@@ -126,6 +126,7 @@ export async function saveProgrammingStageViaRpc(params: {
   note?: string | null;
   historyReason?: string | null;
   isPendencia?: boolean;
+  teamForemanIds?: Record<string, string> | null;
   documents?: Record<string, { number?: string | null; includedAt?: string | null; deliveredAt?: string | null }> | null;
   activities?: Array<{ catalogId: string; quantity: number }> | null;
 }) {
@@ -161,6 +162,7 @@ export async function saveProgrammingStageViaRpc(params: {
     p_documents: params.documents ?? {},
     p_activities: params.activities ?? [],
     p_is_pendencia: params.isPendencia ?? false,
+    p_team_foremen: params.teamForemanIds ?? {},
   });
 
   if (error) {
@@ -196,6 +198,7 @@ export async function addProgrammingTeamViaRpc(params: {
   actorUserId: string;
   programmingId: string;
   teamId: string;
+  programmedForemanPersonId?: string | null;
 }) {
   const rpcName = "add_project_programming_team";
   const { data, error } = await params.supabase.rpc(rpcName, {
@@ -203,6 +206,7 @@ export async function addProgrammingTeamViaRpc(params: {
     p_actor_user_id: params.actorUserId,
     p_programming_id: params.programmingId,
     p_team_id: params.teamId,
+    p_programmed_foreman_person_id: params.programmedForemanPersonId ?? null,
   });
 
   if (error) {

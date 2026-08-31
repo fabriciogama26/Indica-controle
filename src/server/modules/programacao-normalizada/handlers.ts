@@ -91,6 +91,19 @@ function normalizeActivitiesPayload(activities: SaveProgrammingStagePayload["act
     .filter((item) => item.catalogId && item.quantity > 0);
 }
 
+function normalizeTeamForemanPayload(teamForemanIds: SaveProgrammingStagePayload["teamForemanIds"] | undefined, teamIds: string[] | null) {
+  if (!teamForemanIds || typeof teamForemanIds !== "object" || !teamIds?.length) return {};
+
+  const allowedTeamIds = new Set(teamIds);
+  const normalized: Record<string, string> = {};
+  for (const [teamIdRaw, foremanIdRaw] of Object.entries(teamForemanIds)) {
+    const teamId = normalizeText(teamIdRaw);
+    const foremanId = normalizeText(foremanIdRaw);
+    if (teamId && foremanId && allowedTeamIds.has(teamId)) normalized[teamId] = foremanId;
+  }
+  return normalized;
+}
+
 export async function authorizeProgrammingNormalizadaAction(context: AuthenticatedAppUserContext, action: PageAction) {
   const authorization = await requirePageAction({ context, pageKey: PROGRAMMING_NORMALIZADA_PAGE_KEY, action });
   if (authorization.allowed) return null;
@@ -146,6 +159,7 @@ export async function saveProgrammingStage(request: NextRequest, method: "POST" 
   }
 
   const teamIds = payload?.teamIds === undefined ? null : normalizeUniqueTextArray(payload.teamIds);
+  const teamForemanIds = normalizeTeamForemanPayload(payload?.teamForemanIds, teamIds);
 
   const result = await saveProgrammingStageViaRpc({
     supabase: resolution.supabase,
@@ -177,6 +191,7 @@ export async function saveProgrammingStage(request: NextRequest, method: "POST" 
     note: normalizeNullableText(payload?.note),
     historyReason: normalizeNullableText(payload?.historyReason),
     isPendencia,
+    teamForemanIds,
     documents: normalizeDocumentsPayload(payload?.documents),
     activities: normalizeActivitiesPayload(payload?.activities),
   });
@@ -227,6 +242,7 @@ export async function addProgrammingTeam(request: NextRequest) {
     actorUserId: resolution.appUser.id,
     programmingId,
     teamId,
+    programmedForemanPersonId: normalizeNullableText(payload?.programmedForemanPersonId),
   });
 
   if (!result.ok) {

@@ -20,12 +20,18 @@ import type {
   DocumentFormEntry,
   DocumentFormKey,
   ElectricalEqCatalogItem,
+  ForemanItem,
   FormState,
   ProgrammingStage,
   SgdTypeItem,
   SupportOptionItem,
   TeamItem,
 } from "./types";
+
+// Ajuda do bloco de encarregado programado (doc da tela, 2026-08-31): o valor
+// escolhido aqui e o snapshot salvo na alocacao da etapa, nao o cadastro da equipe.
+const FOREMAN_ASSIGNMENT_HELP =
+  "Define o encarregado programado da equipe nesta etapa. Vem preenchido com o encarregado padrao da equipe e pode ser trocado antes de salvar; o valor fica salvo na alocacao da etapa e nao muda se o cadastro da equipe mudar depois. Trocar o encarregado de uma etapa ja existente exige preencher o motivo da troca.";
 
 export function StageBadge(props: { stage: ProgrammingStage }) {
   const { stage } = props;
@@ -253,7 +259,11 @@ export function StageCard(props: {
               usuario e empurrado para a lista justamente quando esta no plano.
               Em etapa em espera o menu continua ativo, sem "Adiar equipe". */}
           {activeTeams.map((team) => (
-            <span key={team.id} className={`${styles.teamChip} ${styles.teamChipLarge} ${canEditTeams ? styles.teamChipRemovable : ""}`}>
+            <span
+              key={team.id}
+              className={`${styles.teamChip} ${styles.teamChipLarge} ${canEditTeams ? styles.teamChipRemovable : ""}`}
+              title={`Encarregado programado: ${team.programmedForemanName || "Sem encarregado"}`}
+            >
               <span className={styles.teamChipMain}>{team.teamName}</span>
               {stage.startTime || stage.endTime ? (
                 <small className={styles.teamChipTime}>{stage.startTime?.slice(0, 5) ?? "--:--"}-{stage.endTime?.slice(0, 5) ?? "--:--"}</small>
@@ -418,6 +428,7 @@ export function StageFormPanel(props: {
   isSubmitting: boolean;
   canSubmit: boolean;
   teamOptions: TeamItem[];
+  foremanOptions: ForemanItem[];
   sgdTypes: SgdTypeItem[];
   electricalEqCatalog: ElectricalEqCatalogItem[];
   supportOptions: SupportOptionItem[];
@@ -437,6 +448,7 @@ export function StageFormPanel(props: {
     isSubmitting,
     canSubmit,
     teamOptions,
+    foremanOptions,
     sgdTypes,
     electricalEqCatalog,
     supportOptions,
@@ -463,18 +475,45 @@ export function StageFormPanel(props: {
   }
 
   function toggleTeam(teamId: string) {
-    setForm((current) => ({
-      ...current,
-      teamIds: current.teamIds.includes(teamId)
-        ? current.teamIds.filter((item) => item !== teamId)
-        : [...current.teamIds, teamId],
-    }));
+    const team = teamOptions.find((item) => item.id === teamId);
+    setForm((current) => {
+      if (current.teamIds.includes(teamId)) {
+        const { [teamId]: _removed, ...teamForemanIds } = current.teamForemanIds;
+        return { ...current, teamIds: current.teamIds.filter((item) => item !== teamId), teamForemanIds };
+      }
+
+      return {
+        ...current,
+        teamIds: [...current.teamIds, teamId],
+        teamForemanIds: { ...current.teamForemanIds, [teamId]: team?.foremanId ?? "" },
+      };
+    });
   }
 
   const teamSearchLower = form.teamSearch.trim().toLowerCase();
   const visibleTeamOptions = teamSearchLower
     ? teamOptions.filter((team) => team.name.toLowerCase().includes(teamSearchLower))
     : teamOptions;
+  const selectedTeamOptions = teamOptions.filter((team) => form.teamIds.includes(team.id));
+
+  function markVisibleTeams() {
+    setForm((current) => {
+      const nextTeamIds = Array.from(new Set([...current.teamIds, ...visibleTeamOptions.map((team) => team.id)]));
+      const nextForemen = { ...current.teamForemanIds };
+      for (const team of visibleTeamOptions) {
+        if (!nextForemen[team.id]) nextForemen[team.id] = team.foremanId ?? "";
+      }
+      return { ...current, teamIds: nextTeamIds, teamForemanIds: nextForemen };
+    });
+  }
+
+  function clearTeams() {
+    setForm((current) => ({ ...current, teamIds: [], teamForemanIds: {} }));
+  }
+
+  function setTeamForeman(teamId: string, foremanId: string) {
+    setForm((current) => ({ ...current, teamForemanIds: { ...current.teamForemanIds, [teamId]: foremanId } }));
+  }
 
   function handleAddActivity() {
     const match = activityOptions.find((item) => item.code.toLowerCase() === form.activitySearch.trim().toLowerCase());
@@ -655,12 +694,12 @@ export function StageFormPanel(props: {
               <button
                 type="button"
                 className={styles.buttonSecondary}
-                onClick={() => setField("teamIds", Array.from(new Set([...form.teamIds, ...visibleTeamOptions.map((team) => team.id)])))}
+                onClick={markVisibleTeams}
                 disabled={isSubmitting}
               >
                 Marcar visiveis
               </button>
-              <button type="button" className={styles.buttonSecondary} onClick={() => setField("teamIds", [])} disabled={isSubmitting}>
+              <button type="button" className={styles.buttonSecondary} onClick={clearTeams} disabled={isSubmitting}>
                 Limpar
               </button>
             </div>
@@ -679,7 +718,7 @@ export function StageFormPanel(props: {
                   <div className={styles.teamOptionMeta}>
                     <strong>{team.name}</strong>
                     <small>{team.serviceCenterName}</small>
-                    <small>Encarregado: {team.foremanName || "Sem encarregado"}</small>
+                    <small>Padrao: {team.foremanName || "Sem encarregado"}</small>
                   </div>
                 </label>
               ))
@@ -687,8 +726,46 @@ export function StageFormPanel(props: {
               <p className={styles.emptyHint}>Nenhuma equipe encontrada para o filtro atual.</p>
             )}
           </div>
+
+          {selectedTeamOptions.length ? (
+            <div className={styles.foremanAssignmentList}>
+              <div className={styles.foremanAssignmentHeader}>
+                <strong>Encarregado programado</strong>
+                <span
+                  className={styles.infoButton}
+                  role="img"
+                  aria-label={FOREMAN_ASSIGNMENT_HELP}
+                  title={FOREMAN_ASSIGNMENT_HELP}
+                >
+                  <ActionIcon name="info" className={styles.infoIcon} />
+                </span>
+              </div>
+              {selectedTeamOptions.map((team) => (
+                <label key={team.id} className={styles.foremanAssignmentRow}>
+                  <span>{team.name}</span>
+                  <select
+                    value={form.teamForemanIds[team.id] ?? team.foremanId ?? ""}
+                    onChange={(event) => setTeamForeman(team.id, event.target.value)}
+                    disabled={isSubmitting}
+                  >
+                    <option value="">Selecionar encarregado...</option>
+                    {foremanOptions.map((foreman) => (
+                      <option key={foreman.id} value={foreman.id}>{foreman.name}</option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+          ) : null}
         </div>
       </section>
+
+      {isEditing ? (
+        <label className={`${styles.field} ${styles.fieldFullRow}`}>
+          <span>Motivo da troca de encarregado</span>
+          <textarea value={form.historyReason} onChange={(event) => setField("historyReason", event.target.value)} disabled={isSubmitting} />
+        </label>
+      ) : null}
 
       <section className={styles.formSection}>
         <div className={styles.sectionHeader}>

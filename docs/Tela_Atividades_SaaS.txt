@@ -459,9 +459,12 @@ Atualizacao 2026-08-31 - Tipo passa a ter tela propria de cadastro
 - Nenhum arquivo de `Atividades` foi alterado nesta etapa: o campo `Tipo` ja era um `select` alimentado por
   `team_types` atraves de `/api/activities/meta`, e continua igual.
 - Antes: o catalogo por tras do campo `Tipo` nao tinha tela nenhuma; incluir ou renomear um tipo exigia acesso direto ao banco.
-- Depois: a tela `/tipo-atividade` (Cadastro Base) cadastra, edita, cancela/ativa e audita esse catalogo.
-  Detalhe completo em `docs/Tela_Tipo_Atividade_SaaS.txt`.
-- Efeito colateral esperado no formulario: um tipo cancelado em `/tipo-atividade` some do `select` `Tipo`, porque
+- Depois: a tela `/tipo-equipe` (Cadastro Base) cadastra, edita, cancela/ativa e audita esse catalogo.
+  Detalhe completo em `docs/Tela_Tipo_Equipe_SaaS.txt`.
+- A tela chegou a ser publicada como `/tipo-atividade` (migration `401`), mas foi consolidada em `/tipo-equipe`
+  pela migration `402`: `Tipo de Atividade` e `Tipo de Equipe` sao a MESMA informacao, as duas liam
+  `public.team_types`. O campo `Tipo` de `Atividades` e o campo `Tipo` de `Equipes` compartilham o catalogo.
+- Efeito colateral esperado no formulario: um tipo cancelado em `/tipo-equipe` some do `select` `Tipo`, porque
   `/api/activities/meta` ja filtrava por `ativo = true`. Para evitar que uma atividade antiga fique impossivel de
   reeditar, a RPC `set_team_type_record_status` recusa o cancelamento (`TEAM_TYPE_IN_USE`) enquanto houver atividade
   ativa apontando para o tipo.

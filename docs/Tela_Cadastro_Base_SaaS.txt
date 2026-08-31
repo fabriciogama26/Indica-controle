@@ -3,7 +3,7 @@ Tela: Cadastro Base SaaS
 Visao geral
 -----------
 - Conjunto de telas placeholder para os cadastros estruturantes do SaaS.
-- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Tipo de Atividade`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
 - Todas as rotas foram conectadas a permissao por pagina.
 
 Arquitetura
@@ -13,7 +13,6 @@ Arquitetura
   - `src/app/(dashboard)/prioridade/page.tsx`
   - `src/app/(dashboard)/centro-servico/page.tsx`
   - `src/app/(dashboard)/contrato/page.tsx`
-  - `src/app/(dashboard)/tipo-atividade/page.tsx`
   - `src/app/(dashboard)/tipo-equipe/page.tsx`
   - `src/app/(dashboard)/imei/page.tsx`
   - `src/app/(dashboard)/tipo-servico/page.tsx`
@@ -26,20 +25,19 @@ Arquitetura
 - Catalogo de permissoes por usuario: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Base SQL de catalogo/permissao: `supabase/migrations/040_reorganize_menu_sections_and_page_permissions.sql`
 - Base SQL de tipos de equipe: `supabase/migrations/053_create_team_types_and_link_teams.sql`
-- RPC e pagina de `Tipo de Atividade`: `supabase/migrations/401_create_activity_type_page_and_team_type_rpcs.sql`
+- RPC de `Tipo de Equipe` e aposentadoria do page_key `tipo-atividade`: `supabase/migrations/402_move_team_type_screen_to_tipo_equipe.sql`
 
 Cadastro
 --------
 - Demais telas de `Cadastro Base` seguem em placeholder nesta etapa.
 - `Configuracao do Mapa do Almoxarifado` possui tela real para cadastrar layout fisico por centro de estoque.
-- `Tipo de Atividade` possui tela real e e o unico CRUD de `team_types` no sistema.
-- `Tipo de Equipe` segue como placeholder de tela e aponta para a mesma tabela `team_types` administrada por `Tipo de Atividade`; nao ha CRUD duplicado porque a rota continua sem persistencia.
+- `Tipo de Equipe` possui tela real e e o unico CRUD de `team_types` no sistema; o mesmo catalogo alimenta o campo `Tipo` de `Equipes` e o campo `Tipo` de `Atividades`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Demais telas de `Cadastro Base` seguem sem listagem nesta etapa.
 - `Configuracao do Mapa do Almoxarifado` lista visualmente o grid configurado, prateleiras, andares e posicoes.
-- `Tipo de Atividade` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico e exportacao CSV.
+- `Tipo de Equipe` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico e exportacao CSV.
 
 Boas praticas
 -------------
@@ -58,7 +56,6 @@ Atalhos
   - `/prioridade`
   - `/centro-servico`
   - `/contrato`
-  - `/tipo-atividade`
   - `/tipo-equipe`
   - `/imei`
   - `/tipo-servico`
@@ -88,10 +85,8 @@ Mapa de Codigo (funcoes, hooks e constantes)
 Funcoes principais
 - Caminho: `src/components/layout/AppShell.tsx`
   - Responsavel por: renderizar secao `Cadastro Base` e seus atalhos na sidebar.
-- Caminho: `src/app/(dashboard)/tipo-atividade/page.tsx`
-  - Responsavel por: expor a tela real da rota `Tipo de Atividade` no Cadastro Base.
 - Caminho: `src/app/(dashboard)/tipo-equipe/page.tsx`
-  - Responsavel por: expor o placeholder da rota `Tipo de Equipe` no Cadastro Base.
+  - Responsavel por: expor a tela real da rota `Tipo de Equipe` no Cadastro Base.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear cada rota base para seu `pageKey` e bloquear acessos sem permissao.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -115,5 +110,6 @@ Servicos e integracoes externas
 Ajuda contextual
 - Estado atual: secao de `Cadastro Base` estruturada com rotas independentes e controle de permissao por pagina; `Atividades` foi movida para `Cadastros`.
 - Atualizacao 2026-07: `/configuracao-mapa-almoxarifado` foi adicionada como tela real do Cadastro Base para preparar o enderecamento do almoxarifado.
-- Atualizacao 2026-08: `/tipo-atividade` saiu de inexistente para tela real de Cadastro Base, no padrao de `Centro de Servico`, administrando o catalogo `team_types` que alimenta o campo `Tipo` de `Atividades`. Detalhe completo em `docs/Tela_Tipo_Atividade_SaaS.txt`.
-- Pendencia conhecida: `/tipo-equipe` continua como `ModulePlaceholder` sobre a mesma tabela `team_types`. Definir se a rota sera removida ou reaproveitada para a mesma view antes de implementar qualquer CRUD nela, para nao criar dois cadastros concorrentes do mesmo dominio.
+- Atualizacao 2026-08: `/tipo-equipe` saiu de `ModulePlaceholder` para tela real de Cadastro Base, no padrao de `Centro de Servico`, e passou a ser o unico CRUD do catalogo `team_types` — o mesmo que alimenta o campo `Tipo` de `Equipes` e o campo `Tipo` de `Atividades`. Detalhe completo em `docs/Tela_Tipo_Equipe_SaaS.txt`.
+- A tela chegou a ser publicada como `/tipo-atividade` pela migration `401`; a migration `402` consolidou tudo em `/tipo-equipe` e aposentou aquele `page_key`, porque as duas telas administravam a mesma tabela. A `401` nao foi editada por ja estar publicada (`guias/guia_sql.md` regra 2).
+- A `402` tambem revoga as acoes de escrita de `tipo-equipe` para usuarios nao administradores, preservando `can_access`: como a rota era placeholder desde a `245`/`253`, quase todo usuario tinha `can_create`/`can_update`/`can_cancel`/`can_export` ligados sobre uma tela que nao gravava nada.

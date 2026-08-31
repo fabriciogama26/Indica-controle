@@ -1019,6 +1019,71 @@
   color: var(--color-text-soft);
 }
 
+.foremanAssignmentList {
+  display: grid;
+  gap: 8px;
+  border: 2px solid #d92d20;
+  border-radius: 12px;
+  background: rgba(217, 45, 32, 0.04);
+  padding: 12px;
+}
+
+.foremanAssignmentHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b42318;
+  font-size: 0.82rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.infoButton {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #f0a9a2;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #b42318;
+  cursor: help;
+  flex-shrink: 0;
+}
+
+.infoIcon {
+  width: 14px;
+  height: 14px;
+}
+
+.foremanAssignmentRow {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(180px, 1.1fr);
+  gap: 10px;
+  align-items: center;
+  color: #17347a;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.foremanAssignmentRow span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.foremanAssignmentRow select {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 2px solid #d92d20;
+  background: #ffffff;
+  color: #1b294c;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+}
+
 .activityComposer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 140px auto;
@@ -1327,5 +1392,9 @@
 
   .projectTeamPreview {
     align-items: flex-start;
+  }
+
+  .foremanAssignmentRow {
+    grid-template-columns: 1fr;
   }
 }

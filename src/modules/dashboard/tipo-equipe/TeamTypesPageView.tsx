@@ -13,9 +13,9 @@ import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE, DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
 import styles from "../pessoas/PeoplePageView.module.css";
-import { buildActivityTypesCsv } from "./csv";
+import { buildTeamTypesCsv } from "./csv";
 
-type ActivityTypeItem = {
+type TeamTypeItem = {
   id: string;
   name: string;
   isActive: boolean;
@@ -25,7 +25,7 @@ type ActivityTypeItem = {
   updatedAt: string;
 };
 
-type ActivityTypeHistoryEntry = {
+type TeamTypeHistoryEntry = {
   id: string;
   changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
   reason: string | null;
@@ -34,25 +34,25 @@ type ActivityTypeHistoryEntry = {
   changes: Record<string, { from: string | null; to: string | null }>;
 };
 
-type ActivityTypeFormState = {
+type TeamTypeFormState = {
   id: string | null;
   updatedAt: string | null;
   name: string;
 };
 
-type ActivityTypeFilterState = {
+type TeamTypeFilterState = {
   name: string;
   status: "" | "ativo" | "inativo";
 };
 
-type ActivityTypesListResponse = {
-  activityTypes?: ActivityTypeItem[];
+type TeamTypesListResponse = {
+  teamTypes?: TeamTypeItem[];
   pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
 
-type ActivityTypeHistoryResponse = {
-  history?: ActivityTypeHistoryEntry[];
+type TeamTypeHistoryResponse = {
+  history?: TeamTypeHistoryEntry[];
   pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
@@ -61,13 +61,13 @@ const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 
-const INITIAL_FORM: ActivityTypeFormState = {
+const INITIAL_FORM: TeamTypeFormState = {
   id: null,
   updatedAt: null,
   name: "",
 };
 
-const INITIAL_FILTERS: ActivityTypeFilterState = {
+const INITIAL_FILTERS: TeamTypeFilterState = {
   name: "",
   status: "",
 };
@@ -83,7 +83,7 @@ function normalizeText(value: string) {
   return String(value ?? "").trim();
 }
 
-function buildQuery(filters: ActivityTypeFilterState, page: number, pageSize = PAGE_SIZE, mode?: "export") {
+function buildQuery(filters: TeamTypeFilterState, page: number, pageSize = PAGE_SIZE, mode?: "export") {
   const params = new URLSearchParams();
   if (filters.name.trim()) {
     params.set("name", filters.name.trim());
@@ -123,71 +123,71 @@ function scrollDashboardContentToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-export function ActivityTypesPageView() {
+export function TeamTypesPageView() {
   const { session } = useAuth();
-  const logError = useErrorLogger("tipo-atividade");
+  const logError = useErrorLogger("tipo-equipe");
   const exportCooldown = useExportCooldown();
-  const [form, setForm] = useState<ActivityTypeFormState>(INITIAL_FORM);
-  const [filterDraft, setFilterDraft] = useState<ActivityTypeFilterState>(INITIAL_FILTERS);
-  const [activeFilters, setActiveFilters] = useState<ActivityTypeFilterState>(INITIAL_FILTERS);
-  const [activityTypes, setActivityTypes] = useState<ActivityTypeItem[]>([]);
+  const [form, setForm] = useState<TeamTypeFormState>(INITIAL_FORM);
+  const [filterDraft, setFilterDraft] = useState<TeamTypeFilterState>(INITIAL_FILTERS);
+  const [activeFilters, setActiveFilters] = useState<TeamTypeFilterState>(INITIAL_FILTERS);
+  const [teamTypes, setTeamTypes] = useState<TeamTypeItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isChangingStatus, setIsChangingStatus] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [detailActivityType, setDetailActivityType] = useState<ActivityTypeItem | null>(null);
-  const [historyActivityType, setHistoryActivityType] = useState<ActivityTypeItem | null>(null);
-  const [historyEntries, setHistoryEntries] = useState<ActivityTypeHistoryEntry[]>([]);
+  const [detailTeamType, setDetailTeamType] = useState<TeamTypeItem | null>(null);
+  const [historyTeamType, setHistoryTeamType] = useState<TeamTypeItem | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<TeamTypeHistoryEntry[]>([]);
   const [historyPage, setHistoryPage] = useState(1);
   const [historyTotal, setHistoryTotal] = useState(0);
-  const [statusActivityType, setStatusActivityType] = useState<ActivityTypeItem | null>(null);
+  const [statusTeamType, setStatusTeamType] = useState<TeamTypeItem | null>(null);
   const [statusReason, setStatusReason] = useState("");
   const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / HISTORY_PAGE_SIZE));
   const isEditing = Boolean(form.id);
-  const statusAction = statusActivityType?.isActive ? "cancel" : "activate";
-  const formTitle = useMemo(() => (isEditing ? "Editar Tipo de Atividade" : "Cadastro de Tipo de Atividade"), [isEditing]);
+  const statusAction = statusTeamType?.isActive ? "cancel" : "activate";
+  const formTitle = useMemo(() => (isEditing ? "Editar Tipo de Equipe" : "Cadastro de Tipo de Equipe"), [isEditing]);
   const canSubmitStatusChange = Boolean(statusReason.trim()) && !isChangingStatus;
 
-  const loadActivityTypes = useCallback(
-    async (targetPage: number, filters: ActivityTypeFilterState, pageSize = PAGE_SIZE, mode?: "export") => {
+  const loadTeamTypes = useCallback(
+    async (targetPage: number, filters: TeamTypeFilterState, pageSize = PAGE_SIZE, mode?: "export") => {
       if (!session?.accessToken) {
-        return [] as ActivityTypeItem[];
+        return [] as TeamTypeItem[];
       }
 
       setIsLoadingList(true);
       try {
         const query = buildQuery(filters, targetPage, pageSize, mode);
-        const response = await fetch(`/api/activity-types?${query}`, {
+        const response = await fetch(`/api/team-types?${query}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as ActivityTypesListResponse;
+        const data = (await response.json().catch(() => ({}))) as TeamTypesListResponse;
         if (!response.ok) {
-          setActivityTypes([]);
+          setTeamTypes([]);
           setTotal(0);
-          setFeedback({ type: "error", message: data.message ?? "Falha ao carregar tipos de atividade." });
-          return [] as ActivityTypeItem[];
+          setFeedback({ type: "error", message: data.message ?? "Falha ao carregar tipos de equipe." });
+          return [] as TeamTypeItem[];
         }
 
-        const nextActivityTypes = data.activityTypes ?? [];
+        const nextTeamTypes = data.teamTypes ?? [];
         if (!mode) {
-          setActivityTypes(nextActivityTypes);
+          setTeamTypes(nextTeamTypes);
           setTotal(data.pagination?.total ?? 0);
         }
-        return nextActivityTypes;
+        return nextTeamTypes;
       } catch (error) {
-        await logError("Falha ao carregar tipos de atividade.", error, { page: targetPage, filters });
-        setActivityTypes([]);
+        await logError("Falha ao carregar tipos de equipe.", error, { page: targetPage, filters });
+        setTeamTypes([]);
         setTotal(0);
-        setFeedback({ type: "error", message: "Falha ao carregar tipos de atividade." });
-        return [] as ActivityTypeItem[];
+        setFeedback({ type: "error", message: "Falha ao carregar tipos de equipe." });
+        return [] as TeamTypeItem[];
       } finally {
         setIsLoadingList(false);
       }
@@ -195,8 +195,8 @@ export function ActivityTypesPageView() {
     [logError, session?.accessToken, setTotal],
   );
 
-  const loadActivityTypeHistory = useCallback(
-    async (activityType: ActivityTypeItem, targetPage: number) => {
+  const loadTeamTypeHistory = useCallback(
+    async (teamType: TeamTypeItem, targetPage: number) => {
       if (!session?.accessToken) {
         setFeedback({ type: "error", message: "Sessao invalida para carregar historico." });
         return;
@@ -205,20 +205,20 @@ export function ActivityTypesPageView() {
       setIsLoadingHistory(true);
       try {
         const params = new URLSearchParams();
-        params.set("historyActivityTypeId", activityType.id);
+        params.set("historyTeamTypeId", teamType.id);
         params.set("historyPage", String(targetPage));
         params.set("historyPageSize", String(HISTORY_PAGE_SIZE));
 
-        const response = await fetch(`/api/activity-types?${params.toString()}`, {
+        const response = await fetch(`/api/team-types?${params.toString()}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as ActivityTypeHistoryResponse;
+        const data = (await response.json().catch(() => ({}))) as TeamTypeHistoryResponse;
         if (!response.ok) {
-          setFeedback({ type: "error", message: data.message ?? "Falha ao carregar historico do tipo de atividade." });
+          setFeedback({ type: "error", message: data.message ?? "Falha ao carregar historico do tipo de equipe." });
           setHistoryEntries([]);
           setHistoryTotal(0);
           return;
@@ -228,8 +228,8 @@ export function ActivityTypesPageView() {
         setHistoryPage(data.pagination?.page ?? targetPage);
         setHistoryTotal(data.pagination?.total ?? 0);
       } catch (error) {
-        await logError("Falha ao carregar historico do tipo de atividade.", error, { activityTypeId: activityType.id });
-        setFeedback({ type: "error", message: "Falha ao carregar historico do tipo de atividade." });
+        await logError("Falha ao carregar historico do tipo de equipe.", error, { teamTypeId: teamType.id });
+        setFeedback({ type: "error", message: "Falha ao carregar historico do tipo de equipe." });
         setHistoryEntries([]);
         setHistoryTotal(0);
       } finally {
@@ -240,14 +240,14 @@ export function ActivityTypesPageView() {
   );
 
   useEffect(() => {
-    void loadActivityTypes(page, activeFilters);
-  }, [activeFilters, loadActivityTypes, page]);
+    void loadTeamTypes(page, activeFilters);
+  }, [activeFilters, loadTeamTypes, page]);
 
   function resetForm() {
     setForm(INITIAL_FORM);
   }
 
-  function updateFilterField(field: keyof ActivityTypeFilterState, value: string) {
+  function updateFilterField(field: keyof TeamTypeFilterState, value: string) {
     setFilterDraft((current) => ({ ...current, [field]: value }));
   }
 
@@ -264,39 +264,39 @@ export function ActivityTypesPageView() {
     setFeedback(null);
   }
 
-  function startEdit(activityType: ActivityTypeItem) {
+  function startEdit(teamType: TeamTypeItem) {
     setForm({
-      id: activityType.id,
-      updatedAt: activityType.updatedAt,
-      name: activityType.name,
+      id: teamType.id,
+      updatedAt: teamType.updatedAt,
+      name: teamType.name,
     });
     setFeedback(null);
     scrollDashboardContentToTop();
   }
 
   function closeHistoryModal() {
-    setHistoryActivityType(null);
+    setHistoryTeamType(null);
     setHistoryEntries([]);
     setHistoryPage(1);
     setHistoryTotal(0);
     setIsLoadingHistory(false);
   }
 
-  async function openHistoryModal(activityType: ActivityTypeItem) {
-    setHistoryActivityType(activityType);
+  async function openHistoryModal(teamType: TeamTypeItem) {
+    setHistoryTeamType(teamType);
     setHistoryEntries([]);
     setHistoryPage(1);
     setHistoryTotal(0);
-    await loadActivityTypeHistory(activityType, 1);
+    await loadTeamTypeHistory(teamType, 1);
   }
 
-  function openStatusModal(activityType: ActivityTypeItem) {
-    setStatusActivityType(activityType);
+  function openStatusModal(teamType: TeamTypeItem) {
+    setStatusTeamType(teamType);
     setStatusReason("");
   }
 
   function closeStatusModal() {
-    setStatusActivityType(null);
+    setStatusTeamType(null);
     setStatusReason("");
     setIsChangingStatus(false);
   }
@@ -305,7 +305,7 @@ export function ActivityTypesPageView() {
     event.preventDefault();
 
     if (!session?.accessToken) {
-      setFeedback({ type: "error", message: "Sessao invalida para salvar tipo de atividade." });
+      setFeedback({ type: "error", message: "Sessao invalida para salvar tipo de equipe." });
       return;
     }
 
@@ -313,7 +313,7 @@ export function ActivityTypesPageView() {
     setFeedback(null);
 
     try {
-      const response = await fetch("/api/activity-types", {
+      const response = await fetch("/api/team-types", {
         method: form.id ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
@@ -329,33 +329,33 @@ export function ActivityTypesPageView() {
       const data = (await response.json().catch(() => ({}))) as { success?: boolean; message?: string; code?: string };
       if (!response.ok || !data.success) {
         if (data.code === "CONCURRENT_MODIFICATION" || data.code === "RECORD_INACTIVE") {
-          await loadActivityTypes(page, activeFilters);
+          await loadTeamTypes(page, activeFilters);
         }
-        setFeedback({ type: "error", message: data.message ?? "Falha ao salvar tipo de atividade." });
+        setFeedback({ type: "error", message: data.message ?? "Falha ao salvar tipo de equipe." });
         return;
       }
 
-      setFeedback({ type: "success", message: data.message ?? "Tipo de atividade salvo com sucesso." });
+      setFeedback({ type: "success", message: data.message ?? "Tipo de equipe salvo com sucesso." });
       resetForm();
-      await loadActivityTypes(1, activeFilters);
+      await loadTeamTypes(1, activeFilters);
       setPage(1);
     } catch (error) {
-      await logError("Falha ao salvar tipo de atividade.", error, { id: form.id, name: form.name });
-      setFeedback({ type: "error", message: "Falha ao salvar tipo de atividade." });
+      await logError("Falha ao salvar tipo de equipe.", error, { id: form.id, name: form.name });
+      setFeedback({ type: "error", message: "Falha ao salvar tipo de equipe." });
     } finally {
       setIsSaving(false);
     }
   }
 
   async function confirmStatusChange() {
-    if (!session?.accessToken || !statusActivityType || !statusReason.trim()) {
+    if (!session?.accessToken || !statusTeamType || !statusReason.trim()) {
       return;
     }
 
     setIsChangingStatus(true);
 
     try {
-      const response = await fetch("/api/activity-types", {
+      const response = await fetch("/api/team-types", {
         method: "PATCH",
         cache: "no-store",
         headers: {
@@ -363,10 +363,10 @@ export function ActivityTypesPageView() {
           Authorization: `Bearer ${session.accessToken}`,
         },
         body: JSON.stringify({
-          id: statusActivityType.id,
+          id: statusTeamType.id,
           reason: statusReason.trim(),
           action: statusAction,
-          expectedUpdatedAt: statusActivityType.updatedAt,
+          expectedUpdatedAt: statusTeamType.updatedAt,
         }),
       });
 
@@ -378,34 +378,34 @@ export function ActivityTypesPageView() {
           || data.code === "STATUS_ALREADY_CHANGED"
         ) {
           closeStatusModal();
-          await loadActivityTypes(page, activeFilters);
+          await loadTeamTypes(page, activeFilters);
         }
         // O bloqueio por vinculo nao muda a lista, mas a mensagem fica atras do
         // overlay se o modal continuar aberto: fecha para o usuario ler o motivo.
         if (data.code === "TEAM_TYPE_IN_USE") {
           closeStatusModal();
         }
-        setFeedback({ type: "error", message: data.message ?? "Falha ao atualizar status do tipo de atividade." });
+        setFeedback({ type: "error", message: data.message ?? "Falha ao atualizar status do tipo de equipe." });
         return;
       }
 
-      setFeedback({ type: "success", message: data.message ?? "Status do tipo de atividade atualizado com sucesso." });
-      if (form.id === statusActivityType.id) {
+      setFeedback({ type: "success", message: data.message ?? "Status do tipo de equipe atualizado com sucesso." });
+      if (form.id === statusTeamType.id) {
         resetForm();
       }
       closeStatusModal();
-      await loadActivityTypes(page, activeFilters);
+      await loadTeamTypes(page, activeFilters);
     } catch (error) {
-      await logError("Falha ao atualizar status do tipo de atividade.", error, { id: statusActivityType.id });
-      setFeedback({ type: "error", message: "Falha ao atualizar status do tipo de atividade." });
+      await logError("Falha ao atualizar status do tipo de equipe.", error, { id: statusTeamType.id });
+      setFeedback({ type: "error", message: "Falha ao atualizar status do tipo de equipe." });
     } finally {
       setIsChangingStatus(false);
     }
   }
 
-  async function handleExportActivityTypes() {
+  async function handleExportTeamTypes() {
     if (!session?.accessToken) {
-      setFeedback({ type: "error", message: "Sessao invalida para exportar tipos de atividade." });
+      setFeedback({ type: "error", message: "Sessao invalida para exportar tipos de equipe." });
       return;
     }
 
@@ -419,39 +419,39 @@ export function ActivityTypesPageView() {
 
     setIsExporting(true);
     try {
-      const allActivityTypes: ActivityTypeItem[] = [];
+      const allTeamTypes: TeamTypeItem[] = [];
       let exportPage = 1;
       let totalItems = 0;
 
       while (true) {
         const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE, "export");
-        const response = await fetch(`/api/activity-types?${query}`, {
+        const response = await fetch(`/api/team-types?${query}`, {
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${session.accessToken}`,
           },
         });
 
-        const data = (await response.json().catch(() => ({}))) as ActivityTypesListResponse;
+        const data = (await response.json().catch(() => ({}))) as TeamTypesListResponse;
         if (!response.ok) {
-          setFeedback({ type: "error", message: data.message ?? "Falha ao exportar tipos de atividade." });
+          setFeedback({ type: "error", message: data.message ?? "Falha ao exportar tipos de equipe." });
           return;
         }
 
-        const pageItems = data.activityTypes ?? [];
-        allActivityTypes.push(...pageItems);
-        totalItems = data.pagination?.total ?? allActivityTypes.length;
-        if (allActivityTypes.length >= totalItems || pageItems.length === 0) {
+        const pageItems = data.teamTypes ?? [];
+        allTeamTypes.push(...pageItems);
+        totalItems = data.pagination?.total ?? allTeamTypes.length;
+        if (allTeamTypes.length >= totalItems || pageItems.length === 0) {
           break;
         }
         exportPage += 1;
       }
 
-      downloadCsvFile(buildActivityTypesCsv(allActivityTypes), "tipos_atividade.csv");
-      setFeedback({ type: "success", message: `${allActivityTypes.length} tipo(s) de atividade exportado(s).` });
+      downloadCsvFile(buildTeamTypesCsv(allTeamTypes), "tipos_equipe.csv");
+      setFeedback({ type: "success", message: `${allTeamTypes.length} tipo(s) de equipe exportado(s).` });
     } catch (error) {
-      await logError("Falha ao exportar tipos de atividade.", error, { filters: activeFilters });
-      setFeedback({ type: "error", message: "Falha ao exportar tipos de atividade." });
+      await logError("Falha ao exportar tipos de equipe.", error, { filters: activeFilters });
+      setFeedback({ type: "error", message: "Falha ao exportar tipos de equipe." });
     } finally {
       setIsExporting(false);
     }
@@ -531,10 +531,10 @@ export function ActivityTypesPageView() {
 
       <article className={styles.card}>
         <div className={styles.tableHeader}>
-          <h3 className={styles.cardTitle}>Lista de Tipos de Atividade</h3>
+          <h3 className={styles.cardTitle}>Lista de Tipos de Equipe</h3>
           <CsvExportButton
             className={styles.ghostButton}
-            onClick={() => void handleExportActivityTypes()}
+            onClick={() => void handleExportTeamTypes()}
             isLoading={isExporting}
             disabled={isExporting || isLoadingList || exportCooldown.isCoolingDown}
           />
@@ -552,56 +552,56 @@ export function ActivityTypesPageView() {
               </tr>
             </thead>
             <tbody>
-              {activityTypes.length > 0 ? (
-                activityTypes.map((activityType) => (
-                  <tr key={activityType.id} className={!activityType.isActive ? styles.inactiveRow : undefined}>
+              {teamTypes.length > 0 ? (
+                teamTypes.map((teamType) => (
+                  <tr key={teamType.id} className={!teamType.isActive ? styles.inactiveRow : undefined}>
                     <td>
                       <div className={styles.sobCell}>
-                        <span>{activityType.name}</span>
-                        {!activityType.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
+                        <span>{teamType.name}</span>
+                        {!teamType.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
-                    <td>{activityType.isActive ? "Ativo" : "Inativo"}</td>
-                    <td>{formatDateTime(activityType.createdAt)}</td>
-                    <td>{formatDateTime(activityType.updatedAt)}</td>
+                    <td>{teamType.isActive ? "Ativo" : "Inativo"}</td>
+                    <td>{formatDateTime(teamType.createdAt)}</td>
+                    <td>{formatDateTime(teamType.updatedAt)}</td>
                     <td className={styles.actionsCell}>
                       <div className={styles.tableActions}>
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionView}`}
-                          onClick={() => setDetailActivityType(activityType)}
+                          onClick={() => setDetailTeamType(teamType)}
                           title="Detalhes"
-                          aria-label="Detalhes do tipo de atividade"
+                          aria-label="Detalhes do tipo de equipe"
                         >
                           <ActionIcon name="details" />
                         </button>
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionEdit}`}
-                          onClick={() => startEdit(activityType)}
+                          onClick={() => startEdit(teamType)}
                           title="Editar"
-                          aria-label="Editar tipo de atividade"
-                          disabled={!activityType.isActive}
+                          aria-label="Editar tipo de equipe"
+                          disabled={!teamType.isActive}
                         >
                           <ActionIcon name="edit" />
                         </button>
                         <button
                           type="button"
                           className={`${styles.actionButton} ${styles.actionHistory}`}
-                          onClick={() => void openHistoryModal(activityType)}
+                          onClick={() => void openHistoryModal(teamType)}
                           title="Historico"
-                          aria-label="Historico do tipo de atividade"
+                          aria-label="Historico do tipo de equipe"
                         >
                           <ActionIcon name="history" />
                         </button>
                         <button
                           type="button"
-                          className={`${styles.actionButton} ${activityType.isActive ? styles.actionCancel : styles.actionActivate}`}
-                          onClick={() => openStatusModal(activityType)}
-                          title={activityType.isActive ? "Cancelar" : "Ativar"}
-                          aria-label={activityType.isActive ? "Cancelar tipo de atividade" : "Ativar tipo de atividade"}
+                          className={`${styles.actionButton} ${teamType.isActive ? styles.actionCancel : styles.actionActivate}`}
+                          onClick={() => openStatusModal(teamType)}
+                          title={teamType.isActive ? "Cancelar" : "Ativar"}
+                          aria-label={teamType.isActive ? "Cancelar tipo de equipe" : "Ativar tipo de equipe"}
                         >
-                          <ActionIcon name={activityType.isActive ? "cancel" : "activate"} />
+                          <ActionIcon name={teamType.isActive ? "cancel" : "activate"} />
                         </button>
                       </div>
                     </td>
@@ -611,8 +611,8 @@ export function ActivityTypesPageView() {
                 <tr>
                   <td colSpan={5} className={styles.emptyRow}>
                     {isLoadingList
-                      ? "Carregando tipos de atividade..."
-                      : "Nenhum tipo de atividade encontrado para os filtros informados."}
+                      ? "Carregando tipos de equipe..."
+                      : "Nenhum tipo de equipe encontrado para os filtros informados."}
                   </td>
                 </tr>
               )}
@@ -633,40 +633,40 @@ export function ActivityTypesPageView() {
         />
       </article>
 
-      {detailActivityType ? (
-        <div className={styles.modalOverlay} onClick={() => setDetailActivityType(null)}>
+      {detailTeamType ? (
+        <div className={styles.modalOverlay} onClick={() => setDetailTeamType(null)}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Detalhes do Tipo de Atividade {detailActivityType.name}</h4>
-                <p className={styles.modalSubtitle}>ID do tipo: {detailActivityType.id}</p>
+                <h4>Detalhes do Tipo de Equipe {detailTeamType.name}</h4>
+                <p className={styles.modalSubtitle}>ID do tipo: {detailTeamType.id}</p>
               </div>
-              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailActivityType(null)}>
+              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailTeamType(null)}>
                 Fechar
               </button>
             </header>
 
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
-                <div><strong>Status:</strong> {detailActivityType.isActive ? "Ativo" : "Inativo"}</div>
-                <div><strong>Nome:</strong> {detailActivityType.name}</div>
-                <div><strong>Registrado por:</strong> {formatAuditActor(detailActivityType.createdByName)}</div>
-                <div><strong>Criado em:</strong> {formatDateTime(detailActivityType.createdAt)}</div>
-                <div><strong>Atualizado por:</strong> {formatAuditActor(detailActivityType.updatedByName)}</div>
-                <div><strong>Atualizado em:</strong> {formatDateTime(detailActivityType.updatedAt)}</div>
+                <div><strong>Status:</strong> {detailTeamType.isActive ? "Ativo" : "Inativo"}</div>
+                <div><strong>Nome:</strong> {detailTeamType.name}</div>
+                <div><strong>Registrado por:</strong> {formatAuditActor(detailTeamType.createdByName)}</div>
+                <div><strong>Criado em:</strong> {formatDateTime(detailTeamType.createdAt)}</div>
+                <div><strong>Atualizado por:</strong> {formatAuditActor(detailTeamType.updatedByName)}</div>
+                <div><strong>Atualizado em:</strong> {formatDateTime(detailTeamType.updatedAt)}</div>
               </div>
             </div>
           </article>
         </div>
       ) : null}
 
-      {historyActivityType ? (
+      {historyTeamType ? (
         <div className={styles.modalOverlay} onClick={closeHistoryModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>Historico do Tipo de Atividade {historyActivityType.name}</h4>
-                <p className={styles.modalSubtitle}>ID do tipo: {historyActivityType.id}</p>
+                <h4>Historico do Tipo de Equipe {historyTeamType.name}</h4>
+                <p className={styles.modalSubtitle}>ID do tipo: {historyTeamType.id}</p>
               </div>
               <button type="button" className={styles.modalCloseButton} onClick={closeHistoryModal}>
                 Fechar
@@ -720,7 +720,7 @@ export function ActivityTypesPageView() {
                       className={styles.ghostButton}
                       onClick={() => {
                         const target = Math.max(1, historyPage - 1);
-                        void loadActivityTypeHistory(historyActivityType, target);
+                        void loadTeamTypeHistory(historyTeamType, target);
                       }}
                       disabled={historyPage <= 1 || isLoadingHistory}
                     >
@@ -731,7 +731,7 @@ export function ActivityTypesPageView() {
                       className={styles.ghostButton}
                       onClick={() => {
                         const target = Math.min(historyTotalPages, historyPage + 1);
-                        void loadActivityTypeHistory(historyActivityType, target);
+                        void loadTeamTypeHistory(historyTeamType, target);
                       }}
                       disabled={historyPage >= historyTotalPages || isLoadingHistory}
                     >
@@ -745,13 +745,13 @@ export function ActivityTypesPageView() {
         </div>
       ) : null}
 
-      {statusActivityType ? (
+      {statusTeamType ? (
         <div className={styles.modalOverlay} onClick={closeStatusModal}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>{statusAction === "cancel" ? "Cancelar Tipo de Atividade" : "Ativar Tipo de Atividade"}</h4>
-                <p className={styles.modalSubtitle}>Tipo: {statusActivityType.name}</p>
+                <h4>{statusAction === "cancel" ? "Cancelar Tipo de Equipe" : "Ativar Tipo de Equipe"}</h4>
+                <p className={styles.modalSubtitle}>Tipo: {statusTeamType.name}</p>
               </div>
               <button type="button" className={styles.modalCloseButton} onClick={closeStatusModal}>
                 Fechar

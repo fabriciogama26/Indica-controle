@@ -24,7 +24,7 @@ export type TeamRow = {
   name: string;
   vehicle_plate: string | null;
   team_type_id: string;
-  foreman_person_id: string;
+  foreman_person_id: string | null;
   service_center_id: string | null;
   ativo: boolean;
 };
@@ -43,6 +43,8 @@ export type PersonRow = {
   id: string;
   nome: string;
 };
+
+export type ForemanCatalogRow = PersonRow;
 
 export type ProgrammingSgdTypeRow = {
   id: string;
@@ -97,6 +99,8 @@ export type ProgrammingTeamRow = {
   moved_to_id: string | null;
   participation_reason: string | null;
   status_changed_at: string | null;
+  programmed_foreman_person_id: string | null;
+  programmed_foreman_name_snapshot: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -111,6 +115,8 @@ export type ProgrammingActivityRow = {
 export type ProgrammingMeasurementSourceTeamRow = {
   team_id: string;
   status: ProgrammingTeamStatus;
+  programmed_foreman_person_id?: string | null;
+  programmed_foreman_name_snapshot?: string | null;
 };
 
 export type ProgrammingMeasurementSourceActivityRow = {
@@ -267,6 +273,7 @@ export type SaveProgrammingStagePayload = {
   projectId?: string;
   executionDate?: string;
   teamIds?: string[];
+  teamForemanIds?: Record<string, string>;
   expectedUpdatedAt?: string;
   serviceDescription?: string;
   period?: string;
@@ -300,6 +307,7 @@ export type SaveProgrammingStagePayload = {
 export type AddTeamPayload = {
   programmingId?: string;
   teamId?: string;
+  programmedForemanPersonId?: string;
 };
 
 export type RemoveTeamPayload = {

@@ -437,7 +437,8 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
 
   async function confirmAddTeam() {
     if (!addTeamTarget || !addTeamSelectedId) return;
-    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId);
+    const selectedTeam = teams.find((team) => team.id === addTeamSelectedId);
+    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, selectedTeam?.foremanId ?? null);
     if (result.ok) closeAddTeamModal();
   }
 

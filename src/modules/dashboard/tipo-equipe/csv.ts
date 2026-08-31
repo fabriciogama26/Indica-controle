@@ -1,7 +1,7 @@
 import { buildCsvContent } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 
-type ActivityTypeCsvItem = {
+type TeamTypeCsvItem = {
   name: string;
   isActive: boolean;
   createdByName: string;
@@ -10,7 +10,7 @@ type ActivityTypeCsvItem = {
   updatedAt: string;
 };
 
-export function buildActivityTypesCsv(activityTypes: ActivityTypeCsvItem[]) {
+export function buildTeamTypesCsv(teamTypes: TeamTypeCsvItem[]) {
   return buildCsvContent(
     [
       "Nome",
@@ -20,13 +20,13 @@ export function buildActivityTypesCsv(activityTypes: ActivityTypeCsvItem[]) {
       "Atualizado por",
       "Atualizado em",
     ],
-    activityTypes.map((activityType) => [
-      activityType.name,
-      activityType.isActive ? "Ativo" : "Inativo",
-      formatAuditActor(activityType.createdByName),
-      formatDateTime(activityType.createdAt),
-      formatAuditActor(activityType.updatedByName),
-      formatDateTime(activityType.updatedAt),
+    teamTypes.map((teamType) => [
+      teamType.name,
+      teamType.isActive ? "Ativo" : "Inativo",
+      formatAuditActor(teamType.createdByName),
+      formatDateTime(teamType.createdAt),
+      formatAuditActor(teamType.updatedByName),
+      formatDateTime(teamType.updatedAt),
     ]),
   );
 }
