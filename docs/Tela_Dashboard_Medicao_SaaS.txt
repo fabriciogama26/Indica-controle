@@ -964,3 +964,11 @@ Atualizacao 2026-08-26 - Detalhamento dos ciclos com OS
 - Impacto multi-tenant:
   - Sem alteracao de API, schema, RLS, grants ou permissoes.
   - A tela usa `orderCount`, que ja vinha filtrado pelo `tenant_id` autenticado no payload do dashboard.
+
+Atualizacao 2026-08-31 - Ratchet de tamanho do controller
+---------------------------------------------------------
+- Manutencao interna sem mudanca funcional: os tipos locais de `src/server/modules/dashboard-measurement/controller.ts`
+  foram extraidos para `src/server/modules/dashboard-measurement/types.ts`.
+- O controller caiu de 1729 para 1589 linhas pelo `scripts/check-file-size.mjs`.
+- O baseline foi reduzido com `npm run lint:size:update`, mantendo o ratchet mais restritivo para futuras alteracoes.
+- Sem alteracao de API, schema, RLS, grants ou permissoes.
