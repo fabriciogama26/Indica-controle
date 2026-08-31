@@ -489,3 +489,34 @@ Atualizacao 2026-08-31 - Categoria passa a ter tela propria de cadastro
   (`ACTIVITY_CATEGORY_IN_USE`) enquanto houver atividade ativa apontando para a categoria.
 - Situacao do campo restante:
   - `Grupo`: continua texto livre em `service_activities.group_name` (etapa 3).
+
+Atualizacao 2026-08-31 - Grupo passa a ser catalogo (conclui as 3 etapas)
+-------------------------------------------------------------------------
+- Etapa 3 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo`.
+  Diferente das etapas 1 e 2, esta ALTERA a tela `Atividades`.
+- Antes: `Grupo` era `input` de texto livre gravado em `service_activities.group_name`; cada usuario
+  digitava a sua variante, sem catalogo nem validacao.
+- Depois: `Grupo` e `select` obrigatorio alimentado pela tabela nova `activity_groups`, mantida em
+  `/grupo-atividade`. Detalhe completo em `docs/Tela_Grupo_Atividade_SaaS.txt`.
+- `service_activities` ganhou `group_id` (FK composta com `tenant_id`), e `group_name` PERMANECE como
+  snapshot do nome escolhido. Isso preserva intactos a RPC de faturamento minimo (`212`, que casa por
+  `normalize_minimum_billing_token(group_name)`), `/api/locacao/activities/catalog` e
+  `/api/apuracao-fator-minimo`.
+- Quem grava as duas colunas e a RPC: a tela manda so o id e `save_service_activity_record` resolve o nome
+  no catalogo, entao nao existe par id/nome inconsistente.
+- Contrato da API mudou:
+  - `POST`/`PUT /api/activities` passam a exigir `groupId` no lugar de `group`.
+  - `GET /api/activities` devolve `groupId` e `groupName` (antes devolvia `group`).
+  - `GET /api/activities/meta` passa a devolver `groups`.
+  - Grupo invalido ou inativo devolve `422` com `INVALID_GROUP`.
+- Importacao em massa: a coluna `grupo` do CSV continua sendo o NOME, resolvido contra o catalogo. Nome fora
+  do catalogo agora e recusado com "Grupo invalido ou inativo" em vez de virar um grupo novo em texto.
+- Efeito colateral esperado: um grupo cancelado em `/grupo-atividade` some do `select`. Como `Grupo` e
+  obrigatorio, a RPC `set_activity_group_record_status` recusa o cancelamento (`ACTIVITY_GROUP_IN_USE`)
+  enquanto houver atividade ativa vinculada.
+- Renomear um grupo na tela de cadastro propaga o novo nome para o `group_name` das atividades vinculadas.
+- `CatalogSelectField` foi extraido de `ActivitiesPageView`: os campos `Tipo`, `Categoria` e `Grupo` tinham
+  marcacao identica. A extracao devolveu o espaco do campo novo — o arquivo caiu de 1267 para 1244 linhas e
+  o baseline do ratchet foi travado para baixo com `npm run lint:size:update`.
+- Com esta etapa, os tres campos de catalogo de `Atividades` tem tela propria em `Cadastro Base`:
+  `Tipo` -> `/tipo-equipe`, `Categoria` -> `/categoria-atividade`, `Grupo` -> `/grupo-atividade`.

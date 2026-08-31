@@ -8,7 +8,7 @@ type ActivityCsvItem = {
   description: string;
   teamTypeName: string;
   categoryName: string;
-  group: string;
+  groupName: string;
   value: number;
   voicePoint: number | null;
   unit: string;
@@ -44,7 +44,7 @@ export function buildActivitiesCsv(activityItems: ActivityCsvItem[]) {
     activity.description,
     activity.teamTypeName,
     activity.categoryName,
-    activity.group || "",
+    activity.groupName || "",
     activity.value.toFixed(2),
     formatPoints(activity.voicePoint),
     activity.unit,

@@ -1305,3 +1305,16 @@ Observacao
 - Cancelamento e recusado com `ACTIVITY_CATEGORY_IN_USE` enquanto houver `service_activities` ativa apontando para a categoria: `Categoria` e obrigatoria no formulario e o meta so lista `ativo = true`, entao inativar em uso deixaria a atividade antiga impossivel de reeditar.
 - `sort_order` nao e exposto na tela: a coluna existe desde a 145, mas nenhum leitor do catalogo ordena por ela. Cadastro novo fica com o default 100.
 - Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada.
+
+404_create_activity_group_catalog_and_page.sql
+- Etapa 3 de 3 (conclui) do trabalho de dar tela de Cadastro Base aos campos Tipo/Categoria/Grupo de Atividades. Unica das tres com TABELA NOVA.
+- Cria `activity_groups` (catalogo por tenant), semeia a partir dos `service_activities.group_name` ja existentes, adiciona `service_activities.group_id` com FK composta `(group_id, tenant_id)` e indice tenant-first, e faz o backfill do vinculo.
+- RLS da tabela nova concede SOMENTE `SELECT` a `authenticated`, no padrao fixado pela 393; o revoke de INSERT/UPDATE/DELETE e repetido explicitamente para nao depender do `alter default privileges` do ambiente.
+- `group_name` NAO e removida: continua como SNAPSHOT do nome. A RPC `check_measurement_minimum_billing_unit_value` (212) casa o grupo por `normalize_minimum_billing_token(sa.group_name)` para o valor do ponto da garantia de faturamento minimo, e `/api/locacao/activities/catalog` e `/api/apuracao-fator-minimo` leem a coluna direto. Trocar por FK exigiria reescrever calculo financeiro em producao.
+- `group_id` nasce NULLABLE espelhando `group_name`, que perdeu o NOT NULL na 050; a obrigatoriedade segue cobrada na RPC de escrita.
+- Seed deduplica por `upper(btrim(group_name))`, entao "SOT AEREA" e "Sot Aerea" viram um grupo so. Seguro para o faturamento minimo: `normalize_minimum_billing_token` ja aplica upper, remove acento e descarta o que nao e A-Z0-9. Os valores ja gravados em `group_name` nao sao reescritos.
+- Republica `save_service_activity_record` trocando `p_group_name text` por `p_group_id uuid`, com `drop function` explicito da versao da 372: manter as duas criaria overload e o PostgREST nao resolveria a chamada. A RPC resolve o nome no catalogo e grava `group_id` + `group_name`, entao nao existe par id/nome inconsistente.
+- Cria `save_activity_group_record` e `set_activity_group_record_status`, `SECURITY DEFINER`, `EXECUTE` so para `service_role`. Renomear um grupo propaga o nome para o `group_name` das atividades vinculadas, senao o snapshot congelaria e o faturamento minimo casaria por um token fora do catalogo.
+- Cancelamento recusado com `ACTIVITY_GROUP_IN_USE` enquanto houver atividade ativa vinculada.
+- Cadastra a pagina `grupo-atividade` com `default_user_access = false`; a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Validacao pos-aplicacao aborta se: as RPCs ficarem executaveis por `anon`/`authenticated`; sobrar assinatura antiga de `save_service_activity_record`; a pagina nao for cadastrada; ou sobrar atividade ativa com `group_name` preenchido e `group_id` nulo.

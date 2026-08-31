@@ -13,7 +13,7 @@ export type ActivityImportRow = {
   description: string;
   teamTypeId: string;
   categoryId: string;
-  group: string;
+  groupId: string;
   value: number;
   voicePoint: number;
   unit: string;
@@ -76,6 +76,7 @@ export function parseActivityMassImportCsv(params: {
   fileName: string;
   teamTypes: ActivityImportOption[];
   categories: ActivityImportOption[];
+  groups: ActivityImportOption[];
 }) {
   const table = readMassImportCsv({
     content: params.content,
@@ -87,6 +88,7 @@ export function parseActivityMassImportCsv(params: {
   const seenCodes = new Set<string>();
   const teamTypeByName = new Map(params.teamTypes.map((option) => [normalizeLookupText(option.name), option]));
   const categoryByName = new Map(params.categories.map((option) => [normalizeLookupText(option.name), option]));
+  const groupByName = new Map(params.groups.map((option) => [normalizeLookupText(option.name), option]));
 
   for (const { rowNumber, values } of table.rows) {
     const code = normalizeText(resolveCsvValue(values, ["codigo", "cod", "code"])).toUpperCase();
@@ -94,13 +96,14 @@ export function parseActivityMassImportCsv(params: {
     const description = normalizeText(resolveCsvValue(values, ["descricao", "description"]));
     const teamTypeRaw = resolveCsvValue(values, ["tipo_equipe", "tipo", "team_type"]);
     const categoryRaw = resolveCsvValue(values, ["categoria", "category"]);
-    const group = normalizeText(resolveCsvValue(values, ["grupo", "group"]));
+    const groupRaw = resolveCsvValue(values, ["grupo", "group"]);
     const valueRaw = resolveCsvValue(values, ["valor", "value"]);
     const voicePointRaw = resolveCsvValue(values, ["pontos", "ponto", "voice_point"]);
     const unit = normalizeText(resolveCsvValue(values, ["unidade", "unit", "umb"]));
     const scope = normalizeText(resolveCsvValue(values, ["alcance", "scope"]));
     const teamType = teamTypeByName.get(normalizeLookupText(teamTypeRaw)) ?? null;
     const category = categoryByName.get(normalizeLookupText(categoryRaw)) ?? null;
+    const group = groupByName.get(normalizeLookupText(groupRaw)) ?? null;
     const value = parseDecimal(valueRaw, "zero");
     const voicePoint = parseDecimal(voicePointRaw, "positive");
     const issuesBefore = issues.length;
@@ -124,7 +127,7 @@ export function parseActivityMassImportCsv(params: {
     }
 
     if (!group) {
-      issues.push({ rowNumber, column: "grupo", value: group, error: "Grupo obrigatorio." });
+      issues.push({ rowNumber, column: "grupo", value: groupRaw, error: "Grupo invalido ou inativo." });
     }
 
     if (value === null) {
@@ -151,7 +154,7 @@ export function parseActivityMassImportCsv(params: {
         description,
         teamTypeId: teamType?.id ?? "",
         categoryId: category?.id ?? "",
-        group,
+        groupId: group?.id ?? "",
         value: value ?? 0,
         voicePoint: voicePoint ?? 0,
         unit,

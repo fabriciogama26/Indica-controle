@@ -1,0 +1,215 @@
+Tela: Grupo de Atividade SaaS
+
+Visao geral
+-----------
+- Tela de `Cadastro Base` para manter o catalogo que alimenta o campo `Grupo` da tela `Atividades`.
+- Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+- Unica das tres etapas com TABELA NOVA: `activity_groups`. Ate aqui `Grupo` era texto livre em
+  `service_activities.group_name`.
+- Depois desta etapa, os tres campos de catalogo de `Atividades` sao `select` alimentados por tabela:
+  `Tipo` (`team_types`), `Categoria` (`types_service_activities`) e `Grupo` (`activity_groups`).
+
+Modelo de dados
+---------------
+- Catalogo: `public.activity_groups` (`tenant_id`, `name`, `ativo`, auditoria), unique `(tenant_id, name)` e
+  `(id, tenant_id)` para a FK composta.
+- Vinculo: `service_activities.group_id`, FK composta `(group_id, tenant_id)` ->
+  `activity_groups(id, tenant_id)`.
+- `service_activities.group_name` NAO foi removida: continua gravada como SNAPSHOT do nome escolhido.
+  Motivo, e a razao de a etapa ter sido desenhada assim:
+  - `check_measurement_minimum_billing_unit_value` (migration `212`) casa o grupo por
+    `normalize_minimum_billing_token(sa.group_name)` para achar o valor do ponto da garantia de faturamento
+    minimo. Trocar a coluna por FK exigiria reescrever calculo financeiro em producao.
+  - `/api/locacao/activities/catalog` e `/api/apuracao-fator-minimo` leem `group_name` direto.
+  Mantendo o snapshot, nenhum desses leitores precisou mudar.
+- `group_id` e NULLABLE, espelhando `group_name`: a migration `050` tirou o NOT NULL da coluna de texto,
+  entao pode haver linha legada sem grupo. A obrigatoriedade e cobrada na RPC de escrita, como ja era.
+- Quem grava as duas colunas e a RPC: o caller manda so o id, e a RPC resolve o nome no catalogo. Assim e
+  impossivel gravar um par id/nome inconsistente.
+- Renomear um grupo na tela propaga o novo nome para o `group_name` das atividades vinculadas. Sem isso o
+  snapshot congelaria no nome antigo e a RPC de faturamento minimo passaria a casar por um token que nao
+  existe mais no catalogo.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/grupo-atividade/page.tsx`
+- View: `src/modules/dashboard/grupo-atividade/ActivityGroupsPageView.tsx`
+- CSV: `src/modules/dashboard/grupo-atividade/csv.ts`
+- Fachada frontend: `src/modules/dashboard/grupo-atividade/index.ts`
+- API principal: `src/app/api/activity-groups/route.ts`
+- Backend: `src/server/modules/activity-groups/controller.ts`
+- Fachada backend: `src/server/modules/activity-groups/index.ts`
+- Estilos: reutiliza `src/modules/dashboard/pessoas/PeoplePageView.module.css`, mesmo padrao de `Centro de Servico`
+- Integracao de menu: `src/components/layout/AppShell.tsx`
+- Guard de rota: `src/lib/auth/authorization.ts`
+- Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Banco, backfill, RPCs e cadastro da pagina: `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
+- Historico generico: `app_entity_history`, criada por
+  `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+
+Cadastro
+--------
+- Campo obrigatorio:
+  - `Nome`
+- Regras:
+  - O nome e normalizado com `trim` antes do envio.
+  - `activity_groups_tenant_name_key` e `(tenant_id, name)`, case-sensitive; a RPC faz checagem adicional
+    por `upper(btrim(name))` para bloquear duplicidade que difere so em caixa ou espaco.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+- Fluxos:
+  - `POST /api/activity-groups` para cadastro.
+  - `PUT /api/activity-groups` para edicao.
+  - `PATCH /api/activity-groups` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_activity_group_record`.
+  - `PATCH` chama `set_activity_group_record_status`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Nome, Status, Registrado em, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Botao `Exportar Excel (CSV)` no cabecalho, bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `grupo-atividade`
+  - `entity_table`: `activity_groups`
+  - Modal com paginacao fixa de `5` registros por pagina.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela usa `useAuth()` como unica fonte de sessao no client.
+- Erros da tela sao registrados com `useErrorLogger("grupo-atividade")`.
+- RLS de `activity_groups` concede SOMENTE `SELECT` a `authenticated`, no padrao fixado pela migration `393`:
+  escrita passa por Route Handler com `service_role` chamando RPC, nunca pelo JWT do usuario.
+
+Permissao
+---------
+- `page_key`: `grupo-atividade`, criado pela migration `404`.
+- Acoes cobradas no backend: `read`, `create`, `update`, `cancel` e `export`.
+- Entra com `default_user_access = false`, seguindo a `245`: nasce liberada apenas para administradores.
+- Por isso `grupo-atividade` NAO foi incluida em `DEFAULT_USER_PAGE_ACCESS`.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento/ativacao usa o campo `ativo` de `activity_groups`.
+- O motivo fica registrado em `app_entity_history`.
+- Guarda de vinculo: cancelamento recusado com `ACTIVITY_GROUP_IN_USE` enquanto existir atividade ativa
+  apontando para o grupo. `Grupo` e obrigatorio no formulario de `Atividades` e o meta so lista grupo ativo;
+  sem a guarda, inativar um grupo em uso deixaria a atividade antiga impossivel de reeditar.
+- A tela fecha o modal de status ao receber `ACTIVITY_GROUP_IN_USE`, para a mensagem nao ficar atras do overlay.
+- Saldo:
+  - Nao se aplica ao modulo de grupo de atividade.
+
+Atalhos
+-------
+- Rota principal: `/grupo-atividade`
+- API:
+  - `GET/POST/PUT/PATCH /api/activity-groups`
+
+Atualizacao 2026-08-31
+----------------------
+- Etapa 3 de 3 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo` de
+  `Atividades`. Conclui o trabalho.
+- Antes: `Grupo` era `input` de texto livre; cada usuario digitava a sua variante, sem catalogo nem validacao.
+- Depois: `Grupo` e `select` alimentado por `activity_groups`, mantido em `/grupo-atividade`.
+- Migration `404` cria a tabela, semeia o catalogo a partir dos `group_name` ja existentes, adiciona
+  `service_activities.group_id` com FK composta e indice, faz o backfill do vinculo e aborta se sobrar
+  atividade com grupo em texto sem `group_id`.
+- Normalizacao de caixa no seed: o catalogo deduplica por `upper(btrim(group_name))`, entao "SOT AEREA" e
+  "Sot Aerea" viram um grupo so. E seguro para o faturamento minimo, porque
+  `normalize_minimum_billing_token` ja aplica upper, remove acento e descarta tudo que nao e A-Z0-9 — as
+  duas formas sempre casaram com o mesmo token. Os `group_name` ja gravados NAO sao reescritos pela
+  migration; so atividades salvas dali em diante recebem o nome canonico.
+- `save_service_activity_record` foi republicada trocando `p_group_name text` por `p_group_id uuid`. A versao
+  antiga e derrubada explicitamente: manter as duas criaria overload e o PostgREST nao saberia qual chamar.
+  A validacao pos-aplicacao aborta se sobrar qualquer outra assinatura publicada.
+- `/api/activities/meta` passa a devolver `groups`; `/api/activities` valida o grupo no cadastro, na edicao e
+  na importacao em massa (`INVALID_GROUP`), e devolve `groupId` e `groupName` na listagem.
+- A importacao em massa continua aceitando a coluna `grupo` por NOME no CSV, resolvendo para o id do
+  catalogo; nome fora do catalogo agora e recusado com "Grupo invalido ou inativo" em vez de ser aceito
+  como texto novo.
+- O historico de `Atividades` continua guardando o NOME do grupo no campo `group`, que e o que a tela exibe.
+- `CatalogSelectField` foi extraido de `ActivitiesPageView` nesta etapa: os campos `Tipo`, `Categoria` e
+  `Grupo` tinham marcacao identica. A extracao devolveu o espaco ocupado pelo campo novo e o arquivo caiu
+  de 1267 para 1244 linhas, com o baseline do ratchet de tamanho travado para baixo por
+  `npm run lint:size:update` — sem precisar de `lint:size:accept`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/grupo-atividade/page.tsx`
+  - Responsavel por: montar a view operacional da rota `Grupo de Atividade`.
+- Caminho: `src/modules/dashboard/grupo-atividade/ActivityGroupsPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/app/api/activity-groups/route.ts`
+  - Responsavel por: expor os handlers HTTP da API.
+- Caminho: `src/server/modules/activity-groups/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs transacionais.
+- Caminho: `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
+  - Responsavel por: criar `activity_groups`, semear o catalogo, vincular `service_activities.group_id`,
+    republicar `save_service_activity_record` por id de grupo, criar as RPCs da tela e cadastrar a pagina.
+- Caminho: `src/app/api/activities/route.ts`
+  - Responsavel por: validar `groupId` no cadastro/edicao/importacao e devolver `groupId`/`groupName`.
+- Caminho: `src/app/api/activities/meta/route.ts`
+  - Responsavel por: entregar `groups` ativos ao `select` da tela `Atividades`.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/grupo-atividade/ActivityGroupsPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`,
+    `HISTORY_FIELD_LABELS`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/grupo-atividade` para o `page_key` `grupo-atividade`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: atalho na secao `Cadastro Base` e titulo/subtitulo da rota.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: expor o card de liberacao granular da tela.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/grupo-atividade/csv.ts`
+  - Responsavel por: montar o CSV de grupos de atividade.
+- Caminho: `src/modules/dashboard/atividades/CatalogSelectField.tsx`
+  - Responsavel por: `select` obrigatorio de catalogo, usado por `Tipo`, `Categoria` e `Grupo`.
+- Caminho: `src/modules/dashboard/atividades/massImport.ts`
+  - Responsavel por: resolver a coluna `grupo` do CSV contra o catalogo de grupos.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS (`activity_groups`).
+- Next.js Route Handler (`/api/activity-groups`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
+  - `src/app/(dashboard)/grupo-atividade/page.tsx`
+  - `src/app/api/activity-groups/route.ts`
+  - `src/modules/dashboard/grupo-atividade/ActivityGroupsPageView.tsx`
+  - `src/modules/dashboard/grupo-atividade/csv.ts`
+  - `src/modules/dashboard/grupo-atividade/index.ts`
+  - `src/server/modules/activity-groups/controller.ts`
+  - `src/server/modules/activity-groups/index.ts`
+  - `src/app/api/activities/route.ts`
+  - `src/app/api/activities/meta/route.ts`
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `src/modules/dashboard/atividades/CatalogSelectField.tsx`
+  - `src/modules/dashboard/atividades/csv.ts`
+  - `src/modules/dashboard/atividades/massImport.ts`
+  - `src/lib/auth/authorization.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `file-size-baseline.json`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Grupo_Atividade_SaaS.txt`
+  - `docs/Tela_Cadastro_Base_SaaS.txt`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: `Grupo` era texto livre, sem catalogo, sem validacao e sem tela.
+  - Depois: catalogo proprio com tela completa, campo virou `select`, e o snapshot em `group_name` preserva
+    intactos o calculo de faturamento minimo e os demais leitores da coluna.
