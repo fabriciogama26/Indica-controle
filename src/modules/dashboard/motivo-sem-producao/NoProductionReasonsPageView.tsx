@@ -71,7 +71,7 @@ const INITIAL_FORM: NoProductionReasonFormState = {
   updatedAt: null,
   code: "",
   name: "",
-  sortOrder: "100",
+  sortOrder: "0",
 };
 
 const INITIAL_FILTERS: NoProductionReasonFilterState = {
@@ -358,7 +358,7 @@ export function NoProductionReasonsPageView() {
           id: form.id,
           code: normalizeCode(form.code),
           name: normalizeText(form.name),
-          sortOrder: Number(form.sortOrder),
+          sortOrder: form.id ? Number(form.sortOrder) : null,
           ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
         }),
       });
@@ -526,20 +526,6 @@ export function NoProductionReasonsPageView() {
               value={form.name}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
               placeholder="Ex.: Chuva"
-              required
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>
-              Ordem <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="number"
-              min="0"
-              step="1"
-              value={form.sortOrder}
-              onChange={(event) => setForm((current) => ({ ...current, sortOrder: event.target.value }))}
               required
             />
           </label>

@@ -1348,5 +1348,6 @@ Observacao
 - Cria `save_no_production_reason_record` e `set_no_production_reason_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no padrao transacional de cadastros-base: `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
 - A tela administra o catalogo existente `measurement_no_production_reasons`, sem tabela nova; esse catalogo alimenta `Medicao`, `Medicao Asbuilt` e `Faturamento` em ordens `SEM_PRODUCAO`.
 - O cadastro normaliza codigo para caixa alta, bloqueia codigo fora de letras/numeros/underline, preserva unicidade por `(tenant_id, code)` e recusa nomes duplicados que diferem so por caixa/espaco.
+- Quando `p_sort_order` vem nulo no cadastro, a RPC calcula a proxima ordem do tenant em sequencia de 10 em 10.
 - Cancelamento e recusado com `NO_PRODUCTION_REASON_IN_USE` enquanto houver registros ativos usando o motivo em `project_measurement_orders`, `project_asbuilt_measurement_orders` ou `project_billing_orders`.
 - Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada com `default_user_access = false`.

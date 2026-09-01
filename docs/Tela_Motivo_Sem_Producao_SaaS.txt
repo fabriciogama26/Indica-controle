@@ -24,13 +24,13 @@ Cadastro
 - Campos obrigatorios:
   - `Codigo`
   - `Nome`
-  - `Ordem`
 - Regras:
   - `Codigo` e normalizado para caixa alta e espacos viram underline.
   - A RPC aceita apenas letras, numeros e underline no codigo.
   - A constraint unica `(tenant_id, code)` impede codigo duplicado por tenant.
   - A RPC bloqueia nome duplicado que difira somente por caixa ou espaco.
-  - `Ordem` deve ser inteiro maior ou igual a zero.
+  - `Ordem` nao aparece no formulario; no cadastro, a RPC calcula automaticamente a sequencia de 10 em 10.
+  - Na edicao, a ordem existente e preservada sem exposicao no formulario.
   - Edicao de registro inativo e bloqueada ate reativacao.
   - Edicao e troca de status exigem `expectedUpdatedAt`.
 - Fluxos:
@@ -93,6 +93,7 @@ Atualizacao 2026-09
 - Depois: `/motivo-sem-producao` permite cadastrar, editar, listar, detalhar, consultar historico, cancelar/ativar e exportar os motivos do tenant.
 - Depois: a API `/api/no-production-reasons` aplica autorizacao por `page_key = motivo-sem-producao` nas acoes `read`, `create`, `update`, `cancel` e `export`.
 - Depois: alteracoes usam `expectedUpdatedAt` dentro das RPCs com `SELECT ... FOR UPDATE` para evitar sobrescrita silenciosa.
+- Depois: no cadastro, `Ordem` passou a ser calculada automaticamente pelo maior `sort_order` do tenant mais `10`, sem campo visivel no formulario; a edicao preserva o valor existente.
 - Criada a migration `407_create_no_production_reason_page_and_rpcs.sql` com `save_no_production_reason_record` e `set_no_production_reason_record_status`, ambas `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`.
 - A tabela, RLS, seed inicial e consumo pelas telas de Medicao ja existiam nas migrations historicas.
 

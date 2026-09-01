@@ -48,7 +48,7 @@ Filtros, auto-complete e listagem
 - `Configuracao do Mapa do Almoxarifado` lista visualmente o grid configurado, prateleiras, andares e posicoes.
 - `Tipo de Equipe` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico e exportacao CSV.
 - `Categoria de Atividade` e `Grupo de Atividade` listam no mesmo formato de `Tipo de Equipe`.
-- `Motivo sem producao` lista com paginacao server-side, filtros por `Codigo`, `Nome` e `Status`, detalhes, historico, cancelamento/ativacao e exportacao CSV.
+- `Motivo sem producao` lista com paginacao server-side, filtros por `Codigo`, `Nome` e `Status`, ordem automatica de 10 em 10 no cadastro, detalhes, historico, cancelamento/ativacao e exportacao CSV.
 
 Boas praticas
 -------------

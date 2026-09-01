@@ -87,6 +87,10 @@ function parseSortOrder(value: number | string | null | undefined) {
   return numeric;
 }
 
+function hasSortOrderValue(value: number | string | null | undefined) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
 async function fetchNoProductionReasonById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -113,7 +117,7 @@ async function saveNoProductionReasonViaRpc(params: {
   reasonId: string | null;
   code: string;
   name: string;
-  sortOrder: number;
+  sortOrder: number | null;
   expectedUpdatedAt: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_no_production_reason_record", {
@@ -376,7 +380,8 @@ export async function handleCreateNoProductionReason(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as SaveNoProductionReasonPayload;
     const code = normalizeCode(body.code);
     const name = normalizeText(body.name);
-    const sortOrder = parseSortOrder(body.sortOrder);
+    const hasExplicitOrder = hasSortOrderValue(body.sortOrder);
+    const sortOrder = hasExplicitOrder ? parseSortOrder(body.sortOrder) : null;
 
     if (!code) {
       return NextResponse.json({ message: "Informe o codigo do motivo sem producao." }, { status: 400 });
@@ -386,7 +391,7 @@ export async function handleCreateNoProductionReason(request: NextRequest) {
       return NextResponse.json({ message: "Informe o nome do motivo sem producao." }, { status: 400 });
     }
 
-    if (sortOrder === null) {
+    if (hasExplicitOrder && sortOrder === null) {
       return NextResponse.json({ message: "Informe a ordem do motivo sem producao com numero inteiro maior ou igual a zero." }, { status: 400 });
     }
 
