@@ -11,7 +11,7 @@ create or replace function public.save_no_production_reason_record(
   p_no_production_reason_id uuid default null,
   p_code text default null,
   p_name text default null,
-  p_sort_order integer default 100,
+  p_sort_order integer default null,
   p_expected_updated_at timestamptz default null
 )
 returns jsonb
@@ -24,7 +24,7 @@ declare
   v_no_production_reason_id uuid := p_no_production_reason_id;
   v_code text := upper(nullif(btrim(coalesce(p_code, '')), ''));
   v_name text := nullif(btrim(coalesce(p_name, '')), '');
-  v_sort_order integer := coalesce(p_sort_order, 100);
+  v_sort_order integer := p_sort_order;
   v_updated_at timestamptz;
   v_changes jsonb;
   v_duplicate_name_id uuid;
@@ -57,7 +57,16 @@ begin
     );
   end if;
 
-  if v_sort_order < 0 then
+  if v_no_production_reason_id is null and v_sort_order is null then
+    perform pg_advisory_xact_lock(hashtext('measurement_no_production_reasons'), hashtext(p_tenant_id::text));
+
+    select coalesce((max(reason.sort_order) / 10) * 10 + 10, 10)
+    into v_sort_order
+    from public.measurement_no_production_reasons reason
+    where reason.tenant_id = p_tenant_id;
+  end if;
+
+  if v_sort_order is null or v_sort_order < 0 then
     return jsonb_build_object(
       'success', false,
       'status', 400,
