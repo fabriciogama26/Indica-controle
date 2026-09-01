@@ -48,6 +48,7 @@ Obrigatório antes de qualquer PR ou entrega de código. Substitui o protocolo a
 
 **Segurança e autorização**
 - [ ] Toda rota valida `page_key` e `action` no servidor.
+- [ ] Tela nova/refatorada não cria acesso parcial involuntário: menu, meta/catálogo, lista, detalhe, histórico, exportação e ações próprias usam a mesma permissão da tela visível, ou a exceção granular foi explicitamente decidida, agrupada e documentada.
 - [ ] Nenhuma rota aceita `tenant_id` do body como fonte de verdade.
 - [ ] RPC `SECURITY DEFINER` executável apenas por `service_role` ou valida auth internamente.
 - [ ] Tabela operacional crítica não aceita INSERT/UPDATE direto de `authenticated`.

@@ -39,6 +39,8 @@ Para regras específicas de SQL/PL-pgSQL/RLS/migrations, ver [`guia_sql.md`](gui
 8. Toda rota/API/Edge Function valida `page_key` e a ação (`read`, `create`, `update`, `cancel`, `reverse`, `import`, `export`) no servidor via `requirePageAction`. Esconder menu ou desabilitar botão no frontend não é autorização.
 9. Rotas com service role executam o guard antes de qualquer SELECT/RPC/escrita.
 10. Nenhuma rota aceita `tenant_id`, `actor_user_id`, role ou auditoria vindos do body/cliente como fonte de verdade — sempre derivados da sessão (`resolveAuthenticatedAppUser`).
+- Tela nova segue permissão total por tela: todo endpoint interno que sustenta a tela visível (meta/catálogo, lista, detalhe, histórico, exportação e ações próprias) deve aceitar o mesmo `page_key` da tela. Não criar fluxo em que o usuário passa pelo menu mas recebe `403` ao carregar ou usar função normal da própria tela.
+- API ou componente reutilizado por tela de consulta/cadastro deve receber contexto de autorização claro ou ser separado. Ex.: uma tela read-only não pode exigir `page_key` da tela de cadastro se sua permissão visível é outra.
 
 ### Escrita, transação e concorrência
 11. Valor final, campos complementares, histórico essencial e snapshots obrigatórios são gravados na mesma RPC/transação. Proibido salvar o valor e corrigir campo complementar depois do commit, ou atualizar registro e gravar histórico essencial em chamada posterior.
