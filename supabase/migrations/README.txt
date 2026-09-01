@@ -1331,3 +1331,12 @@ Observacao
 - `WORKING` continua exigindo ao menos um Projeto; `NOT_WORKING` passa a validar projetos somente quando informados, recusando lista invalida, duplicada ou fora do tenant.
 - Quando `NOT_WORKING` tem Projeto, a RPC persiste `project_id`, snapshots agregados e linhas em `team_composition_projects`; sem Projeto, continua gravando `project_id = null`.
 - Reaplica revoke de `public`/`anon`/`authenticated`, concede EXECUTE apenas a `service_role` e aborta se o trecho antigo `PROJECT_NOT_ALLOWED` continuar na funcao.
+
+406_fix_service_activities_code_idd_text.sql
+- Corrige drift de schema em `public.service_activities.code_idd`: ambientes onde a coluna ja existia como
+  `bigint` nao foram corrigidos pela 353, porque `add column if not exists code_idd text` virou no-op.
+- Converte `code_idd` para `text` com `using nullif(btrim(code_idd::text), '')`, preservando valores
+  numericos existentes como texto e alinhando o banco ao contrato atual de Atividades/Medicao.
+- Corrige a falha `42804` da RPC `save_service_activity_record` no cadastro/importacao de Atividades:
+  `column "code_idd" is of type bigint but expression is of type text`.
+- Inclui validacao pos-aplicacao para abortar se `service_activities.code_idd` nao ficar como `text`.

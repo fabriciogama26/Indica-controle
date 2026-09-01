@@ -390,7 +390,7 @@ export function ActivitiesPageView() {
       if (code === "INVALID_TEAM_TYPE") return "tipo_equipe";
       if (code === "INVALID_CATEGORY") return "categoria";
       if (code === "INVALID_GROUP") return "grupo";
-      return code === "INVALID_ACTIVITY" ? "dados" : "salvamento";
+      return code === "INVALID_ACTIVITY" ? "dados" : code === "ACTIVITY_CODE_IDD_TYPE_MISMATCH" ? "cod_sap" : "salvamento";
     },
     onImported: async () => {
       await loadActivities(1, activeFilters);

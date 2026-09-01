@@ -29,6 +29,7 @@ Arquitetura
 - Banco (cadastro/edicao de pontos): `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
 - Banco (grupo obrigatorio em atividades): `supabase/migrations/180_require_service_activity_group_in_rpc.sql`
 - Banco (cadastro/edicao de Cod. SAP): `supabase/migrations/372_update_service_activity_code_idd_rpc.sql`
+- Banco (correcao de drift do Cod. SAP): `supabase/migrations/406_fix_service_activities_code_idd_text.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
@@ -526,9 +527,13 @@ Atualizacao 2026-09-01 - CSV de erros do cadastro em massa
 - Ajustado o tratamento de erro do cadastro em massa de `Atividades` para nao retornar apenas
   "Falha ao salvar atividade." quando a RPC `save_service_activity_record` falha tecnicamente.
 - Depois: erros conhecidos de salvamento sao mapeados para mensagens especificas e codigos de dominio:
-  `ACTIVITY_RPC_SCHEMA_MISMATCH`, `DUPLICATE_ACTIVITY_CODE`, `INVALID_TEAM_TYPE`, `INVALID_CATEGORY`,
-  `INVALID_GROUP` e `INVALID_ACTIVITY`.
+  `ACTIVITY_RPC_SCHEMA_MISMATCH`, `ACTIVITY_CODE_IDD_TYPE_MISMATCH`, `DUPLICATE_ACTIVITY_CODE`,
+  `INVALID_TEAM_TYPE`, `INVALID_CATEGORY`, `INVALID_GROUP` e `INVALID_ACTIVITY`.
 - Depois: o CSV de erros aponta a coluna mais provavel (`codigo`, `tipo_equipe`, `categoria`, `grupo`,
-  `dados` ou `salvamento`) conforme o codigo retornado pela API.
-- Sem migration, sem mudanca de RLS, grants ou permissao. O `tenant_id` continua derivado da sessao no
-  backend.
+  `cod_sap`, `dados` ou `salvamento`) conforme o codigo retornado pela API.
+- Causa real do erro `42804`: em banco vivo, `service_activities.code_idd` estava como `bigint`, enquanto a
+  RPC e a tela tratam `Cod. SAP` como `text`. A migration `406_fix_service_activities_code_idd_text.sql`
+  converte a coluna para `text` e valida o tipo final.
+- Para `ACTIVITY_CODE_IDD_TYPE_MISMATCH`, a mensagem devolvida ao CSV inclui o `EVENT MESSAGE` do Postgres
+  com limite de tamanho, porque esse erro ja esta mapeado e o texto identifica a coluna com drift.
+- Sem mudanca de RLS, grants ou permissao. O `tenant_id` continua derivado da sessao no backend.

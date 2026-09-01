@@ -1397,6 +1397,15 @@ Atualizacao 2026-08-03 - Coluna Codigo IDD no detalhe e no CSV de detalhamento
 - Divergencia tratada (CLAUDE.md secao 12):
   - `service_activities.code_idd` ja existia no banco, mas nao havia migration correspondente no repositorio.
   - A migration 353 apenas sincroniza o versionamento (`add column if not exists`), sendo no-op no ambiente onde a coluna ja existe. Nao ha carga/backfill de dados.
+
+Atualizacao 2026-09-01 - Tipo do Codigo IDD/SAP
+-----------------------------------------------
+- Corrigido drift de schema relacionado a `service_activities.code_idd`: em ambiente vivo a coluna podia
+  estar como `bigint`, apesar do contrato versionado e da tela tratarem o campo como texto.
+- A migration `406_fix_service_activities_code_idd_text.sql` converte `code_idd` para `text`, preservando
+  valores numericos existentes como texto.
+- Impacto na Medicao: a leitura do `Codigo IDD` continua sem mudanca de contrato, mas passa a ficar alinhada
+  ao tipo oficial usado por `Atividades`.
 - Impacto multi-tenant:
   - Sem alteracao de RLS ou permissoes.
   - A leitura de `service_activities` e filtrada por `tenant_id` do usuario autenticado e restrita aos `service_activity_id` dos itens da propria ordem.
