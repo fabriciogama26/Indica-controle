@@ -81,6 +81,7 @@ const menuSections = [
       { href: "/contrato", label: "Contrato", icon: "settings" },
       { href: "/categoria-atividade", label: "Categoria de Atividade", icon: "settings" },
       { href: "/grupo-atividade", label: "Grupo de Atividade", icon: "settings" },
+      { href: "/motivo-sem-producao", label: "Motivo sem producao", icon: "settings" },
       { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
@@ -264,6 +265,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/grupo-atividade": {
     title: "Grupo de Atividade",
     subtitle: "Cadastro base dos grupos que alimentam o campo Grupo em Atividades.",
+  },
+  "/motivo-sem-producao": {
+    title: "Motivo sem producao",
+    subtitle: "Cadastro base dos motivos usados em ordens sem producao.",
   },
   "/tipo-equipe": {
     title: "Tipo de Equipe",
