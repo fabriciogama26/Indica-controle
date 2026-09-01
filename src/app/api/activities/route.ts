@@ -124,6 +124,13 @@ type ActivitySaveRpcResult = {
   updated_at?: string;
 };
 
+type ActivityRpcError = {
+  code?: string;
+  message?: string;
+  details?: string;
+  hint?: string;
+};
+
 function normalizeCode(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
@@ -224,6 +231,59 @@ function mapCodeConflictReasonToMessage(reason: string | undefined) {
   }
 
   return { status: 500, message: "Falha ao validar codigo da atividade." };
+}
+
+function mapActivitySaveRpcError(error: ActivityRpcError) {
+  const normalized = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`.toLowerCase();
+
+  if (error.code === "PGRST202" || normalized.includes("schema cache")) {
+    return {
+      message:
+        "RPC save_service_activity_record indisponivel ou com assinatura desatualizada. Aplique a migration 404 e recarregue o schema cache do Supabase.",
+      reason: "ACTIVITY_RPC_SCHEMA_MISMATCH",
+    };
+  }
+
+  if (error.code === "23505" || normalized.includes("duplicate key")) {
+    return {
+      message: "Ja existe atividade com este codigo no tenant atual.",
+      reason: "DUPLICATE_ACTIVITY_CODE",
+    };
+  }
+
+  if (error.code === "23503" && normalized.includes("team_type")) {
+    return {
+      message: "Tipo de equipe invalido ou removido antes do salvamento.",
+      reason: "INVALID_TEAM_TYPE",
+    };
+  }
+
+  if (error.code === "23503" && (normalized.includes("type_service") || normalized.includes("types_service_activities"))) {
+    return {
+      message: "Categoria invalida ou removida antes do salvamento.",
+      reason: "INVALID_CATEGORY",
+    };
+  }
+
+  if (error.code === "23503" && normalized.includes("activity_group")) {
+    return {
+      message: "Grupo invalido ou removido antes do salvamento.",
+      reason: "INVALID_GROUP",
+    };
+  }
+
+  if (error.code === "23502") {
+    return {
+      message:
+        "Campo obrigatorio ausente no salvamento da atividade. Confira codigo, descricao, tipo, categoria, grupo, valor, pontos e unidade.",
+      reason: "INVALID_ACTIVITY",
+    };
+  }
+
+  return {
+    message: `Falha tecnica ao salvar atividade (codigo ${error.code ?? "sem codigo"}). Consulte os logs da API para o detalhe do banco.`,
+    reason: "ACTIVITY_SAVE_RPC_ERROR",
+  };
 }
 
 async function fetchActivityById(
@@ -353,7 +413,8 @@ async function saveActivityViaRpc(params: {
   });
 
   if (error) {
-    return { ok: false, status: 500, message: "Falha ao salvar atividade." } as const;
+    const mappedError = mapActivitySaveRpcError(error);
+    return { ok: false, status: 500, message: mappedError.message, reason: mappedError.reason } as const;
   }
 
   const result = (data ?? {}) as ActivitySaveRpcResult;
