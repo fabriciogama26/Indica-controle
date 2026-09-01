@@ -196,6 +196,14 @@ Não há script `test` — até uma suíte automatizada existir, validação de 
 
 ## 10. Documentação
 
+## Padrão de permissão por tela (obrigatório para telas novas)
+Aplica-se a toda tela criada ou refatorada depois desta regra.
+
+1. Quem tem acesso a uma tela deve ter acesso total às funções daquela tela. O `page_key` da tela libera menu, carregamento inicial, catálogos/meta, listagem, detalhes, histórico, exportações e ações próprias exibidas naquela tela.
+2. É proibido deixar a UX em estado "abre a tela, mas a própria tela falha por permissão" por usar outro `page_key` nos endpoints internos. Frontend e backend devem usar a mesma permissão funcional da tela visível.
+3. Se uma tela reutilizar API/componente de outra, a leitura deve aceitar o `page_key` da tela visível ou a API deve ser separada. Nunca exigir permissão de cadastro/admin para uma tela que foi criada como consulta.
+4. Permissão granular por operação é exceção, não padrão. Só pode existir quando for outro fluxo de negócio ou uma exceção explicitamente decidida; nesse caso, deve estar agrupada na tela pai na UI de Permissões, para que liberar a tela libere também suas funções esperadas, salvo pedido explícito em contrário.
+
 ## Padrão de permissão granular por operação (obrigatório)
 Aplica-se quando uma permissão/flag bloqueia apenas PARTE das operações de uma tela, e não a tela inteira (ex.: `saida-requisicao` dentro de Operacoes de Equipe).
 

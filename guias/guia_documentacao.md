@@ -43,13 +43,14 @@ Obrigatório sempre que a tarefa: cria/edita `README.md`; cria ou altera uma tel
 6. Sempre que criar/alterar uma tela, controller/hook/service/util relacionado, ou regra de negócio relevante, criar/atualizar `/docs/Tela_<Nome>_SaaS.txt` seguindo o mesmo padrão do modelo de referência (estrutura + títulos + separadores).
 7. Estrutura obrigatória do TXT, nesta ordem: "Tela: `<Nome>`", "Visao geral", "Arquitetura", "Cadastro" (quando houver), "Filtros, auto-complete e listagem" (quando houver), "Boas praticas", "Cancelamento e saldo" (quando houver), "Atalhos" (quando houver), "Atualizacao YYYY-MM" (quando aplicável), "Mapa de Codigo" (funções principais com caminho e responsabilidade, constantes/configurações, funções utilitárias relacionadas, serviços/integrações externas, ajuda contextual se existir).
 8. No TXT, mapear: arquivos alterados/criados; funções/hooks/constantes tocadas; comportamento antes/depois quando mudou.
+9. No TXT de tela nova ou refatorada, documentar o contrato de permissão: qual `page_key` controla a tela e confirmar que meta/catálogo, lista, detalhe, histórico, exportação e ações próprias usam a mesma permissão da tela. Se houver exceção granular, registrar a decisão explícita e como ela fica agrupada na UI de Permissões.
 
 ### TASKS.md
-9. Atualizar `TASKS.md` com base no estado atual do código ao final de toda tarefa — não deixar tarefas concluídas sem marcar `[x]`, nem tarefas pendentes sem registrar.
-10. Se a mudança criar uma feature relevante, sugerir atualização de `CHANGELOG.md` (quando o projeto tiver um).
+10. Atualizar `TASKS.md` com base no estado atual do código ao final de toda tarefa — não deixar tarefas concluídas sem marcar `[x]`, nem tarefas pendentes sem registrar.
+11. Se a mudança criar uma feature relevante, sugerir atualização de `CHANGELOG.md` (quando o projeto tiver um).
 
 ### Rotina de dependências
-11. Rodar `npm outdated` mensalmente e registrar as pendências (em `TASKS.md` ou item próprio) antes de atualizar qualquer dependência.
+12. Rodar `npm outdated` mensalmente e registrar as pendências (em `TASKS.md` ou item próprio) antes de atualizar qualquer dependência.
 
 ## 4. Fluxo recomendado
 
