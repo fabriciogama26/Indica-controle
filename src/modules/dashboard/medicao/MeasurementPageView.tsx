@@ -473,9 +473,7 @@ function scrollDashboardContentToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function createRowId() {
-  return `med-row-${Math.random().toString(36).slice(2, 10)}`;
-}
+function createRowId() { return `med-row-${Math.random().toString(36).slice(2, 10)}`; }
 
 function createForm(today: string): FormState {
   return {
@@ -607,6 +605,8 @@ function normalizeSearchText(value: string) {
     .trim()
     .toLowerCase();
 }
+
+function teamOptionLabel(team: TeamItem) { const teamName = String(team.name ?? "").trim(); const foremanName = String(team.foremanName ?? "").trim(); return foremanName && normalizeSearchText(foremanName) !== "nao identificado" ? `${teamName} / ${foremanName}` : teamName; }
 
 function normalizeCodeToken(value: string) {
   return value
@@ -2910,7 +2910,7 @@ export function MeasurementPageView() {
               onChange={(event) => setForm((current) => ({ ...current, teamId: event.target.value, programmingId: "", items: current.id ? current.items : [], foremanNameSnapshot: current.id ? current.foremanNameSnapshot : "" }))}
             >
               <option value="">Selecione</option>
-              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              {teams.map((team) => <option key={team.id} value={team.id}>{teamOptionLabel(team)}</option>)}
             </select>
           </label>
           <label className={styles.field}>
@@ -3080,7 +3080,7 @@ export function MeasurementPageView() {
             <span>Equipe</span>
             <select value={filterDraft.teamId} onChange={(event) => setFilterDraft((current) => ({ ...current, teamId: event.target.value }))}>
               <option value="">Todas</option>
-              {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+              {teams.map((team) => <option key={team.id} value={team.id}>{teamOptionLabel(team)}</option>)}
             </select>
           </label>
           <label className={styles.field}>
