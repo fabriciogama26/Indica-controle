@@ -434,6 +434,7 @@ Cadastro em massa
   - Modal: `src/components/ui/MassImportModal.tsx` (3 etapas: baixar modelo, preencher, enviar).
   - Orquestracao: `src/hooks/useMassImport.ts` (le o arquivo, chama o parser de dominio, envia o lote e monta o CSV de erros).
   - Helpers de CSV: `src/lib/utils/massImport.ts` (`readMassImportCsv`, `buildMassImportTemplateCsv`, `createMassImportErrorReport`).
+  - O parser compartilhado respeita campos entre aspas com quebras de linha, para permitir descricoes longas em `alcance`.
   - Teto por arquivo: `MASS_IMPORT_ROW_LIMIT` = 500 linhas (`src/lib/constants/massImport.ts`).
 
 Atualizacao 2026-08-25 - Cadastro em massa
@@ -536,4 +537,9 @@ Atualizacao 2026-09-01 - CSV de erros do cadastro em massa
   converte a coluna para `text` e valida o tipo final.
 - Para `ACTIVITY_CODE_IDD_TYPE_MISMATCH`, a mensagem devolvida ao CSV inclui o `EVENT MESSAGE` do Postgres
   com limite de tamanho, porque esse erro ja esta mapeado e o texto identifica a coluna com drift.
+- Analise do arquivo `modelo_atividades_cadastro_em_massa (1).csv` em 2026-09-01: o CSV tinha 129 linhas
+  reais e campos obrigatorios preenchidos, mas a coluna `alcance` continha textos multilinha entre aspas.
+  Antes da correcao, `readMassImportCsv` dividia o arquivo por `\n` antes de interpretar aspas, gerando
+  centenas de linhas falsas com campos obrigatorios vazios. Depois: `parseCsvRows` interpreta o CSV inteiro
+  e so separa registros fora de aspas.
 - Sem mudanca de RLS, grants ou permissao. O `tenant_id` continua derivado da sessao no backend.

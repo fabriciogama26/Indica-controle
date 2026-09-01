@@ -1,5 +1,5 @@
 import { escapeCsvValue } from "./csv";
-import { parseCsvLine } from "./parsers";
+import { parseCsvRows } from "./parsers";
 
 export type MassImportIssue = {
   rowNumber: number;
@@ -80,9 +80,9 @@ export function readMassImportCsv(params: {
   requiredHeaders: string[];
 }): MassImportCsvTable {
   const issues: MassImportIssue[] = [];
-  const lines = params.content.split(/\r?\n/).filter((line) => normalizeText(line));
+  const records = parseCsvRows(params.content).filter((record) => record.some((value) => normalizeText(value)));
 
-  if (lines.length < 2) {
+  if (records.length < 2) {
     issues.push({
       rowNumber: 1,
       column: "arquivo",
@@ -91,7 +91,7 @@ export function readMassImportCsv(params: {
     });
   }
 
-  const headers = parseCsvLine(lines[0] ?? "").map(normalizeCsvHeader);
+  const headers = (records[0] ?? []).map(normalizeCsvHeader);
   for (const header of params.requiredHeaders) {
     if (!headers.includes(header)) {
       issues.push({
@@ -108,8 +108,8 @@ export function readMassImportCsv(params: {
   }
 
   const rows: MassImportCsvRow[] = [];
-  for (let index = 1; index < lines.length; index += 1) {
-    const values = parseCsvLine(lines[index]);
+  for (let index = 1; index < records.length; index += 1) {
+    const values = records[index] ?? [];
     rows.push({
       rowNumber: index + 1,
       values: headers.reduce<Record<string, string>>((accumulator, header, headerIndex) => {
