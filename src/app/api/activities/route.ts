@@ -233,6 +233,15 @@ function mapCodeConflictReasonToMessage(reason: string | undefined) {
   return { status: 500, message: "Falha ao validar codigo da atividade." };
 }
 
+function formatDatabaseEventMessage(error: ActivityRpcError) {
+  const message = normalizeText(error.message);
+  if (!message) {
+    return "";
+  }
+
+  return ` Evento do banco: ${message.slice(0, 240)}`;
+}
+
 function mapActivitySaveRpcError(error: ActivityRpcError) {
   const normalized = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`.toLowerCase();
 
@@ -241,6 +250,13 @@ function mapActivitySaveRpcError(error: ActivityRpcError) {
       message:
         "RPC save_service_activity_record indisponivel ou com assinatura desatualizada. Aplique a migration 404 e recarregue o schema cache do Supabase.",
       reason: "ACTIVITY_RPC_SCHEMA_MISMATCH",
+    };
+  }
+
+  if (error.code === "42804" && normalized.includes("code_idd")) {
+    return {
+      message: `Coluna Cod. SAP esta com tipo incorreto no banco. Aplique a migration 406 para converter service_activities.code_idd para text.${formatDatabaseEventMessage(error)}`,
+      reason: "ACTIVITY_CODE_IDD_TYPE_MISMATCH",
     };
   }
 
