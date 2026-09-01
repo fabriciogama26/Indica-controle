@@ -1,0 +1,155 @@
+Tela: Motivo sem producao SaaS
+
+Visao geral
+-----------
+- Tela de Cadastro Base para manter o catalogo `measurement_no_production_reasons` por tenant.
+- O catalogo alimenta o campo `Motivo sem producao` em `Medicao`, `Medicao Asbuilt` e `Faturamento`.
+- Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/motivo-sem-producao/page.tsx`
+- View: `src/modules/dashboard/motivo-sem-producao/NoProductionReasonsPageView.tsx`
+- CSV: `src/modules/dashboard/motivo-sem-producao/csv.ts`
+- Fachada frontend: `src/modules/dashboard/motivo-sem-producao/index.ts`
+- API principal: `src/app/api/no-production-reasons/route.ts`
+- Backend: `src/server/modules/no-production-reasons/controller.ts`
+- Fachada backend: `src/server/modules/no-production-reasons/index.ts`
+- Banco: `measurement_no_production_reasons`, criada por `supabase/migrations/123_support_measurement_without_production.sql`
+- Historico generico: `app_entity_history`, criada por `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- RPC transacional e permissao da tela: `supabase/migrations/407_create_no_production_reason_page_and_rpcs.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `Codigo`
+  - `Nome`
+  - `Ordem`
+- Regras:
+  - `Codigo` e normalizado para caixa alta e espacos viram underline.
+  - A RPC aceita apenas letras, numeros e underline no codigo.
+  - A constraint unica `(tenant_id, code)` impede codigo duplicado por tenant.
+  - A RPC bloqueia nome duplicado que difira somente por caixa ou espaco.
+  - `Ordem` deve ser inteiro maior ou igual a zero.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+- Fluxos:
+  - `POST /api/no-production-reasons` para cadastro.
+  - `PUT /api/no-production-reasons` para edicao.
+  - `PATCH /api/no-production-reasons` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_no_production_reason_record`.
+  - `PATCH` chama `set_no_production_reason_record_status`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Codigo`
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Codigo, Nome, Ordem, Status, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Botao `Exportar Excel (CSV)` no cabecalho.
+  - Exportacao usa `mode=export` e exige permissao `export` no backend.
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `motivo-sem-producao`
+  - `entity_table`: `measurement_no_production_reasons`
+  - Modal com paginacao fixa de `5` registros por pagina.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela usa `useAuth()` como unica fonte de sessao no client.
+- Erros da tela sao registrados com `useErrorLogger("motivo-sem-producao")`.
+- Icones de acoes reutilizam `ActionIcon`.
+- Exportacao reutiliza `CsvExportButton` e `downloadCsvFile`.
+- A tela nova usa `page_key = motivo-sem-producao`; menu, lista, historico, exportacao e acoes proprias usam o mesmo `page_key`.
+- A migration cadastra `default_user_access = false`, entao a tela nasce bloqueada para nao administradores e depende de liberacao explicita em `Permissoes`.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento/ativacao usa o campo `is_active` de `measurement_no_production_reasons`.
+- O motivo fica registrado em `app_entity_history`, pois a tabela base nao possui colunas `cancellation_reason`, `canceled_at` e `canceled_by`.
+- Cancelamento e recusado com `NO_PRODUCTION_REASON_IN_USE` quando houver registro ativo usando o motivo em:
+  - `project_measurement_orders`
+  - `project_asbuilt_measurement_orders`
+  - `project_billing_orders`
+- Saldo:
+  - Nao se aplica ao modulo.
+
+Atalhos
+-------
+- Rota principal: `/motivo-sem-producao`
+- API:
+  - `GET/POST/PUT/PATCH /api/no-production-reasons`
+
+Atualizacao 2026-09
+-------------------
+- Tela `Motivo sem producao` criada como CRUD real em Cadastro Base.
+- Antes: o catalogo existia no banco e era consumido pelas telas operacionais, mas nao havia tela propria de manutencao.
+- Depois: `/motivo-sem-producao` permite cadastrar, editar, listar, detalhar, consultar historico, cancelar/ativar e exportar os motivos do tenant.
+- Depois: a API `/api/no-production-reasons` aplica autorizacao por `page_key = motivo-sem-producao` nas acoes `read`, `create`, `update`, `cancel` e `export`.
+- Depois: alteracoes usam `expectedUpdatedAt` dentro das RPCs com `SELECT ... FOR UPDATE` para evitar sobrescrita silenciosa.
+- Criada a migration `407_create_no_production_reason_page_and_rpcs.sql` com `save_no_production_reason_record` e `set_no_production_reason_record_status`, ambas `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`.
+- A tabela, RLS, seed inicial e consumo pelas telas de Medicao ja existiam nas migrations historicas.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/motivo-sem-producao/page.tsx`
+  - Responsavel por: montar a view operacional da rota `Motivo sem producao`.
+- Caminho: `src/modules/dashboard/motivo-sem-producao/NoProductionReasonsPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/app/api/no-production-reasons/route.ts`
+  - Responsavel por: expor os handlers HTTP da API.
+- Caminho: `src/server/modules/no-production-reasons/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs transacionais.
+- Caminho: `supabase/migrations/407_create_no_production_reason_page_and_rpcs.sql`
+  - Responsavel por: salvar cadastro/status, registrar historico na mesma transacao e cadastrar a pagina em `app_pages`.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/motivo-sem-producao/NoProductionReasonsPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: menu e titulo da rota `/motivo-sem-producao`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/motivo-sem-producao` para `page_key = motivo-sem-producao`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: exibir a tela na matriz de permissoes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/motivo-sem-producao/csv.ts`
+  - Responsavel por: montar o CSV de motivos sem producao.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `motivo-sem-producao`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handler (`/api/no-production-reasons`).
+
+Ajuda contextual
+- Arquivos criados:
+  - `src/app/(dashboard)/motivo-sem-producao/page.tsx`
+  - `src/app/api/no-production-reasons/route.ts`
+  - `src/modules/dashboard/motivo-sem-producao/NoProductionReasonsPageView.tsx`
+  - `src/modules/dashboard/motivo-sem-producao/csv.ts`
+  - `src/modules/dashboard/motivo-sem-producao/index.ts`
+  - `src/server/modules/no-production-reasons/controller.ts`
+  - `src/server/modules/no-production-reasons/index.ts`
+  - `supabase/migrations/407_create_no_production_reason_page_and_rpcs.sql`
+  - `docs/Tela_Motivo_Sem_Producao_SaaS.txt`
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `docs/Tela_Cadastro_Base_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: catalogo sem tela de manutencao.
+  - Depois: tela operacional completa no padrao SaaS de cadastros-base.

@@ -139,6 +139,8 @@ Ordem de aplicacao
 403. 403_create_activity_category_page_and_rpcs.sql
 404. 404_create_activity_group_catalog_and_page.sql
 405. 405_allow_not_working_composition_with_optional_project.sql
+406. 406_fix_service_activities_code_idd_text.sql
+407. 407_create_no_production_reason_page_and_rpcs.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1340,3 +1342,11 @@ Observacao
 - Corrige a falha `42804` da RPC `save_service_activity_record` no cadastro/importacao de Atividades:
   `column "code_idd" is of type bigint but expression is of type text`.
 - Inclui validacao pos-aplicacao para abortar se `service_activities.code_idd` nao ficar como `text`.
+
+407_create_no_production_reason_page_and_rpcs.sql
+- Cadastra a pagina `motivo-sem-producao` em `app_pages` (secao Cadastro Base) com `default_user_access = false`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_no_production_reason_record` e `set_no_production_reason_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no padrao transacional de cadastros-base: `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- A tela administra o catalogo existente `measurement_no_production_reasons`, sem tabela nova; esse catalogo alimenta `Medicao`, `Medicao Asbuilt` e `Faturamento` em ordens `SEM_PRODUCAO`.
+- O cadastro normaliza codigo para caixa alta, bloqueia codigo fora de letras/numeros/underline, preserva unicidade por `(tenant_id, code)` e recusa nomes duplicados que diferem so por caixa/espaco.
+- Cancelamento e recusado com `NO_PRODUCTION_REASON_IN_USE` enquanto houver registros ativos usando o motivo em `project_measurement_orders`, `project_asbuilt_measurement_orders` ou `project_billing_orders`.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada com `default_user_access = false`.
