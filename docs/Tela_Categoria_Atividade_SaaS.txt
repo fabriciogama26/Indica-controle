@@ -4,6 +4,7 @@ Visao geral
 -----------
 - Tela de `Cadastro Base` para manter o catalogo que alimenta o campo `Categoria` da tela `Atividades`.
 - Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+- Permite cadastro em massa por CSV no mesmo padrao dos demais cadastros base.
 - Administra a tabela existente `types_service_activities`, origem do campo `Categoria`
   (`service_activities.type_service`). Nao houve tabela nova nem migracao de dados.
 - Leitores do catalogo: `Atividades` (`/api/activities/meta` e `/api/activities`) e
@@ -23,6 +24,7 @@ Arquitetura
 - Rota: `src/app/(dashboard)/categoria-atividade/page.tsx`
 - View: `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
 - CSV: `src/modules/dashboard/categoria-atividade/csv.ts`
+- Parser/modelo de cadastro em massa: `src/modules/dashboard/categoria-atividade/massImport.ts`
 - Fachada frontend: `src/modules/dashboard/categoria-atividade/index.ts`
 - API principal: `src/app/api/activity-categories/route.ts`
 - Backend: `src/server/modules/activity-categories/controller.ts`
@@ -53,10 +55,19 @@ Cadastro
   `100`. Expor o campo adicionaria um controle sem efeito observavel.
 - Fluxos:
   - `POST /api/activity-categories` para cadastro.
+  - `POST /api/activity-categories` com `action = BATCH_IMPORT` para cadastro em massa.
   - `PUT /api/activity-categories` para edicao.
   - `PATCH /api/activity-categories` para cancelamento/ativacao com motivo obrigatorio.
   - `POST` e `PUT` chamam `save_activity_category_record`.
+  - `BATCH_IMPORT` processa ate 500 linhas por arquivo e chama `save_activity_category_record` por linha valida.
   - `PATCH` chama `set_activity_category_record_status`.
+- Cadastro em massa:
+  - Botao exibido no bloco de cadastro quando a tela nao esta em modo de edicao.
+  - Modal compartilhado `MassImportModal`, com download de modelo CSV, upload e CSV de erros.
+  - Modelo: `nome`.
+  - Aliases aceitos no parser: `nome`, `name` e `categoria`.
+  - Importacao parcial por linha: linhas validas podem ser salvas mesmo se outras linhas tiverem erro.
+  - Duplicidade dentro do arquivo e duplicidade ja existente no tenant voltam no relatorio de erros.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -83,11 +94,14 @@ Boas praticas
 - Erros da tela sao registrados com `useErrorLogger("categoria-atividade")`.
 - Icones de acoes reutilizam `ActionIcon`.
 - Exportacao reutiliza `CsvExportButton` e `downloadCsvFile`.
+- Cadastro em massa reutiliza `MassImportModal`, `useMassImport` e `src/lib/utils/massImport.ts`.
 
 Permissao
 ---------
 - `page_key`: `categoria-atividade`, criado pela migration `403`.
 - Acoes cobradas no backend: `read`, `create`, `update`, `cancel` e `export`.
+- O cadastro em massa cobra `import` dentro do ramo `BATCH_IMPORT`, usando o mesmo `page_key`
+  `categoria-atividade`.
 - A pagina entra com `default_user_access = false`, seguindo a migration `245`: nasce liberada apenas para
   administradores e precisa de liberacao explicita em `/permissoes` para os demais papeis.
 - Por isso `categoria-atividade` NAO foi incluida em `DEFAULT_USER_PAGE_ACCESS` no `authorization.ts`:
@@ -136,17 +150,33 @@ Atualizacao 2026-08-31
 - Nenhuma alteracao foi feita em `Atividades`: o campo `Categoria` ja consumia `types_service_activities`
   via `/api/activities/meta`.
 
+Atualizacao 2026-09-01
+----------------------
+- Adicionado cadastro em massa por CSV na tela existente `/categoria-atividade`.
+- Antes: a tela permitia cadastro unitario, edicao, status, historico e exportacao, mas nao tinha importacao
+  em lote pelo padrao compartilhado de cadastros.
+- Depois: o bloco de cadastro mostra o botao `Cadastro em massa` quando nao ha edicao ativa, abre o modal
+  compartilhado, baixa o modelo `modelo_categorias_atividade_cadastro_em_massa.csv` e envia as linhas para
+  `/api/activity-categories` com `action = BATCH_IMPORT`.
+- Depois: o backend valida `categoria-atividade/import`, limita a 500 linhas por arquivo, deriva `tenant_id`
+  e usuario da sessao e chama `save_activity_category_record` para cada linha valida.
+- A importacao e parcial por linha, seguindo o padrao de `Cargo` e `Atividades`: linhas salvas permanecem
+  salvas, e erros de linha voltam no CSV de erros.
+- Nenhuma migration nova foi criada: a tabela `types_service_activities`, a RLS, a constraint unica e a RPC
+  transacional de cadastro ja existiam. Nenhum arquivo da tela `Atividades` foi alterado.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/app/(dashboard)/categoria-atividade/page.tsx`
   - Responsavel por: montar a view operacional da rota `Categoria de Atividade`.
 - Caminho: `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
-  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+  - Responsavel por: formulario, cadastro em massa, filtros, listagem, exportacao, detalhes, historico e status.
 - Caminho: `src/app/api/activity-categories/route.ts`
   - Responsavel por: expor os handlers HTTP da API.
 - Caminho: `src/server/modules/activity-categories/controller.ts`
-  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs transacionais.
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem, processar cadastro em massa e
+    chamar as RPCs transacionais.
 - Caminho: `supabase/migrations/403_create_activity_category_page_and_rpcs.sql`
   - Responsavel por: salvar cadastro/status, bloquear cancelamento de categoria em uso, registrar historico
     na mesma transacao e cadastrar a pagina.
@@ -155,6 +185,8 @@ Constantes e configuracoes
 - Caminho: `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
   - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`,
     `HISTORY_FIELD_LABELS`.
+- Caminho: `src/modules/dashboard/categoria-atividade/massImport.ts`
+  - Responsavel por: `ACTIVITY_CATEGORY_MASS_IMPORT_COLUMNS_HINT`, modelo CSV e parser do cadastro em massa.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear `/categoria-atividade` para o `page_key` `categoria-atividade`.
 - Caminho: `src/components/layout/AppShell.tsx`
@@ -165,6 +197,8 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/categoria-atividade/csv.ts`
   - Responsavel por: montar o CSV de categorias de atividade.
+- Caminho: `src/hooks/useMassImport.ts`
+  - Responsavel por: fluxo compartilhado do modal de cadastro em massa, envio, resumo e CSV de erros.
 - Caminho: `src/lib/server/concurrency.ts`
   - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
 - Caminho: `src/hooks/useErrorLogger.ts`
@@ -180,6 +214,7 @@ Ajuda contextual
   - `src/app/api/activity-categories/route.ts`
   - `src/modules/dashboard/categoria-atividade/ActivityCategoriesPageView.tsx`
   - `src/modules/dashboard/categoria-atividade/csv.ts`
+  - `src/modules/dashboard/categoria-atividade/massImport.ts`
   - `src/modules/dashboard/categoria-atividade/index.ts`
   - `src/server/modules/activity-categories/controller.ts`
   - `src/server/modules/activity-categories/index.ts`
