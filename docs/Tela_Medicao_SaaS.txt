@@ -54,7 +54,7 @@ Cadastro
   - A tela aceita pre-preenchimento do cabecalho via `/medicao?projectId=<id>&teamId=<id>&executionDate=<YYYY-MM-DD>&compositionId=<id>`, aplicado somente quando projeto e equipe existem nos metadados autenticados do tenant.
 - Campos principais:
   - Projeto (padrao `input + datalist`, igual ao filtro; obrigatorio somente em `Com producao`)
-  - Equipe
+  - Equipe (select exibe `Equipe / Encarregado` quando o encarregado esta cadastrado, no mesmo padrao da Composicao de Equipe)
   - Data execucao
   - Tipo da medicao (`Com producao` ou `Sem producao`)
   - Motivo sem producao (visivel no formulario, mas habilitado apenas em `Sem producao`)
@@ -134,7 +134,7 @@ Filtros, auto-complete e listagem
   - Data inicial (padrao: primeiro dia do mes corrente)
   - Data final (padrao: ultimo dia do mes corrente)
   - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
-  - Equipe (lista carregada dos metadados da tela; filtra por `team_id`)
+  - Equipe (lista carregada dos metadados da tela; filtra por `team_id` e exibe `Equipe / Encarregado` quando disponivel)
   - Tipo de Servico (catalogo ativo de `project_service_types`; filtra pelo tipo vinculado ao projeto)
   - Atividade (autocomplete por codigo/descricao; retorna ordens que possuem item ativo da atividade selecionada)
   - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
@@ -1683,3 +1683,12 @@ Metodo, para quando alguem repetir isso:
 - Use sempre um periodo FECHADO, que nao recebe mais medicao, e gere os dois lados
   com o mesmo filtro. O ponto de comparacao anterior a toda a refatoracao e o
   commit 8c664b4.
+
+Atualizacao 2026-09-01 - Select de Equipe com encarregado
+--------------------------------------------------------------------------------
+- O select `Equipe` do cadastro e dos filtros da Medicao passou a exibir o nome
+  do encarregado junto ao nome da equipe, no formato `Equipe / Encarregado`,
+  igual ao padrao usado na Composicao de Equipe.
+- Sem alteracao de API, payload, filtros, schema, RLS, grants ou permissoes: o
+  valor enviado continua sendo `team_id` e a tela reutiliza `foremanName` ja
+  carregado nos metadados existentes.
