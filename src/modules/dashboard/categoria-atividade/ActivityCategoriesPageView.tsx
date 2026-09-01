@@ -4,16 +4,25 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE, DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
 import styles from "../pessoas/PeoplePageView.module.css";
 import { buildActivityCategoriesCsv } from "./csv";
+import {
+  ACTIVITY_CATEGORY_MASS_IMPORT_COLUMNS_HINT,
+  buildActivityCategoryMassImportTemplateCsv,
+  parseActivityCategoryMassImportCsv,
+  type ActivityCategoryImportRow,
+} from "./massImport";
 
 type ActivityCategoryItem = {
   id: string;
@@ -250,6 +259,57 @@ export function ActivityCategoriesPageView() {
   useEffect(() => {
     void loadActivityCategories(page, activeFilters);
   }, [activeFilters, loadActivityCategories, page]);
+
+  const submitMassImport = useCallback(
+    async (rows: ActivityCategoryImportRow[]) => {
+      if (!session?.accessToken) {
+        return {
+          ok: false,
+          message: "Sessao invalida para importar categorias de atividade em massa.",
+          savedCount: 0,
+          results: [],
+        };
+      }
+
+      const response = await fetch("/api/activity-categories", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const massImport = useMassImport<ActivityCategoryImportRow>({
+    entityLabel: "categorias de atividade",
+    errorFilePrefix: "categorias_atividade",
+    templateFileName: "modelo_categorias_atividade_cadastro_em_massa.csv",
+    buildTemplateCsv: buildActivityCategoryMassImportTemplateCsv,
+    parse: parseActivityCategoryMassImportCsv,
+    submit: submitMassImport,
+    resolveErrorColumn: (code) => (code === "DUPLICATE_NAME" ? "nome" : "salvamento"),
+    onImported: async () => {
+      await loadActivityCategories(1, activeFilters);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+    onError: (error) => logError("Falha ao importar categorias de atividade em massa.", error),
+  });
 
   function resetForm() {
     setForm(INITIAL_FORM);
@@ -507,6 +567,11 @@ export function ActivityCategoriesPageView() {
             <button type="submit" className={styles.primaryButton} disabled={isSaving}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={massImport.open}>
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -816,6 +881,12 @@ export function ActivityCategoriesPageView() {
           </article>
         </div>
       ) : null}
+
+      <MassImportModal
+        controller={massImport}
+        entityLabel="categorias de atividade"
+        columnsHint={ACTIVITY_CATEGORY_MASS_IMPORT_COLUMNS_HINT}
+      />
     </section>
   );
 }

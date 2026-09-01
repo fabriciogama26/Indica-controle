@@ -3,6 +3,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
+import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 import {
   buildUserDisplayMap,
   buildUserLoginNameMap,
@@ -39,9 +40,11 @@ type ActivityCategoryHistoryRow = {
 };
 
 type SaveActivityCategoryPayload = {
+  action?: "BATCH_IMPORT";
   id?: string | null;
   name?: string | null;
   expectedUpdatedAt?: string | null;
+  rows?: ActivityCategoryBatchImportRow[];
 };
 
 type UpdateActivityCategoryStatusPayload = {
@@ -59,6 +62,15 @@ type ActivityCategorySaveRpcResult = {
   activity_category_id?: string;
   updated_at?: string;
 };
+
+type ActivityCategoryBatchImportRow = {
+  rowNumber?: number;
+  name?: string | null;
+};
+
+function normalizeComparableName(value: unknown) {
+  return normalizeText(value).toLocaleUpperCase("pt-BR");
+}
 
 function parseStatusFilter(value: string | null) {
   const normalized = normalizeText(value).toLowerCase();
@@ -171,6 +183,68 @@ async function setActivityCategoryStatusViaRpc(params: {
     updatedAt: result.updated_at ?? null,
     message: result.message ?? "Status da categoria de atividade atualizado com sucesso.",
   } as const;
+}
+
+async function importActivityCategoryBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: ActivityCategoryBatchImportRow[];
+}) {
+  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
+  const seenNames = new Set<string>();
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+    const name = normalizeText(row.name);
+    const comparableName = normalizeComparableName(name);
+
+    if (!name) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Informe o nome da categoria de atividade.",
+        code: "MISSING_REQUIRED_FIELDS",
+      });
+      continue;
+    }
+
+    if (seenNames.has(comparableName)) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Nome duplicado no arquivo.",
+        code: "DUPLICATE_NAME",
+      });
+      continue;
+    }
+    seenNames.add(comparableName);
+
+    const saveResult = await saveActivityCategoryViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      activityCategoryId: null,
+      name,
+      expectedUpdatedAt: null,
+    });
+
+    if (!saveResult.ok) {
+      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({ rowNumber, success: true, message: `Categoria de atividade ${name} cadastrada com sucesso.` });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
 }
 
 async function fetchUsersByIds(supabase: SupabaseClient, tenantId: string, userIds: string[]) {
@@ -349,13 +423,48 @@ export async function handleCreateActivityCategory(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const { supabase, appUser } = resolution;
+    const body = (await request.json().catch(() => ({}))) as SaveActivityCategoryPayload;
+
+    if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const authorizationError = await authorizePageAction(resolution, "categoria-atividade", "import");
+      if (authorizationError) {
+        return authorizationError;
+      }
+
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+      if (!rows.length) {
+        return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+      }
+
+      if (rows.length > MASS_IMPORT_ROW_LIMIT) {
+        return NextResponse.json(
+          { message: `Cadastro em massa limitado a ${MASS_IMPORT_ROW_LIMIT} linhas por arquivo.` },
+          { status: 400 },
+        );
+      }
+
+      const result = await importActivityCategoryBatch({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        rows,
+      });
+
+      return NextResponse.json({
+        ...result,
+        message:
+          result.errorCount > 0
+            ? `Cadastro em massa processado com ${result.savedCount} categorias de atividade salvas e ${result.errorCount} linhas com erro.`
+            : `Cadastro em massa concluido com ${result.savedCount} categorias de atividade salvas.`,
+      });
+    }
+
     const authorizationError = await authorizePageAction(resolution, "categoria-atividade", "create");
     if (authorizationError) {
       return authorizationError;
     }
 
-    const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as SaveActivityCategoryPayload;
     const name = normalizeText(body.name);
 
     if (!name) {
