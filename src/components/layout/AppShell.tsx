@@ -78,6 +78,7 @@ const menuSections = [
       { href: "/configuracao-mapa-almoxarifado", label: "Mapa Almoxarifado", icon: "settings" },
       { href: "/prioridade", label: "Prioridade", icon: "settings" },
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
+      { href: "/centro-estoque", label: "Centro de estoque", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
       { href: "/categoria-atividade", label: "Categoria de Atividade", icon: "settings" },
       { href: "/grupo-atividade", label: "Grupo de Atividade", icon: "settings" },
@@ -249,6 +250,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/centro-servico": {
     title: "Centro de Servico",
     subtitle: "Cadastro base dos centros de servico do tenant.",
+  },
+  "/centro-estoque": {
+    title: "Centro de estoque",
+    subtitle: "Cadastro base dos centros fisicos de estoque usados pelo almoxarifado.",
   },
   "/contrato": {
     title: "Contrato",

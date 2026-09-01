@@ -3,7 +3,7 @@ Tela: Cadastro Base SaaS
 Visao geral
 -----------
 - Conjunto de telas placeholder para os cadastros estruturantes do SaaS.
-- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Contrato`, `Categoria de Atividade`, `Grupo de Atividade`, `Motivo sem producao`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Centro de estoque`, `Contrato`, `Categoria de Atividade`, `Grupo de Atividade`, `Motivo sem producao`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
 - Todas as rotas foram conectadas a permissao por pagina.
 
 Arquitetura
@@ -12,6 +12,7 @@ Arquitetura
   - `src/app/(dashboard)/configuracao-mapa-almoxarifado/page.tsx`
   - `src/app/(dashboard)/prioridade/page.tsx`
   - `src/app/(dashboard)/centro-servico/page.tsx`
+  - `src/app/(dashboard)/centro-estoque/page.tsx`
   - `src/app/(dashboard)/contrato/page.tsx`
   - `src/app/(dashboard)/categoria-atividade/page.tsx`
   - `src/app/(dashboard)/grupo-atividade/page.tsx`
@@ -32,6 +33,7 @@ Arquitetura
 - RPC e pagina de `Categoria de Atividade`: `supabase/migrations/403_create_activity_category_page_and_rpcs.sql`
 - Catalogo, vinculo, RPCs e pagina de `Grupo de Atividade`: `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
 - RPC e pagina de `Motivo sem producao`: `supabase/migrations/407_create_no_production_reason_page_and_rpcs.sql`
+- RPC e pagina de `Centro de estoque`: `supabase/migrations/408_create_stock_center_page_and_rpcs.sql`
 
 Cadastro
 --------
@@ -41,6 +43,7 @@ Cadastro
 - `Categoria de Atividade` possui tela real e administra `types_service_activities`, que alimenta o campo `Categoria` de `Atividades`. Nao se confunde com `/tipo-servico`, placeholder reservado para `project_service_types` (Tipo de Servico do projeto).
 - `Grupo de Atividade` possui tela real e administra `activity_groups`, tabela CRIADA na etapa 3 para tirar o campo `Grupo` de `Atividades` do texto livre.
 - `Motivo sem producao` possui tela real e administra `measurement_no_production_reasons`, catalogo consumido por `Medicao`, `Medicao Asbuilt` e `Faturamento` nos fluxos `SEM_PRODUCAO`.
+- `Centro de estoque` possui tela real e administra somente `stock_centers` fisicos (`OWN`, `controls_balance = true`) sem vinculo em `teams.stock_center_id`; centros proprios de equipe nao aparecem e nao podem ser alterados pela tela.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -49,6 +52,7 @@ Filtros, auto-complete e listagem
 - `Tipo de Equipe` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico e exportacao CSV.
 - `Categoria de Atividade` e `Grupo de Atividade` listam no mesmo formato de `Tipo de Equipe`.
 - `Motivo sem producao` lista com paginacao server-side, filtros por `Codigo`, `Nome` e `Status`, ordem automatica de 10 em 10 no cadastro, detalhes, historico, cancelamento/ativacao e exportacao CSV.
+- `Centro de estoque` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico, cancelamento/ativacao e exportacao CSV, excluindo centros vinculados a equipes.
 
 Boas praticas
 -------------
@@ -66,6 +70,7 @@ Atalhos
   - `/configuracao-mapa-almoxarifado`
   - `/prioridade`
   - `/centro-servico`
+  - `/centro-estoque`
   - `/contrato`
   - `/categoria-atividade`
   - `/grupo-atividade`
@@ -107,6 +112,8 @@ Funcoes principais
   - Responsavel por: expor a tela real da rota `Grupo de Atividade` no Cadastro Base.
 - Caminho: `src/app/(dashboard)/motivo-sem-producao/page.tsx`
   - Responsavel por: expor a tela real da rota `Motivo sem producao` no Cadastro Base.
+- Caminho: `src/app/(dashboard)/centro-estoque/page.tsx`
+  - Responsavel por: expor a tela real da rota `Centro de estoque` no Cadastro Base.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear cada rota base para seu `pageKey` e bloquear acessos sem permissao.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`

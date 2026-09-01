@@ -141,6 +141,7 @@ Ordem de aplicacao
 405. 405_allow_not_working_composition_with_optional_project.sql
 406. 406_fix_service_activities_code_idd_text.sql
 407. 407_create_no_production_reason_page_and_rpcs.sql
+408. 408_create_stock_center_page_and_rpcs.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1351,3 +1352,12 @@ Observacao
 - Quando `p_sort_order` vem nulo no cadastro, a RPC calcula a proxima ordem do tenant em sequencia de 10 em 10.
 - Cancelamento e recusado com `NO_PRODUCTION_REASON_IN_USE` enquanto houver registros ativos usando o motivo em `project_measurement_orders`, `project_asbuilt_measurement_orders` ou `project_billing_orders`.
 - Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada com `default_user_access = false`.
+
+408_create_stock_center_page_and_rpcs.sql
+- Cadastra a pagina `centro-estoque` em `app_pages` (secao Cadastro Base) com `default_user_access = false`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_stock_center_record` e `set_stock_center_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no padrao transacional de cadastros-base: `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- A tela administra o catalogo existente `stock_centers`, mas somente centros fisicos de estoque (`center_type = 'OWN'`, `controls_balance = true`) sem vinculo em `teams.stock_center_id`.
+- Centros de estoque proprios de equipes nao aparecem na tela e as RPCs recusam qualquer tentativa de editar ou alterar status desses registros com `TEAM_STOCK_CENTER`.
+- Cadastro novo sempre cria centro `OWN` com `controls_balance = true`, que pode alimentar o select `Centro de estoque` de `Solicitacao de Requisicao`.
+- Cancelamento e recusado se o centro tiver saldo diferente de zero em `stock_center_balances` ou requisicao aberta em `stock_requisition_requests`.
+- Revoga escrita direta em `stock_centers` para `public`, `anon` e `authenticated`, mantendo escrita pela aplicacao via `service_role` e RPCs.

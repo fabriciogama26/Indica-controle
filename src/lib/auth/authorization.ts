@@ -44,6 +44,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/configuracao-mapa-almoxarifado", pageKey: "configuracao-mapa-almoxarifado" },
   { prefix: "/prioridade", pageKey: "prioridade" },
   { prefix: "/centro-servico", pageKey: "centro-servico" },
+  { prefix: "/centro-estoque", pageKey: "centro-estoque" },
   { prefix: "/contrato", pageKey: "contrato" },
   { prefix: "/atividades", pageKey: "atividades" },
   { prefix: "/categoria-atividade", pageKey: "categoria-atividade" },
