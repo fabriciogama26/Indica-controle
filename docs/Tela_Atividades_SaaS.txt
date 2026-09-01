@@ -520,3 +520,15 @@ Atualizacao 2026-08-31 - Grupo passa a ser catalogo (conclui as 3 etapas)
   o baseline do ratchet foi travado para baixo com `npm run lint:size:update`.
 - Com esta etapa, os tres campos de catalogo de `Atividades` tem tela propria em `Cadastro Base`:
   `Tipo` -> `/tipo-equipe`, `Categoria` -> `/categoria-atividade`, `Grupo` -> `/grupo-atividade`.
+
+Atualizacao 2026-09-01 - CSV de erros do cadastro em massa
+----------------------------------------------------------
+- Ajustado o tratamento de erro do cadastro em massa de `Atividades` para nao retornar apenas
+  "Falha ao salvar atividade." quando a RPC `save_service_activity_record` falha tecnicamente.
+- Depois: erros conhecidos de salvamento sao mapeados para mensagens especificas e codigos de dominio:
+  `ACTIVITY_RPC_SCHEMA_MISMATCH`, `DUPLICATE_ACTIVITY_CODE`, `INVALID_TEAM_TYPE`, `INVALID_CATEGORY`,
+  `INVALID_GROUP` e `INVALID_ACTIVITY`.
+- Depois: o CSV de erros aponta a coluna mais provavel (`codigo`, `tipo_equipe`, `categoria`, `grupo`,
+  `dados` ou `salvamento`) conforme o codigo retornado pela API.
+- Sem migration, sem mudanca de RLS, grants ou permissao. O `tenant_id` continua derivado da sessao no
+  backend.
