@@ -48,6 +48,7 @@ Arquitetura
 - Banco (RPC transacional da tela principal): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Banco (remocao da constraint de formato por prioridade no SOB): `supabase/migrations/118_remove_project_sob_priority_format_constraint.sql`
 - Banco (marcador retirado da carteira): `supabase/migrations/174_add_project_is_withdrawn.sql`
+- Banco (tela dos responsaveis/gestores da distribuidora): `supabase/migrations/410_create_utility_distributor_contact_page.sql`
 
 Cadastro
 --------
@@ -85,6 +86,7 @@ Cadastro
   - `Responsavel Distribuidora`
   - `Gestor de campo Distribuidora`
 - O select de `Prioridade` usa apenas o catalogo ativo do tenant retornado por `/api/projects/meta`; nao ha lista fixa no frontend.
+- O select `Responsavel Distribuidora` usa `project_utility_responsibles`; o select `Gestor de campo Distribuidora` usa `project_utility_field_managers`. Ambos sao mantidos pela tela `/responsavel-distribuidora` e carregados por tenant em `/api/projects/meta`.
 - Campo `Responsavel Contratada` carregado de `people` ativo, filtrando apenas cargos `SUPERVISOR` em `job_titles`.
 - Cadastro em massa principal:
   - Botao `Cadastro em massa` aparece no bloco `Cadastro de Projeto` apenas fora do modo edicao.

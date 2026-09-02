@@ -88,7 +88,7 @@ const menuSections = [
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
       { href: "/nivel-tensao", label: "Nivel de Tensao", icon: "settings" },
       { href: "/porte", label: "Porte", icon: "settings" },
-      { href: "/responsavel-distribuidora", label: "Responsavel Distribuidora", icon: "settings" },
+      { href: "/responsavel-distribuidora", label: "Responsaveis Distribuidora", icon: "settings" },
       { href: "/municipio", label: "Municipio", icon: "settings" },
     ],
   },
@@ -296,8 +296,8 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Cadastro base de porte para classificacao operacional.",
   },
   "/responsavel-distribuidora": {
-    title: "Responsavel Distribuidora",
-    subtitle: "Cadastro base dos responsaveis da distribuidora.",
+    title: "Responsaveis Distribuidora",
+    subtitle: "Cadastro base de responsaveis e gestores de campo da distribuidora.",
   },
   "/municipio": {
     title: "Municipio",
