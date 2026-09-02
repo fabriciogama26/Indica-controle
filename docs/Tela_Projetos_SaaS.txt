@@ -84,6 +84,7 @@ Cadastro
   - `Municipio`
   - `Responsavel Distribuidora`
   - `Gestor de campo Distribuidora`
+- O select de `Prioridade` usa apenas o catalogo ativo do tenant retornado por `/api/projects/meta`; nao ha lista fixa no frontend.
 - Campo `Responsavel Contratada` carregado de `people` ativo, filtrando apenas cargos `SUPERVISOR` em `job_titles`.
 - Cadastro em massa principal:
   - Botao `Cadastro em massa` aparece no bloco `Cadastro de Projeto` apenas fora do modo edicao.
@@ -875,3 +876,21 @@ Atualizacao 2026-09 - Cadastro em massa de Projetos
   - `tenant_id` e usuario continuam derivados da sessao por `resolveAuthenticatedAppUser`.
   - Nenhum valor de tenant e aceito do CSV/body.
   - Cadastro unitario permanece em `projetos/create`; importacao em massa usa `projetos/import`.
+
+Atualizacao 2026-09-02 - Prioridade sem fallback global no frontend
+-------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/massImport.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `priorityOptions`
+  - `buildProjectMassImportTemplateCsv`
+- Comportamento antes/depois:
+  - Antes: o select de `Prioridade` sempre mesclava o catalogo do tenant com uma lista fixa (`GRUPO B - FLUXO`, `DRP / DRC`, `GRUPO A - FLUXO`, `FUSESAVER`), fazendo esses nomes aparecerem mesmo quando nao vinham de `/api/projects/meta`.
+  - Depois: o select usa somente `meta.priorities`, carregado de `project_priorities` com filtro por `tenant_id` no backend.
+  - Depois: o modelo CSV deixa de sugerir uma prioridade operacional fixa quando o catalogo do tenant esta vazio, usando placeholder generico.
+- Multi-tenant e permissao:
+  - A API de metadados continua filtrando `project_priorities` por `appUser.tenant_id`.
+  - Nenhum `tenant_id` e aceito do client.
