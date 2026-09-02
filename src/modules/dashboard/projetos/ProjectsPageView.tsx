@@ -263,7 +263,6 @@ const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 const PROJECT_FORECAST_QTY_LIMIT = 100000;
-const PRIORITY_OPTIONS = ["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO", "FUSESAVER"] as const;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   priority: "Prioridade",
   sob: "Projeto (SOB)",
@@ -869,7 +868,7 @@ export function ProjectsPageView() {
     () =>
       Array.from(
         new Set(
-          [...PRIORITY_OPTIONS, ...(meta.priorities ?? []).map((item) => normalizePriority(item)).filter(Boolean)],
+          (meta.priorities ?? []).map((item) => normalizePriority(item)).filter(Boolean),
         ),
       ),
     [meta.priorities],

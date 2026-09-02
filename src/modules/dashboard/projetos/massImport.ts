@@ -193,7 +193,7 @@ export function buildProjectMassImportTemplateCsv(catalogs: ProjectImportCatalog
     ],
     [
       [
-        catalogs.priorities[0] ?? "GRUPO B - FLUXO",
+        catalogs.priorities[0] ?? "PRIORIDADE_CADASTRADA_NO_TENANT",
         "SOB000001",
         catalogs.serviceCenters[0] ?? "CENTRO DE SERVICO",
         catalogs.serviceTypes[0] ?? "TIPO DE SERVICO",
