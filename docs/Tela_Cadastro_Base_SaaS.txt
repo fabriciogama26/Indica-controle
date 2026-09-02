@@ -38,6 +38,7 @@ Arquitetura
 Cadastro
 --------
 - Demais telas de `Cadastro Base` seguem em placeholder nesta etapa.
+- `Contrato` possui tela real para manter os dados de registro e controle do contrato do tenant: nome, empresa, gestor, e-mail e telefone corporativo.
 - `Configuracao do Mapa do Almoxarifado` possui tela real para cadastrar layout fisico por centro de estoque.
 - `Tipo de Equipe` possui tela real e e o unico CRUD de `team_types` no sistema; o mesmo catalogo alimenta o campo `Tipo` de `Equipes` e o campo `Tipo` de `Atividades`.
 - `Categoria de Atividade` possui tela real e administra `types_service_activities`, que alimenta o campo `Categoria` de `Atividades`. Nao se confunde com `/tipo-servico`, placeholder reservado para `project_service_types` (Tipo de Servico do projeto).
@@ -48,6 +49,7 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - Demais telas de `Cadastro Base` seguem sem listagem nesta etapa.
+- `Contrato` lista com paginacao server-side, filtros por `Nome`, `Empresa`, `Gestor` e `Status`, detalhes, historico e exportacao CSV.
 - `Configuracao do Mapa do Almoxarifado` lista visualmente o grid configurado, prateleiras, andares e posicoes.
 - `Tipo de Equipe` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico e exportacao CSV.
 - `Categoria de Atividade` e `Grupo de Atividade` listam no mesmo formato de `Tipo de Equipe`.
@@ -114,6 +116,8 @@ Funcoes principais
   - Responsavel por: expor a tela real da rota `Motivo sem producao` no Cadastro Base.
 - Caminho: `src/app/(dashboard)/centro-estoque/page.tsx`
   - Responsavel por: expor a tela real da rota `Centro de estoque` no Cadastro Base.
+- Caminho: `src/app/(dashboard)/contrato/page.tsx`
+  - Responsavel por: expor a tela real da rota `Contrato` no Cadastro Base.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear cada rota base para seu `pageKey` e bloquear acessos sem permissao.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -124,6 +128,8 @@ Constantes e configuracoes
   - Responsavel por: catalogar as paginas de `Cadastro Base` e fazer backfill em `role_page_permissions` e `app_user_page_permissions`.
 - Caminho: `supabase/migrations/053_create_team_types_and_link_teams.sql`
   - Responsavel por: criar `team_types`, vincular em `teams` e incluir `tipo-equipe` na matriz de paginas/permissoes.
+- Caminho: `supabase/migrations/409_contract_control_fields_and_rpc.sql`
+  - Responsavel por: adicionar campos de controle em `contract` e criar RPC transacional de edicao.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/components/ui/ModulePlaceholder.tsx`
@@ -144,3 +150,4 @@ Ajuda contextual
 - Atualizacao 2026-08 (etapa 3, conclui): `/grupo-atividade` criada como tela real, sobre a tabela NOVA `activity_groups`. `service_activities` ganhou `group_id` e o campo `Grupo` de `Atividades` deixou de ser texto livre. `group_name` permanece como snapshot para nao mexer no calculo de faturamento minimo. Detalhe completo em `docs/Tela_Grupo_Atividade_SaaS.txt`.
 - Com as tres etapas concluidas, os campos de catalogo de `Atividades` tem tela propria em `Cadastro Base`: `Tipo` -> `/tipo-equipe`, `Categoria` -> `/categoria-atividade`, `Grupo` -> `/grupo-atividade`.
 - Atualizacao 2026-09: `/motivo-sem-producao` criada como tela real, administrando o catalogo `measurement_no_production_reasons` usado por `Medicao`, `Medicao Asbuilt` e `Faturamento`. Page_key novo `motivo-sem-producao`, com `default_user_access = false` pela migration `407`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS` e deve ser liberada em `Permissoes`. Detalhe completo em `docs/Tela_Motivo_Sem_Producao_SaaS.txt`.
+- Atualizacao 2026-09: `/contrato` criada como tela real de registro e controle sobre `contract`, com campos `telefone_corporativo`, `email`, `nome_gestor` e `empresa`, historico em `app_entity_history` e RPC `save_contract_control_record`. Detalhe completo em `docs/Tela_Contrato_SaaS.txt`.

@@ -142,6 +142,7 @@ Ordem de aplicacao
 406. 406_fix_service_activities_code_idd_text.sql
 407. 407_create_no_production_reason_page_and_rpcs.sql
 408. 408_create_stock_center_page_and_rpcs.sql
+409. 409_contract_control_fields_and_rpc.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1361,3 +1362,10 @@ Observacao
 - Cadastro novo sempre cria centro `OWN` com `controls_balance = true`, que pode alimentar o select `Centro de estoque` de `Solicitacao de Requisicao`.
 - Cancelamento e recusado se o centro tiver saldo diferente de zero em `stock_center_balances` ou requisicao aberta em `stock_requisition_requests`.
 - Revoga escrita direta em `stock_centers` para `public`, `anon` e `authenticated`, mantendo escrita pela aplicacao via `service_role` e RPCs.
+
+409_contract_control_fields_and_rpc.sql
+- Corrige/versiona o drift manual dos campos de controle em `contract`: se a coluna `"e-mail"` existir e `email` nao existir, renomeia preservando dados; se ambas existirem, aborta em divergencia antes de remover a coluna legada.
+- Adiciona `telefone_corporativo numeric`, `email text`, `nome_gestor text` e `empresa text` em `contract`.
+- Faz backfill de `empresa` a partir de `name` quando estiver vazia, preservando o contrato atual consumido por Projetos.
+- Cria `save_contract_control_record`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- Mantem um contrato por tenant via `UNIQUE (tenant_id)` ja existente e inclui validacao pos-aplicacao para coluna legada e grant da RPC.

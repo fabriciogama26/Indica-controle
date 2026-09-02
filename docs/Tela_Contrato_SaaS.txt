@@ -1,0 +1,139 @@
+Tela: Contrato SaaS
+
+Visao geral
+-----------
+- Tela para registro e controle dos dados do contrato ativo do tenant.
+- Permite cadastrar quando o tenant ainda nao possui contrato, editar dados cadastrais, consultar detalhes, consultar historico e exportar CSV.
+- Mantem a tabela `contract`, que ja existia como entidade global do tenant e segue com um registro por `tenant_id`.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/contrato/page.tsx`
+- View: `src/modules/dashboard/contrato/ContractsPageView.tsx`
+- CSV: `src/modules/dashboard/contrato/csv.ts`
+- Fachada frontend: `src/modules/dashboard/contrato/index.ts`
+- API principal: `src/app/api/contracts/route.ts`
+- Backend: `src/server/modules/contracts/controller.ts`
+- Fachada backend: `src/server/modules/contracts/index.ts`
+- Banco: `contract`, criada por `supabase/migrations/032_create_contrato_table.sql` e renomeada por `033_rename_contrato_to_contract.sql`
+- Historico generico: `app_entity_history`, criada por `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+- Migration/RPC: `supabase/migrations/409_contract_control_fields_and_rpc.sql`
+
+Cadastro
+--------
+- Campos:
+  - `Nome` obrigatorio.
+  - `Empresa` opcional.
+  - `Gestor` opcional.
+  - `E-mail` opcional.
+  - `Telefone corporativo` opcional, enviado somente com digitos.
+- Regras:
+  - O backend deriva `tenant_id` e usuario pela sessao; o cliente nao envia tenant.
+  - A tabela segue com `UNIQUE (tenant_id)`, mantendo um contrato por tenant.
+  - Edicao exige `expectedUpdatedAt` e usa RPC com `SELECT ... FOR UPDATE`.
+  - Edicao de contrato inativo e bloqueada ate reativacao por processo separado.
+  - A migration normaliza a coluna manual `"e-mail"` para `email`, preservando dados quando nao ha conflito.
+- Fluxos:
+  - `GET /api/contracts` para listagem.
+  - `POST /api/contracts` para cadastrar o contrato do tenant quando ainda nao existir.
+  - `PUT /api/contracts` para edicao.
+  - `POST` e `PUT` chamam `save_contract_control_record`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Nome`
+  - `Empresa`
+  - `Gestor`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Nome, Empresa, Gestor, E-mail, Telefone, Status, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`.
+  - Botao `Exportar Excel (CSV)` no cabecalho.
+  - Exportacao usa `mode=export` e exige permissao `export` no backend.
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `contrato`
+  - `entity_table`: `contract`
+  - Modal com paginacao fixa de `5` registros por pagina.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela usa `useAuth()` como unica fonte de sessao no client.
+- Erros da tela sao registrados com `useErrorLogger("contrato")`.
+- Icones de acoes reutilizam `ActionIcon`.
+- Exportacao reutiliza `CsvExportButton` e `downloadCsvFile`.
+- O campo `name` continua preservado porque outros modulos usam `contract.name` para preencher Parceira em Projetos.
+
+Cancelamento e saldo
+--------------------
+- A tela nao expoe cancelamento/ativacao nesta etapa.
+- O campo `ativo` existente e respeitado na leitura e bloqueia edicao de registro inativo.
+- Saldo:
+  - Nao se aplica ao modulo de contrato.
+
+Atalhos
+-------
+- Rota principal: `/contrato`
+- API:
+  - `GET/POST/PUT /api/contracts`
+
+Atualizacao 2026-09
+-------------------
+- Tela `Contrato` saiu de placeholder para implementacao de registro e controle.
+- Antes: a rota `/contrato` exibia apenas `ModulePlaceholder`.
+- Depois: `/contrato` permite cadastrar/editar o contrato do tenant, listar, detalhar, consultar historico e exportar CSV.
+- Depois: a API `/api/contracts` aplica autorizacao por `page_key = contrato` nas acoes `read`, `create`, `update` e `export`.
+- Criada a migration `409_contract_control_fields_and_rpc.sql` com os campos `telefone_corporativo`, `email`, `nome_gestor` e `empresa`, alem da RPC `save_contract_control_record`.
+- A migration trata drift manual renomeando `"e-mail"` para `email` quando a coluna ja existe no banco vivo.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/contrato/page.tsx`
+  - Responsavel por: montar a view operacional da rota `Contrato`.
+- Caminho: `src/modules/dashboard/contrato/ContractsPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes e historico.
+- Caminho: `src/app/api/contracts/route.ts`
+  - Responsavel por: expor os handlers HTTP da API.
+- Caminho: `src/server/modules/contracts/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar a RPC transacional.
+- Caminho: `supabase/migrations/409_contract_control_fields_and_rpc.sql`
+  - Responsavel por: versionar os novos campos e salvar alteracoes com historico na mesma transacao.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/contrato/ContractsPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/contrato/csv.ts`
+  - Responsavel por: montar o CSV de contratos.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar `expectedUpdatedAt`.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `contrato`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handler (`/api/contracts`).
+
+Ajuda contextual
+- Arquivos alterados/criados:
+  - `src/app/(dashboard)/contrato/page.tsx`
+  - `src/app/api/contracts/route.ts`
+  - `src/modules/dashboard/contrato/ContractsPageView.tsx`
+  - `src/modules/dashboard/contrato/csv.ts`
+  - `src/modules/dashboard/contrato/index.ts`
+  - `src/server/modules/contracts/controller.ts`
+  - `src/server/modules/contracts/index.ts`
+  - `supabase/migrations/409_contract_control_fields_and_rpc.sql`
+  - `docs/Tela_Contrato_SaaS.txt`
+  - `docs/Tela_Cadastro_Base_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: tela informativa sem persistencia.
+  - Depois: tela operacional para dados contratuais e contato do gestor.
