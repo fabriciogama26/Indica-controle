@@ -6,13 +6,23 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState 
 import { useAuth } from "@/hooks/useAuth";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import styles from "./ProjectsPageView.module.css";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
 import { downloadBlobFile, downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import {
+  PROJECT_MASS_IMPORT_COLUMNS_HINT,
+  buildProjectMassImportTemplateCsv,
+  parseProjectMassImportCsv,
+  type ProjectImportCatalogs,
+  type ProjectImportRow,
+} from "./massImport";
 
 type ProjectItem = {
   id: string;
@@ -865,6 +875,31 @@ export function ProjectsPageView() {
     [meta.priorities],
   );
 
+  const projectImportCatalogs = useMemo<ProjectImportCatalogs>(
+    () => ({
+      priorities: priorityOptions,
+      serviceCenters: meta.serviceCenters,
+      serviceTypes: meta.serviceTypes,
+      voltageLevels: meta.voltageLevels,
+      projectSizes: meta.projectSizes,
+      cities: meta.cities,
+      contractorResponsibles: meta.contractorResponsibles,
+      utilityResponsibles: meta.utilityResponsibles,
+      utilityFieldManagers: meta.utilityFieldManagers,
+    }),
+    [
+      meta.cities,
+      meta.contractorResponsibles,
+      meta.projectSizes,
+      meta.serviceCenters,
+      meta.serviceTypes,
+      meta.utilityFieldManagers,
+      meta.utilityResponsibles,
+      meta.voltageLevels,
+      priorityOptions,
+    ],
+  );
+
   const sobBaseMap = useMemo(() => {
     return new Map(meta.sobCatalog.map((item) => [item.sob.toLowerCase(), item]));
   }, [meta.sobCatalog]);
@@ -1023,6 +1058,51 @@ export function ProjectsPageView() {
     },
     [session?.accessToken, setTotal],
   );
+
+  const submitProjectMassImport = useCallback(
+    async (rows: ProjectImportRow[]) => {
+      if (!session?.accessToken) {
+        return { ok: false, message: "Sessao invalida para importar projetos em massa.", savedCount: 0, results: [] };
+      }
+
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const projectMassImport = useMassImport<ProjectImportRow>({
+    entityLabel: "projetos",
+    errorFilePrefix: "projetos",
+    templateFileName: "modelo_projetos_cadastro_em_massa.csv",
+    buildTemplateCsv: () => buildProjectMassImportTemplateCsv(projectImportCatalogs),
+    parse: (content, fileName) => parseProjectMassImportCsv({ content, fileName, catalogs: projectImportCatalogs }),
+    submit: submitProjectMassImport,
+    resolveErrorColumn: (code) => (code === "DUPLICATE_PROJECT_SOB" ? "projeto" : "salvamento"),
+    onImported: async () => {
+      await Promise.all([loadMeta(), loadProjects(1, activeFilters)]);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+  });
 
   useEffect(() => {
     void loadMeta();
@@ -2814,6 +2894,16 @@ export function ProjectsPageView() {
                     Cancelar edicao
                   </button>
                 ) : null}
+                {!isEditing ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={projectMassImport.open}
+                    disabled={isSubmitting || isLoadingMeta}
+                  >
+                    Cadastro em massa
+                  </button>
+                ) : null}
               </div>
             </form>
           </>
@@ -4030,6 +4120,12 @@ export function ProjectsPageView() {
           <option key={item.sob} value={item.sob} />
         ))}
       </datalist>
+
+      <MassImportModal
+        controller={projectMassImport}
+        entityLabel="projetos"
+        columnsHint={PROJECT_MASS_IMPORT_COLUMNS_HINT}
+      />
 
       <datalist id="forecast-sob-list">
         {meta.sobCatalog.map((project) => (

@@ -14,6 +14,7 @@ import {
   fetchProjectIdsWithCompletedWork,
 } from "@/server/modules/programacao-normalizada";
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
+import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 import { parsePagination } from "@/lib/server/apiHelpers";
 
 type ProjectRow = {
@@ -120,6 +121,15 @@ type CreateProjectPayload = {
   isTest?: boolean;
   isWithdrawn?: boolean;
   isThirdParty?: boolean;
+};
+
+type ProjectBatchImportRow = Partial<CreateProjectPayload> & {
+  rowNumber?: number;
+};
+
+type ProjectBatchImportPayload = {
+  action?: "BATCH_IMPORT";
+  rows?: ProjectBatchImportRow[];
 };
 
 type UpdateProjectPayload = CreateProjectPayload & {
@@ -1251,6 +1261,62 @@ async function saveProjectViaRpc(params: {
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
+async function importProjectBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: ProjectBatchImportRow[];
+}) {
+  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+    const input = parseProjectInput(row);
+    const requiredError = validateRequiredProjectFields(input);
+
+    if (requiredError) {
+      results.push({ rowNumber, success: false, message: requiredError, code: "INVALID_PROJECT" });
+      continue;
+    }
+
+    const lookupResolution = await resolveProjectLookups(params.supabase, params.tenantId, input);
+    if (lookupResolution.message || !lookupResolution.data) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: lookupResolution.message ?? "Falha ao validar cadastro.",
+        code: "INVALID_PROJECT_LOOKUP",
+      });
+      continue;
+    }
+
+    const insertPayload = buildProjectWritePayload(input, lookupResolution.data);
+    const saveResult = await saveProjectViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      projectId: null,
+      payload: insertPayload,
+    });
+
+    if (!saveResult.ok) {
+      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({ rowNumber, success: true, message: `Projeto ${input.sob} cadastrado com sucesso.` });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
+}
+
 async function setProjectStatusViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -1497,11 +1563,43 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const { supabase, appUser } = resolution;
+    const body = (await request.json().catch(() => ({}))) as Partial<CreateProjectPayload> & ProjectBatchImportPayload;
+
+    if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const authorizationError = await authorizeProjectsAction(resolution, "import");
+      if (authorizationError) return authorizationError;
+
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+      if (!rows.length) {
+        return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+      }
+      if (rows.length > MASS_IMPORT_ROW_LIMIT) {
+        return NextResponse.json(
+          { message: `Cadastro em massa limitado a ${MASS_IMPORT_ROW_LIMIT} linhas por arquivo.` },
+          { status: 400 },
+        );
+      }
+
+      const batchResult = await importProjectBatch({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        rows,
+      });
+
+      return NextResponse.json({
+        ...batchResult,
+        message:
+          batchResult.errorCount > 0
+            ? `Cadastro em massa processado com ${batchResult.savedCount} projetos salvos e ${batchResult.errorCount} linhas com erro.`
+            : `Cadastro em massa concluido com ${batchResult.savedCount} projetos salvos.`,
+      });
+    }
+
     const authorizationError = await authorizeProjectsAction(resolution, "create");
     if (authorizationError) return authorizationError;
 
-    const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as Partial<CreateProjectPayload>;
     const input = parseProjectInput(body);
 
     const requiredError = validateRequiredProjectFields(input);

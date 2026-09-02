@@ -8,6 +8,7 @@ Visao geral
 - O formulario de cadastro/edicao trabalha apenas com `Projeto (SOB)`, sem limite maximo de caracteres e sem padrao fixo de prefixo por prioridade.
 - O fluxo operacional da tela nao expõe nem exige `FOB`.
 - Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
+- O bloco `Cadastro de Projeto` inclui cadastro em massa por CSV para criacao de varios projetos do tenant.
 - Inclui aba `Materiais previstos` para manter a lista inicial de materiais planejados por projeto, com importacao em massa e inclusao manual.
 - Inclui aba `Atividades previstas` para manter a base operacional de atividades planejadas por projeto, com importacao em massa, inclusao manual e edicao em linha.
 - Mantem indicador operacional `has_locacao` no projeto para consumo futuro em visoes gerais e cruzamentos com `Locacao`.
@@ -17,6 +18,7 @@ Arquitetura
 - Rota: `src/app/(dashboard)/projetos/page.tsx`
 - View: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
 - Estilo: `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+- Parser CSV do cadastro em massa principal: `src/modules/dashboard/projetos/massImport.ts`
 - API de projetos: `src/app/api/projects/route.ts`
 - API de metadados/filtros: `src/app/api/projects/meta/route.ts`
 - API de materiais previstos (listagem): `src/app/api/projects/forecast/route.ts`
@@ -83,6 +85,14 @@ Cadastro
   - `Responsavel Distribuidora`
   - `Gestor de campo Distribuidora`
 - Campo `Responsavel Contratada` carregado de `people` ativo, filtrando apenas cargos `SUPERVISOR` em `job_titles`.
+- Cadastro em massa principal:
+  - Botao `Cadastro em massa` aparece no bloco `Cadastro de Projeto` apenas fora do modo edicao.
+  - Baixa modelo CSV separado por ponto e virgula com as colunas do formulario principal.
+  - Aceita `data_limite` em `dd/mm/aaaa` ou `aaaa-mm-dd`.
+  - Valida no frontend que os nomes de prioridade, centro de servico, tipo de servico, responsaveis, gestor, municipio, nivel de tensao e porte existem nos catalogos ativos carregados para o tenant.
+  - Envia `POST /api/projects` com `action = BATCH_IMPORT`; o backend valida novamente por tenant e grava cada linha pela RPC transacional `save_project_record`.
+  - Processamento e parcial por linha: linhas validas sao cadastradas e linhas invalidas entram no CSV de erros (`linha;coluna;valor;erro`).
+  - Limite por arquivo segue `MASS_IMPORT_ROW_LIMIT` (`500` linhas).
 - Regra de validacao do `SOB` antes do banco:
   - O campo aceita texto livre (normalizado em maiusculas), sem validacao de prefixo por prioridade.
   - `SOB` duplicado no mesmo tenant nao pode ser cadastrado.
@@ -178,6 +188,8 @@ Boas praticas
 - Sempre filtrar e gravar com `tenant_id` no backend.
 - Usar validacao de campos obrigatorios na API antes de gravar.
 - Manter `Projeto (SOB)` sem limite fixo de caracteres e sem regra de prefixo por prioridade no frontend e na API.
+- Cadastro em massa do projeto principal usa a permissao granular `projetos/import`; cadastro unitario continua em `projetos/create`.
+- O import principal deriva `tenant_id` e usuario da sessao, nao aceita `tenant_id` do CSV/body e confirma todos os catalogos no servidor antes da RPC.
 - Manter paginacao server-side para listas grandes.
 - Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
 - Exigir `expectedUpdatedAt` na edicao e no cancelamento/ativacao para evitar `last-write-wins`.
@@ -276,9 +288,11 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
-  - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento, incluindo envio de `expectedUpdatedAt` no save e no status.
+  - Responsavel por: estado da tela, cadastro, cadastro em massa principal, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento, incluindo envio de `expectedUpdatedAt` no save e no status.
+- Caminho: `src/modules/dashboard/projetos/massImport.ts`
+  - Responsavel por: modelo CSV, leitura, aliases, validacao de catalogos e normalizacao de datas/valores/flags do cadastro em massa de projetos.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
+  - Responsavel por: validar payload, importar projetos em massa, inserir, editar, cancelar, listar e consultar historico por projeto, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
@@ -835,3 +849,29 @@ Atualizacao 2026-08-15 (2) - Formulario nao e mais apagado em conflito de concor
 - Depois: `resetFormState()` so roda apos sucesso; a lista continua sendo recarregada,
   mas o formulario fica preenchido e a mensagem de erro fica visivel.
 - Arquivos alterados: `src/modules/dashboard/projetos/ProjectsPageView.tsx`.
+
+Atualizacao 2026-09 - Cadastro em massa de Projetos
+----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/massImport.ts`
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/route.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `buildProjectMassImportTemplateCsv`
+  - `parseProjectMassImportCsv`
+  - `projectMassImport`
+  - `submitProjectMassImport`
+  - `importProjectBatch`
+  - `POST /api/projects`
+- Comportamento antes/depois:
+  - Antes: a tela principal cadastrava projetos apenas um a um; o texto `Cadastro em massa` existia somente nas abas de `Materiais previstos` e `Atividades previstas`.
+  - Depois: o bloco `Cadastro de Projeto` exibe o botao `Cadastro em massa` fora do modo edicao, baixa modelo CSV e importa ate 500 projetos por arquivo.
+  - Depois: o CSV usa as mesmas colunas do formulario principal, valida catalogos ativos do tenant no frontend e confirma tudo novamente no backend antes de gravar.
+  - Depois: `POST /api/projects` aceita `action = BATCH_IMPORT`, cobra `projetos/import`, processa parcialmente por linha e retorna `results` para gerar CSV de erros.
+  - Depois: cada linha valida continua sendo gravada pela RPC `save_project_record`, preservando auditoria e preenchimento automatico da parceira pelo contrato ativo.
+- Multi-tenant e permissao:
+  - `tenant_id` e usuario continuam derivados da sessao por `resolveAuthenticatedAppUser`.
+  - Nenhum valor de tenant e aceito do CSV/body.
+  - Cadastro unitario permanece em `projetos/create`; importacao em massa usa `projetos/import`.
