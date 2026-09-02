@@ -166,7 +166,8 @@ Boas praticas
 - Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284; o adiamento in-place tambem limpa o campo desde a migration 326.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
 - `Para reprogramar` NAO conta obra interrompida sem continuidade futura (`interrupted && !hasFutureActiveProgramming`): esse recorte e exatamente o card `Canceladas/adiadas`, entao os dois cards sao disjuntos. Obra interrompida QUE TEM etapa futura ativa continua em `Para reprogramar`.
-- `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente, E a ultima etapa NAO esta `ADIADA`/`CANCELADA`. Obra interrompida e contada somente em `Canceladas/adiadas`, porque para ela o campo vazio e regra de banco e nao falta de apontamento.
+- O `Estado Trabalho` DA OBRA (usado por `Concluidas`, `Parciais`, `Beneficio atingido`, `Para reprogramar` e pela exclusao de `Pendentes`) sai do ultimo apontamento entre as etapas COMUNS (`is_pendencia = false`). Pendencia concluida nao conclui a obra — regra do banco: indice unico `programming_one_active_completion_per_project` (migration 321) e migration 318 item 4.
+- `Sem Estado Trabalho` considera a ETAPA COMUM mais recente quando ela esta ativa (`PROGRAMADA`/`REPROGRAMADA`), sem apontamento, e com data ja vencida ou ausente/invalida. Nao usa o consolidado da obra: com o consolidado, um apontamento antigo em qualquer etapa escondia uma etapa nova vencida sem apontamento. Obra interrompida e contada somente em `Canceladas/adiadas`, porque para ela o campo vazio e regra de banco e nao falta de apontamento; pendencia aberta e cobrada em `Pendentes`.
 - Obra cuja ultima etapa esta `ADIADA`/`CANCELADA` sem `Estado Trabalho` NAO recebe o nivel `INCONSISTENCY`; cai na escala normal por dias (`NORMAL`/`ATENCAO`/`PRIORIDADE`) e continua priorizada pelo atraso real.
 - O `Estado Trabalho` exibido para obra sem apontamento distingue o motivo: `Nao se aplica (cancelada)` / `Nao se aplica (adiada)` quando a ultima etapa esta interrompida, e `Nao informado` apenas quando a etapa podia ter apontamento e nao teve. O rotulo e montado no servidor, entao vale para tabela, detalhe e CSV.
 - A quantidade de etapas conta linhas de `programming` da obra (uma linha = uma etapa no modelo normalizado).
@@ -742,3 +743,42 @@ Atualizacao 2026-09-02 - Para reprogramar nao conta cancelada/adiada
   programacao futura ativa, fora canceladas/adiadas.".
 - Sem migration, RLS, grant ou permissao nova. A rota segue sob `mapa-programacao/read`
   e o `tenant_id` continua derivado da sessao.
+
+Atualizacao 2026-09-02 - Estado Trabalho da obra ignora etapa de pendencia
+--------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/mapa-programacao/route.ts`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Achado 1 (conclusao): `latestWorkCompletion` pegava a ultima linha com
+  `work_completion_status` de QUALQUER etapa, inclusive pendencia. Como a pendencia
+  costuma ter data posterior, uma pendencia concluida virava o Estado Trabalho da
+  obra: a obra aparecia em `Concluidas` e sumia de `Para reprogramar`, `Parciais` e
+  `Pendentes`. Isso contraria a regra do banco — a conclusao do projeto e a etapa
+  ativa `CONCLUIDO` com `is_pendencia = false` (indice unico parcial
+  `programming_one_active_completion_per_project`, migration 321), e a migration 318
+  (item 4) diz que concluir uma pendencia nao conta como a conclusao do projeto.
+- Correcao 1: o consolidado passa a sair de `commonRows` (etapas com
+  `is_pendencia = false`). A pendencia continua influindo apenas na sua propria
+  dimensao, o card `Pendentes`.
+- Achado 2 (`Sem Estado Trabalho`): `withoutStatus` testava o consolidado da obra
+  (`!workCompletionStatus`), entao bastava um apontamento antigo em qualquer etapa
+  para uma etapa nova, vencida e sem apontamento ficar invisivel. Na pratica o card
+  so pegava obra que nunca teve apontamento nenhum.
+- Correcao 2: `withoutStatus` passa a julgar a etapa COMUM mais recente — ativa,
+  sem apontamento proprio e com data vencida ou ausente/invalida — com data e dias
+  calculados dessa mesma etapa (`latestCommonDate`, `daysSinceLatestCommon`).
+- Efeito combinado esperado: `Concluidas` pode cair (obra que so tinha pendencia
+  concluida sai), `Pendentes`/`Para reprogramar`/`Parciais` podem subir pelas mesmas
+  obras, e `Sem Estado Trabalho` deixa de ficar preso em zero por causa de
+  apontamento antigo.
+- Consequencia conhecida e aceita: pela regra de `Pendentes` decidida nesta mesma
+  data, obra com etapa comum concluida (ou com beneficio atingido) e pendencia
+  aberta NAO entra em `Pendentes`. O banco permite esse estado de proposito (318
+  item 3: pendencia pode existir em projeto concluido). Se o desejado for cobrar
+  essa pendencia mesmo com a obra concluida, e mudar so a linha `hasOpenPendencia`.
+- `latest` (ultima etapa da linha do tempo) continua considerando TODAS as etapas,
+  inclusive pendencia: ela e a etapa mais recente de verdade e alimenta equipe,
+  encarregado, rotulo de etapa, `interrupted` e `hasFutureActiveProgramming`.
+- Sem migration, RLS, grant ou permissao nova. Rota segue sob `mapa-programacao/read`
+  e `tenant_id` derivado da sessao.
