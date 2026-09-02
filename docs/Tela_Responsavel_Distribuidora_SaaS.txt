@@ -1,0 +1,93 @@
+Tela: Responsaveis Distribuidora SaaS
+
+Visao geral
+-----------
+- Tela unica para manter os cadastros da distribuidora usados em Projetos.
+- A aba `Responsaveis Distribuidora` alimenta `project_utility_responsibles`.
+- A aba `Gestores de campo` alimenta `project_utility_field_managers`.
+- Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/responsavel-distribuidora/page.tsx`
+- View: `src/modules/dashboard/responsavel-distribuidora/ResponsavelDistribuidoraPageView.tsx`
+- CSV: `src/modules/dashboard/responsavel-distribuidora/csv.ts`
+- API principal: `src/app/api/utility-distributor-contacts/route.ts`
+- Backend: `src/server/modules/utility-distributor-contacts/controller.ts`
+- Banco: `project_utility_responsibles` e `project_utility_field_managers`, criadas por `supabase/migrations/031_create_project_lookup_tables.sql`
+- Historico generico: `app_entity_history`
+- RPC transacional: `supabase/migrations/410_create_utility_distributor_contact_page.sql`
+
+Cadastro
+--------
+- Campo obrigatorio:
+  - `Nome`
+- Abas:
+  - `Responsaveis Distribuidora`: cria/edita registros em `project_utility_responsibles`.
+  - `Gestores de campo`: cria/edita registros em `project_utility_field_managers`.
+- Regras:
+  - O client envia apenas `kind` (`responsible` ou `fieldManager`); a API mapeia internamente para a tabela permitida.
+  - O nome e normalizado com `trim` antes do envio.
+  - As constraints unicas `(tenant_id, name_normalized)` impedem duplicidade por tenant em cada tabela.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+- Fluxos:
+  - `POST /api/utility-distributor-contacts` para cadastro.
+  - `PUT /api/utility-distributor-contacts` para edicao.
+  - `PATCH /api/utility-distributor-contacts` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_utility_distributor_contact_record`.
+  - `PATCH` chama `set_utility_distributor_contact_status`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Nome, Status, Registrado em, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Exportacao CSV por aba, usando `mode=export` e permissao granular `export`.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `responsavel-distribuidora`
+  - `entity_table`: `project_utility_responsibles` ou `project_utility_field_managers`
+  - O metadata grava o `kind` da aba para facilitar auditoria.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela inteira usa `page_key = responsavel-distribuidora` para acesso, listagem, detalhes, historico, exportacao e acoes.
+- A API nunca aceita `tenant_id` nem nome de tabela vindos do cliente.
+- As duas tabelas continuam sendo consumidas por `/api/projects/meta` com filtro por `tenant_id` e `ativo = true`.
+
+Atalhos
+-------
+- Rota principal: `/responsavel-distribuidora`
+- API:
+  - `GET/POST/PUT/PATCH /api/utility-distributor-contacts`
+
+Atualizacao 2026-09
+-------------------
+- A rota `/responsavel-distribuidora` saiu de placeholder para uma tela operacional com duas abas.
+- Criada a migration `410_create_utility_distributor_contact_page.sql` com RPCs transacionais, `SELECT ... FOR UPDATE`, historico na mesma transacao e `EXECUTE` apenas para `service_role`.
+- A mesma migration ajusta `default_user_access = false` e revoga escrita/exportacao de nao-admin herdada do placeholder, preservando leitura ja concedida.
+- O menu e a matriz de permissoes passaram a exibir `Responsaveis Distribuidora`, mantendo o mesmo `page_key` historico.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/responsavel-distribuidora/page.tsx`
+  - Responsavel por: montar a view operacional da rota.
+- Caminho: `src/modules/dashboard/responsavel-distribuidora/ResponsavelDistribuidoraPageView.tsx`
+  - Responsavel por: abas, formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/server/modules/utility-distributor-contacts/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs.
+- Caminho: `supabase/migrations/410_create_utility_distributor_contact_page.sql`
+  - Responsavel por: salvar cadastro/status e registrar historico na mesma transacao.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/responsavel-distribuidora/csv.ts`
+  - Responsavel por: montar o CSV da aba ativa.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `responsavel-distribuidora`.

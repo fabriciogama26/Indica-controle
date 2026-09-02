@@ -173,7 +173,7 @@ const permissionCatalog = [
   { pageKey: "porte", label: "Porte", path: "/porte", section: "Cadastro Base" },
   {
     pageKey: "responsavel-distribuidora",
-    label: "Responsavel Distribuidora",
+    label: "Responsaveis Distribuidora",
     path: "/responsavel-distribuidora",
     section: "Cadastro Base",
   },

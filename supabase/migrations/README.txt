@@ -1369,3 +1369,11 @@ Observacao
 - Faz backfill de `empresa` a partir de `name` quando estiver vazia, preservando o contrato atual consumido por Projetos.
 - Cria `save_contract_control_record`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
 - Mantem um contrato por tenant via `UNIQUE (tenant_id)` ja existente e inclui validacao pos-aplicacao para coluna legada e grant da RPC.
+
+410_create_utility_distributor_contact_page.sql
+- Cadastra/atualiza a pagina `responsavel-distribuidora` como `Responsaveis Distribuidora`, preservando o mesmo `page_key` historico.
+- Cria `save_utility_distributor_contact_record` e `set_utility_distributor_contact_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- A tela usa um `kind` fechado para escolher internamente entre `project_utility_responsibles` e `project_utility_field_managers`; o cliente nao envia nome de tabela nem `tenant_id`.
+- As duas tabelas continuam alimentando os campos `Responsavel Distribuidora` e `Gestor de campo Distribuidora` em Projetos via `/api/projects/meta`, sempre filtradas por tenant e `ativo`.
+- Como a rota existia como placeholder, define `default_user_access = false` e revoga escrita/exportacao de nao-admin herdada de `can_access`, preservando leitura ja concedida.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated`, se a pagina nao estiver ativa ou se sobrar escrita para nao-admin.

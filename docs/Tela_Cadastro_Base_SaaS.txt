@@ -3,7 +3,7 @@ Tela: Cadastro Base SaaS
 Visao geral
 -----------
 - Conjunto de telas placeholder para os cadastros estruturantes do SaaS.
-- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Centro de estoque`, `Contrato`, `Categoria de Atividade`, `Grupo de Atividade`, `Motivo sem producao`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsavel Distribuidora` e `Municipio`.
+- Separa os dominios base por rota dedicada: `Prioridade`, `Centro de Servico`, `Centro de estoque`, `Contrato`, `Categoria de Atividade`, `Grupo de Atividade`, `Motivo sem producao`, `Tipo de Equipe`, `Imei`, `Tipo de Servico`, `Nivel de Tensao`, `Porte`, `Responsaveis Distribuidora` e `Municipio`.
 - Todas as rotas foram conectadas a permissao por pagina.
 
 Arquitetura
@@ -34,6 +34,7 @@ Arquitetura
 - Catalogo, vinculo, RPCs e pagina de `Grupo de Atividade`: `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
 - RPC e pagina de `Motivo sem producao`: `supabase/migrations/407_create_no_production_reason_page_and_rpcs.sql`
 - RPC e pagina de `Centro de estoque`: `supabase/migrations/408_create_stock_center_page_and_rpcs.sql`
+- RPC e pagina de `Responsaveis Distribuidora`: `supabase/migrations/410_create_utility_distributor_contact_page.sql`
 
 Cadastro
 --------
@@ -45,6 +46,7 @@ Cadastro
 - `Grupo de Atividade` possui tela real e administra `activity_groups`, tabela CRIADA na etapa 3 para tirar o campo `Grupo` de `Atividades` do texto livre.
 - `Motivo sem producao` possui tela real e administra `measurement_no_production_reasons`, catalogo consumido por `Medicao`, `Medicao Asbuilt` e `Faturamento` nos fluxos `SEM_PRODUCAO`.
 - `Centro de estoque` possui tela real e administra somente `stock_centers` fisicos (`OWN`, `controls_balance = true`) sem vinculo em `teams.stock_center_id`; centros proprios de equipe nao aparecem e nao podem ser alterados pela tela.
+- `Responsaveis Distribuidora` possui tela real unica com duas abas: `Responsaveis Distribuidora` administra `project_utility_responsibles` e `Gestores de campo` administra `project_utility_field_managers`.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -55,6 +57,7 @@ Filtros, auto-complete e listagem
 - `Categoria de Atividade` e `Grupo de Atividade` listam no mesmo formato de `Tipo de Equipe`.
 - `Motivo sem producao` lista com paginacao server-side, filtros por `Codigo`, `Nome` e `Status`, ordem automatica de 10 em 10 no cadastro, detalhes, historico, cancelamento/ativacao e exportacao CSV.
 - `Centro de estoque` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico, cancelamento/ativacao e exportacao CSV, excluindo centros vinculados a equipes.
+- `Responsaveis Distribuidora` lista por aba com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico, cancelamento/ativacao e exportacao CSV.
 
 Boas praticas
 -------------
@@ -118,6 +121,8 @@ Funcoes principais
   - Responsavel por: expor a tela real da rota `Centro de estoque` no Cadastro Base.
 - Caminho: `src/app/(dashboard)/contrato/page.tsx`
   - Responsavel por: expor a tela real da rota `Contrato` no Cadastro Base.
+- Caminho: `src/app/(dashboard)/responsavel-distribuidora/page.tsx`
+  - Responsavel por: expor a tela real de responsaveis e gestores de campo da distribuidora.
 - Caminho: `src/lib/auth/authorization.ts`
   - Responsavel por: mapear cada rota base para seu `pageKey` e bloquear acessos sem permissao.
 - Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -130,6 +135,8 @@ Constantes e configuracoes
   - Responsavel por: criar `team_types`, vincular em `teams` e incluir `tipo-equipe` na matriz de paginas/permissoes.
 - Caminho: `supabase/migrations/409_contract_control_fields_and_rpc.sql`
   - Responsavel por: adicionar campos de controle em `contract` e criar RPC transacional de edicao.
+- Caminho: `supabase/migrations/410_create_utility_distributor_contact_page.sql`
+  - Responsavel por: criar as RPCs transacionais da tela `Responsaveis Distribuidora`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/components/ui/ModulePlaceholder.tsx`
@@ -151,3 +158,4 @@ Ajuda contextual
 - Com as tres etapas concluidas, os campos de catalogo de `Atividades` tem tela propria em `Cadastro Base`: `Tipo` -> `/tipo-equipe`, `Categoria` -> `/categoria-atividade`, `Grupo` -> `/grupo-atividade`.
 - Atualizacao 2026-09: `/motivo-sem-producao` criada como tela real, administrando o catalogo `measurement_no_production_reasons` usado por `Medicao`, `Medicao Asbuilt` e `Faturamento`. Page_key novo `motivo-sem-producao`, com `default_user_access = false` pela migration `407`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS` e deve ser liberada em `Permissoes`. Detalhe completo em `docs/Tela_Motivo_Sem_Producao_SaaS.txt`.
 - Atualizacao 2026-09: `/contrato` criada como tela real de registro e controle sobre `contract`, com campos `telefone_corporativo`, `email`, `nome_gestor` e `empresa`, historico em `app_entity_history` e RPC `save_contract_control_record`. Detalhe completo em `docs/Tela_Contrato_SaaS.txt`.
+- Atualizacao 2026-09: `/responsavel-distribuidora` criada como tela real unica para `project_utility_responsibles` e `project_utility_field_managers`, os catalogos dos campos `Responsavel Distribuidora` e `Gestor de campo Distribuidora` em Projetos. Como a rota existia como placeholder, a migration `410` preserva leitura ja concedida, mas revoga escrita/exportacao de nao-admin ate liberacao explicita em `Permissoes`. Detalhe completo em `docs/Tela_Responsavel_Distribuidora_SaaS.txt`.
