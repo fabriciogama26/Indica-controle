@@ -424,7 +424,17 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
       const latest = projectRows.at(-1) ?? null;
       const latestDate = normalizeIsoDate(latest?.execution_date) ?? "";
       const daysSinceLatest = latestDate ? diffInDays(today, latestDate) : null;
-      const latestWorkCompletion = projectRows
+      // Estado Trabalho DA OBRA sai so das etapas comuns (`is_pendencia = false`).
+      // Regra do banco: a conclusao do projeto e a etapa ativa CONCLUIDO NAO
+      // pendencia — a migration 321 chega a criar o indice unico parcial
+      // `programming_one_active_completion_per_project` com `is_pendencia = false`,
+      // e a 318 (item 4) diz que concluir uma pendencia "nao conta como a conclusao
+      // do projeto". Sem este recorte, uma pendencia concluida (que costuma ter data
+      // posterior, logo e a ultima linha apontada) fazia a obra aparecer em
+      // `Concluidas` e sumir de `Para reprogramar`, `Parciais` e `Pendentes`.
+      const commonRows = projectRows.filter((row) => row.is_pendencia !== true);
+      const latestCommon = commonRows.at(-1) ?? null;
+      const latestWorkCompletion = commonRows
         .filter((row) => normalizeToken(row.work_completion_status))
         .at(-1) ?? null;
       const workCompletionStatus = latestWorkCompletion?.work_completion_status
@@ -486,7 +496,20 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
       const interrupted = latest
         ? (isInterruptedStatus(latest.status) || isInterruptedStatus(workCompletionStatus)) && !completed
         : false;
-      const withoutStatus = Boolean(latest && !workCompletionStatus && (!latestDate || (daysSinceLatest !== null && daysSinceLatest > 0)));
+      // `Sem Estado Trabalho` julga a ETAPA COMUM mais recente, nao o consolidado da
+      // obra: com `!workCompletionStatus` (consolidado) bastava um apontamento
+      // antigo em qualquer etapa para uma etapa nova, vencida e sem apontamento
+      // ficar invisivel — o card so pegava obra que nunca teve apontamento nenhum.
+      // Exige etapa ativa porque etapa ADIADA/CANCELADA nao pode ter apontamento
+      // (migrations 284 e 326) e pendencia aberta e cobrada no card `Pendentes`.
+      const latestCommonDate = normalizeIsoDate(latestCommon?.execution_date) ?? "";
+      const daysSinceLatestCommon = latestCommonDate ? diffInDays(today, latestCommonDate) : null;
+      const withoutStatus = Boolean(
+        latestCommon
+        && isActiveProgrammingStatus(latestCommon.status)
+        && !normalizeToken(latestCommon.work_completion_status)
+        && (!latestCommonDate || (daysSinceLatestCommon !== null && daysSinceLatestCommon > 0)),
+      );
       const actionRequired = !completed && (!hasFutureActiveProgramming || interrupted || withoutStatus);
 
       return {
