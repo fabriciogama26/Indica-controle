@@ -165,12 +165,13 @@ Boas praticas
 - `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
 - Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284; o adiamento in-place tambem limpa o campo desde a migration 326.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
+- `Para reprogramar` NAO conta obra interrompida sem continuidade futura (`interrupted && !hasFutureActiveProgramming`): esse recorte e exatamente o card `Canceladas/adiadas`, entao os dois cards sao disjuntos. Obra interrompida QUE TEM etapa futura ativa continua em `Para reprogramar`.
 - `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente, E a ultima etapa NAO esta `ADIADA`/`CANCELADA`. Obra interrompida e contada somente em `Canceladas/adiadas`, porque para ela o campo vazio e regra de banco e nao falta de apontamento.
 - Obra cuja ultima etapa esta `ADIADA`/`CANCELADA` sem `Estado Trabalho` NAO recebe o nivel `INCONSISTENCY`; cai na escala normal por dias (`NORMAL`/`ATENCAO`/`PRIORIDADE`) e continua priorizada pelo atraso real.
 - O `Estado Trabalho` exibido para obra sem apontamento distingue o motivo: `Nao se aplica (cancelada)` / `Nao se aplica (adiada)` quando a ultima etapa esta interrompida, e `Nao informado` apenas quando a etapa podia ter apontamento e nao teve. O rotulo e montado no servidor, entao vale para tabela, detalhe e CSV.
 - A quantidade de etapas conta linhas de `programming` da obra (uma linha = uma etapa no modelo normalizado).
 - A quantidade de equipes conta `team_id` distintos em `programming_team` (qualquer status) entre as etapas da obra.
-- Pendencia aberta (card `Pendentes`) e a flag `is_pendencia = true` numa etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) cujo `work_completion_status` ainda nao e `CONCLUIDO` — mesma definicao do chip "Pendencias abertas" da lista da Programacao Normalizada.
+- Pendencia aberta (card `Pendentes`) e a flag `is_pendencia = true` numa etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) cujo `work_completion_status` nao e `CONCLUIDO` nem `BENEFICIO_ATINGIDO`, E cuja obra tambem nao esta com o ultimo Estado Trabalho valido em `CONCLUIDO` ou `BENEFICIO_ATINGIDO`. Obra concluida ou com beneficio atingido nao aparece em `Pendentes`, mesmo que uma etapa anterior tenha ficado com a flag ligada — ela ja e contada em `Concluidas` ou em `Beneficio atingido`.
 - Equipe/encarregado da "ultima etapa" mostram TODAS as equipes com `programming_team.status = 'ATIVA'` naquela etapa (lista), nao so uma.
 - Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` em cada dia do periodo, resolvidos via `programming_team` (status `ATIVA`) cruzado com `programming`. A mesma equipe pode aparecer em varios dias se ficou sem agenda nesses dias.
 - Falhas da tela sao registradas com `useErrorLogger("mapa_programacao")`.
@@ -357,7 +358,7 @@ Atualizacao 2026-08-11 - Etapa cancelada deixa de virar falso positivo:
   1. o card `WITHOUT_STATUS` filtra `withoutStatus && !interrupted` — passa a contar so etapa ativa vencida sem apontamento, sem duplicar com `Canceladas/adiadas`;
   2. `resolvePriorityLevel` recebe `latestStatusInterrupted` e nao emite `INCONSISTENCY` para etapa interrompida; a obra cai na escala por dias e segue priorizada pelo atraso;
   3. o rotulo distingue `Nao se aplica (cancelada)` / `Nao se aplica (adiada)` de `Nao informado`, montado no servidor.
-- `Para reprogramar` e `Obras prioritarias` NAO mudaram de conteudo de proposito: obra cancelada sem continuidade continua exigindo acao — ali o resultado ja estava correto.
+- `Para reprogramar` e `Obras prioritarias` NAO mudaram de conteudo de proposito: obra cancelada sem continuidade continua exigindo acao — ali o resultado ja estava correto. (REVISADO em 2026-09-02: por decisao do usuario, `Para reprogramar` passou a excluir a obra cancelada/adiada sem continuidade. `Obras prioritarias` continua com a regra desta atualizacao.)
 - `Prazos das Obras` deixou de comparar o texto do rotulo (`=== "Nao informado"`) e passou a decidir pelo codigo `latestWorkCompletionStatus`, preservando a coluna em branco quando nao ha apontamento.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao. Nenhuma migration nova — a regra de banco ja existia; a tela e que passou a respeita-la na leitura.
 
@@ -693,3 +694,51 @@ Atualizacao 2026-08-31 - Encarregado planejado vindo da Programacao
   tela vazia.
 - Sem mudanca de permissao: a rota continua sob `mapa-programacao/read` e a leitura
   ampla da fachada normalizada segue filtrada por `tenant_id`.
+
+Atualizacao 2026-09-02 - Pendentes nao conta obra concluida nem com beneficio
+-----------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/mapa-programacao/route.ts`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Antes: `hasOpenPendencia` so descartava a etapa cujo `work_completion_status` era
+  exatamente `CONCLUIDO`. `BENEFICIO_ATINGIDO` nao era considerado e o Estado
+  Trabalho consolidado da obra nao era olhado, entao uma obra ja concluida (ou com
+  beneficio atingido) que tivesse uma etapa antiga com `is_pendencia = true`
+  continuava somando no card `Pendentes` e aparecia em dois cards ao mesmo tempo.
+- Depois: a etapa so conta como pendencia aberta quando o Estado Trabalho dela nao
+  e conclusao nem beneficio atingido (`isCompletedWorkStatus` /
+  `isBenefitReachedWorkStatus`, que cobrem as variacoes de token), e a obra so
+  entra no card quando o ultimo Estado Trabalho valido dela tambem nao e conclusao
+  nem beneficio atingido.
+- A descricao do card passou a ser "Programacao ativa com pendencia aberta, sem
+  conclusao nem beneficio atingido.".
+- Efeito esperado: o card `Pendentes` cai, sem sobreposicao com `Concluidas` e
+  `Beneficio atingido`. Nenhum outro card muda de regra.
+- Sem migration, RLS, grant ou permissao nova. A rota segue sob
+  `mapa-programacao/read` e o `tenant_id` continua derivado da sessao.
+
+Atualizacao 2026-09-02 - Para reprogramar nao conta cancelada/adiada
+--------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/mapa-programacao/route.ts`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Antes: o card filtrava so `!neverProgrammed && actionRequired`, e `actionRequired`
+  inclui `interrupted`. A obra cancelada/adiada sem continuidade futura era contada
+  ao mesmo tempo em `Para reprogramar` e em `Canceladas/adiadas`.
+- Depois: o card exclui exatamente o recorte do card `Canceladas/adiadas`
+  (`interrupted && !hasFutureActiveProgramming`). Os dois cards ficam disjuntos.
+- Reversao consciente de decisao anterior: a atualizacao de 2026-08-11 registrou que
+  `Para reprogramar` NAO mudaria porque "obra cancelada sem continuidade continua
+  exigindo acao". A decisao do usuario nesta tarefa e a oposta para o card, e a nota
+  antiga foi marcada como revisada em vez de apagada.
+- `Obras prioritarias` (`priorityProjects`) NAO mudou: continua usando
+  `actionRequired && !neverProgrammed`, entao a obra cancelada/adiada permanece na
+  tabela de prioridade. Se o desejado for tira-la de la tambem, e mudanca separada.
+- `actionRequired` em si nao mudou de significado; o recorte foi aplicado no filtro
+  do card, para nao afetar os outros consumidores do campo.
+- A descricao do card passou a ser "Ultimo Estado Trabalho valido nao concluido e sem
+  programacao futura ativa, fora canceladas/adiadas.".
+- Sem migration, RLS, grant ou permissao nova. A rota segue sob `mapa-programacao/read`
+  e o `tenant_id` continua derivado da sessao.
