@@ -461,17 +461,28 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
         projectRows.flatMap((row) => (row.programming_team ?? []).map((team) => normalizeText(team.team_id)).filter(Boolean)),
       );
       // Pendencia (achado da auditoria): a migration 318 tirou PENDENCIA de
-      // `work_completion_status` e virou a flag `is_pendencia`. "Aberta" segue a
-      // mesma definicao usada no chip da lista de Programacao Normalizada
-      // (queries.ts): flag ligada, etapa ativa e ainda nao concluida.
-      const hasOpenPendencia = projectRows.some(
-        (row) => row.is_pendencia && isActiveProgrammingStatus(row.status) && normalizeToken(row.work_completion_status) !== "CONCLUIDO",
+      // `work_completion_status` e virou a flag `is_pendencia`. A etapa so conta
+      // como pendencia aberta com a flag ligada, status ativo e Estado Trabalho
+      // que nao seja conclusao nem beneficio atingido — os dois encerram o
+      // trabalho da etapa, entao a pendencia dela ja nao esta em aberto.
+      const hasOpenPendenciaStage = projectRows.some(
+        (row) =>
+          row.is_pendencia
+          && isActiveProgrammingStatus(row.status)
+          && !isCompletedWorkStatus(row.work_completion_status)
+          && !isBenefitReachedWorkStatus(row.work_completion_status),
       );
       const hasFutureActiveProgramming = projectRows.some((row) => {
         const executionDate = normalizeIsoDate(row.execution_date);
         return Boolean(executionDate && executionDate >= today && isActiveProgrammingStatus(row.status));
       });
       const completed = isCompletedWorkStatus(workCompletionStatus);
+      const benefitReached = isBenefitReachedWorkStatus(workCompletionStatus);
+      // A obra sai de `Pendentes` quando o ULTIMO Estado Trabalho valido dela e
+      // conclusao ou beneficio atingido, mesmo que uma etapa anterior tenha ficado
+      // com a flag de pendencia: nesse caso a obra ja e contada em `Concluidas` ou
+      // em `Beneficio atingido` e nao ha pendencia a cobrar.
+      const hasOpenPendencia = hasOpenPendenciaStage && !completed && !benefitReached;
       const interrupted = latest
         ? (isInterruptedStatus(latest.status) || isInterruptedStatus(workCompletionStatus)) && !completed
         : false;
@@ -616,8 +627,19 @@ export async function GET(request: NextRequest) {
         consolidatedProjects,
       ),
       buildCard("CONCLUDED", "Concluidas", "Ultimo Estado Trabalho valido concluido.", consolidatedProjects.filter((project) => project.completed)),
-      buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired)),
-      buildCard("PENDING", "Pendentes", "Programacao ativa com pendencia aberta (nao concluida).", consolidatedProjects.filter((project) => project.hasOpenPendencia)),
+      // Obra interrompida sem continuidade futura sai daqui: ela e contada em
+      // `Canceladas/adiadas`, que e o card dela. O recorte excluido e exatamente o
+      // filtro daquele card, entao os dois ficam disjuntos e a obra nao e cobrada
+      // duas vezes na mesma carteira.
+      buildCard(
+        "TO_REPROGRAM",
+        "Para reprogramar",
+        "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa, fora canceladas/adiadas.",
+        consolidatedProjects.filter(
+          (project) => !project.neverProgrammed && project.actionRequired && !(project.interrupted && !project.hasFutureActiveProgramming),
+        ),
+      ),
+      buildCard("PENDING", "Pendentes", "Programacao ativa com pendencia aberta, sem conclusao nem beneficio atingido.", consolidatedProjects.filter((project) => project.hasOpenPendencia)),
       buildCard("PARTIAL_PLANNED", "Parcial planejada", "Ultimo Estado Trabalho valido parcial planejado.", consolidatedProjects.filter((project) => isPartialPlannedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("PARTIAL", "Parciais nao planejada", "Ultimo Estado Trabalho valido parcial nao planejado.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("BENEFIT_REACHED", "Beneficio atingido", "Beneficio atingido sem conclusao marcada.", consolidatedProjects.filter((project) => !project.completed && isBenefitReachedWorkStatus(project.latestWorkCompletionStatus))),
