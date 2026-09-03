@@ -78,6 +78,8 @@ type TeamTypeOption = {
 
 type CategoryOption = TeamTypeOption;
 
+type ActivityGroupOption = TeamTypeOption & { unitValue: number };
+
 type ActivitiesListResponse = {
   activities?: ActivityItem[];
   pagination?: { page: number; pageSize: number; total: number };
@@ -93,7 +95,7 @@ type ActivityHistoryResponse = {
 type ActivitiesMetaResponse = {
   teamTypes?: TeamTypeOption[];
   categories?: CategoryOption[];
-  groups?: CategoryOption[];
+  groups?: ActivityGroupOption[];
   message?: string;
 };
 
@@ -178,7 +180,7 @@ export function ActivitiesPageView() {
   const [activeFilters, setActiveFilters] = useState<ActivityFilterState>(INITIAL_FILTERS);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
-  const [groups, setGroups] = useState<CategoryOption[]>([]);
+  const [groups, setGroups] = useState<ActivityGroupOption[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -409,6 +411,11 @@ export function ActivitiesPageView() {
     setFilterDraft((current) => ({ ...current, [field]: value }));
   }
 
+  function updateGroupField(groupId: string) {
+    const selectedGroup = groups.find((group) => group.id === groupId);
+    setForm((current) => ({ ...current, groupId, value: selectedGroup ? toInputMoney(selectedGroup.unitValue) : "" }));
+  }
+
   function applyFilters() {
     setPage(1);
     setActiveFilters(filterDraft);
@@ -491,7 +498,6 @@ export function ActivitiesPageView() {
         teamTypeId: normalizeText(form.teamTypeId),
         categoryId: normalizeText(form.categoryId),
         groupId: normalizeText(form.groupId),
-        value: form.value,
         voicePoint: form.voicePoint,
         unit: normalizeText(form.unit),
         scope: normalizeText(form.scope) || null,
@@ -748,7 +754,7 @@ export function ActivitiesPageView() {
             value={form.groupId}
             options={groups}
             isLoading={isLoadingMeta}
-            onChange={(groupId) => setForm((current) => ({ ...current, groupId }))}
+            onChange={updateGroupField}
           />
 
           <label className={`${styles.field} ${styles.fieldWide}`}>
@@ -765,15 +771,7 @@ export function ActivitiesPageView() {
             <span>
               Valor <span className="requiredMark">*</span>
             </span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.value}
-              onChange={(event) => setForm((current) => ({ ...current, value: event.target.value }))}
-              placeholder="0,00"
-              required
-            />
+            <input type="number" value={form.value} placeholder="Selecione o grupo" readOnly />
           </label>
 
           <label className={styles.field}>

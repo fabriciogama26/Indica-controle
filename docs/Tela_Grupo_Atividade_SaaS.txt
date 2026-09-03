@@ -3,6 +3,7 @@ Tela: Grupo de Atividade SaaS
 Visao geral
 -----------
 - Tela de `Cadastro Base` para manter o catalogo que alimenta o campo `Grupo` da tela `Atividades`.
+- E a FONTE DE VERDADE do `Valor` unitario da atividade: o grupo carrega `unit_value` e `Atividades` apenas herda.
 - Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
 - Unica das tres etapas com TABELA NOVA: `activity_groups`. Ate aqui `Grupo` era texto livre em
   `service_activities.group_name`.
@@ -11,7 +12,7 @@ Visao geral
 
 Modelo de dados
 ---------------
-- Catalogo: `public.activity_groups` (`tenant_id`, `name`, `ativo`, auditoria), unique `(tenant_id, name)` e
+- Catalogo: `public.activity_groups` (`tenant_id`, `name`, `unit_value`, `ativo`, auditoria), unique `(tenant_id, name)` e
   `(id, tenant_id)` para a FK composta.
 - Vinculo: `service_activities.group_id`, FK composta `(group_id, tenant_id)` ->
   `activity_groups(id, tenant_id)`.
@@ -44,15 +45,21 @@ Arquitetura
 - Guard de rota: `src/lib/auth/authorization.ts`
 - Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
 - Banco, backfill, RPCs e cadastro da pagina: `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
+- Banco (`unit_value` e valor herdado por `Atividades`): `supabase/migrations/411_activity_groups_unit_value_source.sql`
 - Historico generico: `app_entity_history`, criada por
   `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
 
 Cadastro
 --------
-- Campo obrigatorio:
+- Campos obrigatorios:
   - `Nome`
+  - `Valor`
 - Regras:
   - O nome e normalizado com `trim` antes do envio.
+  - `Valor` aceita virgula ou ponto decimal, precisa ser maior ou igual a zero e e arredondado para 2 casas
+    no backend (`normalizeDecimal`) e de novo na RPC.
+  - Editar o `Valor` do grupo propaga o novo valor para `service_activities.unit_value` de todas as
+    atividades vinculadas, na mesma transacao da RPC, do mesmo jeito que ja acontecia com o nome.
   - `activity_groups_tenant_name_key` e `(tenant_id, name)`, case-sensitive; a RPC faz checagem adicional
     por `upper(btrim(name))` para bloquear duplicidade que difere so em caixa ou espaco.
   - Edicao de registro inativo e bloqueada ate reativacao.
@@ -71,13 +78,14 @@ Filtros, auto-complete e listagem
   - `Status`
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`).
-  - Colunas: Nome, Status, Registrado em, Atualizado em, Acoes.
+  - Colunas: Nome, Valor, Status, Registrado em, Atualizado em, Acoes.
   - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - Botao `Exportar Excel (CSV)` no cabecalho, bloqueado por `10` segundos apos cada clique.
 - Historico:
   - Fonte: `app_entity_history`
   - `module_key`: `grupo-atividade`
   - `entity_table`: `activity_groups`
+  - Campos versionados: `name` e `unitValue`.
   - Modal com paginacao fixa de `5` registros por pagina.
 
 Boas praticas
@@ -140,6 +148,46 @@ Atualizacao 2026-08-31
   de 1267 para 1244 linhas, com o baseline do ratchet de tamanho travado para baixo por
   `npm run lint:size:update` — sem precisar de `lint:size:accept`.
 
+Atualizacao 2026-09-02 - Valor passa a ser cadastrado no Grupo
+--------------------------------------------------------------
+- Antes: `Valor` era digitado atividade por atividade em `Atividades`, entao duas atividades do mesmo grupo
+  podiam sair com valores diferentes sem que nada no sistema reclamasse.
+- Depois: `Valor` e cadastrado uma vez por grupo em `/grupo-atividade` e `Atividades` apenas exibe o valor
+  herdado, em campo somente leitura preenchido ao escolher o `Grupo`.
+- Migration `411_activity_groups_unit_value_source.sql`:
+  - adiciona `activity_groups.unit_value numeric(14, 2) not null default 0` com check `>= 0`;
+  - faz o backfill pelos valores canonicos ja usados pela migration `148` (`SOT AEREA` 225,92, `SOC` 151,83,
+    `PODA` 215,26, `LLEE`/`LINHA VIVA` 413,32, `SEGURANCA` 62,31) e, para grupo fora dessa lista, pelo
+    ultimo `service_activities.unit_value` vinculado ao grupo no mesmo tenant;
+  - republica `save_activity_group_record` com `p_unit_value` e derruba a assinatura antiga
+    (`uuid, uuid, uuid, text, timestamptz`), para nao criar overload no PostgREST;
+  - republica `save_service_activity_record` mantendo a assinatura atual: `p_unit_value` continua no
+    contrato, mas e IGNORADO — a RPC resolve `activity_groups.unit_value` do grupo informado e grava esse
+    valor em `service_activities.unit_value`.
+- `service_activities.unit_value` continua existindo como SNAPSHOT, pelo mesmo motivo de `group_name`:
+  `check_measurement_minimum_billing_unit_value` (migration `212`), `/api/locacao/activities/catalog` e
+  `/api/apuracao-fator-minimo` leem a atividade, nao o catalogo. Editar o valor do grupo reescreve o
+  snapshot das atividades vinculadas na mesma transacao, como ja acontecia com o nome.
+- Ordens de medicao ja gravadas NAO sao reescritas: `project_measurement_orders.minimum_billing_unit_value`
+  e snapshot proprio, calculado no salvamento da ordem. Mudar o valor do grupo vale para o que for
+  calculado dali em diante.
+- `POST`/`PUT /api/activities` deixaram de aceitar `value` no payload: o campo saiu de
+  `CreateActivityPayload` e de `parseActivityInput`, e o backend usa `activity_groups.unit_value` do grupo
+  validado no tenant. O historico de `Atividades` continua registrando o campo `value`, agora com o valor
+  vindo do grupo.
+- Cadastro em massa de `Atividades` deixou de ter a coluna `valor` no modelo CSV e nos headers obrigatorios.
+- Efeito no ratchet: `ActivitiesPageView.tsx` foi de 1244 para 1242 linhas (campo `Valor` virou somente
+  leitura e o payload perdeu `value`), com o baseline travado para baixo por `npm run lint:size:update`.
+- Arquivos: `supabase/migrations/411_activity_groups_unit_value_source.sql`,
+  `src/server/modules/activity-groups/controller.ts`,
+  `src/modules/dashboard/grupo-atividade/ActivityGroupsPageView.tsx`,
+  `src/modules/dashboard/grupo-atividade/csv.ts`, `src/app/api/activities/route.ts`,
+  `src/app/api/activities/meta/route.ts`, `src/modules/dashboard/atividades/ActivitiesPageView.tsx`,
+  `src/modules/dashboard/atividades/massImport.ts`, `file-size-baseline.json`,
+  `supabase/migrations/README.txt`, `docs/Tela_Atividades_SaaS.txt`, `docs/Tela_Cadastro_Base_SaaS.txt`.
+- Sem mudanca de RLS, grants ou permissao: as RPCs seguem `SECURITY DEFINER` com EXECUTE so para
+  `service_role` e `tenant_id` continua derivado da sessao no backend.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -154,6 +202,9 @@ Funcoes principais
 - Caminho: `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
   - Responsavel por: criar `activity_groups`, semear o catalogo, vincular `service_activities.group_id`,
     republicar `save_service_activity_record` por id de grupo, criar as RPCs da tela e cadastrar a pagina.
+- Caminho: `supabase/migrations/411_activity_groups_unit_value_source.sql`
+  - Responsavel por: criar `activity_groups.unit_value`, fazer o backfill, republicar `save_activity_group_record`
+    com valor e fazer `save_service_activity_record` gravar o snapshot a partir do catalogo de grupos.
 - Caminho: `src/app/api/activities/route.ts`
   - Responsavel por: validar `groupId` no cadastro/edicao/importacao e devolver `groupId`/`groupName`.
 - Caminho: `src/app/api/activities/meta/route.ts`

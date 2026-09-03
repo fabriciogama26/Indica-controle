@@ -15,6 +15,7 @@ type TypeServiceActivityRow = {
 type ActivityGroupRow = {
   id: string;
   name: string;
+  unit_value: number | string;
 };
 
 function normalizeName(value: string | null | undefined) {
@@ -50,7 +51,7 @@ export async function GET(request: NextRequest) {
         .returns<TypeServiceActivityRow[]>(),
       supabase
         .from("activity_groups")
-        .select("id, name")
+        .select("id, name, unit_value")
         .eq("tenant_id", appUser.tenant_id)
         .eq("ativo", true)
         .order("name", { ascending: true })
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
         .map((item) => ({ id: item.id, name: normalizeName(item.name) }))
         .filter((item) => Boolean(item.id) && Boolean(item.name)),
       groups: (groupsResult.data ?? [])
-        .map((item) => ({ id: item.id, name: normalizeName(item.name) }))
+        .map((item) => ({ id: item.id, name: normalizeName(item.name), unitValue: Number(item.unit_value ?? 0) }))
         .filter((item) => Boolean(item.id) && Boolean(item.name)),
     });
   } catch {

@@ -14,7 +14,6 @@ export type ActivityImportRow = {
   teamTypeId: string;
   categoryId: string;
   groupId: string;
-  value: number;
   voicePoint: number;
   unit: string;
   scope: string;
@@ -25,10 +24,10 @@ export type ActivityImportOption = {
   name: string;
 };
 
-const REQUIRED_HEADERS = ["codigo", "descricao", "tipo_equipe", "categoria", "grupo", "valor", "pontos", "unidade"];
+const REQUIRED_HEADERS = ["codigo", "descricao", "tipo_equipe", "categoria", "grupo", "pontos", "unidade"];
 
 export const ACTIVITY_MASS_IMPORT_COLUMNS_HINT =
-  "Colunas obrigatorias: codigo, descricao, tipo_equipe, categoria, grupo, valor, pontos e unidade. Cod. SAP e alcance sao opcionais. Tipo e categoria devem existir no cadastro base do tenant.";
+  "Colunas obrigatorias: codigo, descricao, tipo_equipe, categoria, grupo, pontos e unidade. Valor vem do cadastro do grupo. Cod. SAP e alcance sao opcionais.";
 
 function normalizeText(value: string) {
   return String(value ?? "").trim();
@@ -63,10 +62,10 @@ function parseDecimal(value: string, minimum: "zero" | "positive") {
 
 export function buildActivityMassImportTemplateCsv() {
   return buildMassImportTemplateCsv(
-    ["codigo", "cod_sap", "descricao", "tipo_equipe", "categoria", "grupo", "valor", "pontos", "unidade", "alcance"],
+    ["codigo", "cod_sap", "descricao", "tipo_equipe", "categoria", "grupo", "pontos", "unidade", "alcance"],
     [
-      ["ATV-001", "SAP-1001", "Instalacao de poste", "LEVE", "REDE", "CONSTRUCAO", "150,00", "1", "un", "Poste ate 11m"],
-      ["ATV-002", "", "Lancamento de cabo", "PESADA", "REDE", "CONSTRUCAO", "12,35", "0,5", "m", ""],
+      ["ATV-001", "SAP-1001", "Instalacao de poste", "LEVE", "REDE", "CONSTRUCAO", "1", "un", "Poste ate 11m"],
+      ["ATV-002", "", "Lancamento de cabo", "PESADA", "REDE", "CONSTRUCAO", "0,5", "m", ""],
     ],
   );
 }
@@ -97,14 +96,12 @@ export function parseActivityMassImportCsv(params: {
     const teamTypeRaw = resolveCsvValue(values, ["tipo_equipe", "tipo", "team_type"]);
     const categoryRaw = resolveCsvValue(values, ["categoria", "category"]);
     const groupRaw = resolveCsvValue(values, ["grupo", "group"]);
-    const valueRaw = resolveCsvValue(values, ["valor", "value"]);
     const voicePointRaw = resolveCsvValue(values, ["pontos", "ponto", "voice_point"]);
     const unit = normalizeText(resolveCsvValue(values, ["unidade", "unit", "umb"]));
     const scope = normalizeText(resolveCsvValue(values, ["alcance", "scope"]));
     const teamType = teamTypeByName.get(normalizeLookupText(teamTypeRaw)) ?? null;
     const category = categoryByName.get(normalizeLookupText(categoryRaw)) ?? null;
     const group = groupByName.get(normalizeLookupText(groupRaw)) ?? null;
-    const value = parseDecimal(valueRaw, "zero");
     const voicePoint = parseDecimal(voicePointRaw, "positive");
     const issuesBefore = issues.length;
 
@@ -130,10 +127,6 @@ export function parseActivityMassImportCsv(params: {
       issues.push({ rowNumber, column: "grupo", value: groupRaw, error: "Grupo invalido ou inativo." });
     }
 
-    if (value === null) {
-      issues.push({ rowNumber, column: "valor", value: valueRaw, error: "Valor invalido. Informe numero maior ou igual a zero." });
-    }
-
     if (voicePoint === null) {
       issues.push({ rowNumber, column: "pontos", value: voicePointRaw, error: "Pontos invalidos. Informe numero maior que zero." });
     }
@@ -155,7 +148,6 @@ export function parseActivityMassImportCsv(params: {
         teamTypeId: teamType?.id ?? "",
         categoryId: category?.id ?? "",
         groupId: group?.id ?? "",
-        value: value ?? 0,
         voicePoint: voicePoint ?? 0,
         unit,
         scope,
