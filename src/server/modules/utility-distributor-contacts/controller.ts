@@ -6,6 +6,7 @@ import {
   buildUserDisplayMap,
   buildUserLoginNameMap,
   normalizeHistoryChanges,
+  normalizeNullableText,
   normalizeText,
   parsePagination,
   parsePositiveInteger,
@@ -26,6 +27,8 @@ type UtilityContactConfig = {
 type UtilityContactRow = {
   id: string;
   name: string;
+  telefone_corporativo: string | null;
+  email: string | null;
   ativo: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -52,6 +55,8 @@ type SaveUtilityContactPayload = {
   id?: string | null;
   kind?: string | null;
   name?: string | null;
+  telefoneCorporativo?: string | null;
+  email?: string | null;
   expectedUpdatedAt?: string | null;
 };
 
@@ -107,6 +112,22 @@ function parseStatusFilter(value: string | null) {
   return null;
 }
 
+function parseContactDetails(body: SaveUtilityContactPayload) {
+  const rawPhone = normalizeNullableText(body.telefoneCorporativo);
+  const telefoneCorporativo = rawPhone ? rawPhone.replace(/\D/g, "") || null : null;
+  const email = normalizeNullableText(body.email);
+
+  if (rawPhone && !telefoneCorporativo) {
+    return { ok: false, message: "Informe apenas numeros no telefone corporativo." } as const;
+  }
+
+  if (email && !email.includes("@")) {
+    return { ok: false, message: "Informe um e-mail valido." } as const;
+  }
+
+  return { ok: true, telefoneCorporativo, email } as const;
+}
+
 async function fetchUtilityContactById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -115,7 +136,7 @@ async function fetchUtilityContactById(
 ) {
   const { data, error } = await supabase
     .from(config.table)
-    .select("id, name, ativo, created_by, updated_by, created_at, updated_at")
+    .select("id, name, telefone_corporativo, email, ativo, created_by, updated_by, created_at, updated_at")
     .eq("tenant_id", tenantId)
     .eq("id", contactId)
     .maybeSingle<UtilityContactRow>();
@@ -145,6 +166,8 @@ async function saveUtilityContactViaRpc(params: {
   kind: UtilityContactKind;
   contactId: string | null;
   name: string;
+  telefoneCorporativo: string | null;
+  email: string | null;
   expectedUpdatedAt: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_utility_distributor_contact_record", {
@@ -153,6 +176,8 @@ async function saveUtilityContactViaRpc(params: {
     p_kind: params.kind,
     p_contact_id: params.contactId,
     p_name: params.name,
+    p_telefone_corporativo: params.telefoneCorporativo,
+    p_email: params.email,
     p_expected_updated_at: params.expectedUpdatedAt,
   });
 
@@ -282,6 +307,8 @@ export async function handleGetUtilityDistributorContacts(request: NextRequest) 
           id: contact.id,
           kind: config.kind,
           name: contact.name,
+          telefoneCorporativo: contact.telefone_corporativo,
+          email: contact.email,
           isActive: contact.ativo,
         },
         history: (historyData ?? []).map((entry) => ({
@@ -306,7 +333,7 @@ export async function handleGetUtilityDistributorContacts(request: NextRequest) 
 
     let query = supabase
       .from(config.table)
-      .select("id, name, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
+      .select("id, name, telefone_corporativo, email, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
       .eq("tenant_id", appUser.tenant_id);
 
     if (name) {
@@ -344,6 +371,8 @@ export async function handleGetUtilityDistributorContacts(request: NextRequest) 
         id: row.id,
         kind: config.kind,
         name: row.name,
+        telefoneCorporativo: row.telefone_corporativo,
+        email: row.email,
         isActive: Boolean(row.ativo),
         createdByName: row.created_by ? userLoginNameMap.get(row.created_by) ?? "Nao identificado" : "Nao identificado",
         updatedByName: row.updated_by ? userDisplayMap.get(row.updated_by) ?? "Nao identificado" : "Nao identificado",
@@ -388,6 +417,11 @@ export async function handleCreateUtilityDistributorContact(request: NextRequest
       return NextResponse.json({ message: `Informe o nome do ${config.singularLabel}.` }, { status: 400 });
     }
 
+    const details = parseContactDetails(body);
+    if (!details.ok) {
+      return NextResponse.json({ message: details.message }, { status: 400 });
+    }
+
     const saveResult = await saveUtilityContactViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
@@ -395,6 +429,8 @@ export async function handleCreateUtilityDistributorContact(request: NextRequest
       kind,
       contactId: null,
       name,
+      telefoneCorporativo: details.telefoneCorporativo,
+      email: details.email,
       expectedUpdatedAt: null,
     });
 
@@ -454,6 +490,11 @@ export async function handleUpdateUtilityDistributorContact(request: NextRequest
       return NextResponse.json({ message: `Informe o nome do ${config.singularLabel}.` }, { status: 400 });
     }
 
+    const details = parseContactDetails(body);
+    if (!details.ok) {
+      return NextResponse.json({ message: details.message }, { status: 400 });
+    }
+
     const saveResult = await saveUtilityContactViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
@@ -461,6 +502,8 @@ export async function handleUpdateUtilityDistributorContact(request: NextRequest
       kind,
       contactId,
       name,
+      telefoneCorporativo: details.telefoneCorporativo,
+      email: details.email,
       expectedUpdatedAt,
     });
 

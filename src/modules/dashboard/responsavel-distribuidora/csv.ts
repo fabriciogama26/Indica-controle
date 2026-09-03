@@ -3,6 +3,8 @@ import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 
 type UtilityContactCsvItem = {
   name: string;
+  telefoneCorporativo: string | null;
+  email: string | null;
   isActive: boolean;
   createdByName: string;
   updatedByName: string;
@@ -14,6 +16,8 @@ export function buildUtilityContactsCsv(items: UtilityContactCsvItem[]) {
   return buildCsvContent(
     [
       "Nome",
+      "Telefone Corporativo",
+      "E-mail",
       "Status",
       "Registrado por",
       "Registrado em",
@@ -22,6 +26,8 @@ export function buildUtilityContactsCsv(items: UtilityContactCsvItem[]) {
     ],
     items.map((item) => [
       item.name,
+      item.telefoneCorporativo ?? "",
+      item.email ?? "",
       item.isActive ? "Ativo" : "Inativo",
       formatAuditActor(item.createdByName),
       formatDateTime(item.createdAt),
