@@ -145,6 +145,7 @@ Ordem de aplicacao
 409. 409_contract_control_fields_and_rpc.sql
 410. 410_create_utility_distributor_contact_page.sql
 411. 411_activity_groups_unit_value_source.sql
+412. 412_allow_measurement_uncancel_status_action.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1386,3 +1387,12 @@ Observacao
 - Republica `save_activity_group_record` para cadastrar/editar `unit_value` com historico em `app_entity_history`.
 - Republica `save_service_activity_record` preservando a assinatura atual, mas usando `activity_groups.unit_value` como fonte de verdade para gravar o snapshot `service_activities.unit_value`.
 - Mantem RLS, grants e tenant derivados do backend: RPCs `SECURITY DEFINER` seguem executaveis apenas por `service_role`.
+
+412_allow_measurement_uncancel_status_action.sql
+- Republica `set_project_measurement_order_status` para permitir `ABRIR` em ordem de
+  Medicao `FECHADA` ou `CANCELADA`.
+- Quando a origem e `CANCELADA`, volta a ordem para `ABERTA`, reativa `is_active`,
+  limpa `cancellation_reason`, `canceled_at` e `canceled_by`, e grava historico
+  `UNCANCEL`.
+- Mantem `SELECT ... FOR UPDATE`, `expected_updated_at`, `tenant_id` recebido do
+  backend autenticado e EXECUTE apenas para `service_role`.
