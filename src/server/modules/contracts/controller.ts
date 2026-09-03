@@ -20,6 +20,7 @@ type ContractRow = {
   nome_gestor: string | null;
   email: string | null;
   telefone_corporativo: number | string | null;
+  number: string | null;
   ativo: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -49,6 +50,7 @@ type SaveContractPayload = {
   nomeGestor?: string | null;
   email?: string | null;
   telefoneCorporativo?: string | null;
+  numeroContrato?: string | null;
   expectedUpdatedAt?: string | null;
 };
 
@@ -87,6 +89,7 @@ function mapContractRow(row: ContractRow, userDisplayMap: Map<string, string>, u
     nomeGestor: row.nome_gestor,
     email: row.email,
     telefoneCorporativo,
+    numeroContrato: row.number,
     isActive: Boolean(row.ativo),
     createdByName: row.created_by ? userLoginNameMap.get(row.created_by) ?? "Nao identificado" : "Nao identificado",
     updatedByName: row.updated_by ? userDisplayMap.get(row.updated_by) ?? "Nao identificado" : "Nao identificado",
@@ -98,7 +101,7 @@ function mapContractRow(row: ContractRow, userDisplayMap: Map<string, string>, u
 async function fetchContractById(supabase: SupabaseClient, tenantId: string, contractId: string) {
   const { data, error } = await supabase
     .from("contract")
-    .select("id, name, empresa, nome_gestor, email, telefone_corporativo, ativo, created_by, updated_by, created_at, updated_at")
+    .select("id, name, empresa, nome_gestor, email, telefone_corporativo, number, ativo, created_by, updated_by, created_at, updated_at")
     .eq("tenant_id", tenantId)
     .eq("id", contractId)
     .maybeSingle<ContractRow>();
@@ -139,6 +142,7 @@ async function saveContractViaRpc(params: {
   nomeGestor: string | null;
   email: string | null;
   telefoneCorporativo: string | null;
+  numeroContrato: string | null;
   expectedUpdatedAt: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_contract_control_record", {
@@ -150,6 +154,7 @@ async function saveContractViaRpc(params: {
     p_nome_gestor: params.nomeGestor,
     p_email: params.email,
     p_telefone_corporativo: params.telefoneCorporativo,
+    p_number: params.numeroContrato,
     p_expected_updated_at: params.expectedUpdatedAt,
   });
 
@@ -181,6 +186,7 @@ function validateContractPayload(body: SaveContractPayload) {
   const nomeGestor = normalizeNullableText(body.nomeGestor);
   const email = normalizeNullableText(body.email);
   const telefoneCorporativo = normalizeNullableText(body.telefoneCorporativo);
+  const numeroContrato = normalizeNullableText(body.numeroContrato);
 
   if (!name) {
     return { ok: false, message: "Informe o nome do contrato." } as const;
@@ -198,6 +204,7 @@ function validateContractPayload(body: SaveContractPayload) {
       nomeGestor,
       email,
       telefoneCorporativo,
+      numeroContrato,
     },
   } as const;
 }
@@ -304,7 +311,7 @@ export async function handleGetContracts(request: NextRequest) {
 
     let query = supabase
       .from("contract")
-      .select("id, name, empresa, nome_gestor, email, telefone_corporativo, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
+      .select("id, name, empresa, nome_gestor, email, telefone_corporativo, number, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
       .eq("tenant_id", appUser.tenant_id);
 
     if (name) {

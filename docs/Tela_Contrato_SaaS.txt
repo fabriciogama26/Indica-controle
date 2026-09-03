@@ -18,18 +18,21 @@ Arquitetura
 - Banco: `contract`, criada por `supabase/migrations/032_create_contrato_table.sql` e renomeada por `033_rename_contrato_to_contract.sql`
 - Historico generico: `app_entity_history`, criada por `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
 - Migration/RPC: `supabase/migrations/409_contract_control_fields_and_rpc.sql`
+- N. de contrato e trava de 1 contrato por tenant: `supabase/migrations/413_contract_number_and_single_per_tenant.sql`
 
 Cadastro
 --------
 - Campos:
   - `Nome` obrigatorio.
+  - `N. de Contrato` opcional, gravado na coluna legada `contract."number"` e exposto na API/UI como `numeroContrato`.
   - `Empresa` opcional.
   - `Gestor` opcional.
   - `E-mail` opcional.
   - `Telefone corporativo` opcional, enviado somente com digitos.
 - Regras:
   - O backend deriva `tenant_id` e usuario pela sessao; o cliente nao envia tenant.
-  - A tabela segue com `UNIQUE (tenant_id)`, mantendo um contrato por tenant.
+  - Um contrato por tenant, em duas camadas: a RPC recusa o segundo insert com `CONTRACT_ALREADY_EXISTS` (409) e o banco tem indice unico em `tenant_id`, garantido pela `413`. Corrida entre dois inserts simultaneos cai no `unique_violation` e volta como `DUPLICATE_CONTRACT` (409).
+  - `N. de Contrato` passa por `trim`; em branco grava `NULL`, e a constraint `chk_contract_number_not_blank` impede string em branco.
   - Edicao exige `expectedUpdatedAt` e usa RPC com `SELECT ... FOR UPDATE`.
   - Edicao de contrato inativo e bloqueada ate reativacao por processo separado.
   - A migration normaliza a coluna manual `"e-mail"` para `email`, preservando dados quando nao ha conflito.
@@ -48,7 +51,7 @@ Filtros, auto-complete e listagem
   - `Status`
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`).
-  - Colunas: Nome, Empresa, Gestor, E-mail, Telefone, Status, Atualizado em, Acoes.
+  - Colunas: Nome, N. de Contrato, Empresa, Gestor, E-mail, Telefone, Status, Atualizado em, Acoes.
   - Acoes: `Detalhes`, `Editar`, `Historico`.
   - Botao `Exportar Excel (CSV)` no cabecalho.
   - Exportacao usa `mode=export` e exige permissao `export` no backend.
@@ -89,6 +92,10 @@ Atualizacao 2026-09
 - Depois: a API `/api/contracts` aplica autorizacao por `page_key = contrato` nas acoes `read`, `create`, `update` e `export`.
 - Criada a migration `409_contract_control_fields_and_rpc.sql` com os campos `telefone_corporativo`, `email`, `nome_gestor` e `empresa`, alem da RPC `save_contract_control_record`.
 - A migration trata drift manual renomeando `"e-mail"` para `email` quando a coluna ja existe no banco vivo.
+- Criada a migration `413_contract_number_and_single_per_tenant.sql`, que versiona a coluna legada `contract."number"` (drift: existia no banco vivo desde antes das migrations e nunca foi usada pelo app), normaliza o tipo para `text` quando necessario, adiciona `chk_contract_number_not_blank` e cria o indice unico por `tenant_id` quando ele nao existe.
+- Por que `text`: `N. de contrato` e identificador, nao valor aritmetico — zero a esquerda e formatos como `2024/001` precisam sobreviver. Se algum consumidor externo do mesmo banco ler a coluna como numero, ele precisa ser ajustado.
+- Por que o indice unico: a `032` declarou `tenant_id uuid not null unique` dentro de um `create table if not exists`; se a tabela ja existia como `contrato` legada, a constraint nunca foi aplicada e a unica barreira era a checagem otimista da RPC.
+- A mesma migration recria `save_contract_control_record` com `p_number`, removendo a assinatura antiga com `drop function` para nao gerar sobrecarga.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -103,6 +110,8 @@ Funcoes principais
   - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar a RPC transacional.
 - Caminho: `supabase/migrations/409_contract_control_fields_and_rpc.sql`
   - Responsavel por: versionar os novos campos e salvar alteracoes com historico na mesma transacao.
+- Caminho: `supabase/migrations/413_contract_number_and_single_per_tenant.sql`
+  - Responsavel por: coluna `number` como `text`, trava unica por `tenant_id` e a versao atual de `save_contract_control_record`.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/contrato/ContractsPageView.tsx`
