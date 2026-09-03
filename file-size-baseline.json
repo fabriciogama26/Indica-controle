@@ -16,7 +16,7 @@
     "src/modules/dashboard/medicao/MeasurementPageView.tsx": 3644,
     "src/modules/dashboard/meta/MetaPageView.tsx": 1069,
     "src/modules/dashboard/pessoas/PeoplePageView.tsx": 1946,
-    "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1065,
+    "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1054,
     "src/modules/dashboard/projetos/ProjectsPageView.tsx": 4148,
     "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2671,
     "src/server/modules/dashboard-measurement/controller.ts": 1589

@@ -279,3 +279,53 @@ Ajuda contextual
   - Atualizacao (2026-05): antes os cards de situacao contavam apenas a pagina atual; depois usam resumo filtrado completo antes da paginacao.
   - Atualizacao (2026-05): antes a exportacao podia parar na primeira chamada quando a API limitava `pageSize` para `100`; depois a exportacao usa o lote efetivo da API e continua ate atingir o total filtrado.
   - Atualizacao (2026-05): antes a area de filtros ficava limitada a centro, situacao, material, serial e LP; depois permite combinar rastreio, ultima operacao, tipo material, descricao, projeto, equipe, encarregado e periodo da ultima movimentacao.
+
+Atualizacao 2026-09-03 - Saldo pendente de identificacao de serial fica visivel
+--------------------------------------------------------------------------------------------
+- Problema: `stock_serial_pending_balances` existe desde a migration 247 e recebe escrita em
+  toda entrada/transferencia sem Serial de RELIGADOR/CHAVE, mas nenhuma tela lia a tabela
+  (`grep` por ela em `src/` retornava zero ocorrencias). Nao existia forma, pela aplicacao,
+  de saber quantas unidades estavam sem serial em cada centro -- o saldo agregado contava as
+  unidades, o rastreio unitario nao as via, e a conta nunca fechava.
+- Depois: a tela ganha o card `Pendentes de serial` no resumo e um painel recolhivel
+  `Pendentes de identificacao de serial` com a quebra por centro, material, rastreio e tipo
+  de entrada.
+- Sem migration: a policy `stock_serial_pending_balances_tenant_select` ja existe desde a 247
+  e a leitura na rota e por `service_role`, com `tenant_id` derivado da sessao.
+- Regras do painel:
+  - O saldo pendente NAO e unidade rastreada: e agregado anonimo por material, centro,
+    projeto e tipo de entrada. Por isso nao entra em `items`, nao tem Serial, LP, CMD,
+    equipe, projeto nem data, e nao aparece na exportacao CSV (que continua sendo a lista de
+    unidades identificadas).
+  - O painel honra apenas os filtros que fazem sentido para um agregado: `Centro fisico`,
+    `Codigo`, `Descricao` e `Rastreio`. Filtro de unidade (Serial, LP, CMD, situacao,
+    projeto, equipe, encarregado, periodo) nao se aplica e e ignorado pelo bloco, o que esta
+    escrito na propria tela para nao gerar leitura errada do numero.
+  - O painel nao filtra por `allow_pending_serial_identification`: mostra todo saldo com
+    `quantity > 0`, inclusive de material cuja flag tenha sido desligada antes da trava
+    criada pela migration 414. E uma tela de auditoria, entao mostra o que existe.
+- Implementacao: `loadPendingSerialBalances` carrega o saldo com `loadAllRows` (sem `.limit()`
+  proprio, respeitando o teto de 1.000 do PostgREST), coleta os ids e resolve material e
+  centro em duas consultas `.in()`. Os filtros de material sao aplicados no banco; o material
+  que nao sobrevive ao filtro leva o saldo dele junto no join em memoria.
+- Arquivos alterados:
+  - `src/app/api/trafo-positions/route.ts`
+  - `src/modules/dashboard/posicao-trafo/types.ts`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx`
+  - `src/modules/dashboard/posicao-trafo/TrafoPositionPageView.module.css`
+  - `src/modules/dashboard/posicao-trafo/components/PendingSerialBalancePanel.tsx` (novo)
+  - `src/modules/dashboard/posicao-trafo/components/TrafoPositionSummaryCards.tsx` (novo)
+  - `file-size-baseline.json`
+- Funcoes/hooks/constantes tocadas (2026-09-03):
+  - `loadPendingSerialBalances` (nova, em `api/trafo-positions/route.ts`)
+  - `TrafoPositionSummary.pendingSerialCount`, `PendingSerialBalanceItem` (novo tipo)
+  - `TrafoPositionListResponse.pendingSerialBalances`
+  - `PendingSerialBalancePanel`, `TrafoPositionSummaryCards`
+  - `.pendingPanel`, `.pendingSummary`, `.pendingBadge`, `.pendingHint`, `.pendingEmpty`
+  - `.statsGrid` passou de 5 para 6 colunas
+- Permissao: nenhuma mudanca. O bloco usa o mesmo `page_key` `posicao-trafo` da tela visivel,
+  carregado pela mesma rota, conforme o padrao de permissao por tela do CLAUDE.md.
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros). `TrafoPositionPageView.tsx`
+  encolheu de 1065 para 1054 linhas com a extracao dos cards de resumo; baseline reduzido via
+  `npm run lint:size:update`. Comandos de banco nao executados: o Supabase CLI nao esta
+  linkado neste ambiente.

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type MaterialRelation = {
   id: string;
@@ -47,6 +48,25 @@ type AppUserRow = {
   id: string;
   display: string | null;
   login_name: string | null;
+};
+
+type PendingSerialBalanceRow = {
+  material_id: string;
+  stock_center_id: string;
+  entry_type: string | null;
+  quantity: number | string | null;
+};
+
+type PendingBalanceMaterialRow = {
+  id: string;
+  codigo: string;
+  descricao: string;
+  serial_tracking_type: SerialTrackingType | null;
+};
+
+type PendingBalanceCenterRow = {
+  id: string;
+  name: string;
 };
 
 type TeamRow = {
@@ -282,6 +302,107 @@ type SerialRetireRpcResult = {
   retirement_id?: string;
   details?: unknown;
 };
+
+// O saldo pendente nao e uma unidade rastreada: e um agregado anonimo por material,
+// centro, projeto e tipo de entrada em `stock_serial_pending_balances`. Por isso ele
+// nao entra em `items` (que so tem unidade com serial) e so honra os filtros que fazem
+// sentido para um agregado: centro, codigo, descricao e tipo de rastreio. Filtro de
+// unidade (serial, LP, CMD, equipe, projeto, data, situacao) nao se aplica -- pendencia
+// nao tem nenhum desses atributos.
+async function loadPendingSerialBalances(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  stockCenterId: string;
+  materialCode: string;
+  description: string;
+  serialTrackingType: string;
+}) {
+  let balanceQuery = params.supabase
+    .from("stock_serial_pending_balances")
+    .select("material_id, stock_center_id, entry_type, quantity")
+    .eq("tenant_id", params.tenantId)
+    .gt("quantity", 0);
+
+  if (params.stockCenterId) {
+    balanceQuery = balanceQuery.eq("stock_center_id", params.stockCenterId);
+  }
+
+  const balanceResult = await loadAllRows<PendingSerialBalanceRow>(
+    (from, to) => balanceQuery.range(from, to).returns<PendingSerialBalanceRow[]>(),
+  );
+
+  if (balanceResult.error) {
+    return { data: null, error: balanceResult.error } as const;
+  }
+
+  const balances = balanceResult.data ?? [];
+  if (!balances.length) {
+    return { data: [], error: null } as const;
+  }
+
+  const materialIds = [...new Set(balances.map((row) => row.material_id))];
+  const stockCenterIds = [...new Set(balances.map((row) => row.stock_center_id))];
+
+  let materialQuery = params.supabase
+    .from("materials")
+    .select("id, codigo, descricao, serial_tracking_type")
+    .eq("tenant_id", params.tenantId)
+    .in("id", materialIds);
+
+  if (params.materialCode) {
+    materialQuery = materialQuery.ilike("codigo", `%${params.materialCode}%`);
+  }
+
+  if (params.description) {
+    materialQuery = materialQuery.ilike("descricao", `%${params.description}%`);
+  }
+
+  if (params.serialTrackingType !== "TODOS") {
+    materialQuery = materialQuery.eq("serial_tracking_type", params.serialTrackingType);
+  }
+
+  const [materialResult, centerResult] = await Promise.all([
+    materialQuery.returns<PendingBalanceMaterialRow[]>(),
+    params.supabase
+      .from("stock_centers")
+      .select("id, name")
+      .eq("tenant_id", params.tenantId)
+      .in("id", stockCenterIds)
+      .returns<PendingBalanceCenterRow[]>(),
+  ]);
+
+  if (materialResult.error || centerResult.error) {
+    return { data: null, error: materialResult.error ?? centerResult.error } as const;
+  }
+
+  const materialById = new Map((materialResult.data ?? []).map((row) => [row.id, row]));
+  const centerNameById = new Map((centerResult.data ?? []).map((row) => [row.id, row.name]));
+
+  const items = balances.flatMap((row) => {
+    // Material que nao sobreviveu ao filtro aplicado no banco sai junto do saldo dele.
+    const material = materialById.get(row.material_id);
+    if (!material) {
+      return [];
+    }
+
+    return [{
+      materialId: row.material_id,
+      materialCode: material.codigo,
+      description: material.descricao,
+      serialTrackingType: normalizeSerialTrackingType(material.serial_tracking_type),
+      stockCenterId: row.stock_center_id,
+      stockCenterName: centerNameById.get(row.stock_center_id) ?? "Centro nao encontrado",
+      entryType: String(row.entry_type ?? "").toUpperCase(),
+      quantity: Number(row.quantity ?? 0),
+    }];
+  });
+
+  items.sort((left, right) =>
+    left.stockCenterName.localeCompare(right.stockCenterName, "pt-BR")
+    || left.materialCode.localeCompare(right.materialCode, "pt-BR"));
+
+  return { data: items, error: null } as const;
+}
 
 async function loadTrafoHistory(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
@@ -889,6 +1010,24 @@ export async function GET(request: NextRequest) {
 
     transformedItems.sort((left, right) => toTimestamp(right.updatedAt) - toTimestamp(left.updatedAt));
 
+    const pendingBalancesResult = await loadPendingSerialBalances({
+      supabase,
+      tenantId: appUser.tenant_id,
+      stockCenterId,
+      materialCode,
+      description,
+      serialTrackingType,
+    });
+
+    if (pendingBalancesResult.error) {
+      return NextResponse.json(
+        { message: "Falha ao carregar o saldo pendente de identificacao de serial." },
+        { status: 500 },
+      );
+    }
+
+    const pendingSerialBalances = pendingBalancesResult.data ?? [];
+
     const summary = transformedItems.reduce(
       (current, item) => {
         if (item.currentStatus === "EM_ESTOQUE") current.inOwnCount += 1;
@@ -902,6 +1041,7 @@ export async function GET(request: NextRequest) {
         withTeamCount: 0,
         outsideCount: 0,
         retCount: 0,
+        pendingSerialCount: pendingSerialBalances.reduce((total, row) => total + row.quantity, 0),
       },
     );
 
@@ -911,6 +1051,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         items: transformedItems,
         summary,
+        pendingSerialBalances,
         pagination: {
           page: 1,
           pageSize: transformedItems.length,
@@ -922,6 +1063,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       items: transformedItems.slice(from, from + pageSize),
       summary,
+      pendingSerialBalances,
       pagination: {
         page,
         pageSize,

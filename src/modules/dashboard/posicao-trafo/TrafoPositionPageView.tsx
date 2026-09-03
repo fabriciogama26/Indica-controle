@@ -11,7 +11,10 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { usePagination } from "@/hooks/usePagination";
 import { serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { EXPORT_COOLDOWN_MS, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
+import { PendingSerialBalancePanel } from "./components/PendingSerialBalancePanel";
+import { TrafoPositionSummaryCards } from "./components/TrafoPositionSummaryCards";
 import type {
+  PendingSerialBalanceItem,
   StockCenterOption,
   TrafoPositionFilters,
   TrafoPositionHistoryEntry,
@@ -114,7 +117,9 @@ export function TrafoPositionPageView() {
     withTeamCount: 0,
     outsideCount: 0,
     retCount: 0,
+    pendingSerialCount: 0,
   });
+  const [pendingSerialBalances, setPendingSerialBalances] = useState<PendingSerialBalanceItem[]>([]);
   const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -206,7 +211,8 @@ export function TrafoPositionPageView() {
         if (!response.ok) {
           if (isMounted) {
             setItems([]);
-            setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
+            setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0, pendingSerialCount: 0 });
+            setPendingSerialBalances([]);
             setTotal(0);
             setFeedback({ type: "error", message: data.message ?? "Falha ao carregar o rastreio de serial." });
           }
@@ -223,13 +229,15 @@ export function TrafoPositionPageView() {
         if (isMounted) {
           setFeedback(null);
           setItems(data.items ?? []);
-          setSummary(data.summary ?? { inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
+          setSummary(data.summary ?? { inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0, pendingSerialCount: 0 });
+          setPendingSerialBalances(data.pendingSerialBalances ?? []);
           setTotal(data.pagination?.total ?? 0);
         }
       } catch (error) {
         if (isMounted) {
           setItems([]);
-          setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
+          setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0, pendingSerialCount: 0 });
+          setPendingSerialBalances([]);
           setTotal(0);
           setFeedback({ type: "error", message: "Falha ao carregar o rastreio de serial." });
         }
@@ -734,28 +742,9 @@ export function TrafoPositionPageView() {
           </div>
         </div>
 
-        <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Registros filtrados</span>
-            <strong className={styles.statValue}>{total}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Em estoque proprio</span>
-            <strong className={styles.statValue}>{summary.inOwnCount}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Com equipe</span>
-            <strong className={styles.statValue}>{summary.withTeamCount}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>RET</span>
-            <strong className={styles.statValue}>{summary.retCount}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Fora do estoque proprio</span>
-            <strong className={styles.statValue}>{summary.outsideCount}</strong>
-          </div>
-        </div>
+        <TrafoPositionSummaryCards summary={summary} total={total} />
+
+        <PendingSerialBalancePanel items={pendingSerialBalances} isLoading={isLoadingList} />
 
         <div className={styles.tableWrapper}>
           <table className={styles.table}>

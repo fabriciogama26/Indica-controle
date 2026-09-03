@@ -100,7 +100,7 @@
 .statsGrid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .statCard {
@@ -615,4 +615,54 @@
   .table {
     min-width: 980px;
   }
+}
+
+.pendingPanel {
+  border-radius: 18px;
+  border: 1px solid rgba(205, 127, 50, 0.24);
+  background: rgba(205, 127, 50, 0.06);
+  padding: 14px 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.pendingSummary {
+  cursor: pointer;
+  color: #8b4f13;
+  font-weight: 800;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pendingBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(205, 127, 50, 0.18);
+  border: 1px solid rgba(205, 127, 50, 0.2);
+  color: #8b4f13;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.pendingHint {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.85rem;
+}
+
+.pendingEmpty {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.88rem;
+}
+
+.pendingPanel .table {
+  min-width: 720px;
 }
