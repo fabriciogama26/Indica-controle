@@ -18,6 +18,7 @@ import { buildContractsCsv } from "./csv";
 type ContractItem = {
   id: string;
   name: string;
+  numeroContrato: string | null;
   empresa: string | null;
   nomeGestor: string | null;
   email: string | null;
@@ -42,6 +43,7 @@ type ContractFormState = {
   id: string | null;
   updatedAt: string | null;
   name: string;
+  numeroContrato: string;
   empresa: string;
   nomeGestor: string;
   email: string;
@@ -75,6 +77,7 @@ const INITIAL_FORM: ContractFormState = {
   id: null,
   updatedAt: null,
   name: "",
+  numeroContrato: "",
   empresa: "",
   nomeGestor: "",
   email: "",
@@ -90,6 +93,7 @@ const INITIAL_FILTERS: ContractFilterState = {
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome",
+  numeroContrato: "N. de contrato",
   empresa: "Empresa",
   nomeGestor: "Gestor",
   email: "E-mail",
@@ -301,6 +305,7 @@ export function ContractsPageView() {
       id: contract.id,
       updatedAt: contract.updatedAt,
       name: contract.name,
+      numeroContrato: contract.numeroContrato ?? "",
       empresa: contract.empresa ?? "",
       nomeGestor: contract.nomeGestor ?? "",
       email: contract.email ?? "",
@@ -347,6 +352,7 @@ export function ContractsPageView() {
         body: JSON.stringify({
           id: form.id,
           name: normalizeText(form.name),
+          numeroContrato: normalizeText(form.numeroContrato) || null,
           empresa: normalizeText(form.empresa) || null,
           nomeGestor: normalizeText(form.nomeGestor) || null,
           email: normalizeText(form.email) || null,
@@ -452,6 +458,16 @@ export function ContractsPageView() {
               onChange={(event) => updateFormField("name", event.target.value)}
               placeholder="Ex.: Contrato principal"
               required
+            />
+          </label>
+
+          <label className={styles.field}>
+            <span>N. de Contrato</span>
+            <input
+              type="text"
+              value={form.numeroContrato}
+              onChange={(event) => updateFormField("numeroContrato", event.target.value)}
+              placeholder="Ex.: 2024/001"
             />
           </label>
 
@@ -579,6 +595,7 @@ export function ContractsPageView() {
             <thead>
               <tr>
                 <th>Nome</th>
+                <th>N. de Contrato</th>
                 <th>Empresa</th>
                 <th>Gestor</th>
                 <th>E-mail</th>
@@ -598,6 +615,7 @@ export function ContractsPageView() {
                         {!contract.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
+                    <td>{formatOptionalText(contract.numeroContrato)}</td>
                     <td>{formatOptionalText(contract.empresa)}</td>
                     <td>{formatOptionalText(contract.nomeGestor)}</td>
                     <td>{formatOptionalText(contract.email)}</td>
@@ -640,7 +658,7 @@ export function ContractsPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className={styles.emptyRow}>
+                  <td colSpan={9} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando contratos..." : "Nenhum contrato encontrado para os filtros informados."}
                   </td>
                 </tr>
@@ -679,6 +697,7 @@ export function ContractsPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Status:</strong> {detailContract.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Nome:</strong> {detailContract.name}</div>
+                <div><strong>N. de Contrato:</strong> {formatOptionalText(detailContract.numeroContrato)}</div>
                 <div><strong>Empresa:</strong> {formatOptionalText(detailContract.empresa)}</div>
                 <div><strong>Gestor:</strong> {formatOptionalText(detailContract.nomeGestor)}</div>
                 <div><strong>E-mail:</strong> {formatOptionalText(detailContract.email)}</div>

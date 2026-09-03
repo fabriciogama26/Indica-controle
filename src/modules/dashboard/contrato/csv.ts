@@ -3,6 +3,7 @@ import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 
 type ContractCsvItem = {
   name: string;
+  numeroContrato: string | null;
   empresa: string | null;
   nomeGestor: string | null;
   email: string | null;
@@ -23,6 +24,7 @@ export function buildContractsCsv(contracts: ContractCsvItem[]) {
   return buildCsvContent(
     [
       "Nome",
+      "N. de Contrato",
       "Empresa",
       "Gestor",
       "E-mail",
@@ -35,6 +37,7 @@ export function buildContractsCsv(contracts: ContractCsvItem[]) {
     ],
     contracts.map((contract) => [
       contract.name,
+      formatOptionalText(contract.numeroContrato),
       formatOptionalText(contract.empresa),
       formatOptionalText(contract.nomeGestor),
       formatOptionalText(contract.email),
