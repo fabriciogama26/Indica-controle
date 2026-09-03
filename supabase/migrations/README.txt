@@ -143,6 +143,8 @@ Ordem de aplicacao
 407. 407_create_no_production_reason_page_and_rpcs.sql
 408. 408_create_stock_center_page_and_rpcs.sql
 409. 409_contract_control_fields_and_rpc.sql
+410. 410_create_utility_distributor_contact_page.sql
+411. 411_activity_groups_unit_value_source.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1377,3 +1379,10 @@ Observacao
 - As duas tabelas continuam alimentando os campos `Responsavel Distribuidora` e `Gestor de campo Distribuidora` em Projetos via `/api/projects/meta`, sempre filtradas por tenant e `ativo`.
 - Como a rota existia como placeholder, define `default_user_access = false` e revoga escrita/exportacao de nao-admin herdada de `can_access`, preservando leitura ja concedida.
 - Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated`, se a pagina nao estiver ativa ou se sobrar escrita para nao-admin.
+
+411_activity_groups_unit_value_source.sql
+- Adiciona `activity_groups.unit_value numeric(14,2)` com check de valor maior ou igual a zero.
+- Faz backfill do valor do grupo pelos valores canonicos conhecidos (`SOT AEREA`, `SOC`, `PODA`, `LLEE`/`LINHA VIVA`, `SEGURANCA`) e, para grupos customizados, pelo ultimo `service_activities.unit_value` vinculado.
+- Republica `save_activity_group_record` para cadastrar/editar `unit_value` com historico em `app_entity_history`.
+- Republica `save_service_activity_record` preservando a assinatura atual, mas usando `activity_groups.unit_value` como fonte de verdade para gravar o snapshot `service_activities.unit_value`.
+- Mantem RLS, grants e tenant derivados do backend: RPCs `SECURITY DEFINER` seguem executaveis apenas por `service_role`.

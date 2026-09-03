@@ -3,7 +3,7 @@ Tela: Atividades SaaS
 Visao geral
 -----------
 - Tela de cadastro de atividades para contratos e servicos por tenant.
-- Permite registrar e editar atividades com foco em: `codigo`, `Cod. SAP`, `descricao`, `tipo`, `categoria`, `grupo`, `valor`, `pontos` e `unidade`.
+- Permite registrar e editar atividades com foco em: `codigo`, `Cod. SAP`, `descricao`, `tipo`, `categoria`, `grupo`, `valor` herdado do grupo, `pontos` e `unidade`.
 - Cadastro, lista, detalhes e exportacao exibem `Cod. SAP` com origem em `service_activities.code_idd`.
 - `grupo` e obrigatorio no cadastro/edicao; `alcance` permanece opcional.
 - Lista atividades cadastradas com filtro por codigo, descricao, tipo, categoria e status (`Ativo/Inativo`).
@@ -30,6 +30,7 @@ Arquitetura
 - Banco (grupo obrigatorio em atividades): `supabase/migrations/180_require_service_activity_group_in_rpc.sql`
 - Banco (cadastro/edicao de Cod. SAP): `supabase/migrations/372_update_service_activity_code_idd_rpc.sql`
 - Banco (correcao de drift do Cod. SAP): `supabase/migrations/406_fix_service_activities_code_idd_text.sql`
+- Banco (valor por grupo): `supabase/migrations/411_activity_groups_unit_value_source.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
@@ -43,7 +44,6 @@ Cadastro
   - `Tipo`
   - `Categoria`
   - `Grupo`
-  - `Valor`
   - `Pontos`
   - `Unidade`
 - Campo opcional:
@@ -51,7 +51,7 @@ Cadastro
 - Regras:
   - `Codigo` e salvo em caixa alta.
   - `Cod. SAP` e opcional; texto vazio e salvo como `NULL`.
-  - `Valor` deve ser numerico e maior ou igual a zero.
+  - `Valor` e preenchido automaticamente pelo `Grupo` selecionado, a partir de `activity_groups.unit_value`.
   - `Pontos` deve ser numerico e maior que zero.
   - `Grupo` deve ser preenchido.
   - `Tipo` deve existir e estar ativo em `team_types` no mesmo tenant.
@@ -422,10 +422,10 @@ Atualizacao 2026-08-17 - Cod. SAP no cadastro, lista e detalhes
 Cadastro em massa
 -----------------
 - Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao, e fica desabilitado enquanto os catalogos da tela carregam.
-- Modelo CSV: `codigo;cod_sap;descricao;tipo_equipe;categoria;grupo;valor;pontos;unidade;alcance`.
-- Colunas obrigatorias: `codigo`, `descricao`, `tipo_equipe`, `categoria`, `grupo`, `valor`, `pontos` e `unidade`. `cod_sap` e `alcance` sao opcionais.
+- Modelo CSV: `codigo;cod_sap;descricao;tipo_equipe;categoria;grupo;pontos;unidade;alcance`.
+- Colunas obrigatorias: `codigo`, `descricao`, `tipo_equipe`, `categoria`, `grupo`, `pontos` e `unidade`. `cod_sap` e `alcance` sao opcionais.
 - `tipo_equipe` e `categoria` sao informados pelo nome e resolvidos contra os catalogos ativos do tenant.
-- `valor` aceita zero ou mais, com virgula ou ponto decimal; `pontos` exige valor maior que zero.
+- `valor` nao e informado no CSV: vem do cadastro do `grupo`; `pontos` exige valor maior que zero.
 - `codigo` e normalizado para maiusculo e codigo repetido dentro do arquivo e recusado.
 - Envio: `POST /api/activities` com `action = BATCH_IMPORT` e `rows`.
 - O backend revalida tipo, categoria e o pre-check de codigo duplicado (`precheck_activity_code_conflict`) antes de chamar `saveActivityViaRpc` linha a linha.
@@ -543,3 +543,13 @@ Atualizacao 2026-09-01 - CSV de erros do cadastro em massa
   centenas de linhas falsas com campos obrigatorios vazios. Depois: `parseCsvRows` interpreta o CSV inteiro
   e so separa registros fora de aspas.
 - Sem mudanca de RLS, grants ou permissao. O `tenant_id` continua derivado da sessao no backend.
+
+Atualizacao 2026-09-02 - Valor passa a vir do Grupo
+---------------------------------------------------
+- `activity_groups` passa a carregar `unit_value`, mantido pela tela `/grupo-atividade`.
+- Em `Atividades`, o campo `Valor` continua visivel para conferencia, mas fica preenchido automaticamente pelo grupo selecionado e nao e editado diretamente.
+- `POST`/`PUT /api/activities` deixam de aceitar `value` no payload: o campo saiu de `CreateActivityPayload` e de `parseActivityInput` (o helper `normalizeDecimal` da rota ficou sem uso e foi removido) e o backend resolve o grupo ativo do tenant para usar `activity_groups.unit_value`.
+- A RPC `save_service_activity_record` continua gravando `service_activities.unit_value` como snapshot para faturamento, medicao, locacao e apuracao, mas a fonte de verdade passa a ser o cadastro de Grupos.
+- Cadastro em massa de Atividades deixa de exigir a coluna `valor`; o CSV informa `grupo` por nome e o valor e herdado do catalogo.
+- Arquivos alterados/criados: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`, `src/modules/dashboard/atividades/massImport.ts`, `src/app/api/activities/route.ts`, `src/app/api/activities/meta/route.ts`, `supabase/migrations/411_activity_groups_unit_value_source.sql`.
+- Multi-tenant: leitura e escrita continuam filtradas por `tenant_id` derivado da sessao; `activity_groups.unit_value` e lido somente no tenant atual.

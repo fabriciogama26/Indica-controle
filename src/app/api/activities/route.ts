@@ -64,6 +64,7 @@ type TypeServiceActivityRow = {
 type ActivityGroupRow = {
   id: string;
   name: string;
+  unit_value: number | string;
 };
 
 type ActivityHistoryRow = {
@@ -87,7 +88,6 @@ type CreateActivityPayload = {
   teamTypeId: string;
   categoryId: string;
   groupId: string;
-  value: string | number;
   voicePoint: string | number;
   unit: string;
   scope?: string;
@@ -146,15 +146,6 @@ function parseActivityStatusFilter(value: string | null) {
   return null;
 }
 
-function normalizeDecimal(value: unknown) {
-  const raw = String(value ?? "").trim().replace(",", ".");
-  const numeric = Number(raw);
-  if (!Number.isFinite(numeric) || numeric < 0) {
-    return null;
-  }
-  return Number(numeric.toFixed(2));
-}
-
 function normalizePositiveDecimal(value: unknown) {
   const raw = String(value ?? "").trim().replace(",", ".");
   const numeric = Number(raw);
@@ -172,7 +163,6 @@ function parseActivityInput(payload: Partial<CreateActivityPayload>) {
     teamTypeId: normalizeText(payload.teamTypeId),
     categoryId: normalizeText(payload.categoryId),
     groupId: normalizeText(payload.groupId),
-    value: normalizeDecimal(payload.value),
     voicePoint: normalizePositiveDecimal(payload.voicePoint),
     unit: normalizeText(payload.unit),
     scope: normalizeNullableText(payload.scope),
@@ -291,7 +281,7 @@ function mapActivitySaveRpcError(error: ActivityRpcError) {
   if (error.code === "23502") {
     return {
       message:
-        "Campo obrigatorio ausente no salvamento da atividade. Confira codigo, descricao, tipo, categoria, grupo, valor, pontos e unidade.",
+        "Campo obrigatorio ausente no salvamento da atividade. Confira codigo, descricao, tipo, categoria, grupo, pontos e unidade.",
       reason: "INVALID_ACTIVITY",
     };
   }
@@ -376,7 +366,7 @@ async function fetchActivityGroupById(
 ) {
   const { data, error } = await supabase
     .from("activity_groups")
-    .select("id, name")
+    .select("id, name, unit_value")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .eq("id", activityGroupId)
@@ -389,6 +379,7 @@ async function fetchActivityGroupById(
   return {
     id: data.id,
     name: normalizeText(data.name),
+    unitValue: Number(data.unit_value ?? 0),
   };
 }
 
@@ -456,7 +447,7 @@ async function importActivityBatch(params: {
   const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
   const validTeamTypeIds = new Map<string, boolean>();
   const validCategoryIds = new Map<string, boolean>();
-  const validGroupIds = new Map<string, boolean>();
+  const validGroupsById = new Map<string, Awaited<ReturnType<typeof fetchActivityGroupById>>>();
   let savedCount = 0;
 
   for (const [index, row] of params.rows.entries()) {
@@ -469,7 +460,6 @@ async function importActivityBatch(params: {
       || !input.teamTypeId
       || !input.categoryId
       || !input.groupId
-      || input.value === null
       || input.voicePoint === null
       || !input.unit
     ) {
@@ -506,14 +496,15 @@ async function importActivityBatch(params: {
       continue;
     }
 
-    if (!validGroupIds.has(input.groupId)) {
-      validGroupIds.set(
+    if (!validGroupsById.has(input.groupId)) {
+      validGroupsById.set(
         input.groupId,
-        Boolean(await fetchActivityGroupById(params.supabase, params.tenantId, input.groupId)),
+        await fetchActivityGroupById(params.supabase, params.tenantId, input.groupId),
       );
     }
 
-    if (!validGroupIds.get(input.groupId)) {
+    const activityGroup = validGroupsById.get(input.groupId);
+    if (!activityGroup) {
       results.push({ rowNumber, success: false, message: "Grupo invalido para o tenant atual.", code: "INVALID_GROUP" });
       continue;
     }
@@ -547,7 +538,7 @@ async function importActivityBatch(params: {
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
       groupId: input.groupId,
-      value: input.value as number,
+      value: activityGroup.unitValue,
       voicePoint: input.voicePoint as number,
       unit: input.unit,
       scope: input.scope,
@@ -897,14 +888,12 @@ export async function POST(request: NextRequest) {
       || !input.teamTypeId
       || !input.categoryId
       || !input.groupId
-      || input.value === null
       || input.voicePoint === null
       || !input.unit
     ) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
     }
 
-    const unitValue = input.value as number;
     const voicePoint = input.voicePoint as number;
 
     if (!(await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId))) {
@@ -915,7 +904,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Categoria invalida para o tenant atual." }, { status: 422 });
     }
 
-    if (!(await fetchActivityGroupById(supabase, appUser.tenant_id, input.groupId))) {
+    const activityGroup = await fetchActivityGroupById(supabase, appUser.tenant_id, input.groupId);
+    if (!activityGroup) {
       return NextResponse.json({ message: "Grupo invalido para o tenant atual." }, { status: 422 });
     }
 
@@ -946,7 +936,7 @@ export async function POST(request: NextRequest) {
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
       groupId: input.groupId,
-      value: unitValue,
+      value: activityGroup.unitValue,
       voicePoint,
       unit: input.unit,
       scope: input.scope,
@@ -1001,14 +991,12 @@ export async function PUT(request: NextRequest) {
       || !input.teamTypeId
       || !input.categoryId
       || !input.groupId
-      || input.value === null
       || input.voicePoint === null
       || !input.unit
     ) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da atividade." }, { status: 400 });
     }
 
-    const unitValue = input.value as number;
     const voicePoint = input.voicePoint as number;
 
     const currentActivity = await fetchActivityById(supabase, appUser.tenant_id, activityId);
@@ -1068,7 +1056,7 @@ export async function PUT(request: NextRequest) {
     // O historico continua guardando o NOME do grupo, nao o id: e o que a tela
     // exibe. `group_name` da linha atual ja e o snapshot do nome anterior.
     addChange(changes, "group", currentActivity.group_name, nextActivityGroup.name);
-    addDecimalChange(changes, "value", currentActivity.unit_value, unitValue, 2);
+    addDecimalChange(changes, "value", currentActivity.unit_value, nextActivityGroup.unitValue, 2);
     addDecimalChange(changes, "voicePoint", currentActivity.voice_point, voicePoint, 6);
     addChange(changes, "unit", currentActivity.unit, input.unit);
     addChange(changes, "scope", currentActivity.scope, input.scope);
@@ -1088,7 +1076,7 @@ export async function PUT(request: NextRequest) {
       teamTypeId: input.teamTypeId,
       categoryId: input.categoryId,
       groupId: input.groupId,
-      value: unitValue,
+      value: nextActivityGroup.unitValue,
       voicePoint,
       unit: input.unit,
       scope: input.scope,

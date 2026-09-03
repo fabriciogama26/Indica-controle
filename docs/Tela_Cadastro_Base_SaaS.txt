@@ -32,6 +32,7 @@ Arquitetura
 - RPC de `Tipo de Equipe` e aposentadoria do page_key `tipo-atividade`: `supabase/migrations/402_move_team_type_screen_to_tipo_equipe.sql`
 - RPC e pagina de `Categoria de Atividade`: `supabase/migrations/403_create_activity_category_page_and_rpcs.sql`
 - Catalogo, vinculo, RPCs e pagina de `Grupo de Atividade`: `supabase/migrations/404_create_activity_group_catalog_and_page.sql`
+- Valor unitario no `Grupo de Atividade`: `supabase/migrations/411_activity_groups_unit_value_source.sql`
 - RPC e pagina de `Motivo sem producao`: `supabase/migrations/407_create_no_production_reason_page_and_rpcs.sql`
 - RPC e pagina de `Centro de estoque`: `supabase/migrations/408_create_stock_center_page_and_rpcs.sql`
 - RPC e pagina de `Responsaveis Distribuidora`: `supabase/migrations/410_create_utility_distributor_contact_page.sql`
@@ -43,7 +44,7 @@ Cadastro
 - `Configuracao do Mapa do Almoxarifado` possui tela real para cadastrar layout fisico por centro de estoque.
 - `Tipo de Equipe` possui tela real e e o unico CRUD de `team_types` no sistema; o mesmo catalogo alimenta o campo `Tipo` de `Equipes` e o campo `Tipo` de `Atividades`.
 - `Categoria de Atividade` possui tela real e administra `types_service_activities`, que alimenta o campo `Categoria` de `Atividades`. Nao se confunde com `/tipo-servico`, placeholder reservado para `project_service_types` (Tipo de Servico do projeto).
-- `Grupo de Atividade` possui tela real e administra `activity_groups`, tabela CRIADA na etapa 3 para tirar o campo `Grupo` de `Atividades` do texto livre.
+- `Grupo de Atividade` possui tela real e administra `activity_groups`, tabela CRIADA na etapa 3 para tirar o campo `Grupo` de `Atividades` do texto livre. Desde a migration `411`, o grupo tambem cadastra o `Valor` unitario e passa a ser a fonte de verdade do campo `Valor` de `Atividades`, que so herda.
 - `Motivo sem producao` possui tela real e administra `measurement_no_production_reasons`, catalogo consumido por `Medicao`, `Medicao Asbuilt` e `Faturamento` nos fluxos `SEM_PRODUCAO`.
 - `Centro de estoque` possui tela real e administra somente `stock_centers` fisicos (`OWN`, `controls_balance = true`) sem vinculo em `teams.stock_center_id`; centros proprios de equipe nao aparecem e nao podem ser alterados pela tela.
 - `Responsaveis Distribuidora` possui tela real unica com duas abas: `Responsaveis Distribuidora` administra `project_utility_responsibles` e `Gestores de campo` administra `project_utility_field_managers`.
@@ -54,7 +55,7 @@ Filtros, auto-complete e listagem
 - `Contrato` lista com paginacao server-side, filtros por `Nome`, `Empresa`, `Gestor` e `Status`, detalhes, historico e exportacao CSV.
 - `Configuracao do Mapa do Almoxarifado` lista visualmente o grid configurado, prateleiras, andares e posicoes.
 - `Tipo de Equipe` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico e exportacao CSV.
-- `Categoria de Atividade` e `Grupo de Atividade` listam no mesmo formato de `Tipo de Equipe`.
+- `Categoria de Atividade` e `Grupo de Atividade` listam no mesmo formato de `Tipo de Equipe`; `Grupo de Atividade` exibe tambem a coluna `Valor`.
 - `Motivo sem producao` lista com paginacao server-side, filtros por `Codigo`, `Nome` e `Status`, ordem automatica de 10 em 10 no cadastro, detalhes, historico, cancelamento/ativacao e exportacao CSV.
 - `Centro de estoque` lista com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico, cancelamento/ativacao e exportacao CSV, excluindo centros vinculados a equipes.
 - `Responsaveis Distribuidora` lista por aba com paginacao server-side, filtros por `Nome` e `Status`, detalhes, historico, cancelamento/ativacao e exportacao CSV.

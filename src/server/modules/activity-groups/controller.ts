@@ -16,6 +16,7 @@ import { authorizePageAction } from "@/lib/server/routeAuthorization";
 type ActivityGroupRow = {
   id: string;
   name: string;
+  unit_value: number | string;
   ativo: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -41,6 +42,7 @@ type ActivityGroupHistoryRow = {
 type SaveActivityGroupPayload = {
   id?: string | null;
   name?: string | null;
+  unitValue?: string | number | null;
   expectedUpdatedAt?: string | null;
 };
 
@@ -71,6 +73,15 @@ function parseStatusFilter(value: string | null) {
   return null;
 }
 
+function normalizeDecimal(value: unknown) {
+  const raw = String(value ?? "").trim().replace(",", ".");
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    return null;
+  }
+  return Number(numeric.toFixed(2));
+}
+
 async function fetchActivityGroupById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -78,7 +89,7 @@ async function fetchActivityGroupById(
 ) {
   const { data, error } = await supabase
     .from("activity_groups")
-    .select("id, name, ativo, created_by, updated_by, created_at, updated_at")
+    .select("id, name, unit_value, ativo, created_by, updated_by, created_at, updated_at")
     .eq("tenant_id", tenantId)
     .eq("id", activityGroupId)
     .maybeSingle<ActivityGroupRow>();
@@ -96,6 +107,7 @@ async function saveActivityGroupViaRpc(params: {
   actorUserId: string;
   activityGroupId: string | null;
   name: string;
+  unitValue: number;
   expectedUpdatedAt: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_activity_group_record", {
@@ -103,6 +115,7 @@ async function saveActivityGroupViaRpc(params: {
     p_actor_user_id: params.actorUserId,
     p_activity_group_id: params.activityGroupId,
     p_name: params.name,
+    p_unit_value: params.unitValue,
     p_expected_updated_at: params.expectedUpdatedAt,
   });
 
@@ -261,6 +274,7 @@ export async function handleGetActivityGroups(request: NextRequest) {
         activityGroup: {
           id: activityGroup.id,
           name: activityGroup.name,
+          unitValue: Number(activityGroup.unit_value ?? 0),
           isActive: activityGroup.ativo,
         },
         history: (historyData ?? []).map((entry) => ({
@@ -285,7 +299,7 @@ export async function handleGetActivityGroups(request: NextRequest) {
 
     let query = supabase
       .from("activity_groups")
-      .select("id, name, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
+      .select("id, name, unit_value, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
       .eq("tenant_id", appUser.tenant_id);
 
     if (name) {
@@ -321,6 +335,7 @@ export async function handleGetActivityGroups(request: NextRequest) {
       activityGroups: (data ?? []).map((row) => ({
         id: row.id,
         name: row.name,
+        unitValue: Number(row.unit_value ?? 0),
         isActive: Boolean(row.ativo),
         createdByName: row.created_by ? userLoginNameMap.get(row.created_by) ?? "Nao identificado" : "Nao identificado",
         updatedByName: row.updated_by ? userDisplayMap.get(row.updated_by) ?? "Nao identificado" : "Nao identificado",
@@ -357,9 +372,10 @@ export async function handleCreateActivityGroup(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as SaveActivityGroupPayload;
     const name = normalizeText(body.name);
+    const unitValue = normalizeDecimal(body.unitValue);
 
-    if (!name) {
-      return NextResponse.json({ message: "Informe o nome do grupo de atividade." }, { status: 400 });
+    if (!name || unitValue === null) {
+      return NextResponse.json({ message: "Informe o nome e o valor do grupo de atividade." }, { status: 400 });
     }
 
     const saveResult = await saveActivityGroupViaRpc({
@@ -368,6 +384,7 @@ export async function handleCreateActivityGroup(request: NextRequest) {
       actorUserId: appUser.id,
       activityGroupId: null,
       name,
+      unitValue,
       expectedUpdatedAt: null,
     });
 
@@ -410,6 +427,7 @@ export async function handleUpdateActivityGroup(request: NextRequest) {
     const activityGroupId = normalizeText(body.id);
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const name = normalizeText(body.name);
+    const unitValue = normalizeDecimal(body.unitValue);
 
     if (!activityGroupId) {
       return NextResponse.json({ message: "Grupo de atividade invalido para edicao." }, { status: 400 });
@@ -422,8 +440,8 @@ export async function handleUpdateActivityGroup(request: NextRequest) {
       );
     }
 
-    if (!name) {
-      return NextResponse.json({ message: "Informe o nome do grupo de atividade." }, { status: 400 });
+    if (!name || unitValue === null) {
+      return NextResponse.json({ message: "Informe o nome e o valor do grupo de atividade." }, { status: 400 });
     }
 
     const saveResult = await saveActivityGroupViaRpc({
@@ -432,6 +450,7 @@ export async function handleUpdateActivityGroup(request: NextRequest) {
       actorUserId: appUser.id,
       activityGroupId,
       name,
+      unitValue,
       expectedUpdatedAt,
     });
 

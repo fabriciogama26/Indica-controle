@@ -10,7 +10,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { downloadCsvFile } from "@/lib/utils/csv";
-import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
+import { formatAuditActor, formatCurrency, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE, DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
 import styles from "../pessoas/PeoplePageView.module.css";
 import { buildActivityGroupsCsv } from "./csv";
@@ -18,6 +18,7 @@ import { buildActivityGroupsCsv } from "./csv";
 type ActivityGroupItem = {
   id: string;
   name: string;
+  unitValue: number;
   isActive: boolean;
   createdByName: string;
   updatedByName: string;
@@ -38,6 +39,7 @@ type ActivityGroupFormState = {
   id: string | null;
   updatedAt: string | null;
   name: string;
+  unitValue: string;
 };
 
 type ActivityGroupFilterState = {
@@ -65,6 +67,7 @@ const INITIAL_FORM: ActivityGroupFormState = {
   id: null,
   updatedAt: null,
   name: "",
+  unitValue: "",
 };
 
 const INITIAL_FILTERS: ActivityGroupFilterState = {
@@ -74,6 +77,7 @@ const INITIAL_FILTERS: ActivityGroupFilterState = {
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome",
+  unitValue: "Valor",
   isActive: "Status",
   cancellationReason: "Motivo do cancelamento",
   activationReason: "Motivo da ativacao",
@@ -81,6 +85,10 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 
 function normalizeText(value: string) {
   return String(value ?? "").trim();
+}
+
+function toInputMoney(value: number) {
+  return String(Number(value ?? 0).toFixed(2));
 }
 
 function buildQuery(filters: ActivityGroupFilterState, page: number, pageSize = PAGE_SIZE, mode?: "export") {
@@ -105,6 +113,10 @@ function formatHistoryValue(field: string, value: string | null) {
   }
   if (field === "isActive") {
     return value === "true" ? "Ativo" : "Inativo";
+  }
+  if (field === "unitValue") {
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? formatCurrency(numericValue) : value;
   }
   return value;
 }
@@ -277,6 +289,7 @@ export function ActivityGroupsPageView() {
       id: activityGroup.id,
       updatedAt: activityGroup.updatedAt,
       name: activityGroup.name,
+      unitValue: toInputMoney(activityGroup.unitValue),
     });
     setFeedback(null);
     scrollDashboardContentToTop();
@@ -330,6 +343,7 @@ export function ActivityGroupsPageView() {
         body: JSON.stringify({
           id: form.id,
           name: normalizeText(form.name),
+          unitValue: form.unitValue,
           ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
         }),
       });
@@ -498,6 +512,21 @@ export function ActivityGroupsPageView() {
             />
           </label>
 
+          <label className={styles.field}>
+            <span>
+              Valor <span className="requiredMark">*</span>
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.unitValue}
+              onChange={(event) => setForm((current) => ({ ...current, unitValue: event.target.value }))}
+              placeholder="0,00"
+              required
+            />
+          </label>
+
           <div className={`${styles.actions} ${styles.formActions}`}>
             {isEditing ? (
               <button type="button" className={styles.ghostButton} onClick={resetForm} disabled={isSaving}>
@@ -561,6 +590,7 @@ export function ActivityGroupsPageView() {
             <thead>
               <tr>
                 <th>Nome</th>
+                <th>Valor</th>
                 <th>Status</th>
                 <th>Registrado em</th>
                 <th>Atualizado em</th>
@@ -577,6 +607,7 @@ export function ActivityGroupsPageView() {
                         {!activityGroup.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
+                    <td>{formatCurrency(activityGroup.unitValue)}</td>
                     <td>{activityGroup.isActive ? "Ativo" : "Inativo"}</td>
                     <td>{formatDateTime(activityGroup.createdAt)}</td>
                     <td>{formatDateTime(activityGroup.updatedAt)}</td>
@@ -629,7 +660,7 @@ export function ActivityGroupsPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className={styles.emptyRow}>
+                  <td colSpan={6} className={styles.emptyRow}>
                     {isLoadingList
                       ? "Carregando grupos de atividade..."
                       : "Nenhum grupo de atividade encontrado para os filtros informados."}
@@ -670,6 +701,7 @@ export function ActivityGroupsPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Status:</strong> {detailActivityGroup.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Nome:</strong> {detailActivityGroup.name}</div>
+                <div><strong>Valor:</strong> {formatCurrency(detailActivityGroup.unitValue)}</div>
                 <div><strong>Registrado por:</strong> {formatAuditActor(detailActivityGroup.createdByName)}</div>
                 <div><strong>Criado em:</strong> {formatDateTime(detailActivityGroup.createdAt)}</div>
                 <div><strong>Atualizado por:</strong> {formatAuditActor(detailActivityGroup.updatedByName)}</div>

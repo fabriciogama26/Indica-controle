@@ -1,8 +1,9 @@
-import { buildCsvContent } from "@/lib/utils/csv";
+import { buildCsvContent, formatCsvNumber } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 
 type ActivityGroupCsvItem = {
   name: string;
+  unitValue: number;
   isActive: boolean;
   createdByName: string;
   updatedByName: string;
@@ -14,6 +15,7 @@ export function buildActivityGroupsCsv(activityGroups: ActivityGroupCsvItem[]) {
   return buildCsvContent(
     [
       "Nome",
+      "Valor",
       "Status",
       "Registrado por",
       "Registrado em",
@@ -22,6 +24,7 @@ export function buildActivityGroupsCsv(activityGroups: ActivityGroupCsvItem[]) {
     ],
     activityGroups.map((activityGroup) => [
       activityGroup.name,
+      formatCsvNumber(activityGroup.unitValue),
       activityGroup.isActive ? "Ativo" : "Inativo",
       formatAuditActor(activityGroup.createdByName),
       formatDateTime(activityGroup.createdAt),
