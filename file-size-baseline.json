@@ -13,7 +13,7 @@
     "src/modules/dashboard/locacao/LocationPageView.tsx": 1960,
     "src/modules/dashboard/materiais/MaterialsPageView.tsx": 1695,
     "src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx": 1262,
-    "src/modules/dashboard/medicao/MeasurementPageView.tsx": 3645,
+    "src/modules/dashboard/medicao/MeasurementPageView.tsx": 3644,
     "src/modules/dashboard/meta/MetaPageView.tsx": 1069,
     "src/modules/dashboard/pessoas/PeoplePageView.tsx": 1946,
     "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1065,

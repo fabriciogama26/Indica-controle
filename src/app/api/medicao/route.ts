@@ -396,7 +396,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   if ((action === "CANCELAR" || action === "ABRIR") && (!reason || reason.length < 10)) {
-    return NextResponse.json({ message: action === "ABRIR" ? "Informe motivo da reabertura com no minimo 10 caracteres." : "Informe motivo do cancelamento com no minimo 10 caracteres." }, { status: 400 });
+    return NextResponse.json({ message: action === "ABRIR" ? "Informe motivo da abertura ou descancelamento com no minimo 10 caracteres." : "Informe motivo do cancelamento com no minimo 10 caracteres." }, { status: 400 });
   }
 
   const { data, error } = await resolution.supabase.rpc("set_project_measurement_order_status", {

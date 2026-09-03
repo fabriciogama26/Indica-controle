@@ -588,8 +588,13 @@ function formatHistoryActionLabel(action: string) {
   if (normalized === "UPDATE") return "Edicao";
   if (normalized === "CLOSE") return "Fechamento";
   if (normalized === "CANCEL") return "Cancelamento";
+  if (normalized === "OPEN") return "Abertura";
+  if (normalized === "UNCANCEL") return "Descancelamento";
   return normalized || "Atualizacao";
 }
+
+function getOpenStatusActionLabel(status: MeasurementStatus | undefined) { return status === "CANCELADA" ? "Descancelar" : "Abrir"; }
+function getOpenStatusReasonLabel(status: MeasurementStatus | undefined) { return status === "CANCELADA" ? "descancelamento" : "reabertura"; }
 
 function formatHistoryValue(value: unknown) {
   if (value === null || value === undefined) return "-";
@@ -1081,6 +1086,9 @@ export function MeasurementPageView() {
   }, [form.items, form.manualRate, form.measurementKind, minimumBillingPreview?.amount]);
   const shouldShowRateSuggestionHint = !form.id && Boolean(form.projectId);
   const isGeneratingExport = Boolean(exportProgress);
+  const statusModalIsOpenAction = statusAction === "ABRIR";
+  const statusModalOpenActionLabel = getOpenStatusActionLabel(statusOrder?.status);
+  const statusModalReasonLabel = getOpenStatusReasonLabel(statusOrder?.status);
   const rateSuggestionHint = shouldShowRateSuggestionHint
     ? (
       isLoadingRateSuggestion
@@ -2675,17 +2683,8 @@ export function MeasurementPageView() {
     setHistoryPage(1);
   }
 
-  function openCancelModal(order: OrderItem) {
-    setStatusOrder(order);
-    setStatusAction("CANCELAR");
-    setStatusReason("");
-  }
-
-  function openReopenModal(order: OrderItem) {
-    setStatusOrder(order);
-    setStatusAction("ABRIR");
-    setStatusReason("");
-  }
+  function openCancelModal(order: OrderItem) { setStatusOrder(order); setStatusAction("CANCELAR"); setStatusReason(""); }
+  function openReopenModal(order: OrderItem) { setStatusOrder(order); setStatusAction("ABRIR"); setStatusReason(""); }
 
   function closeStatusModal() {
     if (isChangingStatus) return;
@@ -2708,7 +2707,7 @@ export function MeasurementPageView() {
   async function submitStatusChange(order: OrderItem, action: StatusAction, reason = "") {
     if (!accessToken) return;
     if ((action === "CANCELAR" || action === "ABRIR") && reason.trim().length < 10) {
-      setFeedback({ type: "error", message: action === "ABRIR" ? "Motivo da reabertura deve ter no minimo 10 caracteres." : "Motivo do cancelamento deve ter no minimo 10 caracteres." });
+      setFeedback({ type: "error", message: action === "ABRIR" ? `Motivo do ${getOpenStatusReasonLabel(order.status)} deve ter no minimo 10 caracteres.` : "Motivo do cancelamento deve ter no minimo 10 caracteres." });
       return false;
     }
 
@@ -3309,22 +3308,22 @@ export function MeasurementPageView() {
                       <button
                         type="button"
                         className={`${styles.actionButton} ${styles.actionClose}`}
-                        disabled={(order.status !== "ABERTA" && order.status !== "FECHADA") || isChangingStatus}
+                        disabled={(order.status !== "ABERTA" && order.status !== "FECHADA" && order.status !== "CANCELADA") || isChangingStatus}
                         onClick={() => {
                           if (order.status === "ABERTA") {
                             void submitStatusChange(order, "FECHAR");
                             return;
                           }
-                          if (order.status === "FECHADA") {
+                          if (order.status === "FECHADA" || order.status === "CANCELADA") {
                             openReopenModal(order);
                           }
                         }}
-                        aria-label={`${order.status === "FECHADA" ? "Abrir" : "Fechar"} ordem ${order.orderNumber}`}
-                        title={order.status === "FECHADA" ? "Abrir" : "Fechar"}
+                        aria-label={`${order.status === "ABERTA" ? "Fechar" : getOpenStatusActionLabel(order.status)} ordem ${order.orderNumber}`}
+                        title={order.status === "ABERTA" ? "Fechar" : getOpenStatusActionLabel(order.status)}
                       >
                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                           <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
-                          {order.status === "FECHADA" ? (
+                          {order.status === "FECHADA" || order.status === "CANCELADA" ? (
                             <path
                               d="M12 8v8m-4-4h8"
                               stroke="currentColor"
@@ -3507,21 +3506,21 @@ export function MeasurementPageView() {
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
               <div className={styles.modalTitleBlock}>
-                <h4>{statusAction === "ABRIR" ? "Abrir Ordem de Medicao" : "Cancelar Ordem de Medicao"}</h4>
+                <h4>{statusModalIsOpenAction ? `${statusModalOpenActionLabel} Ordem de Medicao` : "Cancelar Ordem de Medicao"}</h4>
                 <p className={styles.modalSubtitle}>
-                  Ordem {statusOrder.orderNumber} {statusAction === "ABRIR" ? "sera reaberta." : "sera cancelada."}
+                  Ordem {statusOrder.orderNumber} {statusModalIsOpenAction ? `sera ${statusOrder.status === "CANCELADA" ? "descancelada" : "reaberta"}.` : "sera cancelada."}
                 </p>
               </div>
             </header>
 
             <div className={styles.modalBody}>
               <label className={styles.field}>
-                <span>{statusAction === "ABRIR" ? "Motivo da reabertura" : "Motivo do cancelamento"} <span className="requiredMark">*</span></span>
+                <span>{statusModalIsOpenAction ? `Motivo do ${statusModalReasonLabel}` : "Motivo do cancelamento"} <span className="requiredMark">*</span></span>
                 <textarea
                   rows={4}
                   value={statusReason}
                   onChange={(event) => setStatusReason(event.target.value)}
-                  placeholder={statusAction === "ABRIR" ? "Descreva o motivo da reabertura (minimo 10 caracteres)" : "Descreva o motivo do cancelamento (minimo 10 caracteres)"}
+                  placeholder={statusModalIsOpenAction ? `Descreva o motivo do ${statusModalReasonLabel} (minimo 10 caracteres)` : "Descreva o motivo do cancelamento (minimo 10 caracteres)"}
                 />
               </label>
 
@@ -3535,7 +3534,7 @@ export function MeasurementPageView() {
                   onClick={() => void confirmStatusReasonAction()}
                   disabled={!canSubmitStatusReason}
                 >
-                  {isChangingStatus ? (statusAction === "ABRIR" ? "Abrindo..." : "Cancelando...") : (statusAction === "ABRIR" ? "Confirmar abertura" : "Confirmar cancelamento")}
+                  {isChangingStatus ? (statusModalIsOpenAction ? `${statusModalOpenActionLabel}...` : "Cancelando...") : (statusModalIsOpenAction ? `Confirmar ${statusModalReasonLabel}` : "Confirmar cancelamento")}
                 </button>
               </div>
             </div>

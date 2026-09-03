@@ -182,6 +182,7 @@ Filtros, auto-complete e listagem
   - Cancelar (permitido em `ABERTA` e `FECHADA`, motivo obrigatorio e bloqueio somente quando `CANCELADA`)
   - Fechar (somente quando `ABERTA`)
   - Abrir (somente quando `FECHADA`, com modal de motivo obrigatorio e registro no historico)
+  - Descancelar (somente quando `CANCELADA`, com modal de motivo obrigatorio e registro no historico)
 - Modal de detalhes:
   - Exibe `Tipo da medicao` e `Motivo sem producao` no cabecalho.
   - Exibe `Composicao equipe = Sim/Nao` conforme a existencia de composicao ativa para o mesmo `tenant + Projeto + Equipe + Data execucao`.
@@ -200,6 +201,8 @@ Cancelamento e saldo
 --------------------
 - `Cancelamento` exige motivo minimo e grava historico.
 - `Fechamento` da ordem altera status para `FECHADA`.
+- `Descancelamento` usa a acao `ABRIR`, exige motivo minimo, volta a ordem para `ABERTA`,
+  reativa `is_active`, limpa os campos de cancelamento e grava historico `UNCANCEL`.
 - Nao existe status `FATURADA` nesta etapa.
 - Nao ha impacto direto em saldo de estoque nesta tela.
 
@@ -1701,3 +1704,28 @@ Atualizacao 2026-09-01 - Select de Equipe com encarregado
 - Sem alteracao de API, payload, filtros, schema, RLS, grants ou permissoes: o
   valor enviado continua sendo `team_id` e a tela reutiliza `foremanName` ja
   carregado nos metadados existentes.
+
+Atualizacao 2026-09-03 - Descancelamento de ordem
+--------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/app/api/medicao/route.ts`
+  - `supabase/migrations/412_allow_measurement_uncancel_status_action.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+  - `file-size-baseline.json`
+- A lista da Medicao passou a permitir a acao `Descancelar` em ordens com
+  `Status = CANCELADA`.
+- A tela reutiliza o PATCH `/api/medicao` com `action = ABRIR`, `expectedUpdatedAt`
+  e motivo minimo de 10 caracteres; o botao mostra `Descancelar` quando a origem e
+  cancelada e continua mostrando `Abrir` para ordens fechadas.
+- A migration `412_allow_measurement_uncancel_status_action.sql` republica
+  `set_project_measurement_order_status` para aceitar `ABRIR` quando o status atual
+  e `FECHADA` ou `CANCELADA`.
+- Ao descancelar, a RPC volta a ordem para `ABERTA`, define `is_active = true`,
+  limpa `cancellation_reason`, `canceled_at` e `canceled_by`, e grava historico com
+  `action_type = UNCANCEL`.
+- Permissoes e multi-tenant: sem nova `page_key` nem acao granular; a rota continua
+  derivando `tenant_id` da sessao, usando `medicao/update` para abrir/descancelar e
+  `medicao/cancel` para cancelar.
