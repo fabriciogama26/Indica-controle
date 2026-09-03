@@ -8,7 +8,7 @@ import {
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
-import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
+import { allowsPendingSerialIdentification, normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 import { parsePagination } from "@/lib/server/apiHelpers";
 
 const WITHOUT_UMB_FILTER = "__SEM_UMB__";
@@ -23,6 +23,7 @@ type MaterialRow = {
   tipo: string;
   is_transformer: boolean;
   serial_tracking_type: SerialTrackingType | null;
+  allow_pending_serial_identification: boolean | null;
   unit_price: number;
   stock_minimum: number;
   stock_maximum: number | null;
@@ -79,6 +80,7 @@ type CreateMaterialPayload = {
   stockMaximum?: string | number | null;
   isTransformer?: boolean;
   serialTrackingType?: SerialTrackingType | string | null;
+  allowPendingSerialIdentification?: boolean | null;
 };
 
 type MaterialBatchImportPayload = {
@@ -123,6 +125,7 @@ type MaterialInput = {
   stockMaximum: number | null;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification: boolean;
 };
 
 type MaterialCodePrecheckResult = {
@@ -225,6 +228,10 @@ async function authorizeMaterialsAction(
 }
 
 function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialInput {
+  const serialTrackingType = normalizeSerialTrackingType(
+    payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
+  );
+
   return {
     codigo: normalizeCode(payload.codigo),
     descricao: normalizeText(payload.descricao),
@@ -235,12 +242,15 @@ function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialIn
     unitPrice: normalizePrice(payload.unitPrice),
     stockMinimum: normalizeOptionalNonNegativeNumber(payload.stockMinimum) ?? 0,
     stockMaximum: normalizeOptionalNonNegativeNumber(payload.stockMaximum),
-    serialTrackingType: normalizeSerialTrackingType(
-      payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
+    serialTrackingType,
+    isTransformer: serialTrackingType === "TRAFO",
+    // Pendencia so existe para material rastreado sem LP obrigatorio. Normalizar
+    // aqui evita que um estado antigo do formulario mande `true` junto de TRAFO;
+    // a RPC ainda recusa a combinacao, como ultima barreira para chamada direta.
+    allowPendingSerialIdentification: allowsPendingSerialIdentification(
+      serialTrackingType,
+      normalizeBoolean(payload.allowPendingSerialIdentification),
     ),
-    isTransformer: normalizeSerialTrackingType(
-      payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
-    ) === "TRAFO",
   };
 }
 
@@ -488,7 +498,7 @@ async function fetchMaterialById(
   const { data, error } = await supabase
     .from("materials")
     .select(
-      "id, codigo, descricao, category_id, subcategory_id, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, codigo, descricao, category_id, subcategory_id, umb, tipo, is_transformer, serial_tracking_type, allow_pending_serial_identification, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", materialId)
@@ -559,6 +569,7 @@ async function saveMaterialViaRpc(params: {
   stockMaximum: number | null;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification: boolean;
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
@@ -579,6 +590,7 @@ async function saveMaterialViaRpc(params: {
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
     p_stock_minimum: params.stockMinimum,
     p_stock_maximum: params.stockMaximum,
+    p_allow_pending_serial_identification: params.allowPendingSerialIdentification,
   });
 
   if (error) {
@@ -673,6 +685,7 @@ async function importMaterialBatch(params: {
       tipo: input.tipo,
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
+      allowPendingSerialIdentification: input.allowPendingSerialIdentification,
       unitPrice: input.unitPrice,
       stockMinimum: input.stockMinimum,
       stockMaximum: input.stockMaximum,
@@ -838,7 +851,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("materials")
       .select(
-        "id, codigo, descricao, category_id, subcategory_id, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, codigo, descricao, category_id, subcategory_id, umb, tipo, is_transformer, serial_tracking_type, allow_pending_serial_identification, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id)
@@ -1062,6 +1075,7 @@ export async function GET(request: NextRequest) {
         tipo: item.tipo,
         isTransformer: Boolean(item.is_transformer),
         serialTrackingType: normalizeSerialTrackingType(item.serial_tracking_type ?? (item.is_transformer ? "TRAFO" : "NONE")),
+        allowPendingSerialIdentification: Boolean(item.allow_pending_serial_identification),
         hasSerialTrackingUsage: serialTrackingUsageMaterialIds.has(item.id),
         unitPrice: item.unit_price,
         stockMinimum: Number(item.stock_minimum ?? 0),
@@ -1180,6 +1194,7 @@ export async function POST(request: NextRequest) {
       tipo: input.tipo,
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
+      allowPendingSerialIdentification: input.allowPendingSerialIdentification,
       unitPrice,
       stockMinimum: input.stockMinimum,
       stockMaximum: input.stockMaximum,
@@ -1317,6 +1332,12 @@ export async function PUT(request: NextRequest) {
       currentSerialTrackingType,
       input.serialTrackingType,
     );
+    addChange(
+      changes,
+      "allowPendingSerialIdentification",
+      Boolean(currentMaterial.allow_pending_serial_identification),
+      input.allowPendingSerialIdentification,
+    );
     addChange(changes, "unitPrice", currentMaterial.unit_price, unitPrice);
     addChange(changes, "stockMinimum", currentMaterial.stock_minimum, input.stockMinimum);
     addChange(changes, "stockMaximum", currentMaterial.stock_maximum, input.stockMaximum);
@@ -1338,6 +1359,7 @@ export async function PUT(request: NextRequest) {
       tipo: input.tipo,
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
+      allowPendingSerialIdentification: input.allowPendingSerialIdentification,
       unitPrice,
       stockMinimum: input.stockMinimum,
       stockMaximum: input.stockMaximum,

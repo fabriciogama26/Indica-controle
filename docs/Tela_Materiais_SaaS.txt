@@ -379,3 +379,60 @@ Atualizacao 2026-08-15 - Formulario nao e mais apagado em conflito de concorrenc
 - Arquivos alterados: `src/modules/dashboard/materiais/MaterialsPageView.tsx`.
 - Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; arquivo encolheu, baseline
   reduzido via `npm run lint:size:update`).
+
+Atualizacao 2026-09-03 - Pendencia de identificacao de serial vira campo do cadastro
+--------------------------------------------------------------------------------------------
+- Problema: `materials.allow_pending_serial_identification` existe desde a migration 247,
+  mas nenhuma tela lia ou gravava a coluna e `save_material_record` nao tinha o parametro.
+  O valor vinha so do backfill da 247, que marcou `true` para os RELIGADOR/CHAVE existentes
+  naquele momento. Como o default da coluna e `false`, todo material rastreado por serial
+  cadastrado depois nascia exigindo Serial em Entrada, Saida e Transferencia, sem forma de
+  mudar pela aplicacao.
+- Depois: o bloco de rastreio por serial do formulario passa a exibir o checkbox
+  `Aceita entrada e transferencia sem Serial (pendencia de identificacao)`, visivel apenas
+  quando o tipo de rastreio for `RELIGADOR` ou `CHAVE`.
+- Regras:
+  - TRAFO nunca aceita pendencia (constraint `materials_pending_serial_not_trafo_check`).
+    O checkbox nao e renderizado para TRAFO/NONE, e a RPC recusa a combinacao com
+    `PENDING_SERIAL_NOT_ALLOWED_FOR_TYPE` (422) para chamada direta.
+  - Ao trocar o tipo de rastreio para um que nao aceita pendencia, o estado do formulario
+    zera a flag junto. O estado nunca guarda um valor que a UI deixou de renderizar.
+  - `p_allow_pending_serial_identification = null` preserva o valor atual na edicao, para
+    que chamada que nao conhece o parametro nao zere a configuracao em silencio.
+  - A importacao CSV nao expoe a flag: ela so cria material (`materialId: null`), entao a
+    coluna nasce `false`, igual ao comportamento anterior. Nao ha risco de a importacao
+    desligar a flag de material ja cadastrado.
+- Duas travas novas na RPC, obrigatorias a partir do momento em que a flag virou editavel:
+  - Desligar a flag com saldo pendente em aberto passa a ser recusado com
+    `PENDING_SERIAL_BALANCE_OPEN` (409). `identify_pending_serial_tracked_unit` (319, linha
+    73) recusa a identificacao quando a flag esta `false`; sem essa trava, o saldo ja
+    acumulado em `stock_serial_pending_balances` ficaria preso, sem nenhum caminho de
+    identificacao, com as unidades ainda contando no saldo agregado.
+  - Trocar `serial_tracking_type` com saldo pendente em aberto tambem passa a ser recusado
+    com o mesmo `reason`. A checagem de uso que ja existia olha `trafo_instances` e
+    `stock_transfer_items` com serial preenchido, mas nao olhava
+    `stock_serial_pending_balances`: material com pendencia aberta e nenhuma unidade
+    identificada passava por ela, e a troca de tipo deixava linhas de saldo pendente
+    apontando para material que nao e mais rastreado por serial.
+  - Nenhuma das duas travas altera dado existente; elas apenas recusam a transicao.
+- Decisao de UX registrada: `serialTrackingChangeBlocked` continua derivando de
+  `hasSerialTrackingUsage`, que nao considera saldo pendente. Material com apenas pendencia
+  aberta mostra os checkboxes habilitados e so recebe o erro no submit, com a mensagem da
+  RPC informando o codigo do material e a quantidade pendente. Foi preferido a incluir um
+  agregado de `stock_serial_pending_balances` por linha na listagem.
+- Arquivos alterados:
+  - `supabase/migrations/414_material_pending_serial_flag_in_save_rpc.sql`
+  - `src/app/api/materials/route.ts`
+  - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+  - `src/modules/dashboard/materiais/components/SerialTrackingFields.tsx` (novo)
+  - `file-size-baseline.json`
+- Funcoes/hooks/constantes tocadas (2026-09-03):
+  - `save_material_record` (assinatura passa de 16 para 17 parametros)
+  - `parseMaterialInput`, `saveMaterialViaRpc`, `MaterialInput`, `MaterialRow`
+  - `updateSerialTrackingType`, `toFormState`, `formatHistoryValue`, `INITIAL_FORM`
+  - `HISTORY_FIELD_LABELS.allowPendingSerialIdentification`
+  - `SerialTrackingFields` (extraido do PageView para caber no ratchet de tamanho)
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros). `MaterialsPageView.tsx`
+  encolheu de 1695 para 1687 linhas com a extracao do bloco de rastreio; baseline reduzido
+  via `npm run lint:size:update`. Comandos de banco (`db:migration-list`, `db:lint`,
+  `db:security-check`) nao foram executados: o Supabase CLI nao esta linkado neste ambiente.
