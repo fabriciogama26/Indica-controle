@@ -22,6 +22,8 @@ type UtilityContactItem = {
   id: string;
   kind: UtilityContactKind;
   name: string;
+  telefoneCorporativo: string | null;
+  email: string | null;
   isActive: boolean;
   createdByName: string;
   updatedByName: string;
@@ -42,6 +44,8 @@ type UtilityContactFormState = {
   id: string | null;
   updatedAt: string | null;
   name: string;
+  telefoneCorporativo: string;
+  email: string;
 };
 
 type UtilityContactFilterState = {
@@ -106,6 +110,8 @@ const INITIAL_FORM: UtilityContactFormState = {
   id: null,
   updatedAt: null,
   name: "",
+  telefoneCorporativo: "",
+  email: "",
 };
 
 const INITIAL_FILTERS: UtilityContactFilterState = {
@@ -115,6 +121,8 @@ const INITIAL_FILTERS: UtilityContactFilterState = {
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome",
+  telefoneCorporativo: "Telefone corporativo",
+  email: "E-mail",
   isActive: "Status",
   cancellationReason: "Motivo do cancelamento",
   activationReason: "Motivo da ativacao",
@@ -122,6 +130,15 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 
 function normalizeText(value: string) {
   return String(value ?? "").trim();
+}
+
+function normalizePhone(value: string) {
+  return String(value ?? "").replace(/\D/g, "");
+}
+
+function formatOptionalText(value: string | null | undefined) {
+  const normalized = normalizeText(value ?? "");
+  return normalized || "-";
 }
 
 function buildQuery(kind: UtilityContactKind, filters: UtilityContactFilterState, page: number, pageSize = PAGE_SIZE, mode?: "export") {
@@ -312,6 +329,8 @@ export function ResponsavelDistribuidoraPageView() {
       id: contact.id,
       updatedAt: contact.updatedAt,
       name: contact.name,
+      telefoneCorporativo: contact.telefoneCorporativo ?? "",
+      email: contact.email ?? "",
     });
     setFeedback(null);
     scrollDashboardContentToTop();
@@ -367,6 +386,8 @@ export function ResponsavelDistribuidoraPageView() {
           kind: activeTab,
           id: form.id,
           name: normalizeText(form.name),
+          telefoneCorporativo: normalizePhone(form.telefoneCorporativo) || null,
+          email: normalizeText(form.email) || null,
           ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
         }),
       });
@@ -532,6 +553,27 @@ export function ResponsavelDistribuidoraPageView() {
             />
           </label>
 
+          <label className={baseStyles.field}>
+            <span>Telefone Corporativo</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={form.telefoneCorporativo}
+              onChange={(event) => setForm((current) => ({ ...current, telefoneCorporativo: event.target.value }))}
+              placeholder="Somente numeros"
+            />
+          </label>
+
+          <label className={baseStyles.field}>
+            <span>E-mail</span>
+            <input
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
+              placeholder="contato@distribuidora.com.br"
+            />
+          </label>
+
           <div className={`${baseStyles.actions} ${baseStyles.formActions}`}>
             {isEditing ? (
               <button type="button" className={baseStyles.ghostButton} onClick={resetForm} disabled={isSaving}>
@@ -595,6 +637,8 @@ export function ResponsavelDistribuidoraPageView() {
             <thead>
               <tr>
                 <th>Nome</th>
+                <th>Telefone Corporativo</th>
+                <th>E-mail</th>
                 <th>Status</th>
                 <th>Registrado em</th>
                 <th>Atualizado em</th>
@@ -611,6 +655,8 @@ export function ResponsavelDistribuidoraPageView() {
                         {!contact.isActive ? <span className={baseStyles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
+                    <td>{formatOptionalText(contact.telefoneCorporativo)}</td>
+                    <td>{formatOptionalText(contact.email)}</td>
                     <td>{contact.isActive ? "Ativo" : "Inativo"}</td>
                     <td>{formatDateTime(contact.createdAt)}</td>
                     <td>{formatDateTime(contact.updatedAt)}</td>
@@ -659,7 +705,7 @@ export function ResponsavelDistribuidoraPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className={baseStyles.emptyRow}>
+                  <td colSpan={7} className={baseStyles.emptyRow}>
                     {isLoadingList ? `Carregando ${tabConfig.pluralLabel}...` : `Nenhum ${tabConfig.singularLabel} encontrado para os filtros informados.`}
                   </td>
                 </tr>
@@ -699,6 +745,8 @@ export function ResponsavelDistribuidoraPageView() {
                 <div><strong>Tipo:</strong> {TABS[detailContact.kind].title}</div>
                 <div><strong>Status:</strong> {detailContact.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Nome:</strong> {detailContact.name}</div>
+                <div><strong>Telefone Corporativo:</strong> {formatOptionalText(detailContact.telefoneCorporativo)}</div>
+                <div><strong>E-mail:</strong> {formatOptionalText(detailContact.email)}</div>
                 <div><strong>Registrado por:</strong> {formatAuditActor(detailContact.createdByName)}</div>
                 <div><strong>Criado em:</strong> {formatDateTime(detailContact.createdAt)}</div>
                 <div><strong>Atualizado por:</strong> {formatAuditActor(detailContact.updatedByName)}</div>

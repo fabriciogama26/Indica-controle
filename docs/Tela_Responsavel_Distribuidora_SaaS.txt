@@ -17,17 +17,24 @@ Arquitetura
 - Banco: `project_utility_responsibles` e `project_utility_field_managers`, criadas por `supabase/migrations/031_create_project_lookup_tables.sql`
 - Historico generico: `app_entity_history`
 - RPC transacional: `supabase/migrations/410_create_utility_distributor_contact_page.sql`
+- Telefone corporativo e e-mail: `supabase/migrations/412_utility_distributor_contact_details.sql`
 
 Cadastro
 --------
 - Campo obrigatorio:
   - `Nome`
+- Campos opcionais:
+  - `Telefone Corporativo` (coluna `telefone_corporativo`)
+  - `E-mail` (coluna `email`)
 - Abas:
   - `Responsaveis Distribuidora`: cria/edita registros em `project_utility_responsibles`.
   - `Gestores de campo`: cria/edita registros em `project_utility_field_managers`.
 - Regras:
   - O client envia apenas `kind` (`responsible` ou `fieldManager`); a API mapeia internamente para a tabela permitida.
   - O nome e normalizado com `trim` antes do envio.
+  - O telefone corporativo e reduzido a digitos no client e na RPC; se o valor informado nao tiver nenhum digito, a resposta e `INVALID_PHONE` (400).
+  - O e-mail passa por `trim` e precisa conter `@`; caso contrario a resposta e `INVALID_EMAIL` (400).
+  - Telefone e e-mail vazios sao gravados como `NULL`; as constraints `chk_*_phone_not_blank` e `chk_*_email_not_blank` impedem string em branco.
   - As constraints unicas `(tenant_id, name_normalized)` impedem duplicidade por tenant em cada tabela.
   - Edicao de registro inativo e bloqueada ate reativacao.
   - Edicao e troca de status exigem `expectedUpdatedAt`.
@@ -45,7 +52,7 @@ Filtros, auto-complete e listagem
   - `Status`
 - Listagem:
   - Paginacao server-side (`page`, `pageSize`, `total`).
-  - Colunas: Nome, Status, Registrado em, Atualizado em, Acoes.
+  - Colunas: Nome, Telefone Corporativo, E-mail, Status, Registrado em, Atualizado em, Acoes.
   - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
   - Exportacao CSV por aba, usando `mode=export` e permissao granular `export`.
 - Historico:
@@ -73,6 +80,8 @@ Atualizacao 2026-09
 - Criada a migration `410_create_utility_distributor_contact_page.sql` com RPCs transacionais, `SELECT ... FOR UPDATE`, historico na mesma transacao e `EXECUTE` apenas para `service_role`.
 - A mesma migration ajusta `default_user_access = false` e revoga escrita/exportacao de nao-admin herdada do placeholder, preservando leitura ja concedida.
 - O menu e a matriz de permissoes passaram a exibir `Responsaveis Distribuidora`, mantendo o mesmo `page_key` historico.
+- A migration `412_utility_distributor_contact_details.sql` adicionou `telefone_corporativo` e `email` nas duas tabelas e recriou `save_utility_distributor_contact_record` com os dois parametros novos. A assinatura antiga (`uuid, uuid, text, uuid, text, timestamptz`) foi removida com `drop function` para nao gerar sobrecarga; a migration valida que resta apenas uma assinatura e que ela nao e executavel por `anon`/`authenticated`.
+- Os dois campos aparecem no formulario, na listagem, no modal de detalhes, no CSV e no historico (`telefoneCorporativo`, `email`).
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -85,6 +94,8 @@ Funcoes principais
   - Responsavel por: validar sessao, permissao, tenant, paginar listagem e chamar as RPCs.
 - Caminho: `supabase/migrations/410_create_utility_distributor_contact_page.sql`
   - Responsavel por: salvar cadastro/status e registrar historico na mesma transacao.
+- Caminho: `supabase/migrations/412_utility_distributor_contact_details.sql`
+  - Responsavel por: colunas `telefone_corporativo`/`email`, constraints de nao-branco e a versao atual de `save_utility_distributor_contact_record`.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/responsavel-distribuidora/csv.ts`
