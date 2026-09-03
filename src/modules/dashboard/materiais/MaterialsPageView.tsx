@@ -8,7 +8,8 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
-import { SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { allowsPendingSerialIdentification, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { SerialTrackingFields } from "./components/SerialTrackingFields";
 import styles from "./MaterialsPageView.module.css";
 import { buildMassImportTemplateCsv, buildMaterialsCsv, createMassImportErrorReport, normalizeCsvHeader, normalizeLookupText, normalizeSerialTrackingInput, parseNonNegativeCurrency, resolveCsvValue, type MassImportErrorReportData, type MassImportIssue } from "./csv";
 import { downloadCsvFile } from "@/lib/utils/csv";
@@ -28,6 +29,7 @@ type MaterialItem = {
   tipo: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification: boolean;
   hasSerialTrackingUsage: boolean;
   unitPrice: number;
   stockMinimum: number;
@@ -58,6 +60,7 @@ type FormState = {
   tipo: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification: boolean;
   umb: string;
   unitPrice: string;
   stockMinimum: string;
@@ -139,6 +142,7 @@ const INITIAL_FORM: FormState = {
   tipo: "",
   isTransformer: false,
   serialTrackingType: "NONE",
+  allowPendingSerialIdentification: false,
   umb: "",
   unitPrice: "",
   stockMinimum: "0",
@@ -164,6 +168,7 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   tipo: "Tipo",
   isTransformer: "Trafo",
   serialTrackingType: "Rastreio por serial",
+  allowPendingSerialIdentification: "Pendencia de serial",
   umb: "UMB",
   unitPrice: "Preco",
   stockMinimum: "Estoque minimo",
@@ -242,7 +247,7 @@ function formatHistoryValue(field: string, value: string | null) {
     return value === "true" ? "Ativo" : "Inativo";
   }
 
-  if (field === "isTransformer") {
+  if (field === "isTransformer" || field === "allowPendingSerialIdentification") {
     return value === "true" ? "Sim" : "Nao";
   }
 
@@ -266,6 +271,7 @@ function toFormState(material: MaterialItem): FormState {
     tipo: material.tipo,
     isTransformer: Boolean(material.isTransformer),
     serialTrackingType: material.serialTrackingType,
+    allowPendingSerialIdentification: Boolean(material.allowPendingSerialIdentification),
     umb: formatOptionalText(material.umb, ""),
     unitPrice: String(material.unitPrice ?? 0),
     stockMinimum: String(material.stockMinimum ?? 0),
@@ -452,6 +458,12 @@ export function MaterialsPageView() {
         ...current,
         serialTrackingType: nextType,
         isTransformer: nextType === "TRAFO",
+        // O checkbox de pendencia some quando o tipo nao a suporta; o estado nao
+        // pode continuar guardando `true` invisivel e mandar isso no submit.
+        allowPendingSerialIdentification: allowsPendingSerialIdentification(
+          nextType,
+          current.allowPendingSerialIdentification,
+        ),
       };
     });
   }
@@ -588,6 +600,10 @@ export function MaterialsPageView() {
         tipo: normalizeMaterialType(form.tipo),
         isTransformer: form.serialTrackingType === "TRAFO",
         serialTrackingType: form.serialTrackingType,
+        allowPendingSerialIdentification: allowsPendingSerialIdentification(
+          form.serialTrackingType,
+          form.allowPendingSerialIdentification,
+        ),
         umb: normalizeCode(form.umb) || null,
         unitPrice: normalizeText(form.unitPrice),
         stockMinimum: normalizeText(form.stockMinimum),
@@ -1204,41 +1220,14 @@ export function MaterialsPageView() {
             />
           </label>
 
-          <label className={styles.checkboxField}>
-            <input
-              type="checkbox"
-              checked={form.serialTrackingType === "TRAFO"}
-              disabled={serialTrackingChangeBlocked}
-              onChange={(event) => updateSerialTrackingType("TRAFO", event.target.checked)}
-            />
-            Material TRAFO (exige Serial e LP na movimentacao)
-          </label>
-
-          <label className={styles.checkboxField}>
-            <input
-              type="checkbox"
-              checked={form.serialTrackingType === "RELIGADOR"}
-              disabled={serialTrackingChangeBlocked}
-              onChange={(event) => updateSerialTrackingType("RELIGADOR", event.target.checked)}
-            />
-            Material RELIGADOR (exige Serial na movimentacao)
-          </label>
-
-          <label className={styles.checkboxField}>
-            <input
-              type="checkbox"
-              checked={form.serialTrackingType === "CHAVE"}
-              disabled={serialTrackingChangeBlocked}
-              onChange={(event) => updateSerialTrackingType("CHAVE", event.target.checked)}
-            />
-            Material CHAVES (exige Serial na movimentacao)
-          </label>
-
-          {serialTrackingChangeBlocked ? (
-            <p className={styles.serialTrackingLockNotice}>
-              Este material possui rastreio por serial em uso. Para alterar ou remover o rastreio, execute uma rotina de encerramento/reconciliacao.
-            </p>
-          ) : null}
+          <SerialTrackingFields
+            serialTrackingType={form.serialTrackingType}
+            allowPendingSerialIdentification={form.allowPendingSerialIdentification}
+            changeBlocked={serialTrackingChangeBlocked}
+            onSerialTrackingTypeChange={updateSerialTrackingType}
+            onAllowPendingSerialIdentificationChange={(checked) =>
+              updateFormField("allowPendingSerialIdentification", checked)}
+          />
 
           <label className={styles.field}>
             <span>
@@ -1408,7 +1397,10 @@ export function MaterialsPageView() {
                       <td>{formatOptionalText(material.categoryName)}</td>
                       <td>{formatOptionalText(material.subcategoryName)}</td>
                       <td>{material.tipo}</td>
-                      <td>{serialTrackingLabel(material.serialTrackingType)}</td>
+                      <td>
+                        {serialTrackingLabel(material.serialTrackingType)}
+                        {material.allowPendingSerialIdentification ? " (aceita pendencia)" : ""}
+                      </td>
                       <td>{formatOptionalText(material.umb)}</td>
                       <td>{formatCurrency(material.unitPrice)}</td>
                       <td>{formatQuantity(material.stockMinimum)}</td>

@@ -1396,3 +1396,25 @@ Observacao
   `UNCANCEL`.
 - Mantem `SELECT ... FOR UPDATE`, `expected_updated_at`, `tenant_id` recebido do
   backend autenticado e EXECUTE apenas para `service_role`.
+
+414_material_pending_serial_flag_in_save_rpc.sql
+- Republica `save_material_record` com `p_allow_pending_serial_identification` (assinatura
+  passa de 16 para 17 parametros), expondo no cadastro de Materiais a coluna
+  `materials.allow_pending_serial_identification` criada pela 247 e que ate aqui so podia
+  ser alterada por SQL direto.
+- `null` no parametro preserva o valor atual na edicao; no insert grava `false`. Chamada
+  que nao conhece o parametro nao zera a configuracao do material em silencio.
+- Recusa `true` para tipo que nao aceita pendencia (`PENDING_SERIAL_NOT_ALLOWED_FOR_TYPE`,
+  422), com mensagem propria em vez de estourar `materials_pending_serial_not_trafo_check`.
+- Trava nova 1: desligar a flag com saldo em `stock_serial_pending_balances` retorna
+  `PENDING_SERIAL_BALANCE_OPEN` (409). `identify_pending_serial_tracked_unit` (319, linha
+  73) recusa identificacao quando a flag esta `false`, entao o saldo ja acumulado ficaria
+  preso, sem caminho de identificacao, com as unidades ainda contando no saldo agregado.
+- Trava nova 2: trocar `serial_tracking_type` com saldo pendente em aberto retorna o mesmo
+  `reason`. A checagem de uso anterior olhava `trafo_instances` e `stock_transfer_items`
+  com serial preenchido, mas nao `stock_serial_pending_balances`.
+- Nenhuma das travas altera dado existente: elas apenas recusam a transicao.
+- Mantem RLS, `SELECT ... FOR UPDATE`, `expected_updated_at`, `tenant_id` vindo do backend
+  autenticado e EXECUTE apenas para `service_role`.
+- Valida no fim que existe exatamente uma `save_material_record` com 17 parametros e que
+  nao sobrou overload antigo, que deixaria a chamada por nome ambigua.

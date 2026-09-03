@@ -902,3 +902,26 @@ Atualizacao 2026-08 - Estorno com fila de atendimento
 - Comportamento antes/depois:
   - Antes: `Usuario -> Estornar -> saldo alterado`.
   - Depois: `Usuario -> Estornar -> pedido pendente -> Atendimento de Estornos -> Aprovar/Recusar`.
+
+Atualizacao 2026-09-03 - Pendencia de serial passa a ser configuravel no cadastro do material
+--------------------------------------------------------------------------------------------
+- A regra de pendencia desta tela nao mudou. O que mudou e a origem do valor que ela le.
+- Antes: `materials.allow_pending_serial_identification` so podia ser alterada por SQL
+  direto. Na pratica, RELIGADOR/CHAVE cadastrados depois da migration 247 nasciam com
+  `false` e exigiam Serial em Entrada, Saida e Transferencia, enquanto os cadastrados antes
+  aceitavam pendencia -- dois materiais do mesmo tipo com comportamentos diferentes nesta
+  tela, sem explicacao visivel para o usuario.
+- Depois: a flag e um checkbox no cadastro de Materiais (`docs/Tela_Materiais_SaaS.txt`,
+  atualizacao 2026-09-03), visivel apenas para `RELIGADOR` e `CHAVE`.
+- Continua valendo, sem alteracao:
+  - `ENTRY` e `TRANSFER` aceitam item sem `serial_number` quando o material permite;
+    `EXIT` continua exigindo Serial informado, identificando a unidade a partir do saldo
+    pendente do centro `DE` quando o serial ainda nao existir em `trafo_instances`.
+  - TRAFO exige `Serial + LP` em qualquer movimentacao.
+  - Operacoes de Equipe e Requisicao seguem exigindo Serial sempre, sem excecao de
+    pendencia.
+- Efeito colateral util: material com saldo pendente em aberto nao pode mais ter o rastreio
+  trocado nem a pendencia desligada pelo cadastro (`PENDING_SERIAL_BALANCE_OPEN`, 409). Isso
+  protege o saldo de `stock_serial_pending_balances` que so esta tela e as Operacoes de
+  Equipe conseguem liquidar.
+- Arquivos alterados nesta tela: nenhum. A mudanca e de cadastro e de RPC de material.
