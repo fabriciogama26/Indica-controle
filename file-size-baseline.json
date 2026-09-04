@@ -8,7 +8,7 @@
     "src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx": 2319,
     "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1706,
     "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3662,
-    "src/modules/dashboard/equipes/TeamsPageView.tsx": 1588,
+    "src/modules/dashboard/equipes/TeamsPageView.tsx": 1585,
     "src/modules/dashboard/faturamento/BillingPageView.tsx": 1247,
     "src/modules/dashboard/locacao/LocationPageView.tsx": 1960,
     "src/modules/dashboard/materiais/MaterialsPageView.tsx": 1687,

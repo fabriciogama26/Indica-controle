@@ -18,6 +18,8 @@ import { buildTeamTypesCsv } from "./csv";
 type TeamTypeItem = {
   id: string;
   name: string;
+  teamCategoryId: string | null;
+  teamCategoryName: string;
   isActive: boolean;
   createdByName: string;
   updatedByName: string;
@@ -38,6 +40,15 @@ type TeamTypeFormState = {
   id: string | null;
   updatedAt: string | null;
   name: string;
+  teamCategoryId: string;
+};
+
+// Catalogo TECNICA/COMERCIAL. Chama-se `Tipo operacional` na UI, seguindo a
+// nomenclatura fixada na tela Equipes -- `Tipo de equipe` e esta tela.
+type TeamCategoryOption = {
+  id: string;
+  code: string;
+  name: string;
 };
 
 type TeamTypeFilterState = {
@@ -47,6 +58,7 @@ type TeamTypeFilterState = {
 
 type TeamTypesListResponse = {
   teamTypes?: TeamTypeItem[];
+  teamCategories?: TeamCategoryOption[];
   pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
@@ -65,6 +77,7 @@ const INITIAL_FORM: TeamTypeFormState = {
   id: null,
   updatedAt: null,
   name: "",
+  teamCategoryId: "",
 };
 
 const INITIAL_FILTERS: TeamTypeFilterState = {
@@ -128,6 +141,7 @@ export function TeamTypesPageView() {
   const logError = useErrorLogger("tipo-equipe");
   const exportCooldown = useExportCooldown();
   const [form, setForm] = useState<TeamTypeFormState>(INITIAL_FORM);
+  const [teamCategories, setTeamCategories] = useState<TeamCategoryOption[]>([]);
   const [filterDraft, setFilterDraft] = useState<TeamTypeFilterState>(INITIAL_FILTERS);
   const [activeFilters, setActiveFilters] = useState<TeamTypeFilterState>(INITIAL_FILTERS);
   const [teamTypes, setTeamTypes] = useState<TeamTypeItem[]>([]);
@@ -178,6 +192,7 @@ export function TeamTypesPageView() {
 
         const nextTeamTypes = data.teamTypes ?? [];
         if (!mode) {
+          setTeamCategories(data.teamCategories ?? []);
           setTeamTypes(nextTeamTypes);
           setTotal(data.pagination?.total ?? 0);
         }
@@ -269,6 +284,7 @@ export function TeamTypesPageView() {
       id: teamType.id,
       updatedAt: teamType.updatedAt,
       name: teamType.name,
+      teamCategoryId: teamType.teamCategoryId ?? "",
     });
     setFeedback(null);
     scrollDashboardContentToTop();
@@ -322,6 +338,7 @@ export function TeamTypesPageView() {
         body: JSON.stringify({
           id: form.id,
           name: normalizeText(form.name),
+          teamCategoryId: normalizeText(form.teamCategoryId),
           ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
         }),
       });
@@ -482,6 +499,26 @@ export function TeamTypesPageView() {
             />
           </label>
 
+          <label className={styles.field}>
+            <span>
+              Tipo operacional <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={form.teamCategoryId}
+              onChange={(event) => setForm((current) => ({ ...current, teamCategoryId: event.target.value }))}
+              required
+            >
+              <option value="" disabled>
+                Selecione
+              </option>
+              {teamCategories.map((teamCategory) => (
+                <option key={teamCategory.id} value={teamCategory.id}>
+                  {teamCategory.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <div className={`${styles.actions} ${styles.formActions}`}>
             {isEditing ? (
               <button type="button" className={styles.ghostButton} onClick={resetForm} disabled={isSaving}>
@@ -545,6 +582,7 @@ export function TeamTypesPageView() {
             <thead>
               <tr>
                 <th>Nome</th>
+                <th>Tipo operacional</th>
                 <th>Status</th>
                 <th>Registrado em</th>
                 <th>Atualizado em</th>
@@ -561,6 +599,7 @@ export function TeamTypesPageView() {
                         {!teamType.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
+                    <td>{teamType.teamCategoryName}</td>
                     <td>{teamType.isActive ? "Ativo" : "Inativo"}</td>
                     <td>{formatDateTime(teamType.createdAt)}</td>
                     <td>{formatDateTime(teamType.updatedAt)}</td>
@@ -609,7 +648,7 @@ export function TeamTypesPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} className={styles.emptyRow}>
+                  <td colSpan={6} className={styles.emptyRow}>
                     {isLoadingList
                       ? "Carregando tipos de equipe..."
                       : "Nenhum tipo de equipe encontrado para os filtros informados."}

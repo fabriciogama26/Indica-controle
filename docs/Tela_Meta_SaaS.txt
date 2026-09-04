@@ -242,3 +242,22 @@ Atualizacao 2026-06-14 (media de dias trabalhados em tempo real)
 - Impacto multi-tenant:
   - Sem alteracao de schema ou RLS.
   - Todas as medicoes, projetos, ciclos e itens continuam filtrados pelo `tenant_id` autenticado.
+
+Atualizacao 2026-09-04 - Recorte TECNICA (vazamento da Medicao Comercial)
+--------------------------------------------------------------------------------
+- A ordem de Medicao Comercial grava na MESMA tabela `project_measurement_orders`
+  das ordens tecnicas. Ate aqui `/api/meta` nao tinha nenhum recorte por
+  categoria de equipe: da primeira ordem comercial salva em diante, a equipe
+  comercial entraria em `Equipes ativas` e as ordens dela no realizado,
+  contaminando a meta tecnica.
+- A rota passou a recortar por TECNICA em tres pontos:
+  - o catalogo de tipos (`team_types` da categoria tecnica, possivel desde a 416);
+  - a contagem de equipes ativas;
+  - as ordens usadas para descobrir ciclos e calcular dias trabalhados, pelo
+    helper `fetchTechnicalTeamIds`, aplicado nas DUAS leituras de ordens.
+- Isto e conserto de vazamento, NAO modelagem: a operacao comercial simplesmente
+  nao tem meta hoje. O desenho definitivo esta em aberto e registrado em
+  `TASKS.md` -- a direcao acordada e um filtro `Tecnica`/`Comercial` na tela.
+- Nomenclatura: a coluna `Tipo` desta tela e o `Tipo de equipe` do cadastro
+  `/tipo-equipe` (CESTO, LINHA VIVA), nao o `Tipo operacional`
+  (TECNICA/COMERCIAL).

@@ -16,6 +16,7 @@ type PersonRow = {
 type TeamTypeRow = {
   id: string;
   name: string;
+  team_category_id: string | null;
 };
 
 type TeamCategoryRow = {
@@ -72,21 +73,23 @@ async function fetchForemen(supabase: SupabaseClient, tenantId: string) {
     .filter((item) => Boolean(item.id) && Boolean(item.name));
 }
 
+// O tipo operacional pertence a uma categoria desde a 416: a tela precisa do
+// vinculo para so oferecer os tipos da categoria escolhida na equipe.
 async function fetchTeamTypes(supabase: SupabaseClient, tenantId: string) {
   const { data, error } = await supabase
     .from("team_types")
-    .select("id, name")
+    .select("id, name, team_category_id")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .order("name", { ascending: true })
     .returns<TeamTypeRow[]>();
 
   if (error) {
-    return [] as Array<{ id: string; name: string }>;
+    return [] as Array<{ id: string; name: string; teamCategoryId: string | null }>;
   }
 
   return (data ?? [])
-    .map((item) => ({ id: item.id, name: normalizeName(item.name) }))
+    .map((item) => ({ id: item.id, name: normalizeName(item.name), teamCategoryId: item.team_category_id }))
     .filter((item) => Boolean(item.id) && Boolean(item.name));
 }
 

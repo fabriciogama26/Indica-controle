@@ -22,10 +22,13 @@ export type TeamImportOption = {
   name: string;
 };
 
-const REQUIRED_HEADERS = ["nome", "placa", "base", "tipo_equipe", "tipo_operacional"];
+// `tipo_equipe` volta a significar o que sempre significou (CESTO, LINHA VIVA),
+// e a coluna nova e `tipo_operacional` (TECNICA/COMERCIAL). Assim o CSV que o
+// cliente ja usava continua valido para a coluna antiga.
+const REQUIRED_HEADERS = ["nome", "placa", "base", "tipo_operacional", "tipo_equipe"];
 
 export const TEAM_MASS_IMPORT_COLUMNS_HINT =
-  "Colunas obrigatorias: nome, placa, base, tipo_equipe e tipo_operacional. Para TECNICA, encarregado e obrigatorio; para COMERCIAL, supervisor e obrigatorio. Base, tipos, encarregado e supervisor sao informados pelo nome exato cadastrado no tenant.";
+  "Colunas obrigatorias: nome, placa, base, tipo_operacional e tipo_equipe. O tipo de equipe precisa pertencer ao tipo operacional da linha. Para TECNICA, encarregado e obrigatorio; para COMERCIAL, supervisor e obrigatorio. Base, tipos, encarregado e supervisor sao informados pelo nome exato cadastrado no tenant.";
 
 function normalizeText(value: string) {
   return String(value ?? "").trim();
@@ -52,7 +55,7 @@ function indexByName(options: TeamImportOption[]) {
 
 export function buildTeamMassImportTemplateCsv() {
   return buildMassImportTemplateCsv(
-    ["nome", "placa", "base", "tipo_equipe", "tipo_operacional", "encarregado", "supervisor"],
+    ["nome", "placa", "base", "tipo_operacional", "tipo_equipe", "encarregado", "supervisor"],
     [
       ["EQUIPE 01", "ABC1D23", "BASE CENTRO", "TECNICA", "LEVE", "JOAO DA SILVA", "MARIA SOUZA"],
       ["EQUIPE COMERCIAL 01", "XYZ4E56", "BASE NORTE", "COMERCIAL", "LEVE", "", "MARIA SOUZA"],
@@ -88,8 +91,8 @@ export function parseTeamMassImportCsv(params: {
     const name = normalizeText(resolveCsvValue(values, ["nome", "nome_equipe", "name"]));
     const vehiclePlate = normalizeText(resolveCsvValue(values, ["placa", "placa_veiculo", "vehicle_plate"])).toUpperCase();
     const serviceCenterRaw = resolveCsvValue(values, ["base", "centro_servico", "service_center"]);
-    const teamCategoryRaw = resolveCsvValue(values, ["tipo_equipe", "categoria_equipe", "classificacao_equipe"]);
-    const teamTypeRaw = resolveCsvValue(values, ["tipo_operacional", "tipo", "team_type"]);
+    const teamCategoryRaw = resolveCsvValue(values, ["tipo_operacional", "categoria_equipe", "classificacao_equipe"]);
+    const teamTypeRaw = resolveCsvValue(values, ["tipo_equipe", "tipo", "team_type"]);
     const foremanRaw = resolveCsvValue(values, ["encarregado", "foreman"]);
     const supervisorRaw = resolveCsvValue(values, ["supervisor"]);
     const serviceCenter = serviceCenterByName.get(normalizeLookupText(serviceCenterRaw)) ?? null;
@@ -118,15 +121,15 @@ export function parseTeamMassImportCsv(params: {
     }
 
     if (!teamType) {
-      issues.push({ rowNumber, column: "tipo_operacional", value: teamTypeRaw, error: "Tipo operacional invalido ou inativo." });
+      issues.push({ rowNumber, column: "tipo_equipe", value: teamTypeRaw, error: "Tipo de equipe invalido ou inativo." });
     } else if (teamType === "AMBIGUOUS") {
-      issues.push({ rowNumber, column: "tipo_operacional", value: teamTypeRaw, error: "Existe mais de um tipo operacional com este nome." });
+      issues.push({ rowNumber, column: "tipo_equipe", value: teamTypeRaw, error: "Existe mais de um tipo de equipe com este nome." });
     }
 
     if (!teamCategory) {
-      issues.push({ rowNumber, column: "tipo_equipe", value: teamCategoryRaw, error: "Tipo de equipe invalido ou inativo." });
+      issues.push({ rowNumber, column: "tipo_operacional", value: teamCategoryRaw, error: "Tipo operacional invalido ou inativo." });
     } else if (teamCategory === "AMBIGUOUS") {
-      issues.push({ rowNumber, column: "tipo_equipe", value: teamCategoryRaw, error: "Existe mais de um tipo de equipe com este nome." });
+      issues.push({ rowNumber, column: "tipo_operacional", value: teamCategoryRaw, error: "Existe mais de um tipo operacional com este nome." });
     }
 
     const teamCategoryCode = teamCategory !== "AMBIGUOUS" && teamCategory ? normalizeLookupText(teamCategory.name) : "";

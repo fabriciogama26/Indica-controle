@@ -40,6 +40,7 @@ import {
   isCommercialTeamCategory,
   isTechnicalTeamCategory,
   normalizePlate,
+  TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE,
   type AppUserRow,
   type CreateTeamPayload,
   type HistoryChange,
@@ -457,6 +458,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
     }
 
+    if (teamType.team_category_id !== input.teamCategoryId) {
+      return NextResponse.json({ message: TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE }, { status: 422 });
+    }
+
     if (isTechnicalTeamCategory(teamCategory) && !input.foremanId) {
       return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });
     }
@@ -622,6 +627,10 @@ export async function PUT(request: NextRequest) {
     const nextSupervisor = input.supervisorId
       ? await fetchSupervisorById(supabase, appUser.tenant_id, input.supervisorId)
       : null;
+
+    if (nextTeamType.team_category_id !== input.teamCategoryId) {
+      return NextResponse.json({ message: TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE }, { status: 422 });
+    }
 
     if (isTechnicalTeamCategory(nextTeamCategory) && !input.foremanId) {
       return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });

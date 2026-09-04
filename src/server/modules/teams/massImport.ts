@@ -13,11 +13,13 @@ import {
   fetchSupervisorById,
   fetchTeamCategoryById,
   fetchTeamTypeById,
+  type TeamTypeRow,
   type TeamCategoryRow,
 } from "./lookups";
 import {
   isCommercialTeamCategory,
   isTechnicalTeamCategory,
+  TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE,
   normalizePlate,
   type CreateTeamPayload,
 } from "./types";
@@ -38,7 +40,7 @@ export async function importTeamBatch(params: {
 }) {
   const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
   const validServiceCenterIds = new Map<string, boolean>();
-  const validTeamTypeIds = new Map<string, boolean>();
+  const validTeamTypeIds = new Map<string, TeamTypeRow | null>();
   const validTeamCategoryIds = new Map<string, TeamCategoryRow | null>();
   let savedCount = 0;
 
@@ -79,12 +81,25 @@ export async function importTeamBatch(params: {
     if (!validTeamTypeIds.has(input.teamTypeId)) {
       validTeamTypeIds.set(
         input.teamTypeId,
-        Boolean(await fetchTeamTypeById(params.supabase, params.tenantId, input.teamTypeId)),
+        await fetchTeamTypeById(params.supabase, params.tenantId, input.teamTypeId),
       );
     }
 
-    if (!validTeamTypeIds.get(input.teamTypeId)) {
+    const teamType = validTeamTypeIds.get(input.teamTypeId) ?? null;
+    if (!teamType) {
       results.push({ rowNumber, success: false, message: "Tipo de equipe invalido para o tenant atual.", code: "INVALID_TEAM_TYPE" });
+      continue;
+    }
+
+    // Desde a 416 o tipo pertence a uma categoria: linha que cruza as duas e
+    // recusada aqui, com a mesma mensagem da tela.
+    if (teamType.team_category_id !== input.teamCategoryId) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE,
+        code: "TEAM_TYPE_CATEGORY_MISMATCH",
+      });
       continue;
     }
 

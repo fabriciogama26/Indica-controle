@@ -16,6 +16,7 @@ import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import type { MassImportRowResult } from "@/lib/utils/massImport";
 import { buildTeamsCsv } from "./csv";
 import {
+  buildMissingTeamMetaReasons,
   HISTORY_FIELD_LABELS,
   INITIAL_FILTERS,
   buildQuery,
@@ -104,34 +105,29 @@ export function TeamsPageView() {
     [form.teamCategoryId, teamCategories],
   );
   const selectedTeamCategoryCode = String(selectedTeamCategory?.code ?? "").trim().toUpperCase();
+  // Desde a 416 cada tipo pertence a um tipo operacional: so faz sentido
+  // oferecer os da opcao escolhida. Sem ela, a lista fica vazia em vez de
+  // oferecer tipo que o banco vai recusar.
+  const teamTypeOptions = useMemo(
+    () => (form.teamCategoryId ? teamTypes.filter((item) => item.teamCategoryId === form.teamCategoryId) : []),
+    [form.teamCategoryId, teamTypes],
+  );
   const isCommercialCategory = selectedTeamCategoryCode === "COMERCIAL";
   const isTechnicalCategory = selectedTeamCategoryCode === "TECNICA";
-  const missingTeamMetaReasons = useMemo(() => {
-    if (isLoadingMeta) {
-      return [] as string[];
-    }
-
-    const reasons: string[] = [];
-    if (serviceCenters.length === 0) {
-      reasons.push("Base (Centro de Servico)");
-    }
-    if (teamTypes.length === 0) {
-      reasons.push("Tipo operacional");
-    }
-    if (teamCategories.length === 0) {
-      reasons.push("Tipo de Equipe");
-    }
-    // Pre-requisito de pessoa depende da categoria: TECNICA exige encarregado,
-    // COMERCIAL exige supervisor. Equipe comercial existe justamente para nao
-    // depender de encarregado.
-    if (isTechnicalCategory && foremen.length === 0) {
-      reasons.push("Encarregado");
-    }
-    if (isCommercialCategory && supervisors.length === 0) {
-      reasons.push("Supervisor");
-    }
-    return reasons;
-  }, [foremen.length, isCommercialCategory, isLoadingMeta, isTechnicalCategory, serviceCenters.length, supervisors.length, teamCategories.length, teamTypes.length]);
+  const missingTeamMetaReasons = useMemo(
+    () => buildMissingTeamMetaReasons({
+      isLoadingMeta,
+      serviceCenterCount: serviceCenters.length,
+      teamCategoryCount: teamCategories.length,
+      teamTypeOptionCount: teamTypeOptions.length,
+      foremanCount: foremen.length,
+      supervisorCount: supervisors.length,
+      selectedTeamCategoryId: form.teamCategoryId,
+      isTechnicalCategory,
+      isCommercialCategory,
+    }),
+    [foremen.length, form.teamCategoryId, isCommercialCategory, isLoadingMeta, isTechnicalCategory, serviceCenters.length, supervisors.length, teamCategories.length, teamTypeOptions.length],
+  );
   const canSubmitTeamForm = missingTeamMetaReasons.length === 0 && !isSaving;
 
   const loadMeta = useCallback(async () => {
@@ -330,8 +326,8 @@ export function TeamsPageView() {
     resolveErrorColumn: (code) => {
       if (code === "DUPLICATE_TEAM_COMBINATION") return "nome";
       if (code === "INVALID_SERVICE_CENTER") return "base";
-      if (code === "INVALID_TEAM_TYPE") return "tipo_operacional";
-      if (code === "INVALID_TEAM_CATEGORY") return "tipo_equipe";
+      if (code === "INVALID_TEAM_TYPE" || code === "TEAM_TYPE_CATEGORY_MISMATCH") return "tipo_equipe";
+      if (code === "INVALID_TEAM_CATEGORY") return "tipo_operacional";
       if (code === "INVALID_FOREMAN" || code === "FOREMAN_ALREADY_LINKED" || code === "MISSING_FOREMAN") return "encarregado";
       if (code === "INVALID_SUPERVISOR" || code === "MISSING_SUPERVISOR") return "supervisor";
       return "salvamento";
@@ -861,7 +857,7 @@ export function TeamsPageView() {
 
           <label className={styles.field}>
             <span>
-              Tipo de equipe <span className="requiredMark">*</span>
+              Tipo operacional <span className="requiredMark">*</span>
             </span>
             <select
               value={form.teamCategoryId}
@@ -869,6 +865,7 @@ export function TeamsPageView() {
                 setForm((current) => ({
                   ...current,
                   teamCategoryId: event.target.value,
+                  teamTypeId: "",
                   foremanId: "",
                   supervisorId: "",
                 }))
@@ -889,18 +886,18 @@ export function TeamsPageView() {
 
           <label className={styles.field}>
             <span>
-              Tipo operacional <span className="requiredMark">*</span>
+              Tipo de equipe <span className="requiredMark">*</span>
             </span>
             <select
               value={form.teamTypeId}
               onChange={(event) => setForm((current) => ({ ...current, teamTypeId: event.target.value }))}
               required
-              disabled={isLoadingMeta}
+              disabled={isLoadingMeta || !form.teamCategoryId}
             >
               <option value="" disabled>
-                {isLoadingMeta ? "Carregando..." : "Selecione"}
+                {isLoadingMeta ? "Carregando..." : !form.teamCategoryId ? "Selecione o tipo operacional" : "Selecione"}
               </option>
-              {teamTypes.map((teamType) => (
+              {teamTypeOptions.map((teamType) => (
                 <option key={teamType.id} value={teamType.id}>
                   {teamType.name}
                 </option>
@@ -1003,7 +1000,7 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Tipo de equipe</span>
+            <span>Tipo operacional</span>
             <select
               value={filterDraft.teamCategoryId}
               onChange={(event) => updateFilterField("teamCategoryId", event.target.value)}
@@ -1051,7 +1048,7 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Tipo operacional</span>
+            <span>Tipo de equipe</span>
             <select
               value={filterDraft.teamTypeId}
               onChange={(event) => updateFilterField("teamTypeId", event.target.value)}
@@ -1096,8 +1093,8 @@ export function TeamsPageView() {
                 <th>Placa do veiculo</th>
                 <th>Base</th>
                 <th>Centro de estoque proprio</th>
-                <th>Tipo de equipe</th>
                 <th>Tipo operacional</th>
+                <th>Tipo de equipe</th>
                 <th>Encarregado</th>
                 <th>Supervisor</th>
                 <th>Registrado em</th>
@@ -1285,10 +1282,10 @@ export function TeamsPageView() {
                   <strong>Centro de estoque proprio:</strong> {detailTeam.stockCenterName}
                 </div>
                 <div>
-                  <strong>Tipo de equipe:</strong> {detailTeam.teamCategoryName}
+                  <strong>Tipo operacional:</strong> {detailTeam.teamCategoryName}
                 </div>
                 <div>
-                  <strong>Tipo operacional:</strong> {detailTeam.teamTypeName}
+                  <strong>Tipo de equipe:</strong> {detailTeam.teamTypeName}
                 </div>
                 <div>
                   <strong>Encarregado:</strong> {detailTeam.foremanName}
