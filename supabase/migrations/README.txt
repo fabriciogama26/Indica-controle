@@ -1418,3 +1418,64 @@ Observacao
   autenticado e EXECUTE apenas para `service_role`.
 - Valida no fim que existe exatamente uma `save_material_record` com 17 parametros e que
   nao sobrou overload antigo, que deixaria a chamada por nome ambigua.
+
+415_team_categories_and_commercial_measurement.sql
+- Cria o catalogo `team_categories` por tenant (catalogo fechado: `code` restrito por
+  check a `TECNICA`/`COMERCIAL`, semeado nesta migration, sem tela de cadastro).
+- `teams.team_category_id` passa a ser obrigatorio, com backfill `TECNICA` para TODA
+  equipe existente: nenhum cadastro atual muda de comportamento.
+- `teams.foreman_person_id` passa a aceitar `NULL`. A regra por categoria vai para o
+  trigger `enforce_team_category_links` (TECNICA exige encarregado, COMERCIAL exige
+  supervisor) porque `CHECK` nao consulta outra tabela.
+- `sync_team_foreman_history` deixa de abrir periodo para equipe sem encarregado, e
+  `resolve_team_foreman_snapshot` devolve `NULL` nesse caso. Sem isso, toda equipe
+  comercial gravaria `Nao identificado` como `foreman_name_snapshot` da Medicao.
+- `save_team_record` ganha `p_team_category_id` (assinatura passa de 12 para 13
+  parametros) e aplica as regras acima antes de gravar. O overload antigo e derrubado:
+  com as duas versoes publicadas a chamada por nome ficaria ambigua no PostgREST.
+  A trava de `um encarregado, uma equipe ativa` passa a valer somente quando ha
+  encarregado.
+- Na ordem de equipe COMERCIAL o Projeto deixa de ser obrigatorio, inclusive em
+  `COM_PRODUCAO`, e a ordem ganha `commercial_order_ref` (campo `Ordem` da tela, texto
+  livre e opcional). A regra de Projeto obrigatorio sai do CHECK da 382 e vira o trigger
+  `enforce_measurement_project_by_kind`, pelo mesmo motivo do trigger de equipe: depende
+  do `code` da categoria, que vive em outra tabela. Para equipe TECNICA a regra nao muda.
+- `save_project_measurement_order` recebe a mesma excecao pela cirurgia de texto que a 382
+  usou (predicado `public.is_commercial_team`), e aborta se a guarda esperada nao for
+  encontrada em vez de republicar a funcao sem o patch.
+- Cria `measurement_commercial_processes` (catalogo do campo `Processo` da Medicao
+  Comercial, por tenant), semeado com Cobrancas / Novas_Ligacoes / Perdas. Sem tela de
+  cadastro por ora: cresce por SQL. RLS de SELECT e escrita fechada, padrao da 393.
+- A ordem ganha `commercial_process_id` (FK composta com tenant), o snapshot do nome e
+  `commercial_start_time`/`commercial_end_time`. As colunas sao ANULAVEIS porque a ordem
+  TECNICA nao tem esses campos: a obrigatoriedade depende da categoria da equipe e vive
+  no trigger, junto com a regra de Projeto.
+- Sao DOIS triggers, com tempos diferentes de proposito:
+  - `trg_enforce_measurement_project_rules` e BEFORE, imediato, exatamente como o CHECK
+    que substitui. A ordem TECNICA continua reprovada na propria instrucao, e nao no
+    commit: mudar isso alteraria em silencio o comportamento de erro de um fluxo que nao
+    faz parte deste pedido.
+  - `trg_enforce_commercial_measurement_fields` e CONSTRAINT TRIGGER DEFERIDO, porque a
+    ordem comercial nasce em DOIS passos: a RPC comercial grava o cabecalho pela RPC da
+    Medicao (que nao conhece Processo, horarios nem Ordem) e so depois preenche esses
+    campos num UPDATE. Um trigger imediato reprovaria o INSERT intermediario, que ainda
+    esta incompleto. Diferido, a checagem roda no fim da transacao e continua valendo
+    para escrita vinda de fora da RPC.
+- O trigger comercial tambem recusa ordem de equipe TECNICA que carregue qualquer campo
+  comercial, para nao sobrar lixo se alguem trocar a equipe da ordem.
+- Check de intervalo: `commercial_end_time > commercial_start_time`. Turno que atravessa a
+  meia-noite nao e suportado de proposito -- a ordem e amarrada a UMA data de execucao.
+- Cria `project_commercial_measurement_order_members` (os dois eletricistas da ordem
+  comercial, com snapshot do nome, `sort_order in (1,2)` e unicidade por slot e por
+  pessoa dentro da ordem). RLS de SELECT e escrita fechada, no padrao da 393.
+- Cria `save_project_commercial_measurement_order` (com `p_commercial_order_ref`), que
+  valida a categoria da equipe e
+  os dois eletricistas (cargo `ELETRICISTA`, ativos, do mesmo tenant), DELEGA cabecalho
+  e itens para `save_project_measurement_order` em vez de duplicar a regra da Medicao, e
+  regrava os integrantes na mesma transacao.
+- Registra a pagina `medicao-comercial` em `app_pages` com `default_user_access = false`
+  (padrao da 245) e faz o backfill das 7 colunas de acao juntas (padrao da 253), senao o
+  administrador abriria a tela e tomaria 403 no proprio CSV.
+- Valida no fim: todo tenant com as duas categorias, nenhuma equipe sem categoria,
+  nenhum overload antigo de `save_team_record`, EXECUTE so para `service_role` nas duas
+  RPCs e a pagina cadastrada.

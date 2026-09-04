@@ -58,6 +58,14 @@ export function mapTeamDbError(error: unknown, fallbackMessage: string) {
     } as const;
   }
 
+  if (combined.includes("teams_team_category_tenant_fk") || combined.includes("invalid_team_category")) {
+    return {
+      status: 422,
+      message: "Tipo de equipe invalido para o tenant atual.",
+      reason: "INVALID_TEAM_CATEGORY",
+    } as const;
+  }
+
   if (combined.includes("teams_foreman_person_tenant_fk")) {
     return {
       status: 422,
@@ -100,7 +108,7 @@ export function mapTeamDbError(error: unknown, fallbackMessage: string) {
     || combined.includes("null value in column \"vehicle_plate\"")
     || combined.includes("null value in column \"service_center_id\"")
     || combined.includes("null value in column \"team_type_id\"")
-    || combined.includes("null value in column \"foreman_person_id\"")
+    || combined.includes("null value in column \"team_category_id\"")
   ) {
     return {
       status: 400,

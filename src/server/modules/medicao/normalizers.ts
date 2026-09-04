@@ -12,6 +12,15 @@ export function normalizeUuid(value: unknown) {
   return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
 }
 
+// `HH:MM` ou `HH:MM:SS` -> `HH:MM:SS`. Qualquer outra coisa vira null, para a
+// rota recusar antes de a RPC ver o valor.
+export function normalizeTimeOfDay(value: unknown) {
+  const normalized = String(value ?? "").trim();
+  const match = normalized.match(/^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/);
+  if (!match) return null;
+  return `${match[1]}:${match[2]}:${match[3] ?? "00"}`;
+}
+
 export function normalizeIsoDate(value: unknown) {
   const normalized = normalizeText(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;

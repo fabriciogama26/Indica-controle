@@ -5,11 +5,11 @@
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
 import { loadProgrammingMatchMap } from "./programmingMatch";
-import type { AppUserRow, CycleTargetItemRow, CycleWorkdaysRow, MeasurementHistoryRow, MeasurementOrderItemRow, MeasurementOrderRow, MeasurementScoreTargetRow, MeasurementTeamTypeTargetRow, ProgrammingMatchStatus, ProjectTestRow, ServiceActivityIddRow, SupabasePageResult, TeamCompositionContextRow, TeamRow, TeamTypeHistoryRow, TeamTypeRow } from "./types";
+import type { AppUserRow, CycleTargetItemRow, CycleWorkdaysRow, MeasurementCommercialMemberRow, MeasurementHistoryRow, MeasurementOrderItemRow, MeasurementOrderRow, MeasurementScoreTargetRow, MeasurementTeamTypeTargetRow, ProgrammingMatchStatus, ProjectTestRow, ServiceActivityIddRow, SupabasePageResult, TeamCompositionContextRow, TeamRow, TeamTypeHistoryRow, TeamTypeRow } from "./types";
 import { buildMeasurementCycleStart, buildProgrammingMatchKey, normalizeMeasurementKind, normalizeText, resolveAppUserName } from "./normalizers";
 export const SUPABASE_LIST_PAGE_SIZE = 1000;
 export const HISTORY_LIMIT = 50;
-export const MEASUREMENT_ORDER_SELECT = "id, order_number, programming_id, project_id, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at, minimum_billing_amount, minimum_billing_team_type_id, minimum_billing_team_type_name_snapshot, minimum_billing_score_target_id, minimum_billing_target_points, minimum_billing_unit_value_source_activity_id, minimum_billing_unit_value_group_snapshot, minimum_billing_unit_value, minimum_billing_calculated_at";
+export const MEASUREMENT_ORDER_SELECT = "id, order_number, programming_id, project_id, commercial_order_ref, commercial_process_id, commercial_process_name_snapshot, commercial_start_time, commercial_end_time, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at, minimum_billing_amount, minimum_billing_team_type_id, minimum_billing_team_type_name_snapshot, minimum_billing_score_target_id, minimum_billing_target_points, minimum_billing_unit_value_source_activity_id, minimum_billing_unit_value_group_snapshot, minimum_billing_unit_value, minimum_billing_calculated_at";
 
 
 export async function fetchTeamCompositionContextSet(params: {
@@ -344,6 +344,42 @@ export async function fetchAppUserMap(params: {
   return new Map((data ?? []).map((item) => [item.id, item]));
 }
 
+export async function fetchCommercialMemberMap(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  orderIds: string[];
+}) {
+  const orderIds = Array.from(new Set(params.orderIds.filter(Boolean)));
+  if (!orderIds.length) {
+    return new Map<string, Array<{ personId: string; name: string; sortOrder: number }>>();
+  }
+
+  const { data, error } = await params.supabase
+    .from("project_commercial_measurement_order_members")
+    .select("measurement_order_id, person_id, person_name_snapshot, sort_order")
+    .eq("tenant_id", params.tenantId)
+    .in("measurement_order_id", orderIds)
+    .order("sort_order", { ascending: true })
+    .returns<MeasurementCommercialMemberRow[]>();
+
+  if (error) {
+    return new Map<string, Array<{ personId: string; name: string; sortOrder: number }>>();
+  }
+
+  const result = new Map<string, Array<{ personId: string; name: string; sortOrder: number }>>();
+  for (const row of data ?? []) {
+    const members = result.get(row.measurement_order_id) ?? [];
+    members.push({
+      personId: row.person_id,
+      name: normalizeText(row.person_name_snapshot),
+      sortOrder: Number(row.sort_order ?? members.length + 1),
+    });
+    result.set(row.measurement_order_id, members);
+  }
+
+  return result;
+}
+
 // Mapeamento puro de uma ordem para o formato de detalhe da API.
 // Extraido de fetchMeasurementOrderDetail para que a versao em lote
 // (fetchMeasurementOrderDetailsForExport) produza exatamente o mesmo objeto.
@@ -355,6 +391,7 @@ export function buildMeasurementOrderDetail(params: {
   projectServiceCenterMap: Awaited<ReturnType<typeof fetchProjectServiceCenterMap>>;
   teamCompositionKeys: Awaited<ReturnType<typeof fetchTeamCompositionContextSet>>["data"];
   programmingMatchMap: Awaited<ReturnType<typeof loadProgrammingMatchMap>>;
+  commercialMemberMap?: Awaited<ReturnType<typeof fetchCommercialMemberMap>>;
 }) {
   const { order, itemRows, serviceActivityIddMap, userMap, projectServiceCenterMap, teamCompositionKeys, programmingMatchMap } = params;
   const normalizedItems = itemRows.map((item) => ({
@@ -403,6 +440,12 @@ export function buildMeasurementOrderDetail(params: {
     projectServiceCenter: order.project_id ? (projectServiceCenterMap.get(order.project_id) ?? "Sem base") : "Sem projeto",
     teamName: normalizeText(order.team_name_snapshot),
     foremanName: normalizeText(order.foreman_name_snapshot),
+    commercialOrderRef: normalizeText(order.commercial_order_ref),
+    commercialProcessId: order.commercial_process_id,
+    commercialProcessName: normalizeText(order.commercial_process_name_snapshot),
+    commercialStartTime: normalizeText(order.commercial_start_time).slice(0, 5),
+    commercialEndTime: normalizeText(order.commercial_end_time).slice(0, 5),
+    commercialMembers: params.commercialMemberMap?.get(order.id) ?? [],
     isActive: Boolean(order.is_active),
     cancellationReason: normalizeText(order.cancellation_reason),
     canceledAt: order.canceled_at,
@@ -449,6 +492,7 @@ export async function fetchMeasurementOrderDetail(params: {
   const userIds = [order.created_by, order.updated_by].filter((item): item is string => Boolean(item));
   const [
     itemsResult,
+    commercialMemberMap,
     userMap,
     programmingMatchMap,
     projectServiceCenterMap,
@@ -462,6 +506,11 @@ export async function fetchMeasurementOrderDetail(params: {
       .eq("is_active", true)
       .order("activity_code", { ascending: true })
       .returns<MeasurementOrderItemRow[]>(),
+    fetchCommercialMemberMap({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      orderIds: [params.orderId],
+    }),
     fetchAppUserMap({
       supabase: params.supabase,
       tenantId: params.tenantId,
@@ -504,6 +553,7 @@ export async function fetchMeasurementOrderDetail(params: {
     projectServiceCenterMap,
     teamCompositionKeys: teamCompositionContexts.data,
     programmingMatchMap,
+    commercialMemberMap,
   });
 }
 
@@ -612,7 +662,7 @@ export async function fetchMeasurementOrderDetailsForExport(params: {
     .flatMap((order) => [order.created_by, order.updated_by])
     .filter((item): item is string => Boolean(item));
 
-  const [userMap, projectServiceCenterMap, teamCompositionContexts, serviceActivityIddMap] = await Promise.all([
+  const [userMap, projectServiceCenterMap, teamCompositionContexts, serviceActivityIddMap, commercialMemberMap] = await Promise.all([
     fetchAppUserMap({
       supabase: params.supabase,
       tenantId: params.tenantId,
@@ -632,6 +682,11 @@ export async function fetchMeasurementOrderDetailsForExport(params: {
       supabase: params.supabase,
       tenantId: params.tenantId,
       activityIds: itemRows.map((item) => item.service_activity_id),
+    }),
+    fetchCommercialMemberMap({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      orderIds: uniqueOrderIds,
     }),
   ]);
 
@@ -691,6 +746,7 @@ export async function fetchMeasurementOrderDetailsForExport(params: {
         projectServiceCenterMap,
         teamCompositionKeys: teamCompositionContexts.data,
         programmingMatchMap,
+        commercialMemberMap,
       }),
     ]),
   );

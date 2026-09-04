@@ -123,6 +123,7 @@ const permissionCatalog = [
   { pageKey: "apuracao-fator-minimo", label: "Apuracao de Fator Minimo", path: "/apuracao-fator-minimo", section: "Operacao" },
   { pageKey: "medicao-asbuilt", label: "Medicao Asbuilt", path: "/medicao-asbuilt", section: "Operacao" },
   { pageKey: "medicao", label: "Medicao", path: "/medicao", section: "Operacao" },
+  { pageKey: "medicao-comercial", label: "Medicao Comercial", path: "/medicao-comercial", section: "Operacao" },
   { pageKey: "medicao-visualizacao", label: "Visualizacao Medicao", path: "/medicao-visualizacao", section: "Operacao" },
   { pageKey: "faturamento", label: "Faturamento", path: "/faturamento", section: "Operacao" },
   { pageKey: "estoque", label: "Estoque Atual", path: "/estoque", section: "Almoxarifado" },

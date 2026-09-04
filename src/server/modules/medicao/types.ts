@@ -24,6 +24,11 @@ export type MeasurementOrderRow = {
   project_code_snapshot: string | null;
   team_name_snapshot: string;
   foreman_name_snapshot: string | null;
+  commercial_order_ref: string | null;
+  commercial_process_id: string | null;
+  commercial_process_name_snapshot: string | null;
+  commercial_start_time: string | null;
+  commercial_end_time: string | null;
   is_active: boolean;
   cancellation_reason: string | null;
   canceled_at: string | null;
@@ -63,6 +68,13 @@ export type MeasurementOrderItemRow = {
   observation: string | null;
   is_active: boolean;
   updated_at: string;
+};
+
+export type MeasurementCommercialMemberRow = {
+  measurement_order_id: string;
+  person_id: string;
+  person_name_snapshot: string;
+  sort_order: number;
 };
 
 export type ServiceActivityIddRow = {
@@ -138,6 +150,13 @@ export type ProjectServiceTypeProjectRow = {
 export type TeamRow = {
   id: string;
   team_type_id: string | null;
+  team_category_id?: string | null;
+};
+
+export type TeamCategoryRow = {
+  id: string;
+  code: string | null;
+  name: string | null;
 };
 
 export type TeamTypeRow = {
@@ -188,6 +207,12 @@ export type SaveMeasurementPayload = {
   noProductionReasonId?: string;
   notes?: string;
   expectedUpdatedAt?: string;
+  commercialEmployee1Id?: string | null;
+  commercialEmployee2Id?: string | null;
+  commercialOrderRef?: string | null;
+  commercialProcessId?: string | null;
+  commercialStartTime?: string | null;
+  commercialEndTime?: string | null;
   items?: Array<{
     activityId?: string;
     programmingActivityId?: string;

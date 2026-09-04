@@ -1729,3 +1729,45 @@ Atualizacao 2026-09-03 - Descancelamento de ordem
 - Permissoes e multi-tenant: sem nova `page_key` nem acao granular; a rota continua
   derivando `tenant_id` da sessao, usando `medicao/update` para abrir/descancelar e
   `medicao/cancel` para cancelar.
+
+Atualizacao 2026-09-04 - Variante Comercial e handlers fora do route.ts
+--------------------------------------------------------------------------------
+- Contexto: a tela `Medicao Comercial` (`docs/Tela_Medicao_Comercial_SaaS.txt`) e
+  a MESMA tela desta, apontada para equipes de categoria COMERCIAL. Em vez de
+  clonar o PageView e as rotas, as duas variantes compartilham o mesmo codigo.
+- `MeasurementPageView` passou a aceitar `variant`
+  (`src/modules/dashboard/medicao/variant.ts`), que define a base da API
+  (`/api/medicao` ou `/api/medicao-comercial`), os campos dos integrantes e a
+  presenca do `Cadastro em massa`. Sem `variant`, a tela e exatamente a de antes.
+- Toda a regra das rotas saiu de `src/app/api/medicao/**/route.ts` para
+  `src/server/modules/medicao/`: `handlers.ts`, `routeConfig.ts`, `metaHandler.ts`,
+  `exportHandler.ts`, `programmingSourcesHandler.ts`, `activitiesCatalogHandler.ts`,
+  `minimumBillingHandler.ts`, `projectActivityUsageHandler.ts` e
+  `rateSuggestionHandler.ts`. Os `route.ts` viraram delegacao pura.
+  Motivo tecnico, alem do CLAUDE.md secao 5: `route.ts` do App Router so pode
+  exportar handlers HTTP. Uma versao intermediaria exportava os handlers do
+  proprio `route.ts` e quebrava o typecheck com
+  `OmitWithTag ... is not assignable to type never`.
+- `GET /api/medicao` passou a filtrar por categoria de equipe TECNICA. Ordem de
+  equipe comercial nao aparece aqui, e o detalhe/historico/PATCH dela responde 404.
+- Permissao: os endpoints compartilhados de LEITURA/EXTRACAO continuam aceitando
+  `medicao` OU `medicao-visualizacao`
+  (`authorizeMeasurementVariantReadOrExportAction`). Isso vale para
+  `GET /api/medicao`, `GET /api/medicao/export` e
+  `GET /api/medicao/activities/catalog`, que a tela `Visualizacao Medicao` consome.
+- Modularizacao (o arquivo segue acima do teto de 1.000 linhas do CLAUDE.md):
+  a primeira fatia saiu nesta entrega -- `src/modules/dashboard/medicao/types.ts`
+  (tipos puros) e `src/modules/dashboard/medicao/utils.ts` (26 funcoes puras de
+  rotulo, normalizacao e busca de opcao). O PageView caiu de 3.644 para 3.447
+  linhas MESMO ganhando a variante comercial.
+  Proximas fatias sugeridas, na ordem: (1) o cadastro em massa (parse de CSV,
+  relatorio de erro e casamento com Programacao), (2) os modais de detalhe,
+  historico e status, (3) o bloco de filtros.
+- Projeto obrigatorio em `COM_PRODUCAO` deixou de ser CHECK e virou o trigger
+  `enforce_measurement_project_by_kind`. A regra para equipe TECNICA e a MESMA
+  da 382, letra por letra; o trigger existe porque a Medicao Comercial abriu uma
+  excecao que depende da categoria da equipe, e CHECK nao consulta outra tabela.
+  `save_project_measurement_order` recebeu a excecao pela mesma cirurgia de texto
+  que a 382 usou, e a migration aborta se a guarda esperada nao for encontrada.
+  Nenhuma ordem tecnica muda de comportamento.
+- Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.

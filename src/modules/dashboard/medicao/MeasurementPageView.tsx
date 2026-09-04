@@ -11,26 +11,52 @@ import { Pagination } from "@/components/ui/Pagination";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import { parseCsvLine } from "@/lib/utils/parsers";
+import {
+  CommercialMembersFields,
+  EMPTY_COMMERCIAL_MEMBERS,
+  formatCommercialMembers,
+  validateCommercialMembers,
+  type CommercialElectricianOption,
+  type CommercialMembersValue,
+} from "./CommercialMembersFields";
+import { TECHNICAL_MEASUREMENT_VARIANT, type MeasurementVariantConfig } from "./variant";
 
-type MeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
-type MeasurementKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
-type ProgrammingStatus = "PROGRAMADA" | "REPROGRAMADA" | "ADIADA" | "CANCELADA";
-type ProgrammingMatchStatus = "PROGRAMADA" | "NAO_PROGRAMADA";
-type WorkCompletionStatus = string | null;
-type EconomicWorkCompletionStatus = "CONCLUIDO" | "PARCIAL" | "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO";
-
-type ProjectItem = {
-  id: string;
-  code: string;
-  serviceName: string;
-};
-
-type TeamItem = {
-  id: string;
-  name: string;
-  foremanName: string;
-};
-
+import {
+  activityOptionLabel,
+  buildActivityLookupQueries,
+  findActivityOption,
+  findActivityOptionByImportCode,
+  findActivitySelectionOption,
+  findProjectOption,
+  findTeamOption,
+  formatHistoryActionLabel,
+  formatHistoryValue,
+  getOpenStatusActionLabel,
+  getOpenStatusReasonLabel,
+  isMvaHourUnit,
+  measurementKindLabel,
+  normalizeMeasurementKindInput,
+  normalizeSearchText,
+  normalizeWorkCompletionCodeToken,
+  parseNonNegativeNumber,
+  parsePositiveNumber,
+  programmingMatchLabel,
+  rateSuggestionSourceLabel,
+  resolveEconomicWorkCompletionStatus,
+  teamOptionLabel,
+  workCompletionStatusLabel,
+} from "./utils";
+import type {
+  ActivityCatalogItem,
+  MeasurementKind,
+  MeasurementStatus,
+  ProgrammingMatchStatus,
+  ProgrammingStatus,
+  ProjectItem,
+  RateSuggestionSource,
+  TeamItem,
+  WorkCompletionStatus,
+} from "./types";
 type ScheduleActivity = {
   id?: string;
   catalogId: string;
@@ -64,15 +90,6 @@ type ProgrammingResponse = {
   message?: string;
 };
 
-type ActivityCatalogItem = {
-  id: string;
-  code: string;
-  description: string;
-  unit: string;
-  unitValue: number;
-  voicePoint: number;
-};
-
 type ActivityCatalogResponse = {
   items?: ActivityCatalogItem[];
 };
@@ -89,13 +106,13 @@ type ProjectServiceTypeItem = {
 };
 
 type MeasurementMetaResponse = {
+  electricians?: CommercialElectricianOption[];
+  commercialProcesses?: Array<{ id: string; name: string }>;
   noProductionReasons?: NoProductionReasonItem[];
   projectServiceTypes?: ProjectServiceTypeItem[];
   workCompletionCatalog?: WorkCompletionCatalogItem[];
   message?: string;
 };
-
-type RateSuggestionSource = "ELECTRICAL_FIELD" | "PREVIOUS_MEASUREMENT" | "MANUAL";
 
 type RateSuggestionResponse = {
   projectId?: string;
@@ -168,6 +185,11 @@ type OrderItem = {
   projectServiceCenter: string;
   teamName: string;
   foremanName: string;
+  commercialOrderRef: string;
+  commercialProcessName: string;
+  commercialStartTime: string;
+  commercialEndTime: string;
+  commercialMembers?: Array<{ personId: string; name: string; sortOrder: number }>;
   updatedAt: string;
   totalAmount: number;
   itemCount: number;
@@ -224,6 +246,12 @@ type OrderDetail = {
   teamId: string;
   teamName: string;
   foremanName: string;
+  commercialOrderRef: string;
+  commercialProcessId: string | null;
+  commercialProcessName: string;
+  commercialStartTime: string;
+  commercialEndTime: string;
+  commercialMembers?: Array<{ personId: string; name: string; sortOrder: number }>;
   executionDate: string;
   measurementDate: string;
   voicePoint: number;
@@ -395,6 +423,10 @@ type FormState = {
   manualRate: string;
   measurementKind: MeasurementKind;
   noProductionReasonId: string;
+  commercialOrderRef: string;
+  commercialProcessId: string;
+  commercialStartTime: string;
+  commercialEndTime: string;
   notes: string;
   activitySearch: string;
   activityQuantity: string;
@@ -493,6 +525,10 @@ function createForm(today: string): FormState {
     manualRate: "1",
     measurementKind: "COM_PRODUCAO",
     noProductionReasonId: "",
+    commercialOrderRef: "",
+    commercialProcessId: "",
+    commercialStartTime: "",
+    commercialEndTime: "",
     notes: "",
     activitySearch: "",
     activityQuantity: "1",
@@ -500,282 +536,6 @@ function createForm(today: string): FormState {
     activityWorkedHours: "",
     items: [],
   };
-}
-
-function parsePositiveNumber(value: string | number) {
-  const normalized = String(value ?? "").trim().replace(",", ".");
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return Number(parsed.toFixed(6));
-}
-
-function parseNonNegativeNumber(value: string | number) {
-  const normalized = String(value ?? "").trim().replace(",", ".");
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Number(parsed.toFixed(6));
-}
-
-function measurementKindLabel(value: MeasurementKind) {
-  return value === "SEM_PRODUCAO" ? "Sem producao" : "Com producao";
-}
-
-function rateSuggestionSourceLabel(source: RateSuggestionSource) {
-  if (source === "ELECTRICAL_FIELD") return "Taxa vinculada ao ponto eletrico desta programacao.";
-  if (source === "PREVIOUS_MEASUREMENT") return "Taxa sugerida com base na ultima medicao deste projeto.";
-  return "Taxa em preenchimento manual.";
-}
-
-function isMvaHourUnit(value: string) {
-  const normalized = normalizeSearchText(value).replace(/\s+/g, "");
-  return (
-    normalized.includes("mva*hora")
-    || normalized.includes("mva/hora")
-    || normalized.includes("mvahora")
-    || normalized.includes("mva*h")
-  );
-}
-
-function programmingMatchLabel(status: ProgrammingMatchStatus) {
-  return status === "PROGRAMADA" ? "Programada" : "Nao programada";
-}
-
-function normalizeWorkCompletionCodeToken(value: unknown) {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-}
-
-function resolveEconomicWorkCompletionStatus(value: unknown): EconomicWorkCompletionStatus | null {
-  const token = normalizeWorkCompletionCodeToken(value);
-  if (
-    token === "CONCLUIDO"
-    || token === "COMPLETO"
-    || token.startsWith("CONCLUIDO")
-  ) {
-    return "CONCLUIDO";
-  }
-
-  if (token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO" || token === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO") {
-    return "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO";
-  }
-
-  if (token === "PARCIAL" || token.startsWith("PARCIAL")) {
-    return "PARCIAL";
-  }
-
-  return null;
-}
-
-function workCompletionStatusLabel(status: WorkCompletionStatus, labelMap: Map<string, string>) {
-  if (!status) return "-";
-
-  const economicStatus = resolveEconomicWorkCompletionStatus(status);
-  if (economicStatus) {
-    return labelMap.get(economicStatus) ?? economicStatus;
-  }
-
-  const normalized = String(status).trim().toUpperCase();
-  return labelMap.get(normalized) ?? normalized;
-}
-
-function formatHistoryActionLabel(action: string) {
-  const normalized = String(action ?? "").toUpperCase();
-  if (normalized === "CREATE") return "Cadastro";
-  if (normalized === "UPDATE") return "Edicao";
-  if (normalized === "CLOSE") return "Fechamento";
-  if (normalized === "CANCEL") return "Cancelamento";
-  if (normalized === "OPEN") return "Abertura";
-  if (normalized === "UNCANCEL") return "Descancelamento";
-  return normalized || "Atualizacao";
-}
-
-function getOpenStatusActionLabel(status: MeasurementStatus | undefined) { return status === "CANCELADA" ? "Descancelar" : "Abrir"; }
-function getOpenStatusReasonLabel(status: MeasurementStatus | undefined) { return status === "CANCELADA" ? "descancelamento" : "reabertura"; }
-
-function formatHistoryValue(value: unknown) {
-  if (value === null || value === undefined) return "-";
-  const normalized = String(value).trim();
-  return normalized || "-";
-}
-
-function normalizeSearchText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-function teamOptionLabel(team: TeamItem) { const teamName = String(team.name ?? "").trim(); const foremanName = String(team.foremanName ?? "").trim(); return foremanName && normalizeSearchText(foremanName) !== "nao identificado" ? `${teamName} / ${foremanName}` : teamName; }
-
-function normalizeCodeToken(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]/g, "")
-    .toLowerCase();
-}
-
-function normalizeCodeTokenLoose(value: string) {
-  return normalizeCodeToken(value).replace(/o/g, "0");
-}
-
-function normalizeMeasurementKindInput(value: string): MeasurementKind {
-  const normalized = normalizeSearchText(value)
-    .replace(/[^a-z0-9]/g, "");
-  return normalized.includes("semproducao") ? "SEM_PRODUCAO" : "COM_PRODUCAO";
-}
-
-function buildActivityLookupQueries(rawValue: string) {
-  const input = String(rawValue ?? "").trim();
-  if (!input) return [] as string[];
-
-  const candidates = new Set<string>();
-  candidates.add(input);
-
-  const byPipe = input.split("|")[0]?.trim();
-  if (byPipe) candidates.add(byPipe);
-
-  const byDash = input.split("-")[0]?.trim();
-  if (byDash) candidates.add(byDash);
-
-  const codePart = input.split(/[|\-]/)[0]?.trim() ?? "";
-  if (codePart) {
-    const zeroToO = codePart.replace(/0/g, "O");
-    const oToZero = codePart.replace(/[oO]/g, "0");
-    if (zeroToO && zeroToO !== codePart) candidates.add(zeroToO);
-    if (oToZero && oToZero !== codePart) candidates.add(oToZero);
-  }
-
-  const normalized = normalizeSearchText(input);
-  if (normalized.includes(" - ")) {
-    const codePart = normalized.split(" - ")[0]?.trim();
-    if (codePart) candidates.add(codePart);
-  }
-
-  return Array.from(candidates).filter((item) => item.length >= 2);
-}
-
-function activityOptionLabel(item: ActivityCatalogItem) {
-  return `${item.code} - ${item.description}`;
-}
-
-function buildImportCodeCandidates(rawValue: string) {
-  const input = String(rawValue ?? "").trim();
-  if (!input) return [] as string[];
-
-  const candidates = new Set<string>();
-  candidates.add(input);
-
-  const byPipe = input.split("|")[0]?.trim();
-  if (byPipe) candidates.add(byPipe);
-
-  const byLabel = input.split(" - ")[0]?.trim();
-  if (byLabel) candidates.add(byLabel);
-
-  const bySpace = input.split(/\s+/)[0]?.trim();
-  if (bySpace) candidates.add(bySpace);
-
-  const byUnderscore = input.split("_")[0]?.trim();
-  if (byUnderscore) candidates.add(byUnderscore);
-
-  return Array.from(candidates)
-    .map((item) => item.trim())
-    .filter((item) => item.length >= 2);
-}
-
-function findActivityOptionByImportCode(value: string, options: ActivityCatalogItem[]) {
-  const candidates = buildImportCodeCandidates(value);
-  if (!candidates.length) return null;
-
-  const normalizedCandidates = new Set(candidates.map((item) => normalizeSearchText(item)).filter(Boolean));
-  const tokenCandidates = new Set(candidates.map((item) => normalizeCodeToken(item)).filter(Boolean));
-  const looseTokenCandidates = new Set(candidates.map((item) => normalizeCodeTokenLoose(item)).filter(Boolean));
-
-  const exactCodeMatches = options.filter((item) => normalizedCandidates.has(normalizeSearchText(item.code)));
-  if (exactCodeMatches.length === 1) return exactCodeMatches[0];
-  if (exactCodeMatches.length > 1) return null;
-
-  const exactLabelMatches = options.filter((item) => normalizedCandidates.has(normalizeSearchText(activityOptionLabel(item))));
-  if (exactLabelMatches.length === 1) return exactLabelMatches[0];
-  if (exactLabelMatches.length > 1) return null;
-
-  const exactTokenMatches = options.filter((item) => tokenCandidates.has(normalizeCodeToken(item.code)));
-  if (exactTokenMatches.length === 1) return exactTokenMatches[0];
-  if (exactTokenMatches.length > 1) return null;
-
-  const exactLooseTokenMatches = options.filter((item) => looseTokenCandidates.has(normalizeCodeTokenLoose(item.code)));
-  if (exactLooseTokenMatches.length === 1) return exactLooseTokenMatches[0];
-  if (exactLooseTokenMatches.length > 1) return null;
-
-  return null;
-}
-
-function findActivityOption(value: string, options: ActivityCatalogItem[]) {
-  const normalized = normalizeSearchText(value);
-  if (!normalized) return null;
-  const codeCandidate = normalized.split("-")[0]?.trim();
-  const codeCandidateToken = normalizeCodeToken(codeCandidate);
-  const codeCandidateTokenLoose = normalizeCodeTokenLoose(codeCandidate);
-  const exact = options.find((item) => {
-    const codeToken = normalizeCodeToken(item.code);
-    const codeTokenLoose = normalizeCodeTokenLoose(item.code);
-    return (
-      (codeCandidateToken && codeToken === codeCandidateToken)
-      || (codeCandidateTokenLoose && codeTokenLoose === codeCandidateTokenLoose)
-      || normalizeSearchText(item.code) === normalized
-      || normalizeSearchText(activityOptionLabel(item)) === normalized
-    );
-  });
-
-  if (exact) return exact;
-
-  return options.find((item) => {
-    const code = normalizeSearchText(item.code);
-    const label = normalizeSearchText(activityOptionLabel(item));
-    const codeToken = normalizeCodeToken(item.code);
-    const codeTokenLoose = normalizeCodeTokenLoose(item.code);
-    return (
-      code === normalized
-      || label === normalized
-      || code === codeCandidate
-      || normalized.startsWith(`${code} -`)
-      || normalized.startsWith(`${code}|`)
-      || (codeCandidateToken && (codeToken === codeCandidateToken || codeToken.startsWith(codeCandidateToken)))
-      || (codeCandidateTokenLoose && (codeTokenLoose === codeCandidateTokenLoose || codeTokenLoose.startsWith(codeCandidateTokenLoose)))
-      || label.includes(normalized)
-    );
-  }) ?? null;
-}
-
-function findActivitySelectionOption(value: string, options: ActivityCatalogItem[]) {
-  return findActivityOption(value, options) ?? findActivityOptionByImportCode(value, options);
-}
-
-function findProjectOption(value: string, options: ProjectItem[]) {
-  const normalized = normalizeSearchText(value);
-  if (!normalized) return null;
-
-  return options.find((item) => normalizeSearchText(item.code) === normalized) ?? null;
-}
-
-function findTeamOption(value: string, options: TeamItem[]) {
-  const normalized = normalizeSearchText(value);
-  const token = normalizeCodeToken(value);
-  if (!normalized && !token) return null;
-
-  const exactByName = options.find((item) => normalizeSearchText(item.name) === normalized);
-  if (exactByName) return exactByName;
-  if (token) {
-    const exactByToken = options.find((item) => normalizeCodeToken(item.name) === token);
-    if (exactByToken) return exactByToken;
-  }
-  return options.find((item) => item.id === value) ?? null;
 }
 
 function normalizeHeader(value: string) {
@@ -910,7 +670,8 @@ function findDuplicateFormActivityId(items: Array<{ activityId: string }>) {
   return null;
 }
 
-export function MeasurementPageView() {
+export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }: { variant?: MeasurementVariantConfig } = {}) {
+  const apiBase = variant.apiBase;
   const { session } = useAuth();
   const accessToken = session?.accessToken ?? null;
   const today = useMemo(() => toIsoDate(new Date()), []);
@@ -939,6 +700,9 @@ export function MeasurementPageView() {
   const [activityOptions, setActivityOptions] = useState<ActivityCatalogItem[]>([]);
   const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonItem[]>([]);
   const [projectServiceTypes, setProjectServiceTypes] = useState<ProjectServiceTypeItem[]>([]);
+  const [electricians, setElectricians] = useState<CommercialElectricianOption[]>([]);
+  const [commercialProcesses, setCommercialProcesses] = useState<Array<{ id: string; name: string }>>([]);
+  const [commercialMembers, setCommercialMembers] = useState<CommercialMembersValue>(EMPTY_COMMERCIAL_MEMBERS);
   const [workCompletionCatalog, setWorkCompletionCatalog] = useState<WorkCompletionCatalogItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
@@ -1128,7 +892,7 @@ export function MeasurementPageView() {
 
       const query = new URLSearchParams(buildOrdersQuery(filters, targetPage, pageSize));
       query.set("_refresh", String(Date.now()));
-      const response = await fetch(`/api/medicao?${query.toString()}`, {
+      const response = await fetch(`${apiBase}?${query.toString()}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
@@ -1142,7 +906,7 @@ export function MeasurementPageView() {
         pagination: data?.pagination ?? { page: targetPage, pageSize, total: data?.orders?.length ?? 0 },
       };
     },
-    [accessToken],
+    [accessToken, apiBase],
   );
 
   const loadAllOrdersForExport = useCallback(async (options?: {
@@ -1183,7 +947,7 @@ export function MeasurementPageView() {
 
     const query = new URLSearchParams(buildOrdersQuery(activeFilters, 1, PAGE_SIZE));
     query.set("type", type);
-    const response = await fetch(`/api/medicao/export?${query.toString()}`, {
+    const response = await fetch(`${apiBase}/export?${query.toString()}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     });
@@ -1214,7 +978,7 @@ export function MeasurementPageView() {
         const executionDateForSources = prefill?.executionDate || form.executionDate;
         const sourceStartDate = executionDateForSources && executionDateForSources < activeFilters.startDate ? executionDateForSources : activeFilters.startDate;
         const sourceEndDate = executionDateForSources && executionDateForSources > activeFilters.endDate ? executionDateForSources : activeFilters.endDate;
-        const response = await fetch(`/api/medicao/programming-sources?startDate=${sourceStartDate}&endDate=${sourceEndDate}`, {
+        const response = await fetch(`${apiBase}/programming-sources?startDate=${sourceStartDate}&endDate=${sourceEndDate}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
@@ -1240,7 +1004,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, activeFilters.endDate, activeFilters.startDate, form.executionDate, form.id, refreshTick]);
+  }, [accessToken, apiBase, activeFilters.endDate, activeFilters.startDate, form.executionDate, form.id, refreshTick]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -1255,7 +1019,7 @@ export function MeasurementPageView() {
     async function loadMeasurementMeta() {
       setIsLoadingMeta(true);
       try {
-        const response = await fetch("/api/medicao/meta", {
+        const response = await fetch(`${apiBase}/meta`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
@@ -1264,6 +1028,8 @@ export function MeasurementPageView() {
         if (ignore) return;
         setNoProductionReasons(data?.noProductionReasons ?? []);
         setProjectServiceTypes(data?.projectServiceTypes ?? []);
+        setElectricians(data?.electricians ?? []);
+        setCommercialProcesses(data?.commercialProcesses ?? []);
         setWorkCompletionCatalog(data?.workCompletionCatalog ?? []);
       } catch (error) {
         if (!ignore && refreshRequestedRef.current) {
@@ -1272,6 +1038,8 @@ export function MeasurementPageView() {
         if (!ignore) {
           setNoProductionReasons([]);
           setWorkCompletionCatalog([]);
+          setElectricians([]);
+          setCommercialProcesses([]);
           setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar metadados da medicao." });
         }
       } finally {
@@ -1285,7 +1053,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, refreshTick]);
+  }, [accessToken, apiBase, refreshTick]);
 
   useEffect(() => {
     if (
@@ -1309,7 +1077,7 @@ export function MeasurementPageView() {
           executionDate: form.executionDate,
           noProductionReasonId: form.noProductionReasonId,
         });
-        const response = await fetch(`/api/medicao/minimum-billing?${params.toString()}`, {
+        const response = await fetch(`${apiBase}/minimum-billing?${params.toString()}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
@@ -1335,7 +1103,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, form.executionDate, form.measurementKind, form.noProductionReasonId, form.teamId]);
+  }, [accessToken, apiBase, form.executionDate, form.measurementKind, form.noProductionReasonId, form.teamId]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -1449,7 +1217,7 @@ export function MeasurementPageView() {
 
     let ignore = false;
     async function loadActivityCatalog() {
-      const response = await fetch(`/api/medicao/activities/catalog?q=${encodeURIComponent(deferredActivitySearch)}`, {
+      const response = await fetch(`${apiBase}/activities/catalog?q=${encodeURIComponent(deferredActivitySearch)}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
@@ -1461,7 +1229,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, deferredActivitySearch]);
+  }, [accessToken, apiBase, deferredActivitySearch]);
 
   useEffect(() => {
     if (!accessToken || deferredFilterActivitySearch.trim().length < 2) {
@@ -1471,7 +1239,7 @@ export function MeasurementPageView() {
 
     let ignore = false;
     async function loadFilterActivityCatalog() {
-      const response = await fetch(`/api/medicao/activities/catalog?q=${encodeURIComponent(deferredFilterActivitySearch)}`, {
+      const response = await fetch(`${apiBase}/activities/catalog?q=${encodeURIComponent(deferredFilterActivitySearch)}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
@@ -1483,7 +1251,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, deferredFilterActivitySearch]);
+  }, [accessToken, apiBase, deferredFilterActivitySearch]);
 
   useEffect(() => {
     if (!form.projectId) return;
@@ -1533,7 +1301,7 @@ export function MeasurementPageView() {
     async function loadRateSuggestion() {
       setIsLoadingRateSuggestion(true);
       try {
-        const response = await fetch(`/api/medicao/rate-suggestion?projectId=${form.projectId}`, {
+        const response = await fetch(`${apiBase}/rate-suggestion?projectId=${form.projectId}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
@@ -1576,7 +1344,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, form.id, form.projectId]);
+  }, [accessToken, apiBase, form.id, form.projectId]);
 
   useEffect(() => {
     if (!accessToken || !form.projectId) {
@@ -1590,7 +1358,7 @@ export function MeasurementPageView() {
       setIsLoadingProjectActivityUsage(true);
       setProjectActivityUsage([]);
       try {
-        const response = await fetch(`/api/medicao/project-activity-usage?projectId=${form.projectId}`, {
+        const response = await fetch(`${apiBase}/project-activity-usage?projectId=${form.projectId}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
@@ -1616,7 +1384,7 @@ export function MeasurementPageView() {
     return () => {
       ignore = true;
     };
-  }, [accessToken, form.projectId]);
+  }, [accessToken, apiBase, form.projectId]);
 
   useEffect(() => {
     if (!filterDraft.projectId) return;
@@ -1631,6 +1399,7 @@ export function MeasurementPageView() {
     setRateSuggestionSource(null);
     setForm(createForm(today));
     setFormProjectSearch("");
+    setCommercialMembers(EMPTY_COMMERCIAL_MEMBERS);
   }
 
   function handleMeasurementKindChange(nextKind: MeasurementKind) {
@@ -1702,7 +1471,7 @@ export function MeasurementPageView() {
           const lookupQueries = buildActivityLookupQueries(form.activitySearch);
           const responses = await Promise.all(
             lookupQueries.map(async (query) => {
-              const response = await fetch(`/api/medicao/activities/catalog?q=${encodeURIComponent(query)}`, {
+              const response = await fetch(`${apiBase}/activities/catalog?q=${encodeURIComponent(query)}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
                 cache: "no-store",
               });
@@ -1817,7 +1586,7 @@ export function MeasurementPageView() {
     const lookupQueries = buildActivityLookupQueries(codeValue);
     const responses = await Promise.all(
       lookupQueries.map(async (query) => {
-        const response = await fetch(`/api/medicao/activities/catalog?q=${encodeURIComponent(query)}`, {
+        const response = await fetch(`${apiBase}/activities/catalog?q=${encodeURIComponent(query)}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
           cache: "no-store",
         });
@@ -2017,7 +1786,7 @@ export function MeasurementPageView() {
       const startDate = dates[0];
       const endDate = dates[dates.length - 1];
 
-      const scheduleResponse = await fetch(`/api/medicao/programming-sources?startDate=${startDate}&endDate=${endDate}`, {
+      const scheduleResponse = await fetch(`${apiBase}/programming-sources?startDate=${startDate}&endDate=${endDate}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
@@ -2254,7 +2023,7 @@ export function MeasurementPageView() {
         })),
       }));
 
-      const batchResponse = await fetch("/api/medicao", {
+      const batchResponse = await fetch(apiBase, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2438,7 +2207,7 @@ export function MeasurementPageView() {
     if (!accessToken) return null;
     const params = new URLSearchParams({ orderId });
     if (activeFilters.endDate) params.set("endDate", activeFilters.endDate);
-    const response = await fetch(`/api/medicao?${params.toString()}`, {
+    const response = await fetch(`${apiBase}?${params.toString()}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",
     });
@@ -2456,6 +2225,10 @@ export function MeasurementPageView() {
       hasManualRateUserOverrideRef.current = true;
       setRateSuggestionSource(null);
       setFormProjectSearch(order.projectId ? (projectMap.get(order.projectId)?.code ?? "") : "");
+      setCommercialMembers({
+        employee1Id: order.commercialMembers?.find((item) => item.sortOrder === 1)?.personId ?? "",
+        employee2Id: order.commercialMembers?.find((item) => item.sortOrder === 2)?.personId ?? "",
+      });
       setForm({
         id: order.id,
         expectedUpdatedAt: order.updatedAt,
@@ -2473,6 +2246,10 @@ export function MeasurementPageView() {
         manualRate: String(order.manualRate),
         measurementKind: order.measurementKind,
         noProductionReasonId: order.measurementKind === "SEM_PRODUCAO" ? (order.noProductionReasonId ?? "") : "",
+        commercialOrderRef: order.commercialOrderRef ?? "",
+        commercialProcessId: order.commercialProcessId ?? "",
+        commercialStartTime: order.commercialStartTime ?? "",
+        commercialEndTime: order.commercialEndTime ?? "",
         notes: order.notes,
         activitySearch: "",
         activityQuantity: "1",
@@ -2511,7 +2288,11 @@ export function MeasurementPageView() {
     if (!accessToken) return;
 
     const matchedProject = findProjectOption(formProjectSearch, projects);
-    const requiresProject = form.measurementKind === "COM_PRODUCAO";
+    // Na Medicao Comercial o Projeto e opcional: a equipe atende demanda que nem
+    // sempre tem projeto aberto, e a referencia da execucao vira o campo `Ordem`.
+    // Texto digitado ainda precisa casar com um projeto ativo -- opcional nao e
+    // o mesmo que aceitar codigo inexistente.
+    const requiresProject = form.measurementKind === "COM_PRODUCAO" && !variant.commercial;
     const invalidProject = !matchedProject && (requiresProject || formProjectSearch.trim());
     if (invalidProject) {
       setFeedback({ type: "error", message: requiresProject ? "Projeto invalido. Selecione um projeto da lista." : "Projeto invalido. Selecione um projeto da lista ou deixe o campo vazio." });
@@ -2597,13 +2378,36 @@ export function MeasurementPageView() {
       return;
     }
 
+    if (variant.commercial) {
+      const membersError = validateCommercialMembers(commercialMembers);
+      if (membersError) {
+        setFeedback({ type: "error", message: membersError });
+        return;
+      }
+
+      if (!form.commercialProcessId) {
+        setFeedback({ type: "error", message: "Selecione o Processo da medicao comercial." });
+        return;
+      }
+
+      if (!form.commercialStartTime || !form.commercialEndTime) {
+        setFeedback({ type: "error", message: "Informe Hora inicio e Hora termino da medicao comercial." });
+        return;
+      }
+
+      if (form.commercialEndTime <= form.commercialStartTime) {
+        setFeedback({ type: "error", message: "Hora termino deve ser maior que Hora inicio." });
+        return;
+      }
+    }
+
     const measurementDateToSave = form.executionDate || today;
 
     const orderVoicePoint = form.measurementKind === "SEM_PRODUCAO" ? 1 : (items[0]?.voicePoint ?? 1);
 
     setIsSubmitting(true);
     try {
-      const response = await fetch("/api/medicao", {
+      const response = await fetch(apiBase, {
         method: form.id ? "PUT" : "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2623,6 +2427,16 @@ export function MeasurementPageView() {
           notes: form.notes,
           expectedUpdatedAt: form.expectedUpdatedAt,
           items: form.measurementKind === "SEM_PRODUCAO" ? [] : items,
+          ...(variant.commercial
+            ? {
+                commercialEmployee1Id: commercialMembers.employee1Id,
+                commercialEmployee2Id: commercialMembers.employee2Id,
+                commercialOrderRef: form.commercialOrderRef.trim() || null,
+                commercialProcessId: form.commercialProcessId,
+                commercialStartTime: form.commercialStartTime,
+                commercialEndTime: form.commercialEndTime,
+              }
+            : {}),
         }),
       });
 
@@ -2660,7 +2474,7 @@ export function MeasurementPageView() {
     setHistoryPage(1);
     setIsLoadingHistory(true);
     try {
-      const response = await fetch(`/api/medicao?historyOrderId=${order.id}`, {
+      const response = await fetch(`${apiBase}?historyOrderId=${order.id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
         cache: "no-store",
       });
@@ -2713,7 +2527,7 @@ export function MeasurementPageView() {
 
     setIsChangingStatus(true);
     try {
-      const response = await fetch("/api/medicao", {
+      const response = await fetch(apiBase, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -2846,6 +2660,7 @@ export function MeasurementPageView() {
   const isForemanSnapshotCurrent = !form.id
     || (form.teamId === form.originalTeamId && form.executionDate === form.originalExecutionDate);
   const formForemanName = isForemanSnapshotCurrent ? form.foremanNameSnapshot : "";
+  const requiresProjectField = form.measurementKind === "COM_PRODUCAO" && !variant.commercial;
 
   return (
     <section className={styles.wrapper}>
@@ -2862,7 +2677,7 @@ export function MeasurementPageView() {
         <h2 className={styles.cardTitle}>Cadastro de Ordem de Medicao</h2>
         <form id="measurement-order-form" className={styles.formGrid} onSubmit={submitOrder}>
           <label className={styles.field}>
-            <span>Projeto {form.measurementKind === "COM_PRODUCAO" ? <span className="requiredMark">*</span> : null}</span>
+            <span>Projeto {requiresProjectField ? <span className="requiredMark">*</span> : null}</span>
             <input
               value={formProjectSearch}
               onChange={(event) => {
@@ -2902,6 +2717,17 @@ export function MeasurementPageView() {
               </div>
             ) : null}
           </label>
+          {variant.commercial ? (
+            <label className={styles.field}>
+              <span>Ordem</span>
+              <input
+                value={form.commercialOrderRef}
+                onChange={(event) => setForm((current) => ({ ...current, commercialOrderRef: event.target.value }))}
+                placeholder="Referencia da ordem (opcional)"
+                maxLength={120}
+              />
+            </label>
+          ) : null}
           <label className={styles.field}>
             <span>Equipe <span className="requiredMark">*</span></span>
             <select
@@ -2912,6 +2738,15 @@ export function MeasurementPageView() {
               {teams.map((team) => <option key={team.id} value={team.id}>{teamOptionLabel(team)}</option>)}
             </select>
           </label>
+          {variant.commercial ? (
+            <CommercialMembersFields
+              electricians={electricians}
+              value={commercialMembers}
+              onChange={setCommercialMembers}
+              fieldClassName={styles.field}
+              disabled={isLoadingMeta}
+            />
+          ) : null}
           <label className={styles.field}>
             <span>Data execucao <span className="requiredMark">*</span></span>
             <input
@@ -2927,7 +2762,41 @@ export function MeasurementPageView() {
               <option value="SEM_PRODUCAO">Sem producao</option>
             </select>
           </label>
-          <label className={styles.field}><span>Encarregado</span><input value={formForemanName} readOnly placeholder="Definido pela composicao da data ao salvar" /></label>
+          {variant.commercial ? (
+            <>
+              <label className={styles.field}>
+                <span>Processo <span className="requiredMark">*</span></span>
+                <select
+                  value={form.commercialProcessId}
+                  onChange={(event) => setForm((current) => ({ ...current, commercialProcessId: event.target.value }))}
+                  disabled={isLoadingMeta}
+                >
+                  <option value="">{isLoadingMeta ? "Carregando..." : "Selecione"}</option>
+                  {commercialProcesses.map((process) => (
+                    <option key={process.id} value={process.id}>{process.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className={styles.field}>
+                <span>Hora inicio <span className="requiredMark">*</span></span>
+                <input
+                  type="time"
+                  value={form.commercialStartTime}
+                  onChange={(event) => setForm((current) => ({ ...current, commercialStartTime: event.target.value }))}
+                />
+              </label>
+              <label className={styles.field}>
+                <span>Hora termino <span className="requiredMark">*</span></span>
+                <input
+                  type="time"
+                  value={form.commercialEndTime}
+                  onChange={(event) => setForm((current) => ({ ...current, commercialEndTime: event.target.value }))}
+                />
+              </label>
+            </>
+          ) : (
+            <label className={styles.field}><span>Encarregado</span><input value={formForemanName} readOnly placeholder="Definido pela composicao da data ao salvar" /></label>
+          )}
           <label className={styles.field}>
             <span>Motivo sem producao{form.measurementKind === "SEM_PRODUCAO" ? " *" : ""}</span>
             <select
@@ -3046,7 +2915,7 @@ export function MeasurementPageView() {
             <button type="submit" form="measurement-order-form" className={styles.primaryButton} disabled={isSubmitting}>
               {isSubmitting ? "Salvando..." : form.id ? "Salvar alteracoes" : "Salvar ordem"}
             </button>
-            {!isEditing ? (
+            {!isEditing && !variant.commercial ? (
               <button type="button" className={styles.secondaryButton} onClick={openMassImportModal}>
                 Cadastro em massa
               </button>
@@ -3117,33 +2986,39 @@ export function MeasurementPageView() {
               {noProductionReasons.map((reason) => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
             </select>
           </label>
-          <label className={styles.field}>
-            <span>Programacao</span>
-            <select value={filterDraft.programmingMatch} onChange={(event) => setFilterDraft((current) => ({ ...current, programmingMatch: event.target.value as Filters["programmingMatch"] }))}>
-              <option value="TODOS">Todos</option>
-              <option value="PROGRAMADA">Programada</option>
-              <option value="NAO_PROGRAMADA">Nao programada</option>
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span>Estado Trabalho</span>
-            <select value={filterDraft.workCompletionStatus} onChange={(event) => setFilterDraft((current) => ({ ...current, workCompletionStatus: event.target.value as Filters["workCompletionStatus"] }))}>
-              <option value="TODOS">Todos</option>
-              {workCompletionFilterOptions
-                .map((item) => (
-                  <option key={item.code} value={item.code}>{item.label}</option>
-                ))}
-              <option value="NAO_INFORMADO">Nao informado</option>
-            </select>
-          </label>
-          <label className={styles.field}>
-            <span>Alerta Status execucao</span>
-            <select value={filterDraft.completionAlert} onChange={(event) => setFilterDraft((current) => ({ ...current, completionAlert: event.target.value as Filters["completionAlert"] }))}>
-              <option value="TODOS">Todos</option>
-              <option value="SIM">Com alerta</option>
-              <option value="NAO">Sem alerta</option>
-            </select>
-          </label>
+          {/* Os tres filtros abaixo saem da Medicao Comercial: a tela nao trabalha
+              com Programacao, entao filtrar por ela nao teria efeito util. */}
+          {variant.commercial ? null : (
+            <>
+              <label className={styles.field}>
+                <span>Programacao</span>
+                <select value={filterDraft.programmingMatch} onChange={(event) => setFilterDraft((current) => ({ ...current, programmingMatch: event.target.value as Filters["programmingMatch"] }))}>
+                  <option value="TODOS">Todos</option>
+                  <option value="PROGRAMADA">Programada</option>
+                  <option value="NAO_PROGRAMADA">Nao programada</option>
+                </select>
+              </label>
+              <label className={styles.field}>
+                <span>Estado Trabalho</span>
+                <select value={filterDraft.workCompletionStatus} onChange={(event) => setFilterDraft((current) => ({ ...current, workCompletionStatus: event.target.value as Filters["workCompletionStatus"] }))}>
+                  <option value="TODOS">Todos</option>
+                  {workCompletionFilterOptions
+                    .map((item) => (
+                      <option key={item.code} value={item.code}>{item.label}</option>
+                    ))}
+                  <option value="NAO_INFORMADO">Nao informado</option>
+                </select>
+              </label>
+              <label className={styles.field}>
+                <span>Alerta Status execucao</span>
+                <select value={filterDraft.completionAlert} onChange={(event) => setFilterDraft((current) => ({ ...current, completionAlert: event.target.value as Filters["completionAlert"] }))}>
+                  <option value="TODOS">Todos</option>
+                  <option value="SIM">Com alerta</option>
+                  <option value="NAO">Sem alerta</option>
+                </select>
+              </label>
+            </>
+          )}
         </div>
         <div className={styles.actions}><button type="button" className={styles.primaryButton} onClick={applyFilters}>Aplicar</button><button type="button" className={styles.ghostButton} onClick={clearFilters}>Limpar</button></div>
       </article>
@@ -3206,26 +3081,52 @@ export function MeasurementPageView() {
         </div>
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
-            <thead><tr><th>Ordem</th><th>Projeto</th><th>Data execucao</th><th>Equipe</th><th>Composicao equipe</th><th>Encarregado</th><th>Motivo sem producao</th><th>Programacao</th><th>Status execucao</th><th>Itens</th><th>Valor total</th><th>Status</th><th>Atualizado em</th><th>Acoes</th></tr></thead>
+            <thead><tr>
+              <th>Ordem</th>
+              <th>Projeto</th>
+              {variant.commercial ? <th>Ordem (informada)</th> : null}
+              <th>Data execucao</th>
+              <th>Equipe</th>
+              {/* A Medicao Comercial nao trabalha com Composicao de Equipe nem com
+                  Programacao: no lugar dessas colunas entram Processo e horarios. */}
+              {variant.commercial
+                ? <><th>Processo</th><th>Hora inicio</th><th>Hora termino</th></>
+                : <th>Composicao equipe</th>}
+              <th>{variant.executorLabel}</th>
+              <th>Motivo sem producao</th>
+              {variant.commercial ? null : <><th>Programacao</th><th>Status execucao</th></>}
+              <th>Itens</th>
+              <th>Valor total</th>
+              <th>Status</th>
+              <th>Atualizado em</th>
+              <th>Acoes</th>
+            </tr></thead>
             <tbody>
               {orders.length ? orders.map((order) => (
                 <tr key={order.id} className={order.status === "CANCELADA" ? styles.inactiveRow : ""}>
                   <td>{order.orderNumber}</td>
                   <td>{order.projectCode || "Sem projeto"}</td>
+                  {variant.commercial ? <td>{order.commercialOrderRef || "-"}</td> : null}
                   <td>{formatDate(order.executionDate)}</td>
                   <td>{order.teamName}</td>
-                  <td>{order.hasTeamComposition ? "Sim" : "Nao"}</td>
-                  <td>{order.foremanName || "-"}</td>
+                  {variant.commercial
+                    ? <><td>{order.commercialProcessName || "-"}</td><td>{order.commercialStartTime || "-"}</td><td>{order.commercialEndTime || "-"}</td></>
+                    : <td>{order.hasTeamComposition ? "Sim" : "Nao"}</td>}
+                  <td>{variant.commercial ? formatCommercialMembers(order.commercialMembers) : order.foremanName || "-"}</td>
                   <td>{order.noProductionReasonName || "-"}</td>
-                  <td>{programmingMatchLabel(order.programmingMatchStatus)}</td>
-                  <td>
-                    <div className={styles.executionStatusStack}>
-                      <span>{workCompletionStatusLabel(order.programmingCompletionStatus, workCompletionLabelMap)}</span>
-                      {order.programmingCompletionStatusChangedAfterMeasurement ? (
-                        <span className={`${styles.statusTagDanger} ${styles.executionStatusAlert}`}>Atualizado apos medicao</span>
-                      ) : null}
-                    </div>
-                  </td>
+                  {variant.commercial ? null : (
+                    <>
+                      <td>{programmingMatchLabel(order.programmingMatchStatus)}</td>
+                      <td>
+                        <div className={styles.executionStatusStack}>
+                          <span>{workCompletionStatusLabel(order.programmingCompletionStatus, workCompletionLabelMap)}</span>
+                          {order.programmingCompletionStatusChangedAfterMeasurement ? (
+                            <span className={`${styles.statusTagDanger} ${styles.executionStatusAlert}`}>Atualizado apos medicao</span>
+                          ) : null}
+                        </div>
+                      </td>
+                    </>
+                  )}
                   <td>{order.itemCount}</td>
                   <td>{formatCurrency(order.totalAmount)}</td>
                   <td><span className={order.status === "ABERTA" ? styles.statusTag : styles.statusTagDanger}>{order.status}</span></td>
@@ -3345,7 +3246,7 @@ export function MeasurementPageView() {
                     </div>
                   </td>
                 </tr>
-              )) : <tr><td colSpan={14} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
+              )) : <tr><td colSpan={variant.commercial ? 15 : 14} className={styles.emptyRow}>{isLoadingOrders ? "Carregando ordens..." : "Nenhuma ordem encontrada."}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -3379,13 +3280,24 @@ export function MeasurementPageView() {
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
                 <div><strong>Projeto:</strong> {detailOrder.projectId ? (projectMap.get(detailOrder.projectId)?.code ?? "-") : "Sem projeto"}</div>
+                {variant.commercial ? <div><strong>Ordem:</strong> {detailOrder.commercialOrderRef || "-"}</div> : null}
                 <div><strong>Equipe:</strong> {detailOrder.teamName || teamMap.get(detailOrder.teamId)?.name || "-"}</div>
-                <div><strong>Composicao equipe:</strong> {detailOrder.hasTeamComposition ? "Sim" : "Nao"}</div>
-                <div><strong>Encarregado:</strong> {detailOrder.foremanName || teamMap.get(detailOrder.teamId)?.foremanName || "-"}</div>
+                {variant.commercial ? (
+                  <>
+                    <div><strong>Processo:</strong> {detailOrder.commercialProcessName || "-"}</div>
+                    <div><strong>Hora inicio:</strong> {detailOrder.commercialStartTime || "-"}</div>
+                    <div><strong>Hora termino:</strong> {detailOrder.commercialEndTime || "-"}</div>
+                  </>
+                ) : (
+                  <div><strong>Composicao equipe:</strong> {detailOrder.hasTeamComposition ? "Sim" : "Nao"}</div>
+                )}
+                <div><strong>{variant.executorLabel}:</strong> {variant.commercial ? formatCommercialMembers(detailOrder.commercialMembers) : detailOrder.foremanName || teamMap.get(detailOrder.teamId)?.foremanName || "-"}</div>
                 <div><strong>Data execucao:</strong> {formatDate(detailOrder.executionDate)}</div>
                 <div><strong>Tipo da medicao:</strong> {measurementKindLabel(detailOrder.measurementKind)}</div>
                 <div><strong>Motivo sem producao:</strong> {detailOrder.noProductionReasonName || "-"}</div>
-                <div><strong>Programacao:</strong> {programmingMatchLabel(detailOrder.programmingMatchStatus)}</div>
+                {variant.commercial ? null : (
+                  <div><strong>Programacao:</strong> {programmingMatchLabel(detailOrder.programmingMatchStatus)}</div>
+                )}
                 <div><strong>Status execucao:</strong> {workCompletionStatusLabel(detailOrder.programmingCompletionStatus, workCompletionLabelMap)}</div>
                 <div><strong>Status da ordem:</strong> {detailOrder.status}</div>
                 <div><strong>Taxa manual:</strong> {detailOrder.manualRate.toLocaleString("pt-BR")}</div>

@@ -13,7 +13,6 @@ import { usePagination } from "@/hooks/usePagination";
 import styles from "./TeamsPageView.module.css";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
-import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import type { MassImportRowResult } from "@/lib/utils/massImport";
 import { buildTeamsCsv } from "./csv";
 import {
@@ -30,124 +29,26 @@ import {
   type TeamImportRow,
 } from "./massImport";
 
-type TeamItem = {
-  id: string;
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string | null;
-  serviceCenterName: string;
-  stockCenterId: string | null;
-  stockCenterName: string;
-  teamTypeId: string;
-  teamTypeName: string;
-  foremanId: string;
-  foremanName: string;
-  supervisorId: string | null;
-  supervisorName: string;
-  isActive: boolean;
-  cancellationReason: string | null;
-  canceledAt: string | null;
-  canceledByName: string | null;
-  createdByName: string;
-  updatedByName: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type TeamHistoryEntry = {
-  id: string;
-  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
-  reason: string | null;
-  createdAt: string;
-  createdByName: string;
-  changes: Record<string, { from: string | null; to: string | null }>;
-};
-
-type ForemanOption = {
-  id: string;
-  name: string;
-};
-
-type SupervisorOption = ForemanOption;
-
-type TeamTypeOption = {
-  id: string;
-  name: string;
-};
-
-type ServiceCenterOption = {
-  id: string;
-  name: string;
-};
-
-type TeamFormState = {
-  id: string | null;
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string;
-  teamTypeId: string;
-  foremanId: string;
-  supervisorId: string;
-  updatedAt: string;
-};
-
-type TeamsListResponse = {
-  teams?: TeamItem[];
-  pagination?: { page: number; pageSize: number; total: number };
-  message?: string;
-};
-
-type TeamsMetaResponse = {
-  foremen?: ForemanOption[];
-  supervisors?: SupervisorOption[];
-  teamTypes?: TeamTypeOption[];
-  serviceCenters?: ServiceCenterOption[];
-  message?: string;
-};
-
-type TeamHistoryResponse = {
-  history?: TeamHistoryEntry[];
-  pagination?: { page: number; pageSize: number; total: number };
-  message?: string;
-};
-
-const PAGE_SIZE = DEFAULT_PAGE_SIZE;
-const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
-const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
-
-const INITIAL_FORM: TeamFormState = {
-  id: null,
-  name: "",
-  vehiclePlate: "",
-  serviceCenterId: "",
-  teamTypeId: "",
-  foremanId: "",
-  supervisorId: "",
-  updatedAt: "",
-};
-
-function normalizeText(value: string) {
-  return String(value ?? "").trim();
-}
-
-function normalizePlate(value: string) {
-  return normalizeText(value).toUpperCase();
-}
-
-function scrollDashboardContentToTop() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const content = document.querySelector<HTMLElement>('[data-main-content-scroll="true"]');
-  if (content) {
-    content.scrollTo({ top: 0, behavior: "smooth" });
-    return;
-  }
-
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
+import {
+  EXPORT_PAGE_SIZE,
+  HISTORY_PAGE_SIZE,
+  INITIAL_FORM,
+  PAGE_SIZE,
+  normalizePlate,
+  normalizeText,
+  scrollDashboardContentToTop,
+  type ForemanOption,
+  type ServiceCenterOption,
+  type SupervisorOption,
+  type TeamCategoryOption,
+  type TeamFormState,
+  type TeamHistoryEntry,
+  type TeamHistoryResponse,
+  type TeamItem,
+  type TeamTypeOption,
+  type TeamsListResponse,
+  type TeamsMetaResponse,
+} from "./presentation";
 export function TeamsPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("equipes");
@@ -157,6 +58,7 @@ export function TeamsPageView() {
   const [foremen, setForemen] = useState<ForemanOption[]>([]);
   const [supervisors, setSupervisors] = useState<SupervisorOption[]>([]);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
+  const [teamCategories, setTeamCategories] = useState<TeamCategoryOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<ServiceCenterOption[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -197,6 +99,13 @@ export function TeamsPageView() {
   );
   const canSubmitForemanSwap =
     Boolean(swapTeam?.id) && Boolean(selectedSwapTargetTeam?.id) && Boolean(swapReason.trim()) && !isSwappingForeman;
+  const selectedTeamCategory = useMemo(
+    () => teamCategories.find((item) => item.id === form.teamCategoryId) ?? null,
+    [form.teamCategoryId, teamCategories],
+  );
+  const selectedTeamCategoryCode = String(selectedTeamCategory?.code ?? "").trim().toUpperCase();
+  const isCommercialCategory = selectedTeamCategoryCode === "COMERCIAL";
+  const isTechnicalCategory = selectedTeamCategoryCode === "TECNICA";
   const missingTeamMetaReasons = useMemo(() => {
     if (isLoadingMeta) {
       return [] as string[];
@@ -207,13 +116,22 @@ export function TeamsPageView() {
       reasons.push("Base (Centro de Servico)");
     }
     if (teamTypes.length === 0) {
+      reasons.push("Tipo operacional");
+    }
+    if (teamCategories.length === 0) {
       reasons.push("Tipo de Equipe");
     }
-    if (foremen.length === 0) {
+    // Pre-requisito de pessoa depende da categoria: TECNICA exige encarregado,
+    // COMERCIAL exige supervisor. Equipe comercial existe justamente para nao
+    // depender de encarregado.
+    if (isTechnicalCategory && foremen.length === 0) {
       reasons.push("Encarregado");
     }
+    if (isCommercialCategory && supervisors.length === 0) {
+      reasons.push("Supervisor");
+    }
     return reasons;
-  }, [foremen.length, isLoadingMeta, serviceCenters.length, teamTypes.length]);
+  }, [foremen.length, isCommercialCategory, isLoadingMeta, isTechnicalCategory, serviceCenters.length, supervisors.length, teamCategories.length, teamTypes.length]);
   const canSubmitTeamForm = missingTeamMetaReasons.length === 0 && !isSaving;
 
   const loadMeta = useCallback(async () => {
@@ -235,6 +153,7 @@ export function TeamsPageView() {
         setForemen([]);
         setSupervisors([]);
         setTeamTypes([]);
+        setTeamCategories([]);
         setServiceCenters([]);
         setFeedback({
           type: "error",
@@ -246,11 +165,13 @@ export function TeamsPageView() {
       setForemen(data.foremen ?? []);
       setSupervisors(data.supervisors ?? []);
       setTeamTypes(data.teamTypes ?? []);
+      setTeamCategories(data.teamCategories ?? []);
       setServiceCenters(data.serviceCenters ?? []);
     } catch (error) {
       setForemen([]);
       setSupervisors([]);
       setTeamTypes([]);
+      setTeamCategories([]);
       setServiceCenters([]);
       setFeedback({
         type: "error",
@@ -365,8 +286,8 @@ export function TeamsPageView() {
 
   const parseMassImportCsv = useCallback(
     (content: string, fileName: string) =>
-      parseTeamMassImportCsv({ content, fileName, serviceCenters, teamTypes, foremen, supervisors }),
-    [foremen, serviceCenters, supervisors, teamTypes],
+      parseTeamMassImportCsv({ content, fileName, serviceCenters, teamTypes, teamCategories, foremen, supervisors }),
+    [foremen, serviceCenters, supervisors, teamCategories, teamTypes],
   );
 
   const submitMassImport = useCallback(
@@ -409,9 +330,10 @@ export function TeamsPageView() {
     resolveErrorColumn: (code) => {
       if (code === "DUPLICATE_TEAM_COMBINATION") return "nome";
       if (code === "INVALID_SERVICE_CENTER") return "base";
-      if (code === "INVALID_TEAM_TYPE") return "tipo_equipe";
-      if (code === "INVALID_FOREMAN" || code === "FOREMAN_ALREADY_LINKED") return "encarregado";
-      if (code === "INVALID_SUPERVISOR") return "supervisor";
+      if (code === "INVALID_TEAM_TYPE") return "tipo_operacional";
+      if (code === "INVALID_TEAM_CATEGORY") return "tipo_equipe";
+      if (code === "INVALID_FOREMAN" || code === "FOREMAN_ALREADY_LINKED" || code === "MISSING_FOREMAN") return "encarregado";
+      if (code === "INVALID_SUPERVISOR" || code === "MISSING_SUPERVISOR") return "supervisor";
       return "salvamento";
     },
     onImported: async () => {
@@ -452,7 +374,8 @@ export function TeamsPageView() {
       vehiclePlate: team.vehiclePlate,
       serviceCenterId: team.serviceCenterId ?? "",
       teamTypeId: team.teamTypeId,
-      foremanId: team.foremanId,
+      teamCategoryId: team.teamCategoryId,
+      foremanId: team.foremanId ?? "",
       supervisorId: team.supervisorId ?? "",
       updatedAt: team.updatedAt,
     });
@@ -583,6 +506,16 @@ export function TeamsPageView() {
       return;
     }
 
+    if (isTechnicalCategory && !form.foremanId) {
+      setFeedback({ type: "error", message: "Encarregado e obrigatorio para equipe tecnica." });
+      return;
+    }
+
+    if (isCommercialCategory && !form.supervisorId) {
+      setFeedback({ type: "error", message: "Supervisor e obrigatorio para equipe comercial." });
+      return;
+    }
+
     setIsSaving(true);
     setFeedback(null);
 
@@ -593,7 +526,8 @@ export function TeamsPageView() {
         vehiclePlate: normalizePlate(form.vehiclePlate),
         serviceCenterId: normalizeText(form.serviceCenterId),
         teamTypeId: normalizeText(form.teamTypeId),
-        foremanId: normalizeText(form.foremanId),
+        teamCategoryId: normalizeText(form.teamCategoryId),
+        foremanId: normalizeText(form.foremanId) || null,
         supervisorId: normalizeText(form.supervisorId) || null,
         ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
@@ -927,7 +861,35 @@ export function TeamsPageView() {
 
           <label className={styles.field}>
             <span>
-              Tipo <span className="requiredMark">*</span>
+              Tipo de equipe <span className="requiredMark">*</span>
+            </span>
+            <select
+              value={form.teamCategoryId}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  teamCategoryId: event.target.value,
+                  foremanId: "",
+                  supervisorId: "",
+                }))
+              }
+              required
+              disabled={isLoadingMeta}
+            >
+              <option value="" disabled>
+                {isLoadingMeta ? "Carregando..." : "Selecione"}
+              </option>
+              {teamCategories.map((teamCategory) => (
+                <option key={teamCategory.id} value={teamCategory.id}>
+                  {teamCategory.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
+              Tipo operacional <span className="requiredMark">*</span>
             </span>
             <select
               value={form.teamTypeId}
@@ -948,17 +910,15 @@ export function TeamsPageView() {
 
           <label className={styles.field}>
             <span>
-              Encarregado <span className="requiredMark">*</span>
+              Encarregado {isTechnicalCategory ? <span className="requiredMark">*</span> : null}
             </span>
             <select
               value={form.foremanId}
               onChange={(event) => setForm((current) => ({ ...current, foremanId: event.target.value }))}
-              required
+              required={isTechnicalCategory}
               disabled={isLoadingMeta}
             >
-              <option value="" disabled>
-                {isLoadingMeta ? "Carregando..." : "Selecione"}
-              </option>
+              <option value="">{isLoadingMeta ? "Carregando..." : isTechnicalCategory ? "Selecione" : "Sem encarregado"}</option>
               {foremen.map((foreman) => (
                 <option key={foreman.id} value={foreman.id}>
                   {foreman.name}
@@ -968,10 +928,11 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Supervisor</span>
+            <span>Supervisor {isCommercialCategory ? <span className="requiredMark">*</span> : null}</span>
             <select
               value={form.supervisorId}
               onChange={(event) => setForm((current) => ({ ...current, supervisorId: event.target.value }))}
+              required={isCommercialCategory}
               disabled={isLoadingMeta}
             >
               <option value="">{isLoadingMeta ? "Carregando..." : "Sem supervisor"}</option>
@@ -1042,6 +1003,22 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
+            <span>Tipo de equipe</span>
+            <select
+              value={filterDraft.teamCategoryId}
+              onChange={(event) => updateFilterField("teamCategoryId", event.target.value)}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Todos</option>
+              {teamCategories.map((teamCategory) => (
+                <option key={teamCategory.id} value={teamCategory.id}>
+                  {teamCategory.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
             <span>Supervisor</span>
             <select
               value={filterDraft.supervisorId}
@@ -1074,7 +1051,7 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Tipo</span>
+            <span>Tipo operacional</span>
             <select
               value={filterDraft.teamTypeId}
               onChange={(event) => updateFilterField("teamTypeId", event.target.value)}
@@ -1119,7 +1096,8 @@ export function TeamsPageView() {
                 <th>Placa do veiculo</th>
                 <th>Base</th>
                 <th>Centro de estoque proprio</th>
-                <th>Tipo</th>
+                <th>Tipo de equipe</th>
+                <th>Tipo operacional</th>
                 <th>Encarregado</th>
                 <th>Supervisor</th>
                 <th>Registrado em</th>
@@ -1139,6 +1117,7 @@ export function TeamsPageView() {
                     <td>{team.vehiclePlate}</td>
                     <td>{team.serviceCenterName}</td>
                     <td>{team.stockCenterName}</td>
+                    <td>{team.teamCategoryName}</td>
                     <td>{team.teamTypeName}</td>
                     <td>{team.foremanName}</td>
                     <td>{team.supervisorName}</td>
@@ -1190,7 +1169,7 @@ export function TeamsPageView() {
                           onClick={() => openForemanSwapModal(team)}
                           title="Permutar encarregado"
                           aria-label="Permutar encarregado da equipe"
-                          disabled={!team.isActive}
+                          disabled={!team.isActive || team.teamCategoryCode !== "TECNICA" || !team.foremanId}
                         >
                           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path
@@ -1253,7 +1232,7 @@ export function TeamsPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyRow}>
+                  <td colSpan={10} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando equipes..." : "Nenhuma equipe encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1306,7 +1285,10 @@ export function TeamsPageView() {
                   <strong>Centro de estoque proprio:</strong> {detailTeam.stockCenterName}
                 </div>
                 <div>
-                  <strong>Tipo:</strong> {detailTeam.teamTypeName}
+                  <strong>Tipo de equipe:</strong> {detailTeam.teamCategoryName}
+                </div>
+                <div>
+                  <strong>Tipo operacional:</strong> {detailTeam.teamTypeName}
                 </div>
                 <div>
                   <strong>Encarregado:</strong> {detailTeam.foremanName}
