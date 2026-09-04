@@ -261,3 +261,35 @@ Atualizacao 2026-09-04 - Recorte TECNICA (vazamento da Medicao Comercial)
 - Nomenclatura: a coluna `Tipo` desta tela e o `Tipo de equipe` do cadastro
   `/tipo-equipe` (CESTO, LINHA VIVA), nao o `Tipo operacional`
   (TECNICA/COMERCIAL).
+
+Atualizacao 2026-09-04 (2) - Meta por tipo operacional
+--------------------------------------------------------------------------------
+- A tela ganhou o seletor `Tipo operacional` (TECNICA/COMERCIAL) no topo do
+  cadastro. Trocar o seletor recarrega tipos de equipe, ciclos e metas salvas da
+  operacao escolhida. O seletor fica travado em modo edicao, para nao mover um
+  cadastro de meta de uma operacao para a outra no meio da edicao.
+- Modelo: a meta comercial usa a MESMA estrutura da tecnica -- valor diario por
+  tipo de equipe x equipes ativas x dias do ciclo. Nao ha meta por Processo.
+- As tabelas de meta nao mudaram: `measurement_team_type_targets` e
+  `measurement_cycle_target_items` sao chaveadas por `team_type_id`, e desde a 416
+  cada tipo pertence a um tipo operacional. A separacao veio de graca dai.
+- O que mudou foi o CICLO: `measurement_cycle_workdays` ganhou `team_category_id`
+  e a unicidade passou a (tenant, tipo operacional, cycle_start), pela migration
+  417. Cada operacao cadastra seus dias uteis, seus dias padrao e tem sua propria
+  media de dias trabalhados.
+  - Consequencia de uso: dias uteis sao digitados uma vez por operacao, mesmo
+    quando forem iguais. Foi decisao consciente -- a operacao comercial pode ter
+    calendario proprio, e o desenho compartilhado nao aceitaria isso depois.
+- `/api/meta` aceita `teamCategoryId` no GET e no POST. Sem o parametro, resolve
+  TECNICA: e o unico comportamento que existia antes da 417, entao chamada antiga
+  continua valendo.
+- Duas travas no banco, alem da tela: payload com tipo de outro tipo operacional e
+  recusado (`TEAM_TYPE_CATEGORY_MISMATCH`), e editar um ciclo trocando o tipo
+  operacional dele tambem (`META_CYCLE_CATEGORY_MISMATCH`).
+- Pre-requisito para usar a aba COMERCIAL: existir tipo de equipe comercial
+  cadastrado em `/tipo-equipe` (migration 416) e equipes comerciais ativas. Sem
+  isso a aba abre vazia.
+- Modularizacao: `MetaPageView.tsx` caiu de 1.069 para 912 linhas com a extracao
+  de tipos e helpers puros para `src/modules/dashboard/meta/presentation.ts`, e
+  SAIU do baseline de tamanho (voltou para baixo do teto de 1.000).
+- Base SQL: `supabase/migrations/417_measurement_meta_by_team_category.sql`
