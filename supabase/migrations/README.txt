@@ -1499,3 +1499,29 @@ Observacao
   COMERCIAL avisa que falta o pre-requisito em vez de deixar salvar com tipo tecnico.
 - Valida no fim: nenhum tipo sem categoria, nenhuma equipe com tipo de outra categoria,
   nenhum overload antigo e EXECUTE so para `service_role`.
+
+417_measurement_meta_by_team_category.sql
+- Permite meta para a operacao COMERCIAL. As duas tabelas de meta
+  (`measurement_team_type_targets` e `measurement_cycle_target_items`) NAO mudam: sao
+  chaveadas por `team_type_id`, e a 416 ja fez o tipo pertencer a um tipo operacional,
+  entao valor diario e meta do ciclo ja ficaram separados por operacao.
+- O que travava era a linha do CICLO: `measurement_cycle_workdays` era unique
+  (tenant_id, cycle_start), uma linha por periodo por tenant. Cadastrar a meta comercial
+  de um periodo ja cadastrado pela tecnica voltava `DUPLICATE_META_CYCLE`, e `worked_days`
+  (media de dias trabalhados) e coluna unica -- gravar a comercial sobrescreveria a media
+  da tecnica no mesmo ciclo.
+- `measurement_cycle_workdays.team_category_id` obrigatorio, com backfill TECNICA, e a
+  unicidade passa a (tenant, tipo operacional, cycle_start). Cada operacao tem o seu
+  ciclo, com seus dias uteis, seus dias padrao e sua propria media.
+- A unicidade antiga e derrubada por bloco dinamico que a procura por COLUNAS em
+  `information_schema`, e nao pelo nome: ela nasceu como UNIQUE inline na 161 e o nome
+  gerado varia conforme o caminho por onde o ambiente foi criado.
+- `save_measurement_meta_registration` ganha `p_team_category_id` (11 -> 12 parametros,
+  overload antigo derrubado). Duas travas novas: recusa payload com tipo de OUTRO tipo
+  operacional (sem ela, a tela de uma operacao sobrescreveria o valor diario da outra,
+  porque `measurement_team_type_targets` e chaveada so por `team_type_id`), e recusa
+  editar um ciclo trocando o tipo operacional dele.
+- A versao da 169 concedia EXECUTE a `authenticated`, de antes do padrao das 251/309/393.
+  A funcao nova nasce fechada, com EXECUTE so para `service_role`.
+- Valida no fim: nenhum ciclo sem tipo operacional, unicidade antiga ausente, unicidade
+  nova presente, nenhum overload antigo e EXECUTE so para `service_role`.

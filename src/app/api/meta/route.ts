@@ -57,6 +57,7 @@ type TargetRow = {
 
 type CycleWorkdaysRow = {
   id: string;
+  team_category_id: string;
   cycle_start: string;
   cycle_end: string;
   workdays: number;
@@ -99,6 +100,7 @@ type AppUserRow = {
 type SaveMetaPayload = {
   action?: "SAVE_META_REGISTRATION";
   cycleId?: string;
+  teamCategoryId?: string;
   targets?: Array<{
     teamTypeId?: string;
     dailyValue?: string | number;
@@ -295,34 +297,48 @@ async function fetchAppUserMap(params: {
   return new Map((data ?? []).map((item) => [item.id, item]));
 }
 
-// Ids das equipes TECNICAS ativas do tenant. Serve de recorte para as ordens:
-// a ordem comercial grava na MESMA tabela e entraria no realizado da meta.
-async function fetchTechnicalTeamIds(params: {
+// Tipo operacional em que a Meta esta operando. A tela manda o id escolhido; sem
+// ele, a rota assume TECNICA -- que era o unico comportamento possivel antes da
+// 417 e mantem compativel qualquer chamada antiga.
+async function resolveMetaTeamCategory(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
+  teamCategoryId: string | null;
 }) {
-  const categoryResult = await params.supabase
+  let query = params.supabase
     .from("team_categories")
-    .select("id")
+    .select("id, code, name")
     .eq("tenant_id", params.tenantId)
-    .eq("ativo", true)
-    .eq("code", "TECNICA")
-    .maybeSingle<{ id: string }>();
+    .eq("ativo", true);
 
-  const technicalCategoryId = categoryResult.error ? null : categoryResult.data?.id ?? null;
-  if (!technicalCategoryId) {
-    throw new Error("Tipo operacional TECNICA nao encontrado para o tenant.");
+  query = params.teamCategoryId
+    ? query.eq("id", params.teamCategoryId)
+    : query.eq("code", "TECNICA");
+
+  const { data, error } = await query.maybeSingle<{ id: string; code: string; name: string }>();
+  if (error || !data) {
+    return null;
   }
 
+  return data;
+}
+
+// Ids das equipes ativas de um tipo operacional. Serve de recorte para as ordens:
+// a ordem comercial grava na MESMA tabela e entraria no realizado da meta.
+async function fetchTeamIdsByCategory(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  teamCategoryId: string;
+}) {
   const { data, error } = await params.supabase
     .from("teams")
     .select("id")
     .eq("tenant_id", params.tenantId)
-    .eq("team_category_id", technicalCategoryId)
+    .eq("team_category_id", params.teamCategoryId)
     .returns<Array<{ id: string }>>();
 
   if (error) {
-    throw new Error("Falha ao carregar equipes tecnicas do tenant.");
+    throw new Error("Falha ao carregar equipes do tipo operacional.");
   }
 
   return new Set((data ?? []).map((item) => item.id));
@@ -333,10 +349,12 @@ async function calculateWorkedDaysForCycle(params: {
   tenantId: string;
   cycleStart: string;
   cycleEnd: string;
+  teamCategoryId: string;
 }) {
-  const technicalTeamIds = await fetchTechnicalTeamIds({
+  const categoryTeamIds = await fetchTeamIdsByCategory({
     supabase: params.supabase,
     tenantId: params.tenantId,
+    teamCategoryId: params.teamCategoryId,
   });
 
   const { data, error } = await params.supabase
@@ -363,7 +381,7 @@ async function calculateWorkedDaysForCycle(params: {
   const workedDatesByTeam = new Map<string, Set<string>>();
   for (const row of data ?? []) {
     const executionDate = normalizeExecutionDate(row.execution_date);
-    if (!executionDate || !row.team_id || !technicalTeamIds.has(row.team_id) || projectIsTestMap.get(row.project_id)) {
+    if (!executionDate || !row.team_id || !categoryTeamIds.has(row.team_id) || projectIsTestMap.get(row.project_id)) {
       continue;
     }
 
@@ -382,9 +400,11 @@ async function loadMetaDetail(params: {
   tenantId: string;
   cycleId: string;
 }) {
+  // A categoria vem do proprio ciclo (417): o detalhe nao precisa que o
+  // chamador diga em qual operacao ele esta.
   const { data: cycle, error: cycleError } = await params.supabase
     .from("measurement_cycle_workdays")
-    .select("id, cycle_start, cycle_end, workdays, default_workdays, worked_days, notes, updated_at")
+    .select("id, team_category_id, cycle_start, cycle_end, workdays, default_workdays, worked_days, notes, updated_at")
     .eq("tenant_id", params.tenantId)
     .eq("id", params.cycleId)
     .maybeSingle<CycleWorkdaysRow>();
@@ -394,6 +414,7 @@ async function loadMetaDetail(params: {
   const workedDays = await calculateWorkedDaysForCycle({
     supabase: params.supabase,
     tenantId: params.tenantId,
+    teamCategoryId: cycle.team_category_id,
     cycleStart: cycle.cycle_start,
     cycleEnd: cycle.cycle_end,
   });
@@ -526,25 +547,30 @@ export async function GET(request: NextRequest) {
   // sem este recorte a equipe e a ordem comercial entrariam em `Equipes ativas` e
   // no realizado, contaminando a meta tecnica. O desenho da meta comercial esta
   // em aberto -- ver TASKS.md.
-  const technicalCategoryResult = await resolution.supabase
-    .from("team_categories")
-    .select("id")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("ativo", true)
-    .eq("code", "TECNICA")
-    .maybeSingle<{ id: string }>();
-
-  const technicalCategoryId = technicalCategoryResult.error
-    ? null
-    : technicalCategoryResult.data?.id ?? null;
-
-  if (!technicalCategoryId) {
-    return NextResponse.json({ message: "Tipo operacional TECNICA nao encontrado para o tenant." }, { status: 500 });
-  }
-
-  const technicalTeamIds = await fetchTechnicalTeamIds({
+  const teamCategory = await resolveMetaTeamCategory({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
+    teamCategoryId: normalizeUuid(request.nextUrl.searchParams.get("teamCategoryId")),
+  });
+
+  if (!teamCategory) {
+    return NextResponse.json({ message: "Tipo operacional invalido para o tenant." }, { status: 422 });
+  }
+
+  const technicalCategoryId = teamCategory.id;
+  const teamCategoriesResult = await resolution.supabase
+    .from("team_categories")
+    .select("id, code, name")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("ativo", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true })
+    .returns<Array<{ id: string; code: string; name: string }>>();
+  const teamCategories = teamCategoriesResult.error ? [] : teamCategoriesResult.data ?? [];
+  const technicalTeamIds = await fetchTeamIdsByCategory({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    teamCategoryId: teamCategory.id,
   });
 
   const measurementWindowStart = toIsoDate(addMonths(new Date(), -24));
@@ -641,8 +667,9 @@ export async function GET(request: NextRequest) {
   const cyclesResult = cycleStarts.length
     ? await resolution.supabase
       .from("measurement_cycle_workdays")
-      .select("id, cycle_start, cycle_end, workdays, default_workdays, worked_days, notes, updated_at")
+      .select("id, team_category_id, cycle_start, cycle_end, workdays, default_workdays, worked_days, notes, updated_at")
         .eq("tenant_id", resolution.appUser.tenant_id)
+        .eq("team_category_id", teamCategory.id)
         .in("cycle_start", cycleStarts)
       .returns<CycleWorkdaysRow[]>()
     : { data: [] as CycleWorkdaysRow[], error: null };
@@ -718,6 +745,8 @@ export async function GET(request: NextRequest) {
   }).sort((left, right) => right.cycleStart.localeCompare(left.cycleStart));
 
   return NextResponse.json({
+    teamCategories,
+    teamCategory: { id: teamCategory.id, code: teamCategory.code, name: teamCategory.name },
     teamTypes: (teamTypesResult.data ?? []).map((item) => {
       const target = targetMap.get(item.id);
       return {
@@ -795,11 +824,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: "Informe ciclo e dias uteis validos." }, { status: 400 });
   }
 
+  // O tipo operacional define de quais equipes sai a media de dias trabalhados e
+  // em qual ciclo a meta e gravada. Sem ele, a rota assume TECNICA.
+  const teamCategory = await resolveMetaTeamCategory({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+    teamCategoryId: normalizeUuid(payload?.teamCategoryId),
+  });
+
+  if (!teamCategory) {
+    return NextResponse.json({ message: "Tipo operacional invalido para o tenant." }, { status: 422 });
+  }
+
   let workedDays = 0;
   try {
     workedDays = await calculateWorkedDaysForCycle({
       supabase: resolution.supabase,
       tenantId: resolution.appUser.tenant_id,
+      teamCategoryId: teamCategory.id,
       cycleStart,
       cycleEnd,
     });
@@ -815,6 +857,7 @@ export async function POST(request: NextRequest) {
       dailyValue: target.dailyValue as number,
       measuredTeamCount: target.measuredTeamCount as number,
     })),
+    p_team_category_id: teamCategory.id,
     p_cycle_start: cycleStart,
     p_cycle_end: cycleEnd,
     p_workdays: workdays,
