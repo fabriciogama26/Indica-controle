@@ -9,7 +9,8 @@ export type TeamRow = {
   service_center_id: string | null;
   stock_center_id: string | null;
   team_type_id: string;
-  foreman_person_id: string;
+  team_category_id: string | null;
+  foreman_person_id: string | null;
   supervisor_person_id: string | null;
   ativo: boolean;
   cancellation_reason: string | null;
@@ -35,6 +36,12 @@ type JobTitleIdRow = {
 
 export type TeamTypeRow = {
   id: string;
+  name: string;
+};
+
+export type TeamCategoryRow = {
+  id: string;
+  code: "TECNICA" | "COMERCIAL" | string;
   name: string;
 };
 
@@ -176,6 +183,30 @@ export async function fetchTeamTypeById(
   };
 }
 
+export async function fetchTeamCategoryById(
+  supabase: SupabaseClient,
+  tenantId: string,
+  teamCategoryId: string,
+) {
+  const { data, error } = await supabase
+    .from("team_categories")
+    .select("id, code, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .eq("id", teamCategoryId)
+    .maybeSingle<TeamCategoryRow>();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    code: normalizeText(data.code).toUpperCase(),
+    name: normalizeText(data.name),
+  };
+}
+
 export async function fetchServiceCenterById(
   supabase: SupabaseClient,
   tenantId: string,
@@ -234,7 +265,7 @@ export async function fetchTeamById(
   const { data, error } = await supabase
     .from("teams")
     .select(
-      "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, supervisor_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, team_category_id, foreman_person_id, supervisor_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", teamId)
@@ -253,6 +284,10 @@ export async function fetchExistingTeamByForeman(params: {
   foremanId: string;
   excludeTeamId?: string | null;
 }) {
+  if (!normalizeText(params.foremanId)) {
+    return null;
+  }
+
   let query = params.supabase
     .from("teams")
     .select("id, name, foreman_person_id")

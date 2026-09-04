@@ -1,4 +1,8 @@
-import { DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
+// Tipos, constantes e normalizadores da tela Equipes.
+//
+// Vieram de `TeamsPageView.tsx`, que ficou acima do baseline de linhas do
+// CLAUDE.md ao ganhar o campo Tipo de Equipe. Sao dados puros, sem React.
+import { DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE, DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
 import { formatDateTime } from "@/lib/utils/formatters";
 
 export type TeamFilterState = {
@@ -6,6 +10,7 @@ export type TeamFilterState = {
   vehiclePlate: string;
   serviceCenterId: string;
   teamTypeId: string;
+  teamCategoryId: string;
   foremanId: string;
   supervisorId: string;
 };
@@ -15,7 +20,8 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   vehiclePlate: "Placa do veiculo",
   serviceCenterName: "Base",
   stockCenterName: "Centro de estoque proprio",
-  teamTypeName: "Tipo",
+  teamTypeName: "Tipo operacional",
+  teamCategoryName: "Tipo de equipe",
   foremanName: "Encarregado",
   supervisorName: "Supervisor",
   isActive: "Status",
@@ -29,6 +35,7 @@ export const INITIAL_FILTERS: TeamFilterState = {
   vehiclePlate: "",
   serviceCenterId: "",
   teamTypeId: "",
+  teamCategoryId: "",
   foremanId: "",
   supervisorId: "",
 };
@@ -46,6 +53,9 @@ export function buildQuery(filters: TeamFilterState, page: number, pageSize = DE
   }
   if (filters.teamTypeId.trim()) {
     params.set("teamTypeId", filters.teamTypeId.trim());
+  }
+  if (filters.teamCategoryId.trim()) {
+    params.set("teamCategoryId", filters.teamCategoryId.trim());
   }
   if (filters.foremanId.trim()) {
     params.set("foremanId", filters.foremanId.trim());
@@ -74,3 +84,134 @@ export function formatHistoryValue(field: string, value: string | null) {
   return value;
 }
 
+
+export type TeamItem = {
+  id: string;
+  name: string;
+  vehiclePlate: string;
+  serviceCenterId: string | null;
+  serviceCenterName: string;
+  stockCenterId: string | null;
+  stockCenterName: string;
+  teamTypeId: string;
+  teamTypeName: string;
+  teamCategoryId: string;
+  teamCategoryCode: string;
+  teamCategoryName: string;
+  foremanId: string | null;
+  foremanName: string;
+  supervisorId: string | null;
+  supervisorName: string;
+  isActive: boolean;
+  cancellationReason: string | null;
+  canceledAt: string | null;
+  canceledByName: string | null;
+  createdByName: string;
+  updatedByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TeamHistoryEntry = {
+  id: string;
+  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
+  reason: string | null;
+  createdAt: string;
+  createdByName: string;
+  changes: Record<string, { from: string | null; to: string | null }>;
+};
+
+export type ForemanOption = {
+  id: string;
+  name: string;
+};
+
+export type SupervisorOption = ForemanOption;
+
+export type TeamTypeOption = {
+  id: string;
+  name: string;
+};
+
+export type TeamCategoryOption = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type ServiceCenterOption = {
+  id: string;
+  name: string;
+};
+
+export type TeamFormState = {
+  id: string | null;
+  name: string;
+  vehiclePlate: string;
+  serviceCenterId: string;
+  teamTypeId: string;
+  teamCategoryId: string;
+  foremanId: string;
+  supervisorId: string;
+  updatedAt: string;
+};
+
+export type TeamsListResponse = {
+  teams?: TeamItem[];
+  pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
+export type TeamsMetaResponse = {
+  foremen?: ForemanOption[];
+  supervisors?: SupervisorOption[];
+  teamTypes?: TeamTypeOption[];
+  teamCategories?: TeamCategoryOption[];
+  serviceCenters?: ServiceCenterOption[];
+  message?: string;
+};
+
+export type TeamHistoryResponse = {
+  history?: TeamHistoryEntry[];
+  pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
+
+export const PAGE_SIZE = DEFAULT_PAGE_SIZE;
+export const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
+export const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
+
+export const INITIAL_FORM: TeamFormState = {
+  id: null,
+  name: "",
+  vehiclePlate: "",
+  serviceCenterId: "",
+  teamTypeId: "",
+  teamCategoryId: "",
+  foremanId: "",
+  supervisorId: "",
+  updatedAt: "",
+};
+
+export function normalizeText(value: string) {
+  return String(value ?? "").trim();
+}
+
+export function normalizePlate(value: string) {
+  return normalizeText(value).toUpperCase();
+}
+
+export function scrollDashboardContentToTop() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const content = document.querySelector<HTMLElement>('[data-main-content-scroll="true"]');
+  if (content) {
+    content.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}

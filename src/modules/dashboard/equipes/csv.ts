@@ -6,6 +6,7 @@ type TeamCsvItem = {
   vehiclePlate: string;
   serviceCenterName: string;
   stockCenterName: string;
+  teamCategoryName: string;
   teamTypeName: string;
   foremanName: string;
   supervisorName: string;
@@ -22,7 +23,8 @@ export function buildTeamsCsv(teamItems: TeamCsvItem[]) {
     "Placa do veiculo",
     "Base",
     "Centro de estoque proprio",
-    "Tipo",
+    "Tipo de equipe",
+    "Tipo operacional",
     "Encarregado",
     "Supervisor",
     "Status",
@@ -36,6 +38,7 @@ export function buildTeamsCsv(teamItems: TeamCsvItem[]) {
     team.vehiclePlate,
     team.serviceCenterName,
     team.stockCenterName,
+    team.teamCategoryName,
     team.teamTypeName,
     team.foremanName,
     team.supervisorName,

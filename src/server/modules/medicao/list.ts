@@ -7,11 +7,12 @@
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
 import { loadProgrammingMatchMap } from "./programmingMatch";
-import type { MeasurementOrderActivityFilterRow, MeasurementOrderAggregateItem, MeasurementOrderRow, ProgrammingMatchStatus, ProjectServiceTypeProjectRow } from "./types";
+import type { MeasurementOrderActivityFilterRow, MeasurementOrderAggregateItem, MeasurementOrderRow, ProgrammingMatchStatus, ProjectServiceTypeProjectRow, TeamCategoryRow } from "./types";
 import { buildMeasurementCycleStart, buildProgrammingMatchKey, measurementScoreTypeLabel, normalizeMeasurementKind, normalizeText, resolveAppUserName } from "./normalizers";
 import {
   MEASUREMENT_ORDER_SELECT,
   fetchAppUserMap,
+  fetchCommercialMemberMap,
   fetchFinancialTargetMap,
   fetchPagedSupabaseRows,
   fetchPointTargetMap,
@@ -48,6 +49,7 @@ export async function listMeasurementOrdersPage(params: {
   programmingMatchFilter: string;
   workCompletionStatusFilter: string;
   completionAlertFilter: string;
+  teamCategoryCodeFilter?: "TECNICA" | "COMERCIAL" | null;
   page: number | null;
   pageSize: number | null;
 }) {
@@ -55,7 +57,12 @@ export async function listMeasurementOrdersPage(params: {
     supabase, tenantId, startDate, endDate, projectId, teamId, serviceTypeId, activityId,
     statusFilter, measurementKindFilter, noProductionReasonIdFilter, programmingMatchFilter,
     workCompletionStatusFilter, completionAlertFilter, page, pageSize,
+    teamCategoryCodeFilter,
   } = params;
+
+  // A Medicao Comercial nao trabalha com Composicao de Equipe nem com Programacao:
+  // as duas consultas nao rodam e as colunas derivadas saem "vazias" no contrato.
+  const isCommercial = teamCategoryCodeFilter === "COMERCIAL";
 
   let serviceTypeProjectIdSet: Set<string> | null = null;
   if (serviceTypeId) {
@@ -100,6 +107,41 @@ export async function listMeasurementOrdersPage(params: {
     }
   }
 
+  let categoryTeamIdSet: Set<string> | null = null;
+  if (teamCategoryCodeFilter) {
+    const categoryResult = await supabase
+      .from("team_categories")
+      .select("id, code")
+      .eq("tenant_id", tenantId)
+      .eq("ativo", true)
+      .eq("code", teamCategoryCodeFilter)
+      .maybeSingle<TeamCategoryRow>();
+
+    const teamCategoryId = categoryResult.error ? null : categoryResult.data?.id ?? null;
+    if (!teamCategoryId) {
+      return { ok: true as const, orders: [], total: 0 };
+    }
+
+    const teamResult = await fetchPagedSupabaseRows<{ id: string }>((from, to) =>
+      supabase
+        .from("teams")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("team_category_id", teamCategoryId)
+        .range(from, to)
+        .returns<Array<{ id: string }>>(),
+    );
+
+    if (teamResult.error) {
+      return { ok: false as const, message: "Falha ao filtrar equipes por tipo de equipe." };
+    }
+
+    categoryTeamIdSet = new Set(teamResult.data.map((item) => item.id));
+    if (categoryTeamIdSet.size === 0) {
+      return { ok: true as const, orders: [], total: 0 };
+    }
+  }
+
   const startIndex = ((page ?? 1) - 1) * (pageSize ?? 20);
 
     let pagedQuery = supabase
@@ -113,6 +155,9 @@ export async function listMeasurementOrdersPage(params: {
 
     if (projectId) pagedQuery = pagedQuery.eq("project_id", projectId);
     if (teamId) pagedQuery = pagedQuery.eq("team_id", teamId);
+    if (categoryTeamIdSet && categoryTeamIdSet.size > 0) {
+      pagedQuery = pagedQuery.in("team_id", Array.from(categoryTeamIdSet));
+    }
     if (statusFilter && statusFilter !== "TODOS") pagedQuery = pagedQuery.eq("status", statusFilter);
     if (serviceTypeProjectIdSet && serviceTypeProjectIdSet.size > 0) {
       pagedQuery = pagedQuery.in("project_id", Array.from(serviceTypeProjectIdSet));
@@ -154,18 +199,21 @@ export async function listMeasurementOrdersPage(params: {
       simpleProjectIsTestMap,
       simpleProjectServiceCenterMap,
       simpleTeamCompositionContexts,
+      simpleCommercialMemberMap,
     ] = await Promise.all([
       fetchAppUserMap({
         supabase: supabase,
         tenantId: tenantId,
         ids: simpleUserIds,
       }),
-      loadProgrammingMatchMap({
-        supabase: supabase,
-        tenantId: tenantId,
-        windowEndDate: endDate,
-        orders: simpleOrders,
-      }),
+      isCommercial
+        ? Promise.resolve(new Map() as Awaited<ReturnType<typeof loadProgrammingMatchMap>>)
+        : loadProgrammingMatchMap({
+            supabase: supabase,
+            tenantId: tenantId,
+            windowEndDate: endDate,
+            orders: simpleOrders,
+          }),
       fetchProjectIsTestMap({
         supabase: supabase,
         tenantId: tenantId,
@@ -176,11 +224,17 @@ export async function listMeasurementOrdersPage(params: {
         tenantId: tenantId,
         projectIds: simpleProjectIds,
       }),
-      fetchTeamCompositionContextSet({
+      isCommercial
+        ? Promise.resolve({ data: new Set<string>(), error: null })
+        : fetchTeamCompositionContextSet({
+            supabase: supabase,
+            tenantId: tenantId,
+            orders: simpleOrders,
+          }),
+      fetchCommercialMemberMap({
         supabase: supabase,
-
         tenantId: tenantId,
-        orders: simpleOrders,
+        orderIds: simpleOrders.map((item) => item.id),
       }),
     ]);
 
@@ -214,6 +268,11 @@ export async function listMeasurementOrdersPage(params: {
         projectServiceCenter: item.project_id ? (simpleProjectServiceCenterMap.get(item.project_id) ?? "Sem base") : "Sem projeto",
         teamName: normalizeText(item.team_name_snapshot),
         foremanName: normalizeText(item.foreman_name_snapshot),
+        commercialOrderRef: normalizeText(item.commercial_order_ref),
+        commercialProcessName: normalizeText(item.commercial_process_name_snapshot),
+        commercialStartTime: normalizeText(item.commercial_start_time).slice(0, 5),
+        commercialEndTime: normalizeText(item.commercial_end_time).slice(0, 5),
+        commercialMembers: simpleCommercialMemberMap.get(item.id) ?? [],
         cancellationReason: normalizeText(item.cancellation_reason),
         canceledAt: item.canceled_at,
         createdAt: item.created_at,

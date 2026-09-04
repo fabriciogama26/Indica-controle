@@ -1,5 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
-import { SupabaseClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import {
@@ -9,10 +8,9 @@ import {
 } from "@/lib/server/concurrency";
 import {
   addChange,
-  buildNameMap,
   buildUserDisplayMap,
   buildUserLoginNameMap,
-  formatComparableValue,
+
   normalizeHistoryChanges,
   normalizeText,
   parsePagination,
@@ -27,534 +25,38 @@ import {
   fetchStockCenterById,
   fetchSupervisorById,
   fetchTeamById,
+  fetchTeamCategoryById,
   fetchTeamTypeById,
   type ServiceCenterRow,
   type StockCenterRow,
+  type TeamCategoryRow,
   type TeamRow,
   type TeamTypeRow,
 } from "@/server/modules/teams/lookups";
-import { isMissingFunctionError, mapTeamDbError } from "@/server/modules/teams/errors";
-
-type AppUserRow = {
-  id: string;
-  display: string | null;
-  login_name: string | null;
-};
-
-type PersonRow = {
-  id: string;
-  nome: string;
-};
-
-type TeamHistoryRow = {
-  id: string;
-  change_type: "UPDATE" | "CANCEL" | "ACTIVATE";
-  reason: string | null;
-  changes: unknown;
-  created_at: string;
-  created_by: string | null;
-};
-
-type HistoryChange = {
-  from: string | null;
-  to: string | null;
-};
-
-type CreateTeamPayload = {
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string;
-  stockCenterId?: string | null;
-  teamTypeId: string;
-  foremanId: string;
-  supervisorId?: string | null;
-};
-
-type UpdateTeamPayload = CreateTeamPayload & {
-  id: string;
-  expectedUpdatedAt?: string | null;
-};
-
-type UpdateTeamStatusPayload = {
-  id: string;
-  reason: string;
-  action?: "cancel" | "activate" | "swapForeman";
-  foremanId?: string;
-  targetTeamId?: string;
-  expectedUpdatedAt?: string | null;
-  targetExpectedUpdatedAt?: string | null;
-};
-
-type TeamSaveRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  team_id?: string;
-  updated_at?: string;
-};
-
-type TeamForemanSwapRpcResult = {
-  success?: boolean;
-  status?: number;
-  reason?: string;
-  message?: string;
-  source_team_id?: string;
-  target_team_id?: string;
-  source_updated_at?: string;
-  target_updated_at?: string;
-};
-
-function normalizePlate(value: unknown) {
-  return normalizeText(value).toUpperCase();
-}
-
-function buildForemanMap(people: PersonRow[]) {
-  return new Map(people.map((person) => [person.id, String(person.nome ?? "").trim() || "Nao identificado"]));
-}
-
-function buildTeamTypeMap(teamTypes: TeamTypeRow[]) {
-  return buildNameMap(teamTypes);
-}
-
-async function saveTeamViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  teamId: string | null;
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string;
-  stockCenterId: string | null;
-  teamTypeId: string;
-  foremanId: string;
-  supervisorId: string | null;
-  changes?: Record<string, HistoryChange>;
-  expectedUpdatedAt?: string | null;
-}) {
-  async function saveTeamDirectFallback() {
-    async function createAutomaticStockCenter() {
-      const baseName = normalizeText(params.name) || "Equipe";
-      const nameCandidates = [
-        `EQUIPE - ${baseName}`,
-        `EQUIPE - ${baseName} [${Math.random().toString(36).slice(2, 8).toUpperCase()}]`,
-      ];
-
-      for (const candidate of nameCandidates) {
-        const { data, error } = await params.supabase
-          .from("stock_centers")
-          .insert({
-            tenant_id: params.tenantId,
-            name: candidate,
-            description: `Centro de estoque proprio da equipe ${baseName}.`,
-            is_active: true,
-            center_type: "OWN",
-            controls_balance: true,
-            created_by: params.actorUserId,
-            updated_by: params.actorUserId,
-          })
-          .select("id")
-          .maybeSingle<{ id: string }>();
-
-        if (!error && data?.id) {
-          return { id: data.id } as const;
-        }
-
-        const mappedError = mapTeamDbError(error, "Falha ao criar centro de estoque proprio da equipe.");
-        if (mappedError.reason !== "DUPLICATE_TEAM_COMBINATION") {
-          if (!String(error?.message ?? "").toLowerCase().includes("duplicate key")) {
-            return {
-              error: {
-                status: mappedError.status,
-                message: mappedError.message,
-                reason: mappedError.reason,
-              },
-            } as const;
-          }
-        }
-      }
-
-      return {
-        error: {
-          status: 500,
-          message: "Falha ao criar centro de estoque proprio da equipe.",
-          reason: "TEAM_STOCK_CENTER_CREATE_FAILED",
-        },
-      } as const;
-    }
-
-    if (!params.teamId) {
-      const { data: createdTeam, error: createError } = await params.supabase
-        .from("teams")
-        .insert({
-          tenant_id: params.tenantId,
-          name: params.name,
-          vehicle_plate: params.vehiclePlate,
-          service_center_id: params.serviceCenterId,
-          stock_center_id: params.stockCenterId,
-          team_type_id: params.teamTypeId,
-          foreman_person_id: params.foremanId,
-          supervisor_person_id: params.supervisorId,
-          ativo: true,
-          cancellation_reason: null,
-          canceled_at: null,
-          canceled_by: null,
-          created_by: params.actorUserId,
-          updated_by: params.actorUserId,
-        })
-        .select("id, updated_at, stock_center_id")
-        .maybeSingle<{ id: string; updated_at: string | null; stock_center_id: string | null }>();
-
-      if (createError || !createdTeam?.id) {
-        const mappedError = mapTeamDbError(createError, "Falha ao salvar equipe.");
-        return {
-          ok: false,
-          status: mappedError.status,
-          message: mappedError.message,
-          reason: mappedError.reason,
-        } as const;
-      }
-
-      let effectiveStockCenterId = createdTeam.stock_center_id;
-      if (!effectiveStockCenterId) {
-        const stockCenterResult = await createAutomaticStockCenter();
-        const stockCenterError = "error" in stockCenterResult ? stockCenterResult.error : null;
-        if (stockCenterError) {
-          return {
-            ok: false,
-            status: stockCenterError.status,
-            message: stockCenterError.message,
-            reason: stockCenterError.reason,
-          } as const;
-        }
-
-        effectiveStockCenterId = "id" in stockCenterResult ? stockCenterResult.id ?? null : null;
-        if (!effectiveStockCenterId) {
-          return {
-            ok: false,
-            status: 500,
-            message: "Falha ao criar centro de estoque proprio da equipe.",
-            reason: "TEAM_STOCK_CENTER_CREATE_FAILED",
-          } as const;
-        }
-
-        const { data: updatedTeam, error: updateError } = await params.supabase
-          .from("teams")
-          .update({
-            stock_center_id: effectiveStockCenterId,
-            updated_by: params.actorUserId,
-          })
-          .eq("tenant_id", params.tenantId)
-          .eq("id", createdTeam.id)
-          .select("updated_at")
-          .maybeSingle<{ updated_at: string | null }>();
-
-        if (updateError) {
-          const mappedError = mapTeamDbError(updateError, "Falha ao vincular centro de estoque proprio da equipe.");
-          return {
-            ok: false,
-            status: mappedError.status,
-            message: mappedError.message,
-            reason: mappedError.reason,
-          } as const;
-        }
-
-        return { ok: true, updatedAt: updatedTeam?.updated_at ?? null } as const;
-      }
-
-      return { ok: true, updatedAt: createdTeam.updated_at ?? null } as const;
-    }
-
-    let effectiveStockCenterId = params.stockCenterId;
-    if (!effectiveStockCenterId) {
-      const currentTeam = await fetchTeamById(params.supabase, params.tenantId, params.teamId);
-      effectiveStockCenterId = currentTeam?.stock_center_id ?? null;
-
-      if (!effectiveStockCenterId) {
-        const stockCenterResult = await createAutomaticStockCenter();
-        const stockCenterError = "error" in stockCenterResult ? stockCenterResult.error : null;
-        if (stockCenterError) {
-          return {
-            ok: false,
-            status: stockCenterError.status,
-            message: stockCenterError.message,
-            reason: stockCenterError.reason,
-          } as const;
-        }
-
-        effectiveStockCenterId = "id" in stockCenterResult ? stockCenterResult.id ?? null : null;
-        if (!effectiveStockCenterId) {
-          return {
-            ok: false,
-            status: 500,
-            message: "Falha ao criar centro de estoque proprio da equipe.",
-            reason: "TEAM_STOCK_CENTER_CREATE_FAILED",
-          } as const;
-        }
-      }
-    }
-
-    const { data: updatedTeam, error: updateError } = await params.supabase
-      .from("teams")
-      .update({
-        name: params.name,
-        vehicle_plate: params.vehiclePlate,
-        service_center_id: params.serviceCenterId,
-        stock_center_id: effectiveStockCenterId,
-        team_type_id: params.teamTypeId,
-        foreman_person_id: params.foremanId,
-        supervisor_person_id: params.supervisorId,
-        updated_by: params.actorUserId,
-      })
-      .eq("tenant_id", params.tenantId)
-      .eq("id", params.teamId)
-      .select("updated_at")
-      .maybeSingle<{ updated_at: string | null }>();
-
-    if (updateError) {
-      const mappedError = mapTeamDbError(updateError, "Falha ao salvar equipe.");
-      return {
-        ok: false,
-        status: mappedError.status,
-        message: mappedError.message,
-        reason: mappedError.reason,
-      } as const;
-    }
-
-    return { ok: true, updatedAt: updatedTeam?.updated_at ?? null } as const;
-  }
-
-  const { data, error } = await params.supabase.rpc("save_team_record", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_team_id: params.teamId,
-    p_name: params.name,
-    p_vehicle_plate: params.vehiclePlate,
-    p_service_center_id: params.serviceCenterId,
-    p_team_type_id: params.teamTypeId,
-    p_foreman_person_id: params.foremanId,
-    p_stock_center_id: params.stockCenterId,
-    p_changes: params.changes ?? {},
-    p_expected_updated_at: params.expectedUpdatedAt ?? null,
-    p_supervisor_person_id: params.supervisorId,
-  });
-
-  if (error) {
-    if (isMissingFunctionError(error, "save_team_record")) {
-      return saveTeamDirectFallback();
-    }
-
-    const mappedError = mapTeamDbError(error, "Falha ao salvar equipe.");
-    return {
-      ok: false,
-      status: mappedError.status,
-      message: mappedError.message,
-      reason: mappedError.reason,
-    } as const;
-  }
-
-  const result = (data ?? {}) as TeamSaveRpcResult;
-  if (result.success !== true) {
-    if (isMissingFunctionError({ message: result.message }, "save_team_record")) {
-      return saveTeamDirectFallback();
-    }
-
-    return {
-      ok: false,
-      status: Number(result.status ?? 500),
-      message: result.message ?? "Falha ao salvar equipe.",
-      reason: result.reason ?? null,
-    } as const;
-  }
-
-  return { ok: true, updatedAt: result.updated_at ?? null } as const;
-}
-
-async function setTeamStatusViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  teamId: string;
-  action: "ACTIVATE" | "CANCEL";
-  reason: string;
-  foremanId?: string | null;
-  expectedUpdatedAt: string | null;
-}) {
-  async function setTeamStatusDirectFallback() {
-    let activateForemanId: string | null = null;
-
-    if (params.action === "ACTIVATE") {
-      const currentTeam = await fetchTeamById(params.supabase, params.tenantId, params.teamId);
-      if (!currentTeam) {
-        return {
-          ok: false,
-          status: 404,
-          message: "Equipe nao encontrada.",
-          reason: "TEAM_NOT_FOUND",
-        } as const;
-      }
-
-      activateForemanId = normalizeText(params.foremanId) || currentTeam.foreman_person_id;
-
-      const existingTeamByForeman = await fetchExistingTeamByForeman({
-        supabase: params.supabase,
-        tenantId: params.tenantId,
-        foremanId: activateForemanId,
-        excludeTeamId: params.teamId,
-      });
-
-      if (existingTeamByForeman) {
-        return {
-          ok: false,
-          status: 409,
-          message: "Ja existe equipe ativa cadastrada para este encarregado. Escolha outro encarregado ou cancele a equipe ativa antes de reativar esta equipe.",
-          reason: "DUPLICATE_TEAM_FOREMAN",
-        } as const;
-      }
-    }
-
-    const nowIso = new Date().toISOString();
-    const payload = params.action === "ACTIVATE"
-      ? {
-        ativo: true,
-        foreman_person_id: activateForemanId ?? undefined,
-        cancellation_reason: null as string | null,
-        canceled_at: null as string | null,
-        canceled_by: null as string | null,
-        updated_by: params.actorUserId,
-      }
-      : {
-        ativo: false,
-        cancellation_reason: params.reason,
-        canceled_at: nowIso,
-        canceled_by: params.actorUserId,
-        updated_by: params.actorUserId,
-      };
-
-    const { error } = await params.supabase
-      .from("teams")
-      .update(payload)
-      .eq("tenant_id", params.tenantId)
-      .eq("id", params.teamId);
-
-    if (error) {
-      const mappedError = mapTeamDbError(error, "Falha ao atualizar status da equipe.");
-      return {
-        ok: false,
-        status: mappedError.status,
-        message: mappedError.message,
-        reason: mappedError.reason,
-      } as const;
-    }
-
-    return { ok: true, updatedAt: null } as const;
-  }
-
-  const { data, error } = await params.supabase.rpc("set_team_record_status", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_team_id: params.teamId,
-    p_action: params.action,
-    p_reason: params.reason,
-    p_expected_updated_at: params.expectedUpdatedAt,
-    p_foreman_person_id: params.action === "ACTIVATE" ? (params.foremanId ?? null) : null,
-  });
-
-  if (error) {
-    if (isMissingFunctionError(error, "set_team_record_status")) {
-      return setTeamStatusDirectFallback();
-    }
-
-    const mappedError = mapTeamDbError(error, "Falha ao atualizar status da equipe.");
-    return {
-      ok: false,
-      status: mappedError.status,
-      message: mappedError.message,
-      reason: mappedError.reason,
-    } as const;
-  }
-
-  const result = (data ?? {}) as TeamSaveRpcResult;
-  if (result.success !== true) {
-    if (isMissingFunctionError({ message: result.message }, "set_team_record_status")) {
-      return setTeamStatusDirectFallback();
-    }
-
-    return {
-      ok: false,
-      status: Number(result.status ?? 500),
-      message: result.message ?? "Falha ao atualizar status da equipe.",
-      reason: result.reason ?? null,
-    } as const;
-  }
-
-  return { ok: true, updatedAt: result.updated_at ?? null } as const;
-}
-
-async function swapTeamForemenViaRpc(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  sourceTeamId: string;
-  targetTeamId: string;
-  reason: string;
-  sourceExpectedUpdatedAt: string | null;
-  targetExpectedUpdatedAt: string | null;
-}) {
-  const { data, error } = await params.supabase.rpc("swap_active_team_foremen", {
-    p_tenant_id: params.tenantId,
-    p_actor_user_id: params.actorUserId,
-    p_source_team_id: params.sourceTeamId,
-    p_target_team_id: params.targetTeamId,
-    p_reason: params.reason,
-    p_source_expected_updated_at: params.sourceExpectedUpdatedAt,
-    p_target_expected_updated_at: params.targetExpectedUpdatedAt,
-  });
-
-  if (error) {
-    if (isMissingFunctionError(error, "swap_active_team_foremen")) {
-      return {
-        ok: false,
-        status: 500,
-        message: "RPC swap_active_team_foremen indisponivel no banco. Aplique a migration 205_swap_active_team_foremen.sql.",
-        reason: "RPC_MISSING",
-      } as const;
-    }
-
-    const mappedError = mapTeamDbError(error, "Falha ao permutar encarregados.");
-    return {
-      ok: false,
-      status: mappedError.status,
-      message: mappedError.message,
-      reason: mappedError.reason,
-    } as const;
-  }
-
-  const result = (data ?? {}) as TeamForemanSwapRpcResult;
-  if (result.success !== true) {
-    if (isMissingFunctionError({ message: result.message }, "swap_active_team_foremen")) {
-      return {
-        ok: false,
-        status: 500,
-        message: "RPC swap_active_team_foremen indisponivel no banco. Aplique a migration 205_swap_active_team_foremen.sql.",
-        reason: "RPC_MISSING",
-      } as const;
-    }
-
-    return {
-      ok: false,
-      status: Number(result.status ?? 500),
-      message: result.message ?? "Falha ao permutar encarregados.",
-      reason: result.reason ?? null,
-    } as const;
-  }
-
-  return {
-    ok: true,
-    sourceUpdatedAt: result.source_updated_at ?? null,
-    targetUpdatedAt: result.target_updated_at ?? null,
-  } as const;
-}
+import {
+  buildForemanMap,
+  buildTeamCategoryMap,
+  buildTeamTypeMap,
+  isCommercialTeamCategory,
+  isTechnicalTeamCategory,
+  normalizePlate,
+  type AppUserRow,
+  type CreateTeamPayload,
+  type HistoryChange,
+  type PersonRow,
+  type TeamHistoryRow,
+  type UpdateTeamPayload,
+  type UpdateTeamStatusPayload,
+} from "@/server/modules/teams/types";
+import {
+  saveTeamViaRpc,
+  setTeamStatusViaRpc,
+  swapTeamForemenViaRpc,
+} from "@/server/modules/teams/writes";
+import {
+  importTeamBatch,
+  type TeamBatchImportPayload,
+} from "@/server/modules/teams/massImport";
 
 export async function GET(request: NextRequest) {
   try {
@@ -565,6 +67,11 @@ export async function GET(request: NextRequest) {
 
     if ("error" in resolution) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+    }
+
+    const authorizationError = await authorizePageAction(resolution, "equipes", "read");
+    if (authorizationError) {
+      return authorizationError;
     }
 
     const { supabase, appUser } = resolution;
@@ -643,6 +150,7 @@ export async function GET(request: NextRequest) {
     const vehiclePlate = normalizePlate(params.get("vehiclePlate"));
     const serviceCenterId = normalizeText(params.get("serviceCenterId"));
     const teamTypeId = normalizeText(params.get("teamTypeId"));
+    const teamCategoryId = normalizeText(params.get("teamCategoryId"));
     const foremanId = normalizeText(params.get("foremanId"));
     const supervisorId = normalizeText(params.get("supervisorId"));
     const { page, pageSize, from, to } = parsePagination(params);
@@ -650,7 +158,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("teams")
       .select(
-        "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, foreman_person_id, supervisor_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, name, vehicle_plate, service_center_id, stock_center_id, team_type_id, team_category_id, foreman_person_id, supervisor_person_id, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id);
@@ -669,6 +177,10 @@ export async function GET(request: NextRequest) {
 
     if (teamTypeId) {
       query = query.eq("team_type_id", teamTypeId);
+    }
+
+    if (teamCategoryId) {
+      query = query.eq("team_category_id", teamCategoryId);
     }
 
     if (foremanId) {
@@ -705,6 +217,9 @@ export async function GET(request: NextRequest) {
     );
     const teamTypeIds = Array.from(
       new Set((data ?? []).map((item) => item.team_type_id).filter((value): value is string => Boolean(value))),
+    );
+    const teamCategoryIds = Array.from(
+      new Set((data ?? []).map((item) => item.team_category_id).filter((value): value is string => Boolean(value))),
     );
     const serviceCenterIds = Array.from(
       new Set((data ?? []).map((item) => item.service_center_id).filter((value): value is string => Boolean(value))),
@@ -755,6 +270,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    let teamCategories: TeamCategoryRow[] = [];
+    if (teamCategoryIds.length > 0) {
+      const teamCategoriesResult = await supabase
+        .from("team_categories")
+        .select("id, code, name")
+        .eq("tenant_id", appUser.tenant_id)
+        .in("id", teamCategoryIds)
+        .returns<TeamCategoryRow[]>();
+
+      if (!teamCategoriesResult.error) {
+        teamCategories = teamCategoriesResult.data ?? [];
+      }
+    }
+
     let serviceCenters: ServiceCenterRow[] = [];
     if (serviceCenterIds.length > 0) {
       const serviceCentersResult = await supabase
@@ -802,6 +331,7 @@ export async function GET(request: NextRequest) {
     const foremanMap = buildForemanMap(foremen);
     const supervisorMap = buildForemanMap(supervisors);
     const teamTypeMap = buildTeamTypeMap(teamTypes);
+    const teamCategoryMap = buildTeamCategoryMap(teamCategories);
     const serviceCenterMap = new Map(serviceCenters.map((item) => [item.id, normalizeText(item.name)]));
     const stockCenterMap = new Map(stockCenters.map((item) => [item.id, normalizeText(item.name)]));
 
@@ -816,8 +346,11 @@ export async function GET(request: NextRequest) {
         stockCenterName: row.stock_center_id ? stockCenterMap.get(row.stock_center_id) ?? "Nao identificado" : "Sem centro proprio",
         teamTypeId: row.team_type_id,
         teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
+        teamCategoryId: row.team_category_id,
+        teamCategoryCode: teamCategoryMap.get(row.team_category_id ?? "")?.code ?? "",
+        teamCategoryName: teamCategoryMap.get(row.team_category_id ?? "")?.name ?? "Nao identificado",
         foremanId: row.foreman_person_id,
-        foremanName: foremanMap.get(row.foreman_person_id) ?? "Nao identificado",
+        foremanName: row.foreman_person_id ? foremanMap.get(row.foreman_person_id) ?? "Nao identificado" : "Sem encarregado",
         supervisorId: row.supervisor_person_id,
         supervisorName: row.supervisor_person_id ? supervisorMap.get(row.supervisor_person_id) ?? "Nao identificado" : "Sem supervisor",
         isActive: Boolean(row.ativo),
@@ -838,127 +371,6 @@ export async function GET(request: NextRequest) {
   } catch {
     return NextResponse.json({ message: "Falha ao listar equipes." }, { status: 500 });
   }
-}
-
-type TeamBatchImportRow = Partial<CreateTeamPayload> & { rowNumber?: number };
-
-type TeamBatchImportPayload = {
-  action?: "BATCH_IMPORT";
-  rows?: TeamBatchImportRow[];
-};
-
-async function importTeamBatch(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  rows: TeamBatchImportRow[];
-}) {
-  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
-  const validServiceCenterIds = new Map<string, boolean>();
-  const validTeamTypeIds = new Map<string, boolean>();
-  let savedCount = 0;
-
-  for (const [index, row] of params.rows.entries()) {
-    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
-    const input = {
-      name: normalizeText(row.name),
-      vehiclePlate: normalizePlate(row.vehiclePlate),
-      serviceCenterId: normalizeText(row.serviceCenterId),
-      teamTypeId: normalizeText(row.teamTypeId),
-      foremanId: normalizeText(row.foremanId),
-      supervisorId: normalizeText(row.supervisorId) || null,
-    };
-
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: "Preencha todos os campos obrigatorios da equipe.",
-        code: "MISSING_REQUIRED_FIELDS",
-      });
-      continue;
-    }
-
-    if (!validServiceCenterIds.has(input.serviceCenterId)) {
-      validServiceCenterIds.set(
-        input.serviceCenterId,
-        Boolean(await fetchServiceCenterById(params.supabase, params.tenantId, input.serviceCenterId)),
-      );
-    }
-
-    if (!validServiceCenterIds.get(input.serviceCenterId)) {
-      results.push({ rowNumber, success: false, message: "Base invalida para o tenant atual.", code: "INVALID_SERVICE_CENTER" });
-      continue;
-    }
-
-    if (!validTeamTypeIds.has(input.teamTypeId)) {
-      validTeamTypeIds.set(
-        input.teamTypeId,
-        Boolean(await fetchTeamTypeById(params.supabase, params.tenantId, input.teamTypeId)),
-      );
-    }
-
-    if (!validTeamTypeIds.get(input.teamTypeId)) {
-      results.push({ rowNumber, success: false, message: "Tipo de equipe invalido para o tenant atual.", code: "INVALID_TEAM_TYPE" });
-      continue;
-    }
-
-    if (!(await fetchForemanById(params.supabase, params.tenantId, input.foremanId))) {
-      results.push({ rowNumber, success: false, message: "Encarregado invalido para o tenant atual.", code: "INVALID_FOREMAN" });
-      continue;
-    }
-
-    if (input.supervisorId && !(await fetchSupervisorById(params.supabase, params.tenantId, input.supervisorId))) {
-      results.push({ rowNumber, success: false, message: "Supervisor invalido para o tenant atual.", code: "INVALID_SUPERVISOR" });
-      continue;
-    }
-
-    const existingTeamByForeman = await fetchExistingTeamByForeman({
-      supabase: params.supabase,
-      tenantId: params.tenantId,
-      foremanId: input.foremanId,
-      excludeTeamId: null,
-    });
-
-    if (existingTeamByForeman) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: "Ja existe equipe ativa cadastrada para este encarregado. Selecione outro encarregado.",
-        code: "FOREMAN_ALREADY_LINKED",
-      });
-      continue;
-    }
-
-    const saveResult = await saveTeamViaRpc({
-      supabase: params.supabase,
-      tenantId: params.tenantId,
-      actorUserId: params.actorUserId,
-      teamId: null,
-      name: input.name,
-      vehiclePlate: input.vehiclePlate,
-      serviceCenterId: input.serviceCenterId,
-      stockCenterId: null,
-      teamTypeId: input.teamTypeId,
-      foremanId: input.foremanId,
-      supervisorId: input.supervisorId,
-    });
-
-    if (!saveResult.ok) {
-      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
-      continue;
-    }
-
-    savedCount += 1;
-    results.push({ rowNumber, success: true, message: `Equipe ${input.name} cadastrada com sucesso.` });
-  }
-
-  return {
-    success: true,
-    savedCount,
-    errorCount: results.filter((result) => !result.success).length,
-    results,
-  };
 }
 
 export async function POST(request: NextRequest) {
@@ -1021,11 +433,12 @@ export async function POST(request: NextRequest) {
       serviceCenterId: normalizeText(body.serviceCenterId),
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
-      foremanId: normalizeText(body.foremanId),
+      teamCategoryId: normalizeText(body.teamCategoryId),
+      foremanId: normalizeText(body.foremanId) || null,
       supervisorId: normalizeText(body.supervisorId) || null,
     };
 
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.teamCategoryId) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
 
@@ -1039,8 +452,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
     }
 
-    const foreman = await fetchForemanById(supabase, appUser.tenant_id, input.foremanId);
-    if (!foreman) {
+    const teamCategory = await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId);
+    if (!teamCategory) {
+      return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
+    }
+
+    if (isTechnicalTeamCategory(teamCategory) && !input.foremanId) {
+      return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });
+    }
+
+    if (isCommercialTeamCategory(teamCategory) && !input.supervisorId) {
+      return NextResponse.json({ message: "Supervisor e obrigatorio para equipe comercial." }, { status: 400 });
+    }
+
+    const foreman = input.foremanId ? await fetchForemanById(supabase, appUser.tenant_id, input.foremanId) : null;
+    if (input.foremanId && !foreman) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
     }
 
@@ -1058,12 +484,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const existingTeamByForeman = await fetchExistingTeamByForeman({
-      supabase,
-      tenantId: appUser.tenant_id,
-      foremanId: input.foremanId,
-      excludeTeamId: null,
-    });
+    const existingTeamByForeman = input.foremanId
+      ? await fetchExistingTeamByForeman({
+          supabase,
+          tenantId: appUser.tenant_id,
+          foremanId: input.foremanId,
+          excludeTeamId: null,
+        })
+      : null;
     if (existingTeamByForeman) {
       return NextResponse.json(
         { message: "Ja existe equipe ativa cadastrada para este encarregado. Selecione outro encarregado." },
@@ -1081,6 +509,7 @@ export async function POST(request: NextRequest) {
       serviceCenterId: input.serviceCenterId,
       stockCenterId: input.stockCenterId,
       teamTypeId: input.teamTypeId,
+      teamCategoryId: input.teamCategoryId,
       foremanId: input.foremanId,
       supervisorId: input.supervisorId,
     });
@@ -1124,7 +553,8 @@ export async function PUT(request: NextRequest) {
       serviceCenterId: normalizeText(body.serviceCenterId),
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
-      foremanId: normalizeText(body.foremanId),
+      teamCategoryId: normalizeText(body.teamCategoryId),
+      foremanId: normalizeText(body.foremanId) || null,
       supervisorId: normalizeText(body.supervisorId) || null,
     };
 
@@ -1136,7 +566,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Atualize a lista antes de editar a equipe." }, { status: 400 });
     }
 
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.foremanId) {
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.teamCategoryId) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
 
@@ -1156,6 +586,9 @@ export async function PUT(request: NextRequest) {
     }
 
     const currentTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, currentTeam.team_type_id);
+    const currentTeamCategory = currentTeam.team_category_id
+      ? await fetchTeamCategoryById(supabase, appUser.tenant_id, currentTeam.team_category_id)
+      : null;
     const currentServiceCenter = currentTeam.service_center_id
       ? await fetchServiceCenterById(supabase, appUser.tenant_id, currentTeam.service_center_id)
       : null;
@@ -1170,6 +603,10 @@ export async function PUT(request: NextRequest) {
     if (!nextTeamType) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
     }
+    const nextTeamCategory = await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId);
+    if (!nextTeamCategory) {
+      return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
+    }
     const nextStockCenter = input.stockCenterId
       ? await fetchStockCenterById(supabase, appUser.tenant_id, input.stockCenterId)
       : null;
@@ -1177,14 +614,24 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Centro de estoque proprio invalido para a equipe." }, { status: 422 });
     }
 
-    const currentForeman = await fetchForemanById(supabase, appUser.tenant_id, currentTeam.foreman_person_id);
-    const nextForeman = await fetchForemanById(supabase, appUser.tenant_id, input.foremanId);
+    const currentForeman = currentTeam.foreman_person_id
+      ? await fetchForemanById(supabase, appUser.tenant_id, currentTeam.foreman_person_id)
+      : null;
+    const nextForeman = input.foremanId ? await fetchForemanById(supabase, appUser.tenant_id, input.foremanId) : null;
     const currentSupervisor = await fetchSupervisorById(supabase, appUser.tenant_id, currentTeam.supervisor_person_id);
     const nextSupervisor = input.supervisorId
       ? await fetchSupervisorById(supabase, appUser.tenant_id, input.supervisorId)
       : null;
 
-    if (!nextForeman) {
+    if (isTechnicalTeamCategory(nextTeamCategory) && !input.foremanId) {
+      return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });
+    }
+
+    if (isCommercialTeamCategory(nextTeamCategory) && !input.supervisorId) {
+      return NextResponse.json({ message: "Supervisor e obrigatorio para equipe comercial." }, { status: 400 });
+    }
+
+    if (input.foremanId && !nextForeman) {
       return NextResponse.json({ message: "Encarregado invalido para o tenant atual." }, { status: 422 });
     }
 
@@ -1192,12 +639,14 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Supervisor invalido para o tenant atual." }, { status: 422 });
     }
 
-    const existingTeamByForeman = await fetchExistingTeamByForeman({
-      supabase,
-      tenantId: appUser.tenant_id,
-      foremanId: input.foremanId,
-      excludeTeamId: teamId,
-    });
+    const existingTeamByForeman = input.foremanId
+      ? await fetchExistingTeamByForeman({
+          supabase,
+          tenantId: appUser.tenant_id,
+          foremanId: input.foremanId,
+          excludeTeamId: teamId,
+        })
+      : null;
     if (existingTeamByForeman) {
       return NextResponse.json(
         { message: "Ja existe equipe ativa cadastrada para este encarregado. Selecione outro encarregado." },
@@ -1211,7 +660,8 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "serviceCenterName", currentServiceCenter?.name ?? null, nextServiceCenter.name);
     addChange(changes, "stockCenterName", currentStockCenter?.name ?? null, nextStockCenter?.name ?? null);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
-    addChange(changes, "foremanName", currentForeman?.name ?? null, nextForeman.name);
+    addChange(changes, "teamCategoryName", currentTeamCategory?.name ?? null, nextTeamCategory.name);
+    addChange(changes, "foremanName", currentForeman?.name ?? null, nextForeman?.name ?? null);
     addChange(changes, "supervisorName", currentSupervisor?.name ?? null, nextSupervisor?.name ?? null);
 
     if (Object.keys(changes).length === 0) {
@@ -1231,6 +681,7 @@ export async function PUT(request: NextRequest) {
       serviceCenterId: input.serviceCenterId,
       stockCenterId: input.stockCenterId,
       teamTypeId: input.teamTypeId,
+      teamCategoryId: input.teamCategoryId,
       foremanId: input.foremanId,
       supervisorId: input.supervisorId,
       changes,
@@ -1303,6 +754,23 @@ export async function PATCH(request: NextRequest) {
 
       if (!sourceTeam.ativo || !targetTeam.ativo) {
         return buildConcurrencyConflictResponse("A permuta exige duas equipes ativas.", "RECORD_INACTIVE");
+      }
+
+      const [sourceTeamCategory, targetTeamCategory] = await Promise.all([
+        sourceTeam.team_category_id ? fetchTeamCategoryById(supabase, appUser.tenant_id, sourceTeam.team_category_id) : null,
+        targetTeam.team_category_id ? fetchTeamCategoryById(supabase, appUser.tenant_id, targetTeam.team_category_id) : null,
+      ]);
+
+      if (
+        !isTechnicalTeamCategory(sourceTeamCategory)
+        || !isTechnicalTeamCategory(targetTeamCategory)
+        || !sourceTeam.foreman_person_id
+        || !targetTeam.foreman_person_id
+      ) {
+        return NextResponse.json(
+          { message: "Permuta de encarregado disponivel apenas para equipes tecnicas com encarregado vinculado." },
+          { status: 400 },
+        );
       }
 
       if (hasUpdatedAtConflict(expectedUpdatedAt, sourceTeam.updated_at)) {

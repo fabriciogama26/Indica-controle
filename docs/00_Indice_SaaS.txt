@@ -20,6 +20,7 @@ Arquivos principais para nova task
 - docs/Tela_Mapa_Programacao_SaaS.txt
 - docs/Tela_Apuracao_Fator_Minimo_SaaS.txt
 - docs/Tela_Medicao_SaaS.txt
+- docs/Tela_Medicao_Comercial_SaaS.txt
 - docs/Tela_Visualizacao_Medicao_SaaS.txt
 - docs/Tela_Medicao_Asbuilt_SaaS.txt
 - docs/Tela_Faturamento_SaaS.txt

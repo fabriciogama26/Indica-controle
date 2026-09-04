@@ -22,6 +22,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/controle-apr", pageKey: "controle-apr" },
   { prefix: "/apuracao-fator-minimo", pageKey: "apuracao-fator-minimo" },
   { prefix: "/medicao-asbuilt", pageKey: "medicao-asbuilt" },
+  { prefix: "/medicao-comercial", pageKey: "medicao-comercial" },
   { prefix: "/medicao-visualizacao", pageKey: "medicao-visualizacao" },
   { prefix: "/medicao", pageKey: "medicao" },
   { prefix: "/faturamento", pageKey: "faturamento" },

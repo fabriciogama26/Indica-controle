@@ -2,6 +2,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 
 type JobTitleIdRow = {
   id: string;
@@ -14,6 +15,12 @@ type PersonRow = {
 
 type TeamTypeRow = {
   id: string;
+  name: string;
+};
+
+type TeamCategoryRow = {
+  id: string;
+  code: string;
   name: string;
 };
 
@@ -83,6 +90,29 @@ async function fetchTeamTypes(supabase: SupabaseClient, tenantId: string) {
     .filter((item) => Boolean(item.id) && Boolean(item.name));
 }
 
+async function fetchTeamCategories(supabase: SupabaseClient, tenantId: string) {
+  const { data, error } = await supabase
+    .from("team_categories")
+    .select("id, code, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true })
+    .returns<TeamCategoryRow[]>();
+
+  if (error) {
+    return [] as Array<{ id: string; code: string; name: string }>;
+  }
+
+  return (data ?? [])
+    .map((item) => ({
+      id: item.id,
+      code: normalizeName(item.code).toUpperCase(),
+      name: normalizeName(item.name),
+    }))
+    .filter((item) => Boolean(item.id) && Boolean(item.code) && Boolean(item.name));
+}
+
 async function fetchServiceCenters(supabase: SupabaseClient, tenantId: string) {
   const { data, error } = await supabase
     .from("project_service_centers")
@@ -148,11 +178,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const authorizationError = await authorizePageAction(resolution, "equipes", "read");
+    if (authorizationError) {
+      return authorizationError;
+    }
+
     const { supabase, appUser } = resolution;
-    const [foremen, supervisors, teamTypes, serviceCenters] = await Promise.all([
+    const [foremen, supervisors, teamTypes, teamCategories, serviceCenters] = await Promise.all([
       fetchForemen(supabase, appUser.tenant_id),
       fetchSupervisors(supabase, appUser.tenant_id),
       fetchTeamTypes(supabase, appUser.tenant_id),
+      fetchTeamCategories(supabase, appUser.tenant_id),
       fetchServiceCenters(supabase, appUser.tenant_id),
     ]);
 
@@ -160,6 +196,7 @@ export async function GET(request: NextRequest) {
       foremen,
       supervisors,
       teamTypes,
+      teamCategories,
       serviceCenters,
     });
   } catch {
