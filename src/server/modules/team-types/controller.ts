@@ -16,6 +16,7 @@ import { authorizePageAction } from "@/lib/server/routeAuthorization";
 type TeamTypeRow = {
   id: string;
   name: string;
+  team_category_id: string | null;
   ativo: boolean;
   created_by: string | null;
   updated_by: string | null;
@@ -41,7 +42,14 @@ type TeamTypeHistoryRow = {
 type SaveTeamTypePayload = {
   id?: string | null;
   name?: string | null;
+  teamCategoryId?: string | null;
   expectedUpdatedAt?: string | null;
+};
+
+type TeamCategoryRow = {
+  id: string;
+  code: string;
+  name: string;
 };
 
 type UpdateTeamTypeStatusPayload = {
@@ -78,7 +86,7 @@ async function fetchTeamTypeById(
 ) {
   const { data, error } = await supabase
     .from("team_types")
-    .select("id, name, ativo, created_by, updated_by, created_at, updated_at")
+    .select("id, name, team_category_id, ativo, created_by, updated_by, created_at, updated_at")
     .eq("tenant_id", tenantId)
     .eq("id", teamTypeId)
     .maybeSingle<TeamTypeRow>();
@@ -90,12 +98,32 @@ async function fetchTeamTypeById(
   return data;
 }
 
+// Catalogo TECNICA/COMERCIAL. Na tela `/tipo-equipe` ele aparece como
+// `Tipo operacional`, seguindo a nomenclatura fixada na tela Equipes.
+async function fetchTeamCategories(supabase: SupabaseClient, tenantId: string) {
+  const { data, error } = await supabase
+    .from("team_categories")
+    .select("id, code, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true })
+    .returns<TeamCategoryRow[]>();
+
+  if (error) {
+    return [] as TeamCategoryRow[];
+  }
+
+  return data ?? [];
+}
+
 async function saveTeamTypeViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
   actorUserId: string;
   teamTypeId: string | null;
   name: string;
+  teamCategoryId: string;
   expectedUpdatedAt: string | null;
 }) {
   const { data, error } = await params.supabase.rpc("save_team_type_record", {
@@ -104,6 +132,7 @@ async function saveTeamTypeViaRpc(params: {
     p_team_type_id: params.teamTypeId,
     p_name: params.name,
     p_expected_updated_at: params.expectedUpdatedAt,
+    p_team_category_id: params.teamCategoryId,
   });
 
   if (error) {
@@ -249,6 +278,7 @@ export async function handleGetTeamTypes(request: NextRequest) {
         teamType: {
           id: teamType.id,
           name: teamType.name,
+          teamCategoryId: teamType.team_category_id,
           isActive: teamType.ativo,
         },
         history: (historyData ?? []).map((entry) => ({
@@ -273,7 +303,7 @@ export async function handleGetTeamTypes(request: NextRequest) {
 
     let query = supabase
       .from("team_types")
-      .select("id, name, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
+      .select("id, name, team_category_id, ativo, created_by, updated_by, created_at, updated_at", { count: "exact" })
       .eq("tenant_id", appUser.tenant_id);
 
     if (name) {
@@ -301,14 +331,21 @@ export async function handleGetTeamTypes(request: NextRequest) {
           .filter((value): value is string => Boolean(value)),
       ),
     );
-    const users = await fetchUsersByIds(supabase, appUser.tenant_id, userIds);
+    const [users, teamCategories] = await Promise.all([
+      fetchUsersByIds(supabase, appUser.tenant_id, userIds),
+      fetchTeamCategories(supabase, appUser.tenant_id),
+    ]);
     const userDisplayMap = buildUserDisplayMap(users);
     const userLoginNameMap = buildUserLoginNameMap(users);
+    const teamCategoryMap = new Map(teamCategories.map((item) => [item.id, item.name]));
 
     return NextResponse.json({
+      teamCategories: teamCategories.map((item) => ({ id: item.id, code: item.code, name: item.name })),
       teamTypes: (data ?? []).map((row) => ({
         id: row.id,
         name: row.name,
+        teamCategoryId: row.team_category_id,
+        teamCategoryName: row.team_category_id ? teamCategoryMap.get(row.team_category_id) ?? "Nao identificado" : "Nao identificado",
         isActive: Boolean(row.ativo),
         createdByName: row.created_by ? userLoginNameMap.get(row.created_by) ?? "Nao identificado" : "Nao identificado",
         updatedByName: row.updated_by ? userDisplayMap.get(row.updated_by) ?? "Nao identificado" : "Nao identificado",
@@ -345,9 +382,14 @@ export async function handleCreateTeamType(request: NextRequest) {
     const { supabase, appUser } = resolution;
     const body = (await request.json().catch(() => ({}))) as SaveTeamTypePayload;
     const name = normalizeText(body.name);
+    const teamCategoryId = normalizeText(body.teamCategoryId);
 
     if (!name) {
       return NextResponse.json({ message: "Informe o nome do tipo de equipe." }, { status: 400 });
+    }
+
+    if (!teamCategoryId) {
+      return NextResponse.json({ message: "Selecione o tipo operacional." }, { status: 400 });
     }
 
     const saveResult = await saveTeamTypeViaRpc({
@@ -356,6 +398,7 @@ export async function handleCreateTeamType(request: NextRequest) {
       actorUserId: appUser.id,
       teamTypeId: null,
       name,
+      teamCategoryId,
       expectedUpdatedAt: null,
     });
 
@@ -398,6 +441,7 @@ export async function handleUpdateTeamType(request: NextRequest) {
     const teamTypeId = normalizeText(body.id);
     const expectedUpdatedAt = normalizeExpectedUpdatedAt(body.expectedUpdatedAt);
     const name = normalizeText(body.name);
+    const teamCategoryId = normalizeText(body.teamCategoryId);
 
     if (!teamTypeId) {
       return NextResponse.json({ message: "Tipo de equipe invalido para edicao." }, { status: 400 });
@@ -411,12 +455,17 @@ export async function handleUpdateTeamType(request: NextRequest) {
       return NextResponse.json({ message: "Informe o nome do tipo de equipe." }, { status: 400 });
     }
 
+    if (!teamCategoryId) {
+      return NextResponse.json({ message: "Selecione o tipo operacional." }, { status: 400 });
+    }
+
     const saveResult = await saveTeamTypeViaRpc({
       supabase,
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
       teamTypeId,
       name,
+      teamCategoryId,
       expectedUpdatedAt,
     });
 

@@ -20,8 +20,8 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   vehiclePlate: "Placa do veiculo",
   serviceCenterName: "Base",
   stockCenterName: "Centro de estoque proprio",
-  teamTypeName: "Tipo operacional",
-  teamCategoryName: "Tipo de equipe",
+  teamTypeName: "Tipo de equipe",
+  teamCategoryName: "Tipo operacional",
   foremanName: "Encarregado",
   supervisorName: "Supervisor",
   isActive: "Status",
@@ -131,6 +131,7 @@ export type SupervisorOption = ForemanOption;
 export type TeamTypeOption = {
   id: string;
   name: string;
+  teamCategoryId: string | null;
 };
 
 export type TeamCategoryOption = {
@@ -214,4 +215,38 @@ export function scrollDashboardContentToTop() {
   }
 
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/**
+ * Pre-requisitos de cadastro que faltam para o formulario de Equipes.
+ *
+ * Depende do tipo operacional escolhido: TECNICA exige encarregado, COMERCIAL
+ * exige supervisor, e o tipo de equipe so e cobrado depois da escolha -- antes
+ * disso nao da para saber se falta, porque o tenant pode ter tipos so de um
+ * dos lados.
+ */
+export function buildMissingTeamMetaReasons(params: {
+  isLoadingMeta: boolean;
+  serviceCenterCount: number;
+  teamCategoryCount: number;
+  teamTypeOptionCount: number;
+  foremanCount: number;
+  supervisorCount: number;
+  selectedTeamCategoryId: string;
+  isTechnicalCategory: boolean;
+  isCommercialCategory: boolean;
+}) {
+  if (params.isLoadingMeta) {
+    return [] as string[];
+  }
+
+  const reasons: string[] = [];
+  if (params.serviceCenterCount === 0) reasons.push("Base (Centro de Servico)");
+  if (params.teamCategoryCount === 0) reasons.push("Tipo operacional");
+  if (params.selectedTeamCategoryId && params.teamTypeOptionCount === 0) {
+    reasons.push("Tipo de equipe para este tipo operacional");
+  }
+  if (params.isTechnicalCategory && params.foremanCount === 0) reasons.push("Encarregado");
+  if (params.isCommercialCategory && params.supervisorCount === 0) reasons.push("Supervisor");
+  return reasons;
 }

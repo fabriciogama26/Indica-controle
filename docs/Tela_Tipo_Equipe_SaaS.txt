@@ -197,3 +197,23 @@ Ajuda contextual
   - Antes: rota placeholder sem persistencia, e um segundo CRUD do mesmo dominio em `/tipo-atividade`.
   - Depois: um unico cadastro de `team_types`, em `/tipo-equipe`, com historico, guarda de vinculo no
     cancelamento e escrita restrita a administrador ate liberacao explicita.
+
+Atualizacao 2026-09-04 - Tipo operacional e nomenclatura
+--------------------------------------------------------------------------------
+- NOMENCLATURA. Esta tela cadastra o `Tipo de equipe` da tela Equipes (CESTO,
+  LINHA MORTA, LINHA VIVA). O que a tela Equipes chama de `Tipo operacional` e
+  outro catalogo, `team_categories` (TECNICA/COMERCIAL), sem tela de cadastro.
+  Os nomes foram fixados assim depois que a 415 criou o segundo catalogo e
+  deixou os dois disputando o mesmo rotulo.
+- Cada tipo agora PERTENCE a um tipo operacional (`team_types.team_category_id`,
+  migration 416). O cadastro ganhou o campo `Tipo operacional`, obrigatorio, mais
+  a coluna na listagem, no CSV e no historico.
+- Todo tipo existente virou TECNICA no backfill: nenhum cadastro atual muda de
+  comportamento.
+- Trocar o tipo operacional de um tipo JA VINCULADO a equipes e recusado
+  (`TEAM_TYPE_CATEGORY_IN_USE`, 409). Permitir moveria equipes inteiras de
+  operacao em silencio, e o erro so apareceria na proxima edicao delas.
+- Consequencia pratica: enquanto nao existir nenhum tipo com tipo operacional
+  COMERCIAL, nao ha como cadastrar equipe comercial -- a tela Equipes avisa o
+  pre-requisito que falta em vez de deixar salvar com um tipo tecnico.
+- Base SQL: `supabase/migrations/416_team_type_belongs_to_team_category.sql`

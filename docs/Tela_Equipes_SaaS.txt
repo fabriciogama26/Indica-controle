@@ -418,3 +418,29 @@ Atualizacao 2026-08-25 - Cadastro em massa
 - Validado com `npx tsc --noEmit`, `npm run lint` e `npm run build`. Validacao manual pendente:
   (1) importar CSV valido e conferir as equipes na lista; (2) importar CSV com o mesmo encarregado em duas linhas e conferir a recusa;
   (3) importar CSV com base inexistente e conferir o CSV de erros.
+
+Atualizacao 2026-09-04 - Nomenclatura invertida e tipo vinculado a categoria
+--------------------------------------------------------------------------------
+- NOMENCLATURA (vale para toda a tela, os filtros, o CSV e o historico):
+  - `Tipo de equipe`  = catalogo `team_types` (CESTO, LINHA MORTA, LINHA VIVA),
+    mantido na tela `/tipo-equipe`.
+  - `Tipo operacional` = catalogo `team_categories` (TECNICA, COMERCIAL), sem
+    tela de cadastro.
+  A entrega anterior tinha invertido isso so dentro desta tela, o que deixou o
+  cadastro chamado `Tipo de Equipe` alimentando um campo chamado `Tipo
+  operacional`, e o campo `Tipo de equipe` sem cadastro nenhum.
+- No CSV de importacao as colunas acompanharam: `tipo_equipe` voltou a significar
+  o que sempre significou (CESTO, LINHA VIVA) e a coluna NOVA e `tipo_operacional`
+  (TECNICA/COMERCIAL). O arquivo que o cliente ja usava continua valido para a
+  coluna antiga.
+- `page_key` `tipo-equipe` e a tabela `team_types` NAO mudaram de nome: renomear
+  chave de permissao exigiria migration e backfill sem ganho nenhum.
+- Cada `Tipo de equipe` agora pertence a um `Tipo operacional` (migration 416).
+  O select da tela so oferece os tipos do tipo operacional escolhido, e trocar o
+  tipo operacional limpa o tipo ja selecionado.
+- A coerencia e garantida em tres camadas: tela, rota (`POST`/`PUT` e import em
+  massa) e banco (trigger `enforce_team_category_links`).
+- Enquanto o tenant nao tiver nenhum tipo com tipo operacional COMERCIAL, o
+  formulario bloqueia o cadastro de equipe comercial e diz qual pre-requisito
+  falta, em vez de deixar salvar com um tipo tecnico.
+- Base SQL: `supabase/migrations/416_team_type_belongs_to_team_category.sql`

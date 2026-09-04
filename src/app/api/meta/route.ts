@@ -295,12 +295,50 @@ async function fetchAppUserMap(params: {
   return new Map((data ?? []).map((item) => [item.id, item]));
 }
 
+// Ids das equipes TECNICAS ativas do tenant. Serve de recorte para as ordens:
+// a ordem comercial grava na MESMA tabela e entraria no realizado da meta.
+async function fetchTechnicalTeamIds(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+}) {
+  const categoryResult = await params.supabase
+    .from("team_categories")
+    .select("id")
+    .eq("tenant_id", params.tenantId)
+    .eq("ativo", true)
+    .eq("code", "TECNICA")
+    .maybeSingle<{ id: string }>();
+
+  const technicalCategoryId = categoryResult.error ? null : categoryResult.data?.id ?? null;
+  if (!technicalCategoryId) {
+    throw new Error("Tipo operacional TECNICA nao encontrado para o tenant.");
+  }
+
+  const { data, error } = await params.supabase
+    .from("teams")
+    .select("id")
+    .eq("tenant_id", params.tenantId)
+    .eq("team_category_id", technicalCategoryId)
+    .returns<Array<{ id: string }>>();
+
+  if (error) {
+    throw new Error("Falha ao carregar equipes tecnicas do tenant.");
+  }
+
+  return new Set((data ?? []).map((item) => item.id));
+}
+
 async function calculateWorkedDaysForCycle(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
   cycleStart: string;
   cycleEnd: string;
 }) {
+  const technicalTeamIds = await fetchTechnicalTeamIds({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+  });
+
   const { data, error } = await params.supabase
     .from("project_measurement_orders")
     .select("execution_date, project_id, team_id")
@@ -325,7 +363,7 @@ async function calculateWorkedDaysForCycle(params: {
   const workedDatesByTeam = new Map<string, Set<string>>();
   for (const row of data ?? []) {
     const executionDate = normalizeExecutionDate(row.execution_date);
-    if (!executionDate || !row.team_id || projectIsTestMap.get(row.project_id)) {
+    if (!executionDate || !row.team_id || !technicalTeamIds.has(row.team_id) || projectIsTestMap.get(row.project_id)) {
       continue;
     }
 
@@ -484,6 +522,31 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  // A Meta e da operacao TECNICA. A ordem comercial grava na MESMA tabela, entao
+  // sem este recorte a equipe e a ordem comercial entrariam em `Equipes ativas` e
+  // no realizado, contaminando a meta tecnica. O desenho da meta comercial esta
+  // em aberto -- ver TASKS.md.
+  const technicalCategoryResult = await resolution.supabase
+    .from("team_categories")
+    .select("id")
+    .eq("tenant_id", resolution.appUser.tenant_id)
+    .eq("ativo", true)
+    .eq("code", "TECNICA")
+    .maybeSingle<{ id: string }>();
+
+  const technicalCategoryId = technicalCategoryResult.error
+    ? null
+    : technicalCategoryResult.data?.id ?? null;
+
+  if (!technicalCategoryId) {
+    return NextResponse.json({ message: "Tipo operacional TECNICA nao encontrado para o tenant." }, { status: 500 });
+  }
+
+  const technicalTeamIds = await fetchTechnicalTeamIds({
+    supabase: resolution.supabase,
+    tenantId: resolution.appUser.tenant_id,
+  });
+
   const measurementWindowStart = toIsoDate(addMonths(new Date(), -24));
   const [teamTypesResult, targetsResult, teamsResult, measurementDatesResult] = await Promise.all([
     resolution.supabase
@@ -491,6 +554,7 @@ export async function GET(request: NextRequest) {
       .select("id, name")
       .eq("tenant_id", resolution.appUser.tenant_id)
       .eq("ativo", true)
+      .eq("team_category_id", technicalCategoryId)
       .order("name", { ascending: true })
       .returns<TeamTypeRow[]>(),
     resolution.supabase
@@ -504,6 +568,7 @@ export async function GET(request: NextRequest) {
       .select("team_type_id")
       .eq("tenant_id", resolution.appUser.tenant_id)
       .eq("ativo", true)
+      .eq("team_category_id", technicalCategoryId)
       .returns<TeamRow[]>(),
     loadAllRows<MeasurementOrderDateRow>((from, to) => resolution.supabase
       .from("project_measurement_orders")
@@ -545,7 +610,8 @@ export async function GET(request: NextRequest) {
   const workedDatesByCycleTeam = new Map<string, Map<string, Set<string>>>();
   for (const row of measurementDatesResult.data ?? []) {
     const executionDate = normalizeExecutionDate(row.execution_date);
-    if (!executionDate || projectIsTestMap.get(row.project_id)) {
+    // Ordem de equipe comercial nao entra na meta tecnica -- ver TASKS.md.
+    if (!executionDate || !row.team_id || !technicalTeamIds.has(row.team_id) || projectIsTestMap.get(row.project_id)) {
       continue;
     }
     const cycle = buildCycleFromMeasurementDate(executionDate);

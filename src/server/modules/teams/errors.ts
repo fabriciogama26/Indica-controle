@@ -66,6 +66,14 @@ export function mapTeamDbError(error: unknown, fallbackMessage: string) {
     } as const;
   }
 
+  if (combined.includes("team_type_category_mismatch")) {
+    return {
+      status: 422,
+      message: "O tipo de equipe escolhido nao pertence ao tipo operacional da equipe.",
+      reason: "TEAM_TYPE_CATEGORY_MISMATCH",
+    } as const;
+  }
+
   if (combined.includes("teams_foreman_person_tenant_fk")) {
     return {
       status: 422,

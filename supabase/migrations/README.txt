@@ -1479,3 +1479,23 @@ Observacao
 - Valida no fim: todo tenant com as duas categorias, nenhuma equipe sem categoria,
   nenhum overload antigo de `save_team_record`, EXECUTE so para `service_role` nas duas
   RPCs e a pagina cadastrada.
+
+416_team_type_belongs_to_team_category.sql
+- `team_types.team_category_id` obrigatorio, com backfill TECNICA para todo tipo ja
+  existente. Fecha a lacuna da 415: a equipe COMERCIAL era obrigada a escolher CESTO,
+  LINHA MORTA ou LINHA VIVA, tipos de rede eletrica sem significado para cobranca e
+  nova ligacao.
+- Tornar `team_type_id` opcional na comercial NAO resolveria: Meta, Dashboard Medicao e
+  Apuracao de Fator Minimo AGRUPAM por tipo, e a equipe sem tipo sumiria do agrupamento
+  em vez de aparecer zerada. Por isso o tipo passa a pertencer a uma categoria.
+- `save_team_type_record` ganha `p_team_category_id` (5 -> 6 parametros, overload antigo
+  derrubado), registra a troca no historico e RECUSA trocar a categoria de um tipo ja
+  vinculado a equipes: isso moveria equipes inteiras de operacao em silencio, e o erro
+  so apareceria na proxima edicao delas, com mensagem que nao explica a origem.
+- O trigger `enforce_team_category_links` passa a exigir que o tipo escolhido pertenca a
+  categoria da equipe. As duas regras anteriores (encarregado/supervisor) ficam iguais.
+- Nao cria nenhum tipo comercial: quem cadastra e o administrador, pela tela
+  `/tipo-equipe`, que ganhou o campo. Enquanto nao houver nenhum, o cadastro de equipe
+  COMERCIAL avisa que falta o pre-requisito em vez de deixar salvar com tipo tecnico.
+- Valida no fim: nenhum tipo sem categoria, nenhuma equipe com tipo de outra categoria,
+  nenhum overload antigo e EXECUTE so para `service_role`.

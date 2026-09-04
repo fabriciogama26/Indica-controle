@@ -37,6 +37,7 @@ type JobTitleIdRow = {
 export type TeamTypeRow = {
   id: string;
   name: string;
+  team_category_id?: string | null;
 };
 
 export type TeamCategoryRow = {
@@ -167,7 +168,7 @@ export async function fetchTeamTypeById(
 ) {
   const { data, error } = await supabase
     .from("team_types")
-    .select("id, name")
+    .select("id, name, team_category_id")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .eq("id", teamTypeId)
@@ -180,6 +181,7 @@ export async function fetchTeamTypeById(
   return {
     id: data.id,
     name: normalizeText(data.name),
+    team_category_id: data.team_category_id ?? null,
   };
 }
 

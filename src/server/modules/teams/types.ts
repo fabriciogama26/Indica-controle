@@ -105,6 +105,11 @@ export function isCommercialTeamCategory(category: { code: string } | null) {
   return normalizeText(category?.code).toUpperCase() === "COMERCIAL";
 }
 
+// Desde a 416 o tipo operacional pertence a uma categoria. O banco garante a
+// coerencia por trigger; a checagem aqui existe so para a mensagem ser util.
+export const TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE =
+  "O tipo de equipe escolhido nao pertence ao tipo operacional da equipe.";
+
 export function isTechnicalTeamCategory(category: { code: string } | null) {
   return normalizeText(category?.code).toUpperCase() === "TECNICA";
 }
