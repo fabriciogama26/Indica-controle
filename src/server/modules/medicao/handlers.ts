@@ -21,6 +21,20 @@ import { DEFAULT_MEASUREMENT_ROUTE_CONFIG, orderMatchesRouteCategory, resolveTea
 // O detalhe tecnico fica no log do servidor, nunca na tela: texto cru de banco
 // nao ajuda quem esta na tela e ainda expoe detalhe interno. Mesmo padrao de
 // `src/server/modules/programacao-normalizada/rpc.ts`.
+// A barreira de "Ordem + Equipe + Data" e o UNIQUE INDEX parcial da migration
+// 419, nao uma checagem otimista -- e por isso o conflito chega aqui como erro
+// de banco (23505) em vez de resultado da RPC. Sem esta traducao o usuario veria
+// "Falha ao salvar ordem de medicao." para um conflito que ele consegue
+// resolver sozinho.
+const COMMERCIAL_ORDER_REF_UNIQUE_INDEX = "uq_project_measurement_orders_commercial_ref_team_date";
+
+// So o nome do indice identifica ESTE conflito: `23505` sozinho tambem cobre a
+// unicidade de `order_number` e a dos integrantes, que tem outra causa e outra
+// orientacao para o usuario.
+function isCommercialOrderRefConflict(error: { message?: string } | null) {
+  return normalizeText(error?.message).includes(COMMERCIAL_ORDER_REF_UNIQUE_INDEX);
+}
+
 function logMeasurementRpcFailure(params: {
   rpcName: string;
   operation: string;
@@ -254,6 +268,12 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
       return NextResponse.json({ message: "Selecione o Processo da medicao comercial." }, { status: 400 });
     }
 
+    // `Ordem` obrigatoria nos DOIS tipos de medicao, igual a Processo e aos
+    // horarios (migration 419). A ordem TECNICA nao tem o campo.
+    if (!commercialOrderRef) {
+      return NextResponse.json({ message: "Informe a Ordem da medicao comercial." }, { status: 400 });
+    }
+
     if (!commercialStartTime || !commercialEndTime) {
       return NextResponse.json({ message: "Informe Hora inicio e Hora termino da medicao comercial." }, { status: 400 });
     }
@@ -347,6 +367,15 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
       userId: resolution.appUser.id,
       errorMessage: error.message,
     });
+    if (isCommercialOrderRefConflict(error)) {
+      return NextResponse.json(
+        {
+          message: "Ja existe ordem de medicao comercial para esta Ordem + Equipe + Data de execucao.",
+          reason: "COMMERCIAL_ORDER_REF_ALREADY_EXISTS",
+        },
+        { status: 409 },
+      );
+    }
     const hint = measurementModuleMigrationHint(error.message);
     return NextResponse.json(
       { message: `Falha ao salvar ordem de medicao. A ordem NAO foi gravada.${hint}`.trim() },
@@ -576,6 +605,18 @@ export async function handleMeasurementPatch(request: NextRequest, config = DEFA
       userId: resolution.appUser.id,
       errorMessage: error.message,
     });
+    // Reabrir (`ABRIR`) uma ordem cancelada devolve a linha ao indice unico da
+    // 419. Se a Ordem dela foi reutilizada enquanto estava cancelada, a colisao
+    // e real e o usuario precisa saber qual e.
+    if (isCommercialOrderRefConflict(error)) {
+      return NextResponse.json(
+        {
+          message: "Nao foi possivel reabrir: a Ordem desta medicao ja foi usada em outra ordem da mesma Equipe + Data de execucao.",
+          reason: "COMMERCIAL_ORDER_REF_ALREADY_EXISTS",
+        },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { message: "Falha ao alterar status da ordem de medicao. O status NAO foi alterado." },
       { status: 500 },

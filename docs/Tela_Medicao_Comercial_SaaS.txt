@@ -8,7 +8,7 @@ Visao geral
   - A equipe comercial nao tem encarregado fixo. Cada ordem carrega os DOIS eletricistas que executaram, escolhidos no cadastro de `Pessoas` (cargo com correspondencia em `ELETRICISTA`).
   - Os integrantes NAO sao deduzidos da equipe: sao selecionados ordem a ordem. E exatamente por isso que equipe comercial pode existir sem vinculo fixo com pessoas.
   - `Projeto` continua na tela e continua vindo do cadastro de `Projetos`, mas NAO e obrigatorio -- nem em `Com producao`. A equipe comercial atende demanda que nem sempre tem projeto aberto.
-  - Campo `Ordem`: texto livre, opcional, sem nenhuma consulta a tabela de projetos. Serve para registrar a referencia da execucao quando nao ha projeto (ou junto com ele).
+  - Campo `Ordem`: texto livre e OBRIGATORIO, sem nenhuma consulta a tabela de projetos. Serve para registrar a referencia da execucao quando nao ha projeto (ou junto com ele). Nao pode repetir para a mesma Ordem + Equipe + Data de execucao.
   - `Processo`, `Hora inicio` e `Hora termino` sao proprios desta tela e OBRIGATORIOS.
   - A tela NAO trabalha com `Composicao de Equipe` nem com `Programacao`, e nao tem campo `Encarregado`. Quem executou sao os dois eletricistas da ordem.
 - O resto do fluxo (atividades, pontos, taxa, valor, status, historico, exportacao CSV) e identico ao da `Medicao`.
@@ -22,6 +22,7 @@ Arquitetura
 - View compartilhada: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
 - Variantes da tela: `src/modules/dashboard/medicao/variant.ts`
 - Campos dos integrantes por nome/matricula: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`
+- Campo `Ordem` + checagem de duplicidade: `src/modules/dashboard/medicao/CommercialOrderRefField.tsx`
 - Catalogo de Processo: tabela `measurement_commercial_processes`, servida por `/api/medicao-comercial/meta`. Sem tela de cadastro: nasce semeada pela migration 415 (`Cobrancas`, `Novas_Ligacoes`, `Perdas`) e cresce por SQL.
 - API da tela (todas delegam):
   - `src/app/api/medicao-comercial/route.ts`
@@ -32,6 +33,7 @@ Arquitetura
   - `src/app/api/medicao-comercial/minimum-billing/route.ts`
   - `src/app/api/medicao-comercial/project-activity-usage/route.ts`
   - `src/app/api/medicao-comercial/rate-suggestion/route.ts`
+  - `src/app/api/medicao-comercial/order-ref-check/route.ts` (so na variante comercial: a Medicao tecnica nao tem o campo `Ordem`)
 - Handlers compartilhados (regra de negocio):
   - `src/server/modules/medicao/handlers.ts`
   - `src/server/modules/medicao/routeConfig.ts` (`MeasurementRouteConfig`, modo da equipe por variante)
@@ -43,6 +45,7 @@ Arquitetura
   - `src/server/modules/medicao/minimumBillingHandler.ts`
   - `src/server/modules/medicao/projectActivityUsageHandler.ts`
   - `src/server/modules/medicao/rateSuggestionHandler.ts`
+  - `src/server/modules/medicao/orderRefCheckHandler.ts`
 - Integracao de menu: `src/components/layout/AppShell.tsx`
 - Integracao de autorizacao: `src/lib/auth/authorization.ts`
 - Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -63,7 +66,7 @@ Cadastro
 - Campos proprios da tela:
   - `Eletricista 1` (obrigatorio)
   - `Eletricista 2` (obrigatorio)
-  - `Ordem` (opcional)
+  - `Ordem` (obrigatorio)
   - `Processo` (obrigatorio)
   - `Hora inicio` (obrigatorio)
   - `Hora termino` (obrigatorio)
@@ -74,10 +77,15 @@ Cadastro
   - Precisam estar ativos em `people`, no mesmo tenant, com cargo com correspondencia em `ELETRICISTA`.
   - Validados em tres camadas: formulario, rota (`/api/medicao-comercial`) e RPC `save_project_commercial_measurement_order`.
 - Regras de `Projeto` e `Ordem`:
-  - Os dois sao opcionais e independentes: a ordem pode ter os dois, so um ou nenhum.
+  - `Projeto` e opcional; `Ordem` e obrigatoria. A ordem pode ter os dois ou so a `Ordem`, nunca so o projeto.
   - `Projeto` opcional NAO significa aceitar codigo inexistente: se o usuario digitar algo, o valor ainda precisa casar com um projeto ativo do tenant.
   - Ordem sem projeto nao carrega nenhum vestigio de projeto/programacao (`programming_id`, `project_code_snapshot` e os snapshots de conclusao ficam nulos), regra herdada da 382 para `SEM_PRODUCAO` e agora valida tambem para a comercial `COM_PRODUCAO`.
-  - `Ordem` e texto livre gravado em `project_measurement_orders.commercial_order_ref`; branco vira `NULL`.
+  - `Ordem` e texto livre gravado em `project_measurement_orders.commercial_order_ref`.
+  - `Ordem` e obrigatoria nos DOIS tipos de medicao (`Com producao` e `Sem producao`), igual a Processo e aos horarios. Validada em tres camadas: formulario, rota e trigger `enforce_commercial_measurement_fields` (`commercial_order_ref_required`).
+  - `Ordem` NAO pode repetir para a mesma Ordem + Equipe + Data de execucao. A barreira e o UNIQUE INDEX parcial `uq_project_measurement_orders_commercial_ref_team_date` (migration 419), sobre `upper(btrim(commercial_order_ref))` -- a comparacao ignora caixa e espaco, entao `1234`, `1234 ` e `1234a`/`1234A` sao a MESMA Ordem. O texto continua gravado como foi digitado.
+  - A tela ainda avisa ANTES do submit: ao sair do campo `Ordem`, `GET /api/medicao-comercial/order-ref-check` responde se ja existe. Isso e conveniencia, NAO e a barreira -- entre a consulta e o salvamento existe janela para outro usuario gravar a mesma Ordem, e so o indice fecha isso sem TOCTOU. O conflito real volta como 409 (`COMMERCIAL_ORDER_REF_ALREADY_EXISTS`).
+  - Ordem CANCELADA libera a reutilizacao: cancelar grava `is_active=false` e a linha sai do indice. Efeito colateral: reabrir (`ABRIR`) uma ordem cancelada cuja `Ordem` foi reutilizada no periodo volta a colidir, e a tela recebe 409 com mensagem propria.
+  - As regras de duplicidade SOMAM com as da 382: duas Ordens diferentes no MESMO projeto + equipe + data seguem bloqueadas pela regra antiga, e duas ordens `Sem producao` sem projeto na mesma equipe + data seguem bloqueadas mesmo com Ordens diferentes.
   - Aparece na listagem e no CSV de resumo como `Ordem (informada)`, porque a coluna `Ordem` ja e o numero da ordem de medicao gerado pelo sistema.
 - Regras de `Processo`, `Hora inicio` e `Hora termino`:
   - Os tres sao obrigatorios em qualquer ordem comercial, inclusive `Sem producao`.
@@ -189,3 +197,23 @@ Atualizacao 2026-09-08 - Correcao: a tela nunca conseguiu salvar (migration 418)
 - Sem backfill: nenhuma linha comercial chegou a existir.
 - Arquivos alterados: `supabase/migrations/418_fix_deferred_commercial_measurement_validation.sql` e
   `src/server/modules/medicao/handlers.ts`.
+
+Atualizacao 2026-09-08 - Ordem obrigatoria e unica por Ordem + Equipe + Data (migration 419)
+--------------------------------------------------------------------------------------------
+- Problema: a ordem comercial nao tinha NENHUMA trava de duplicidade no caso mais comum da tela. As duas barreiras existentes vem da 382 e usam uma chave que nao conhece `Ordem`: o trigger `enforce_project_measurement_order_context_unique` tem early-return para `project_id is null and measurement_kind <> 'SEM_PRODUCAO'`, e o pre-check da RPC so procura duplicata entre linhas `SEM_PRODUCAO`. Como a equipe comercial normalmente nao tem projeto, a tela aceitava gravar a mesma execucao quantas vezes o usuario clicasse.
+- Decisoes de negocio desta tarefa:
+  1. `Ordem` obrigatoria nos dois tipos de medicao (`Com producao` e `Sem producao`).
+  2. As regras SOMAM: a chave nova (Ordem + Equipe + Data) e adicionada, e as regras da 382 continuam como estao. Consequencia aceita: duas Ordens diferentes no mesmo projeto + equipe + data seguem bloqueadas pela regra antiga.
+  3. Ordem CANCELADA libera a reutilizacao da mesma `Ordem`.
+- Barreira: UNIQUE INDEX parcial, nao checagem otimista (`guia_sql.md`, regras 6 e 10). Diferente do pre-check da 382, o indice nao tem janela TOCTOU. A normalizacao `upper(btrim(...))` e proposital: sem ela a regra cai no primeiro dia com `1234` vs `1234 ` vs `1234A`.
+- Por que a RPC comercial NAO foi recriada: o indice ja e a barreira, e restatir `save_project_commercial_measurement_order` inteira (cerca de 200 linhas) so criaria risco de drift com a 415. A traducao do erro para 409 legivel vive em `handlers.ts`.
+- Front: o campo `Ordem` saiu do `MeasurementPageView` para `CommercialOrderRefField.tsx`. Motivo duplo -- o PageView e legado e esta no ratchet de tamanho (`guia_frontend.md` regra 15), e a checagem de duplicidade e busca de dados, que a regra 12 manda tirar do PageView. O componente dispara a consulta ao SAIR do campo (nao a cada tecla, que so produziria "duplicada" falso no meio da digitacao) e derruba sozinho o aviso quando o texto do campo deixa de corresponder ao que foi conferido -- por isso o PageView nao precisa resetar esse estado em `resetForm()` nem ao carregar outra ordem para edicao.
+- Ratchet: `npm run lint:size:accept -- src/modules/dashboard/medicao/MeasurementPageView.tsx`, de 3.560 para 3.572 (+12). O que ficou no PageView e so fiacao (import, um estado, a troca do JSX e cinco linhas de validacao); campo, fetch e validacao vivem no componente novo.
+- Permissao: `/api/medicao-comercial/order-ref-check` usa `authorizeMeasurementVariantReadOrExportAction(..., "read", true)`, o mesmo `page_key` `medicao-comercial` da tela visivel. Quem abre a tela usa a checagem sem permissao extra.
+- Arquivos alterados: `supabase/migrations/419_commercial_measurement_order_ref_required_and_unique.sql`,
+  `src/server/modules/medicao/orderRefCheckHandler.ts`,
+  `src/app/api/medicao-comercial/order-ref-check/route.ts`,
+  `src/server/modules/medicao/handlers.ts`,
+  `src/modules/dashboard/medicao/CommercialOrderRefField.tsx`,
+  `src/modules/dashboard/medicao/MeasurementPageView.tsx` e
+  `file-size-baseline.json`.

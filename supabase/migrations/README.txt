@@ -1546,3 +1546,37 @@ Observacao
 - Valida no fim: funcao releu a linha, nao restou validacao por `new`, trigger presente e
   deferido, nenhuma ordem comercial sem Processo/horarios e nenhuma ordem tecnica com campo
   comercial preenchido.
+
+419_commercial_measurement_order_ref_required_and_unique.sql
+- `Ordem` (`commercial_order_ref`) passa a ser OBRIGATORIA na Medicao Comercial e nao pode
+  repetir para a mesma Ordem + Equipe + Data de execucao.
+- Motivo: a ordem comercial nao tinha NENHUMA trava de duplicidade no caso mais comum da
+  tela. As duas barreiras da 382 usam uma chave que nao conhece `Ordem` -- o trigger
+  `enforce_project_measurement_order_context_unique` tem early-return para
+  `project_id is null and measurement_kind <> 'SEM_PRODUCAO'`, e o pre-check da RPC so
+  procura duplicata entre linhas `SEM_PRODUCAO`. Como a equipe comercial normalmente nao
+  tem projeto, a tela aceitava gravar a mesma execucao quantas vezes o usuario clicasse.
+- Decisoes de negocio desta tarefa: (1) `Ordem` obrigatoria nos DOIS tipos de medicao;
+  (2) as regras SOMAM -- a chave nova e adicionada e as da 382 continuam como estao, entao
+  duas Ordens diferentes no mesmo projeto + equipe + data seguem bloqueadas pela regra
+  antiga; (3) ordem CANCELADA libera a reutilizacao da `Ordem`.
+- Obrigatoriedade: dentro de `enforce_commercial_measurement_fields()` (a mesma funcao
+  corrigida pela 418, cuja releitura da linha e preservada e verificada aqui), com
+  `commercial_order_ref_required`.
+- Unicidade: UNIQUE INDEX parcial `uq_project_measurement_orders_commercial_ref_team_date`
+  sobre `(tenant_id, upper(btrim(commercial_order_ref)), team_id, execution_date)`, com
+  predicado `commercial_order_ref is not null and is_active = true`. Indice, e nao checagem
+  otimista (`guia_sql.md` 6 e 10): diferente do pre-check da 382, nao ha janela TOCTOU.
+  A normalizacao e proposital -- sem ela a regra cai no primeiro dia com `1234` vs `1234 `
+  vs `1234A`. O texto continua gravado como foi digitado.
+- A RPC `save_project_commercial_measurement_order` NAO foi recriada de proposito: o indice
+  ja e a barreira, e restatir a funcao inteira so criaria risco de drift com a 415. A
+  traducao do 23505 para 409 legivel vive em `src/server/modules/medicao/handlers.ts`,
+  identificada pelo NOME do indice -- `23505` sozinho tambem cobre a unicidade de
+  `order_number` e a dos integrantes, que tem outra causa.
+- Efeito colateral conhecido: reabrir (`ABRIR`) uma ordem cancelada cuja `Ordem` foi
+  reutilizada no periodo volta a colidir com o indice. E o conflito real, e tambem tem
+  mensagem propria no handler de status.
+- Sem backfill: nao existe nenhuma ordem comercial gravada (ver 418).
+- Valida no fim: releitura da 418 preservada, obrigatoriedade presente, indice existente,
+  unico e parcial, nenhuma ordem comercial ativa sem `Ordem`.
