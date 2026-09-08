@@ -12,6 +12,21 @@ export type MeasurementOrderRow = {
   programming_completion_status_snapshot: string | null;
 };
 
+export type TeamCategoryLookupRow = {
+  id: string;
+  code: string;
+  name: string | null;
+  sort_order: number | null;
+};
+
+// Um integrante da ordem comercial. `sort_order` e 1 ou 2 por constraint da
+// migration 415 -- e o que separa Eletricista 1 de Eletricista 2.
+export type MeasurementCommercialMemberRow = {
+  measurement_order_id: string;
+  person_name_snapshot: string | null;
+  sort_order: number | null;
+};
+
 export type MeasurementOrderItemRow = {
   measurement_order_id: string;
   total_value: number | string;

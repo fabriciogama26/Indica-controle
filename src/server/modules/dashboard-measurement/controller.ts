@@ -3,30 +3,54 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { enforceRateLimit } from "@/lib/server/rateLimit";
-import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { fetchWorkCompletionTimelineByProject } from "@/server/modules/programacao-normalizada";
+import { fetchTeamIdsByMeasurementMode } from "@/server/modules/medicao/teamMode";
 import {
   calculateTeamPerformanceWindow,
   type TeamPerformanceOrder,
   type TeamPerformanceTeam,
 } from "@/server/modules/team-performance";
+import {
+  fetchCommercialMemberNamesByOrder,
+  fetchMeasurementOrderItems,
+  fetchProjectCompletionTimeline,
+  fetchProjectMetaMap,
+  fetchTeamCategories,
+} from "./queries";
+import {
+  buildAnnualCycles,
+  buildCycleFromMeasurementDate,
+  buildCycleWeeks,
+  countBusinessDays,
+  formatMonthName,
+  formatPeriodLabel,
+  normalizeYear,
+  parseIsoDate,
+  resolvePerformanceWorkdays,
+} from "./cycles";
+import {
+  isCompletionFilterStatus,
+  isMaintenanceServiceType,
+  maxIsoDate,
+  minIsoDate,
+  normalizeCompletionStatus,
+  normalizeIsoDate,
+  normalizeServiceScope,
+  normalizeTeamCategoryCode,
+  normalizeText,
+  normalizeUuid,
+  periodOverlaps,
+} from "./normalizers";
 import type {
   AnnualCycleComparison,
   CompletionAggregate,
   CycleProjectDetail,
   CycleTargetItemRow,
-  CycleWeek,
   CycleWorkdaysRow,
-  MeasurementOrderItemRow,
   MeasurementOrderRow,
   PersonRow,
-  ProgrammingCompletionRow,
   ProgrammingCompletionTimelineItem,
-  ProjectMeta,
   ProjectProductionDetail,
-  ProjectTestRow,
-  ServiceScope,
   TeamForemanHistoryRow,
   TeamRow,
   TeamSupervisorHistoryRow,
@@ -35,17 +59,7 @@ import type {
 } from "./types";
 
 const DASHBOARD_MEASUREMENT_PAGE_KEY = "dashboard-medicao";
-const MEASUREMENT_ORDER_ITEMS_CHUNK_SIZE = 200;
-
-function normalizeText(value: unknown) {
-  return String(value ?? "").trim();
-}
-
-function normalizeToken(value: unknown) {
-  return normalizeText(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-}
-
-function toTeamPerformanceOrder(order: MeasurementOrderRow): TeamPerformanceOrder {
+function toTeamPerformanceOrder(order: MeasurementOrderRow, memberNames?: string[]): TeamPerformanceOrder {
   return {
     id: order.id,
     projectId: order.project_id,
@@ -54,6 +68,7 @@ function toTeamPerformanceOrder(order: MeasurementOrderRow): TeamPerformanceOrde
     projectCodeSnapshot: order.project_code_snapshot,
     teamNameSnapshot: order.team_name_snapshot,
     foremanNameSnapshot: order.foreman_name_snapshot,
+    memberNames,
   };
 }
 
@@ -64,323 +79,6 @@ function toTeamPerformanceTeam(team: TeamRow): TeamPerformanceTeam {
     foremanPersonId: team.foreman_person_id,
     supervisorPersonId: team.supervisor_person_id,
     isActive: team.ativo === true,
-  };
-}
-
-function normalizeUuid(value: unknown) {
-  const normalized = normalizeText(value);
-  return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
-}
-
-function normalizeIsoDate(value: unknown) {
-  const normalized = normalizeText(value).slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : null;
-}
-
-function normalizeCompletionStatus(value: unknown) {
-  const token = normalizeToken(value)
-    .replace(/\s+/g, "_");
-
-  if (token === "CONCLUIDO" || token === "COMPLETO" || token.startsWith("CONCLUIDO")) return "CONCLUIDO";
-  if (
-    token === "BENEFICIO_ATINGIDO"
-    || token === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
-    || token === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO"
-  ) {
-    return "BENEFICIO_ATINGIDO";
-  }
-  if (token === "PARCIAL" || token.startsWith("PARCIAL")) return "PARCIAL";
-  if (token === "PENDENCIA" || token === "PENDENCIAS" || token.startsWith("PENDEN")) return "PENDENCIA";
-  return "NAO_INFORMADO";
-}
-
-function isCompletionFilterStatus(value: string) { return value === "CONCLUIDO" || value === "PARCIAL" || value === "BENEFICIO_ATINGIDO" || value === "PENDENCIA"; }
-
-function normalizeServiceScope(value: unknown): ServiceScope { const token = normalizeToken(value); return token === "MANUTENCAO" ? "MANUTENCAO" : token === "OBRAS" ? "OBRAS" : "ALL"; }
-
-function isMaintenanceServiceType(value: unknown) {
-  return normalizeToken(value).includes("EMERGENCIAL") || normalizeToken(value).includes("MANUTENCAO");
-}
-
-function periodOverlaps(startDate: string, endDate: string | null, windowStart: string, windowEnd: string) {
-  return startDate <= windowEnd && (!endDate || endDate >= windowStart);
-}
-
-function isCanceledProgrammingStatus(value: unknown) {
-  return normalizeText(value).toUpperCase() === "CANCELADA";
-}
-
-function createUtcDate(year: number, monthIndex: number, day: number) {
-  return new Date(Date.UTC(year, monthIndex, day));
-}
-
-function parseIsoDate(value: string) {
-  const [year, month, day] = value.split("-").map((item) => Number(item));
-  return createUtcDate(year, month - 1, day);
-}
-
-function toIsoDate(value: Date) {
-  const year = value.getUTCFullYear();
-  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(value.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(value: Date, days: number) {
-  return createUtcDate(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate() + days);
-}
-
-function addMonths(value: Date, months: number) {
-  return createUtcDate(value.getUTCFullYear(), value.getUTCMonth() + months, value.getUTCDate());
-}
-
-function resolveCycleStart(reference: Date) {
-  const year = reference.getUTCFullYear();
-  const monthIndex = reference.getUTCMonth();
-  const day = reference.getUTCDate();
-  return day >= 21 ? createUtcDate(year, monthIndex, 21) : createUtcDate(year, monthIndex - 1, 21);
-}
-
-function formatCycleLabel(start: Date, end: Date) {
-  const startDay = String(start.getUTCDate()).padStart(2, "0");
-  const startMonth = String(start.getUTCMonth() + 1).padStart(2, "0");
-  const startYear = String(start.getUTCFullYear());
-  const endDay = String(end.getUTCDate()).padStart(2, "0");
-  const endMonth = String(end.getUTCMonth() + 1).padStart(2, "0");
-  const endYear = String(end.getUTCFullYear());
-  return `Ciclo ${startDay}/${startMonth}/${startYear} a ${endDay}/${endMonth}/${endYear}`;
-}
-
-function formatShortDate(value: Date) {
-  const day = String(value.getUTCDate()).padStart(2, "0");
-  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
-  return `${day}/${month}`;
-}
-
-function countBusinessDays(start: Date, end: Date) {
-  let total = 0;
-  for (let current = start; current <= end; current = addDays(current, 1)) {
-    const day = current.getUTCDay();
-    if (day !== 0 && day !== 6) total += 1;
-  }
-  return total;
-}
-
-function countDistinctExecutionDates(orders: MeasurementOrderRow[], startDate: string, endDate: string) {
-  return new Set(orders
-    .map((order) => normalizeIsoDate(order.execution_date))
-    .filter((date): date is string => Boolean(date))
-    .filter((date) => date >= startDate && date <= endDate)).size;
-}
-
-function resolvePerformanceWorkdays(orders: MeasurementOrderRow[], startDate: string, endDate: string) {
-  const businessDays = countBusinessDays(parseIsoDate(startDate), parseIsoDate(endDate));
-  return businessDays > 0 ? businessDays : countDistinctExecutionDates(orders, startDate, endDate);
-}
-
-function maxIsoDate(left: string, right: string) {
-  return left > right ? left : right;
-}
-
-function minIsoDate(left: string, right: string) {
-  return left < right ? left : right;
-}
-
-function buildCycleWeeks(cycleStart: string, cycleEnd: string): CycleWeek[] {
-  const weeks: CycleWeek[] = [];
-  let start = parseIsoDate(cycleStart);
-  const cycleEndDate = parseIsoDate(cycleEnd);
-  let index = 1;
-
-  while (start <= cycleEndDate) {
-    const end = addDays(start, 6) > cycleEndDate ? cycleEndDate : addDays(start, 6);
-    weeks.push({
-      id: `week-${index}`,
-      label: `${index}ª semana (${formatShortDate(start)} a ${formatShortDate(end)})`,
-      startDate: toIsoDate(start),
-      endDate: toIsoDate(end),
-      workdays: countBusinessDays(start, end),
-    });
-    start = addDays(end, 1);
-    index += 1;
-  }
-
-  return weeks;
-}
-
-function buildCycleFromMeasurementDate(value: string) {
-  const measurementDate = parseIsoDate(value);
-  const start = resolveCycleStart(measurementDate);
-  const end = addMonths(start, 1);
-  end.setUTCDate(20);
-  return {
-    cycleStart: toIsoDate(start),
-    cycleEnd: toIsoDate(end),
-    label: formatCycleLabel(start, end),
-  };
-}
-
-function normalizeYear(value: unknown) {
-  const normalized = Number(normalizeText(value));
-  if (!Number.isInteger(normalized) || normalized < 2000 || normalized > 2100) return null;
-  return normalized;
-}
-
-function buildAnnualCycles(year: number) {
-  const cycles: ReturnType<typeof buildCycleFromMeasurementDate>[] = [];
-  for (let monthIndex = 0; monthIndex < 12; monthIndex += 1) {
-    const end = createUtcDate(year, monthIndex, 20);
-    const start = addMonths(end, -1);
-    start.setUTCDate(21);
-    cycles.push({
-      cycleStart: toIsoDate(start),
-      cycleEnd: toIsoDate(end),
-      label: formatCycleLabel(start, end),
-    });
-  }
-  return cycles;
-}
-
-function formatPeriodLabel(period: string) {
-  const [year, month] = period.split("-");
-  return `${month}/${year}`;
-}
-
-function formatMonthName(value: string | null) {
-  if (!value) return "Sem atuacao";
-  const date = parseIsoDate(value);
-  const months = [
-    "Janeiro",
-    "Fevereiro",
-    "Marco",
-    "Abril",
-    "Maio",
-    "Junho",
-    "Julho",
-    "Agosto",
-    "Setembro",
-    "Outubro",
-    "Novembro",
-    "Dezembro",
-  ];
-  return months[date.getUTCMonth()] ?? "Sem atuacao";
-}
-
-async function fetchProjectMetaMap(params: {
-  supabase: AuthenticatedAppUserContext["supabase"];
-  tenantId: string;
-  projectIds: string[];
-}) {
-  const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
-  if (!projectIds.length) return new Map<string, ProjectMeta>();
-
-  const { data, error } = await params.supabase
-    .from("project_with_labels")
-    .select("id, is_test, is_third_party, service_center, service_center_text, service_type_text")
-    .eq("tenant_id", params.tenantId)
-    .in("id", projectIds)
-    .returns<ProjectTestRow[]>();
-
-  if (error) return new Map<string, ProjectMeta>();
-
-  return new Map((data ?? []).map((item) => [
-    item.id,
-    {
-      isTest: Boolean(item.is_test),
-      isThirdParty: Boolean(item.is_third_party),
-      serviceCenterId: item.service_center,
-      serviceCenterName: normalizeText(item.service_center_text) || (item.service_center ? "Centro nao identificado" : "Centro nao informado"),
-      serviceTypeText: normalizeText(item.service_type_text),
-    },
-  ]));
-}
-
-async function fetchProjectCompletionTimeline(params: {
-  supabase: AuthenticatedAppUserContext["supabase"];
-  tenantId: string;
-  projectIds: string[];
-  endDate: string;
-}) {
-  const projectIds = Array.from(new Set(params.projectIds.filter(Boolean)));
-  if (!projectIds.length) return new Map<string, ProgrammingCompletionTimelineItem[]>();
-
-  // Fonte: `programming` (modelo normalizado), via a fachada da Programacao. A
-  // mesma query existia duplicada aqui e no Dashboard Carteira Operacional.
-  const { rows, error } = await fetchWorkCompletionTimelineByProject({
-    supabase: params.supabase,
-    tenantId: params.tenantId,
-    projectIds,
-    endDate: params.endDate,
-  });
-
-  if (error) return new Map<string, ProgrammingCompletionTimelineItem[]>();
-
-  const result = new Map<string, ProgrammingCompletionTimelineItem[]>();
-  for (const row of rows as ProgrammingCompletionRow[]) {
-    if (isCanceledProgrammingStatus(row.status)) continue;
-
-    const status = normalizeCompletionStatus(row.work_completion_status);
-    const hasPendingFlag = row.is_pendencia === true;
-    const executionDate = normalizeIsoDate(row.execution_date);
-    if ((status === "NAO_INFORMADO" && !hasPendingFlag) || !executionDate) continue;
-
-    const current = result.get(row.project_id) ?? [];
-    current.push({
-      executionDate,
-      status,
-      hasPendingFlag,
-      updatedAt: row.updated_at,
-    });
-    result.set(row.project_id, current);
-  }
-
-  for (const items of result.values()) {
-    items.sort((left, right) => {
-      const byExecutionDate = right.executionDate.localeCompare(left.executionDate);
-      if (byExecutionDate !== 0) {
-        return byExecutionDate;
-      }
-
-      return right.updatedAt.localeCompare(left.updatedAt);
-    });
-  }
-
-  return result;
-}
-
-async function fetchMeasurementOrderItems(params: {
-  supabase: AuthenticatedAppUserContext["supabase"];
-  tenantId: string;
-  orderIds: string[];
-}) {
-  const orderIds = Array.from(new Set(params.orderIds.filter(Boolean)));
-  if (!orderIds.length) {
-    return { data: [] as MeasurementOrderItemRow[], error: null };
-  }
-
-  const chunks: string[][] = [];
-  for (let index = 0; index < orderIds.length; index += MEASUREMENT_ORDER_ITEMS_CHUNK_SIZE) {
-    chunks.push(orderIds.slice(index, index + MEASUREMENT_ORDER_ITEMS_CHUNK_SIZE));
-  }
-
-  const results = await Promise.all(chunks.map((chunk) => (
-    params.supabase
-      .from("project_measurement_order_items")
-      .select("measurement_order_id, total_value")
-      .eq("tenant_id", params.tenantId)
-      .eq("is_active", true)
-      .in("measurement_order_id", chunk)
-      .returns<MeasurementOrderItemRow[]>()
-  )));
-
-  const failedResult = results.find((result) => result.error);
-  if (failedResult?.error) {
-    return { data: [] as MeasurementOrderItemRow[], error: failedResult.error };
-  }
-
-  return {
-    data: results.flatMap((result) => result.data ?? []),
-    error: null,
   };
 }
 
@@ -476,6 +174,7 @@ export async function handleDashboardMeasurementGet(
   const teamIdFilter = normalizeUuid(request.nextUrl.searchParams.get("teamId"));
   const foremanFilter = normalizeText(request.nextUrl.searchParams.get("foreman"));
   const supervisorIdFilter = normalizeUuid(request.nextUrl.searchParams.get("supervisorId"));
+  const teamCategoryCode = normalizeTeamCategoryCode(request.nextUrl.searchParams.get("teamCategoryCode"));
   const completionFilterRaw = normalizeText(request.nextUrl.searchParams.get("completionStatus")).toUpperCase();
   const completionFilter = completionFilterRaw && completionFilterRaw !== "TODOS"
     ? normalizeCompletionStatus(completionFilterRaw)
@@ -486,22 +185,54 @@ export async function handleDashboardMeasurementGet(
   const annualRangeStart = annualCycles[0]?.cycleStart ?? `${annualYear}-01-01`;
   const annualRangeEnd = annualCycles[annualCycles.length - 1]?.cycleEnd ?? `${annualYear}-12-31`;
 
+  const [teamCategoryRows, teamModeResult] = await Promise.all([
+    fetchTeamCategories({
+      supabase: resolution.supabase,
+      tenantId,
+    }),
+    fetchTeamIdsByMeasurementMode({
+      supabase: resolution.supabase,
+      tenantId,
+      mode: teamCategoryCode,
+    }),
+  ]);
+
+  const teamCategory = teamCategoryRows?.find((item) => item.code === teamCategoryCode) ?? null;
+  if (!teamCategoryRows || !teamCategory) {
+    return NextResponse.json({ message: "Falha ao carregar tipo operacional do dashboard." }, { status: 500 });
+  }
+
+  const isCommercialDashboard = teamCategoryCode === "COMERCIAL";
+  const teamCategories = teamCategoryRows.map((item) => ({
+    code: item.code,
+    label: normalizeText(item.name) || item.code,
+  }));
+
+  if (!teamModeResult.ok) {
+    return NextResponse.json({ message: teamModeResult.message }, { status: 500 });
+  }
+
+  const teamCategoryTeamIds = teamModeResult.ids;
+
   // Descoberta de ciclos: precisa das datas TODAS. O `.limit(3000)` anterior parava em
   // 1.000 (teto do PostgREST) e, como a ordem e decrescente, o corte comia justamente os
   // ciclos mais ANTIGOS — eles sumiam do seletor sem nenhum aviso. O desempate por `id`
   // e obrigatorio: `execution_date` repete, e sem ordem total a paginacao por offset pode
   // repetir ou perder linha entre uma pagina e outra.
-  const cyclesDiscoveryResult = await loadAllRows<{ execution_date: string }>((from, to) => resolution.supabase
-    .from("project_measurement_orders")
-    .select("execution_date")
-    .eq("tenant_id", tenantId)
-    .eq("is_active", true)
-    .eq("measurement_kind", "COM_PRODUCAO")
-    .neq("status", "CANCELADA")
-    .order("execution_date", { ascending: false })
-    .order("id", { ascending: true })
-    .range(from, to)
-    .returns<{ execution_date: string }[]>());
+  const cyclesDiscoveryResult = teamCategoryTeamIds.length
+    ? await loadAllRows<{ execution_date: string }>((from, to) => resolution.supabase
+        .from("project_measurement_orders")
+        .select("execution_date")
+        .eq("tenant_id", tenantId)
+        .eq("is_active", true)
+        .eq("measurement_kind", "COM_PRODUCAO")
+        .neq("status", "CANCELADA")
+        .in("team_id", teamCategoryTeamIds)
+        .order("execution_date", { ascending: false })
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<{ execution_date: string }[]>())
+    : { data: [] as { execution_date: string }[], error: null };
 
   if (cyclesDiscoveryResult.error) {
     return NextResponse.json({ message: "Falha ao carregar historico de ciclos." }, { status: 500 });
@@ -534,6 +265,8 @@ export async function handleDashboardMeasurementGet(
       startDate: null,
       endDate: null,
       selectedCycleStart: null,
+      teamCategoryCode,
+      teamCategories,
       filters: { projects: [], teams: [], foremen: [], supervisors: [] },
       summary: null,
       completionChart: [],
@@ -566,20 +299,23 @@ export async function handleDashboardMeasurementGet(
   // ativo passa de 1.000 ordens com folga, entao o dashboard vinha somando so a ponta
   // recente e apresentando o resultado como total do ano.
   const [ordersResult, annualOrdersResult] = await Promise.all([
-    loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
-      .from("project_measurement_orders")
-      .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
-      .eq("tenant_id", tenantId)
-      .eq("is_active", true)
-      .eq("measurement_kind", "COM_PRODUCAO")
-      .neq("status", "CANCELADA")
-      .gte("execution_date", windowStart)
-      .lte("execution_date", windowEnd)
-      .order("execution_date", { ascending: false })
-      .order("id", { ascending: true })
-      .range(from, to)
-      .returns<MeasurementOrderRow[]>()),
-    isTeamsDashboard
+    teamCategoryTeamIds.length
+      ? loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
+          .from("project_measurement_orders")
+          .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .eq("measurement_kind", "COM_PRODUCAO")
+          .neq("status", "CANCELADA")
+          .in("team_id", teamCategoryTeamIds)
+          .gte("execution_date", windowStart)
+          .lte("execution_date", windowEnd)
+          .order("execution_date", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<MeasurementOrderRow[]>())
+      : Promise.resolve({ data: [] as MeasurementOrderRow[], error: null }),
+    isTeamsDashboard || !teamCategoryTeamIds.length
       ? Promise.resolve({ data: [] as MeasurementOrderRow[], error: null })
       : loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
           .from("project_measurement_orders")
@@ -588,6 +324,7 @@ export async function handleDashboardMeasurementGet(
           .eq("is_active", true)
           .eq("measurement_kind", "COM_PRODUCAO")
           .neq("status", "CANCELADA")
+          .in("team_id", teamCategoryTeamIds)
           .gte("execution_date", annualRangeStart)
           .lte("execution_date", annualRangeEnd)
           .order("execution_date", { ascending: false })
@@ -607,7 +344,7 @@ export async function handleDashboardMeasurementGet(
     return NextResponse.json({ message: "Falha ao carregar medicoes anuais para dashboard." }, { status: 500 });
   }
 
-  const minimumBillingGuaranteeResult = isTeamsDashboard
+  const minimumBillingGuaranteeResult = isTeamsDashboard || !teamCategoryTeamIds.length
     ? { data: [] as MeasurementOrderRow[], error: null }
     : await resolution.supabase
         .from("project_measurement_orders")
@@ -617,6 +354,7 @@ export async function handleDashboardMeasurementGet(
         .eq("measurement_kind", "SEM_PRODUCAO")
         .gt("minimum_billing_amount", 0)
         .neq("status", "CANCELADA")
+        .in("team_id", teamCategoryTeamIds)
         .gte("execution_date", windowStart)
         .lte("execution_date", windowEnd)
         .order("execution_date", { ascending: false })
@@ -627,6 +365,32 @@ export async function handleDashboardMeasurementGet(
 
   if (minimumBillingGuaranteeOrdersError) {
     return NextResponse.json({ message: "Falha ao carregar garantias de faturamento minimo para dashboard." }, { status: 500 });
+  }
+
+  // Integrantes da ordem comercial. So a operacao COMERCIAL le a tabela: na tecnica
+  // ela esta vazia por definicao, e a consulta seria puro custo.
+  const commercialMemberResult = isCommercialDashboard
+    ? await fetchCommercialMemberNamesByOrder({
+        supabase: resolution.supabase,
+        tenantId,
+        orderIds: [...(orders ?? []), ...(minimumBillingGuaranteeOrders ?? [])].map((order) => order.id),
+      })
+    : { data: new Map<string, string[]>(), error: null };
+
+  if (commercialMemberResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar eletricistas das ordens comerciais." }, { status: 500 });
+  }
+
+  const commercialMemberNamesByOrder = commercialMemberResult.data;
+  const orderMemberNames = (orderId: string) => commercialMemberNamesByOrder.get(orderId);
+
+  // Na operacao comercial o filtro chamado `Encarregado` e por ELETRICISTA: a ordem
+  // entra se QUALQUER um dos dois integrantes casar. Na tecnica segue sendo o
+  // encarregado gravado na ordem.
+  function matchesForemanFilter(order: MeasurementOrderRow) {
+    if (!foremanFilter) return true;
+    if (isCommercialDashboard) return (orderMemberNames(order.id) ?? []).includes(foremanFilter);
+    return normalizeText(order.foreman_name_snapshot) === foremanFilter;
   }
 
   const projectMetaMap = await fetchProjectMetaMap({
@@ -733,14 +497,18 @@ export async function handleDashboardMeasurementGet(
         .from("teams")
         .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
         .eq("tenant_id", tenantId)
+        .in("id", teamCategoryTeamIds)
         .or(`ativo.eq.true,id.in.(${allVisibleTeamIds.join(",")})`)
         .returns<TeamRow[]>()
-    : await resolution.supabase
-        .from("teams")
-        .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
-        .eq("tenant_id", tenantId)
-        .eq("ativo", true)
-        .returns<TeamRow[]>();
+    : teamCategoryTeamIds.length
+      ? await resolution.supabase
+          .from("teams")
+          .select("id, name, team_type_id, foreman_person_id, supervisor_person_id, ativo")
+          .eq("tenant_id", tenantId)
+          .in("id", teamCategoryTeamIds)
+          .eq("ativo", true)
+          .returns<TeamRow[]>()
+      : { data: [] as TeamRow[], error: null };
 
   if (allTeamsResult.error) {
     return NextResponse.json({ message: "Falha ao carregar equipes para dashboard." }, { status: 500 });
@@ -872,7 +640,9 @@ export async function handleDashboardMeasurementGet(
   ).sort((left, right) => left.label.localeCompare(right.label));
 
   const foremanOptions = Array.from(
-    new Set(optionSourceOrders.map((order) => normalizeText(order.foreman_name_snapshot)).filter(Boolean)),
+    new Set(isCommercialDashboard
+      ? optionSourceOrders.flatMap((order) => orderMemberNames(order.id) ?? [])
+      : optionSourceOrders.map((order) => normalizeText(order.foreman_name_snapshot)).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right));
 
   function resolveTeamSupervisorForDate(teamId: string, isoDate: string) {
@@ -941,7 +711,7 @@ export async function handleDashboardMeasurementGet(
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
-    if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (!matchesForemanFilter(order)) return false;
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
@@ -957,7 +727,7 @@ export async function handleDashboardMeasurementGet(
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
-    if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (!matchesForemanFilter(order)) return false;
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
@@ -971,7 +741,7 @@ export async function handleDashboardMeasurementGet(
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
-    if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (!matchesForemanFilter(order)) return false;
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       (
@@ -986,7 +756,7 @@ export async function handleDashboardMeasurementGet(
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
-    if (foremanFilter && normalizeText(order.foreman_name_snapshot) !== foremanFilter) return false;
+    if (!matchesForemanFilter(order)) return false;
     if (supervisorIdFilter && resolveTeamSupervisorForDate(order.team_id, order.execution_date).supervisorId !== supervisorIdFilter) return false;
     if (
       isCompletionFilterStatus(completionFilter)
@@ -999,7 +769,7 @@ export async function handleDashboardMeasurementGet(
   // porque acumula todas as medicoes de cada projeto ate o fim do ciclo. Com `.limit(5000)`
   // cortado em 1.000 e ordem crescente, o detalhamento perdia o historico RECENTE dos
   // projetos e mostrava reincidencia menor do que a real.
-  const cycleDetailHistoryOrdersResult = !isTeamsDashboard && cycleDetailProjectIds.length
+  const cycleDetailHistoryOrdersResult = !isTeamsDashboard && cycleDetailProjectIds.length && teamCategoryTeamIds.length
     ? await loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
         .from("project_measurement_orders")
         .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
@@ -1007,6 +777,7 @@ export async function handleDashboardMeasurementGet(
         .eq("is_active", true)
         .eq("measurement_kind", "COM_PRODUCAO")
         .neq("status", "CANCELADA")
+        .in("team_id", teamCategoryTeamIds)
         .in("project_id", cycleDetailProjectIds)
         .lte("execution_date", selectedCycle.cycleEnd)
         .order("execution_date", { ascending: true })
@@ -1092,12 +863,22 @@ export async function handleDashboardMeasurementGet(
       .sort((left, right) => left.projectCode.localeCompare(right.projectCode));
   }
 
+  // `measurement_cycle_workdays` deixou de ser uma linha por periodo: a 417 trocou a
+  // unicidade para (tenant, tipo operacional, cycle_start), porque cada operacao tem seus
+  // dias uteis e sua propria media. Sem o recorte por `team_category_id` este
+  // `maybeSingle` volta a ver DUAS linhas assim que a operacao comercial cadastrar o mesmo
+  // periodo, e o erro que ele devolve nesse caso zera meta e dias uteis das duas telas.
   const selectedCycleRecordResult = await resolution.supabase
     .from("measurement_cycle_workdays")
     .select("id, cycle_start, cycle_end, workdays, default_workdays")
     .eq("tenant_id", tenantId)
+    .eq("team_category_id", teamCategory.id)
     .eq("cycle_start", selectedCycle.cycleStart)
     .maybeSingle<CycleWorkdaysRow>();
+
+  if (selectedCycleRecordResult.error) {
+    return NextResponse.json({ message: "Falha ao carregar dias uteis do ciclo." }, { status: 500 });
+  }
 
   const selectedCycleRecord = selectedCycleRecordResult.data ?? null;
   const targetItemsResult = selectedCycleRecord
@@ -1120,6 +901,7 @@ export async function handleDashboardMeasurementGet(
         .from("measurement_cycle_workdays")
         .select("id, cycle_start, cycle_end, workdays, default_workdays")
         .eq("tenant_id", tenantId)
+        .eq("team_category_id", teamCategory.id)
         .in("cycle_start", annualCycleStarts)
         .returns<CycleWorkdaysRow[]>();
 
@@ -1306,6 +1088,8 @@ export async function handleDashboardMeasurementGet(
   }
 
   function resolveTeamForemanNameForDate(teamId: string, isoDate: string) {
+    if (isCommercialDashboard) return "";
+
     const history = teamForemanHistoryByTeam.get(teamId) ?? [];
     const effectiveEntry = history.find((entry) => (
       entry.valid_from <= isoDate
@@ -1334,7 +1118,7 @@ export async function handleDashboardMeasurementGet(
     endDate: string,
   ) {
     return calculateTeamPerformanceWindow({
-      orders: orders.map(toTeamPerformanceOrder),
+      orders: orders.map((order) => toTeamPerformanceOrder(order, orderMemberNames(order.id))),
       potentialSupervisorTeams: performancePotentialSupervisorTeams,
       teamsById: performanceTeamsById,
       metaWorkdays,
@@ -1502,6 +1286,8 @@ export async function handleDashboardMeasurementGet(
     startDate: startDateFilter,
     endDate: endDateFilter,
     selectedCycleStart: selectedCycle.cycleStart,
+    teamCategoryCode,
+    teamCategories,
     filters: {
       projects: projectOptions,
       teams: teamOptions,

@@ -194,6 +194,18 @@ export function DashboardTeamsPageView() {
     dashboard.applyFilters();
   }
 
+  // Equipe comercial nao tem encarregado (migration 415): quem executou sao os dois
+  // eletricistas gravados na ordem. Os rotulos seguem a operacao que a RESPOSTA trouxe,
+  // nao o rascunho, para nao renomear a coluna antes de os dados mudarem.
+  const isCommercialView = dashboard.appliedTeamCategoryCode === "COMERCIAL";
+  const foremanColumnLabel = isCommercialView ? "Eletricista" : "Encarregado";
+
+  // Antes da primeira resposta o catalogo ainda nao chegou: o select mostra a operacao
+  // corrente em vez de uma caixa vazia.
+  const teamCategoryOptions = dashboard.teamCategories.length
+    ? dashboard.teamCategories
+    : [{ code: dashboard.draftFilters.teamCategoryCode, label: dashboard.draftFilters.teamCategoryCode }];
+
   function toggleMetaMode(mode: MetaMode, setter: Dispatch<SetStateAction<MetaMode[]>>) {
     setter((current) => current.includes(mode)
       ? (current.length === 1 ? current : current.filter((item) => item !== mode))
@@ -208,7 +220,7 @@ export function DashboardTeamsPageView() {
   }
 
   function openProjectDetails(
-    kind: "equipe" | "encarregado" | "supervisor",
+    kind: "equipe" | "encarregado" | "eletricista" | "supervisor",
     name: string,
     period: string,
     rows: DashboardTeamsProject[],
@@ -262,6 +274,7 @@ export function DashboardTeamsPageView() {
         `dashboard_equipes_mk_${dashboardFilenameToken(teamDetailModal.row.teamName)}_${new Date().toISOString().slice(0, 10)}.csv`,
         {
           teamName: teamDetailModal.row.teamName,
+          commercial: isCommercialView,
           metaLabel: metaLabels[teamDetailModal.metaMode],
           metaValue,
           totalValue: teamDetailModal.row.totalValue,
@@ -490,12 +503,13 @@ export function DashboardTeamsPageView() {
           <button type="button" className={styles.primaryButton} disabled={dashboard.isLoading} onClick={applyFilters}>{dashboard.isLoading ? "Carregando..." : "Filtrar"}</button>
         </div>
         <div className={styles.filterGrid}>
+          <label className={styles.field}><span>Tipo operacional</span><select value={dashboard.draftFilters.teamCategoryCode} disabled={dashboard.isLoading} onChange={(event) => dashboard.changeTeamCategoryCode(event.target.value)}>{teamCategoryOptions.map((item) => <option key={item.code} value={item.code}>{item.label}</option>)}</select></label>
           <label className={styles.field}><span>Ciclo</span><select value={dashboard.draftFilters.cycleStart} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, cycleStart: event.target.value }))}><option value="">Ciclo mais recente</option>{dashboard.cycles.map((cycle) => <option key={cycle.cycleStart} value={cycle.cycleStart}>{cycle.label}</option>)}</select></label>
           <label className={styles.field}><span>Data inicial</span><input type="date" value={dashboard.draftFilters.startDate} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, startDate: event.target.value }))} /></label>
           <label className={styles.field}><span>Data final</span><input type="date" value={dashboard.draftFilters.endDate} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, endDate: event.target.value }))} /></label>
           <label className={styles.field}><span>Projeto (SOB)</span><input list="dashboard-equipes-projects" value={dashboard.draftFilters.project} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, project: event.target.value }))} placeholder="Todos" /><datalist id="dashboard-equipes-projects">{dashboard.projects.map((item) => <option key={item.id} value={item.label} />)}</datalist></label>
           <label className={styles.field}><span>MK / Equipe</span><select value={dashboard.draftFilters.teamId} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, teamId: event.target.value }))}><option value="">Todas</option>{dashboard.teams.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
-          <label className={styles.field}><span>Encarregado</span><select value={dashboard.draftFilters.foreman} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, foreman: event.target.value }))}><option value="">Todos</option>{dashboard.foremen.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
+          <label className={styles.field}><span>{foremanColumnLabel}</span><select value={dashboard.draftFilters.foreman} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, foreman: event.target.value }))}><option value="">Todos</option>{dashboard.foremen.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
           <label className={styles.field}><span>Supervisor</span><select value={dashboard.draftFilters.supervisorId} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, supervisorId: event.target.value }))}><option value="">Todos</option>{dashboard.supervisors.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
         </div>
       </article>
@@ -509,7 +523,7 @@ export function DashboardTeamsPageView() {
           </div>
         </div>
         <div className={styles.tableWrapper}><table className={styles.table}>
-          <thead><tr><th>Equipe</th><th>Tipo(s)</th><th>Encarregado(s)</th><th>Valor realizado</th><th>Projetos</th>{teamMetaModes.map((mode) => <th key={`${mode}-team-meta`}>{metaLabels[mode]}</th>)}{teamMetaModes.map((mode) => <th key={`${mode}-team-days`}>{metaDayLabels[mode]}</th>)}{teamMetaModes.map((mode) => <th key={`${mode}-team-percent`}>%{metaLabels[mode]}</th>)}</tr></thead>
+          <thead><tr><th>Equipe</th><th>Tipo(s)</th><th>{isCommercialView ? "Eletricista(s)" : "Encarregado(s)"}</th><th>Valor realizado</th><th>Projetos</th>{teamMetaModes.map((mode) => <th key={`${mode}-team-meta`}>{metaLabels[mode]}</th>)}{teamMetaModes.map((mode) => <th key={`${mode}-team-days`}>{metaDayLabels[mode]}</th>)}{teamMetaModes.map((mode) => <th key={`${mode}-team-percent`}>%{metaLabels[mode]}</th>)}</tr></thead>
           <tbody>{selectedTeams.length ? selectedTeams.map((item) => <tr key={item.teamId} className={styles.clickableRow} role="button" tabIndex={0} onClick={() => openTeamDetails(item)} onKeyDown={(event) => handleRowKeyDown(event, () => openTeamDetails(item))}><td>{item.teamName}</td><td>{item.teamTypeNames.join(" / ") || "Nao identificado"}</td><td>{item.foremanNames.join(" / ") || "Nao identificado"}</td><td>{formatDashboardCurrency(item.totalValue)}</td><td>{item.projectCount}</td>{teamMetaModes.map((mode) => <td key={`${item.teamId}-${mode}-meta`}>{formatDashboardCurrency(resolveMetaValue(item, mode))}</td>)}{teamMetaModes.map((mode) => <td key={`${item.teamId}-${mode}-days`}>{resolveMetaDays(item, mode)}</td>)}{teamMetaModes.map((mode) => { const meta = resolveMetaValue(item, mode); return <td key={`${item.teamId}-${mode}-percent`}>{formatDashboardPercent(meta > 0 ? (item.totalValue / meta) * 100 : 0)}</td>; })}</tr>) : <tr><td colSpan={5 + teamMetaModes.length * 3} className={styles.emptyRow}>Nenhuma equipe encontrada no ciclo.</td></tr>}</tbody>
         </table></div>
         {renderTeamVisualizations()}
@@ -517,14 +531,14 @@ export function DashboardTeamsPageView() {
 
       <article className={styles.card}>
         <div className={styles.cardHeader}>
-          <div><h2 className={styles.cardTitle}>Encarregados no ciclo</h2><p className={styles.cardSubtitle}>Contribuicao separada por MK + encarregado, sem rateio da meta oficial da equipe.</p></div>
+          <div><h2 className={styles.cardTitle}>{isCommercialView ? "Eletricistas no ciclo" : "Encarregados no ciclo"}</h2><p className={styles.cardSubtitle}>{isCommercialView ? "Contribuicao separada por MK + dupla de eletricistas, sem rateio da meta oficial da equipe." : "Contribuicao separada por MK + encarregado, sem rateio da meta oficial da equipe."}</p></div>
           <div className={styles.chartActions}>
             <label className={styles.inlineSelect}><span>Semana</span><select value={foremanWeekFilter} onChange={(event) => setForemanWeekFilter(event.target.value)}><option value="">Ciclo completo</option>{dashboard.cycleWeeks.map((week) => <option key={week.id} value={week.id}>{week.label}</option>)}</select></label>
           </div>
         </div>
         <div className={styles.tableWrapper}><table className={styles.table}>
-          <thead><tr><th>MK / Equipe</th><th>Encarregado</th><th>Valor produzido</th><th>Participacao no MK</th><th>Dias com producao</th><th>Ordens</th><th>Projetos</th></tr></thead>
-          <tbody>{selectedTeamForemen.length ? selectedTeamForemen.map((item) => <tr key={`${item.teamId}-${item.foremanName}`} className={styles.clickableRow} role="button" tabIndex={0} onClick={() => openProjectDetails("encarregado", `${item.foremanName} - ${item.teamName}`, foremanPeriodLabel, item.projects)} onKeyDown={(event) => handleRowKeyDown(event, () => openProjectDetails("encarregado", `${item.foremanName} - ${item.teamName}`, foremanPeriodLabel, item.projects))}><td>{item.teamName}</td><td>{item.foremanName}</td><td>{formatDashboardCurrency(item.totalValue)}</td><td>{formatDashboardPercent(item.participationPercentage)}</td><td>{item.workedDays}</td><td>{item.orderCount}</td><td>{item.projectCount}</td></tr>) : <tr><td colSpan={7} className={styles.emptyRow}>Nenhum encarregado encontrado no ciclo.</td></tr>}</tbody>
+          <thead><tr><th>MK / Equipe</th>{isCommercialView ? <><th>Eletricista 1</th><th>Eletricista 2</th></> : <th>Encarregado</th>}<th>Valor produzido</th><th>Participacao no MK</th><th>Dias com producao</th><th>Ordens</th><th>Projetos</th></tr></thead>
+          <tbody>{selectedTeamForemen.length ? selectedTeamForemen.map((item) => <tr key={`${item.teamId}-${item.foremanName}`} className={styles.clickableRow} role="button" tabIndex={0} onClick={() => openProjectDetails(isCommercialView ? "eletricista" : "encarregado", `${item.foremanName} - ${item.teamName}`, foremanPeriodLabel, item.projects)} onKeyDown={(event) => handleRowKeyDown(event, () => openProjectDetails(isCommercialView ? "eletricista" : "encarregado", `${item.foremanName} - ${item.teamName}`, foremanPeriodLabel, item.projects))}><td>{item.teamName}</td>{isCommercialView ? <><td>{item.memberNames[0] || "-"}</td><td>{item.memberNames[1] || "-"}</td></> : <td>{item.foremanName}</td>}<td>{formatDashboardCurrency(item.totalValue)}</td><td>{formatDashboardPercent(item.participationPercentage)}</td><td>{item.workedDays}</td><td>{item.orderCount}</td><td>{item.projectCount}</td></tr>) : <tr><td colSpan={isCommercialView ? 8 : 7} className={styles.emptyRow}>{isCommercialView ? "Nenhum eletricista encontrado no ciclo." : "Nenhum encarregado encontrado no ciclo."}</td></tr>}</tbody>
         </table></div>
       </article>
 
@@ -570,14 +584,14 @@ export function DashboardTeamsPageView() {
                 <div className={styles.detailMetric}><span>Valor do MK</span><strong>{formatDashboardCurrency(teamDetailModal.row.totalValue)}</strong></div>
                 <div className={styles.detailMetric}><span>{metaLabels[teamDetailModal.metaMode]}</span><strong>{formatDashboardCurrency(resolveMetaValue(teamDetailModal.row, teamDetailModal.metaMode))}</strong></div>
                 <div className={styles.detailMetric}><span>Atingimento</span><strong>{formatDashboardPercent(resolveMetaValue(teamDetailModal.row, teamDetailModal.metaMode) > 0 ? (teamDetailModal.row.totalValue / resolveMetaValue(teamDetailModal.row, teamDetailModal.metaMode)) * 100 : 0)}</strong></div>
-                <div className={styles.detailMetric}><span>Encarregados identificados</span><strong>{teamDetailModal.row.foremanContributions.length}</strong></div>
+                <div className={styles.detailMetric}><span>{isCommercialView ? "Duplas identificadas" : "Encarregados identificados"}</span><strong>{teamDetailModal.row.foremanContributions.length}</strong></div>
               </div>
-              <p className={styles.dataNotice}>A contribuicao considera o encarregado salvo em cada ordem. A estrutura atual nao divide uma mesma ordem entre varios encarregados.</p>
+              <p className={styles.dataNotice}>{isCommercialView ? "A contribuicao considera os dois eletricistas salvos em cada ordem. O valor fica inteiro na dupla: nao ha rateio entre os dois, entao a participacao no MK continua fechando em 100%." : "A contribuicao considera o encarregado salvo em cada ordem. A estrutura atual nao divide uma mesma ordem entre varios encarregados."}</p>
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th>Encarregado</th>
+                      {isCommercialView ? <><th>Eletricista 1</th><th>Eletricista 2</th></> : <th>Encarregado</th>}
                       <th>Valor produzido</th>
                       <th>Participacao no MK</th>
                       <th>Contribuicao sobre a meta do MK</th>
@@ -592,7 +606,7 @@ export function DashboardTeamsPageView() {
                       const metaValue = resolveMetaValue(teamDetailModal.row, teamDetailModal.metaMode);
                       return (
                         <tr key={`${item.teamId}-${item.foremanName}`}>
-                          <td>{item.foremanName}</td>
+                          {isCommercialView ? <><td>{item.memberNames[0] || "-"}</td><td>{item.memberNames[1] || "-"}</td></> : <td>{item.foremanName}</td>}
                           <td>{formatDashboardCurrency(item.totalValue)}</td>
                           <td>{formatDashboardPercent(item.participationPercentage)}</td>
                           <td>{formatDashboardPercent(metaValue > 0 ? (item.totalValue / metaValue) * 100 : 0)}</td>
@@ -602,11 +616,12 @@ export function DashboardTeamsPageView() {
                           <td className={styles.projectListCell}>{item.projects.map((project) => project.projectCode).join(", ") || "Nenhum"}</td>
                         </tr>
                       );
-                    }) : <tr><td colSpan={8} className={styles.emptyRow}>Nenhuma contribuicao de encarregado identificada.</td></tr>}
+                    }) : <tr><td colSpan={isCommercialView ? 9 : 8} className={styles.emptyRow}>{isCommercialView ? "Nenhuma contribuicao de eletricista identificada." : "Nenhuma contribuicao de encarregado identificada."}</td></tr>}
                   </tbody>
                   <tfoot>
                     <tr>
                       <td>Total MK</td>
+                      {isCommercialView ? <td /> : null}
                       <td>{formatDashboardCurrency(teamDetailModal.row.totalValue)}</td>
                       <td>{formatDashboardPercent(teamDetailModal.row.totalValue > 0 ? 100 : 0)}</td>
                       <td>{formatDashboardPercent(resolveMetaValue(teamDetailModal.row, teamDetailModal.metaMode) > 0 ? (teamDetailModal.row.totalValue / resolveMetaValue(teamDetailModal.row, teamDetailModal.metaMode)) * 100 : 0)}</td>

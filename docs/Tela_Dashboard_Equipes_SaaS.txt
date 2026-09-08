@@ -54,6 +54,7 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros gerais planejados:
+  - Tipo operacional (`Tecnica`, `Comercial`)
   - Ciclo
   - Data inicial
   - Data final
@@ -473,3 +474,62 @@ Atualizacao 2026-07-21 - Carga inicial do ciclo
   - Sem alteracao de schema, migration, RLS ou grants.
   - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read`.
   - Todas as consultas continuam filtradas por `tenant_id` resolvido pela sessao autenticada.
+
+Atualizacao 2026-09-08 - Filtro Tipo operacional (Tecnica / Comercial)
+----------------------------------------------------------------------
+- Mesma mudanca do Dashboard Medicao, porque `/api/dashboard-equipes` e
+  `/api/dashboard-medicao` delegam ao MESMO `handleDashboardMeasurementGet`. O detalhe
+  do backend esta em `docs/Tela_Dashboard_Medicao_SaaS.txt`, secao de mesma data.
+- O card `Filtros do Dashboard Equipes` ganhou o select `Tipo operacional` como
+  primeiro campo, alimentado pelo catalogo `team_categories`.
+- Padrao `TECNICA`: abrir a tela sem escolher nada entrega o mesmo recorte de antes.
+- O select passa pelo botao `Filtrar`, como os demais filtros da tela. O que ele NAO
+  carrega junto e a selecao anterior: ao trocar a operacao no rascunho, `Ciclo`,
+  `Projeto`, `MK / Equipe`, `Encarregado` e `Supervisor` sao limpos. Todos pertencem ao
+  universo da operacao anterior; sem a limpeza, um `teamId` tecnico continuaria no
+  estado e seria enviado na consulta mesmo com o select nao mostrando mais a opcao. Os
+  filtros locais de semana sao zerados no `Filtrar`, porque as semanas sao as do ciclo.
+- `Data inicial` e `Data final` NAO sao limpas: valem nas duas operacoes.
+- Permissao: filtro DENTRO da tela, coberto por `dashboard-equipes/read`.
+- Ratchet: nenhum arquivo do modulo passou do teto. Sem `lint:size:accept`.
+- Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants.
+
+Atualizacao 2026-09-08 - Eletricista 1 / Eletricista 2 na visao Comercial
+-------------------------------------------------------------------------
+- Motivo: equipe COMERCIAL nao tem encarregado (migration 415 -- `sync_team_foreman_history`
+  nao abre periodo e `resolve_team_foreman_snapshot` devolve NULL). Quem executou sao os
+  DOIS eletricistas escolhidos ordem a ordem, gravados em
+  `project_commercial_measurement_order_members` com `sort_order` 1 e 2. Sem esta
+  mudanca, a visao `Comercial` mostraria `Nao identificado` em toda a coluna.
+- Na visao `Comercial`, e SOMENTE nela, a tela troca encarregado por eletricista:
+  - o filtro `Encarregado` vira `Eletricista` e lista os eletricistas das ordens do
+    recorte; a ordem entra no resultado se QUALQUER um dos dois integrantes casar;
+  - a coluna `Encarregado(s)` de `Equipes no ciclo` vira `Eletricista(s)` e lista cada
+    eletricista separadamente, nao a dupla concatenada;
+  - o bloco `Encarregados no ciclo` vira `Eletricistas no ciclo`, e a coluna
+    `Encarregado` da tabela vira DUAS colunas, `Eletricista 1` e `Eletricista 2`;
+  - o modal de detalhe do MK e os DOIS CSVs acompanham as mesmas colunas, e o token do
+    nome do arquivo exportado passa de `encarregado` para `eletricista`.
+- UNIDADE DE AGREGACAO: a linha e por MK + DUPLA, nao por eletricista. O valor da ordem
+  fica inteiro na dupla e nao e rateado entre os dois. Foi decisao deliberada: contar a
+  ordem cheia para cada um dos dois faria `Participacao no MK` fechar em 200%, e dividir
+  50/50 inventaria uma regra de rateio que o negocio nao definiu. Com a dupla como chave,
+  a soma das contribuicoes continua sendo exatamente o realizado do MK.
+- A chave interna da linha continua em `foremanName`, agora no formato `A / B`; os nomes
+  separados vem em `memberNames`, na ordem dos slots.
+- Backend:
+  - `fetchCommercialMemberNamesByOrder` em
+    `src/server/modules/dashboard-measurement/queries.ts`, fatiada em blocos de 200
+    ordens. O PostgREST corta em 1.000 linhas sem avisar, e sao ate 2 integrantes por
+    ordem -- um `in (...)` unico devolveria dupla faltando com status 200.
+  - A consulta so roda na operacao COMERCIAL; na tecnica a tabela e vazia por definicao.
+  - `TeamPerformanceOrder.memberNames` e `TeamForemanContributionRow.memberNames` em
+    `src/server/modules/team-performance/contracts.ts`.
+  - `resolveTeamForemanNameForDate` devolve string vazia na operacao comercial: sem isso
+    o historico de encarregado inexistente encheria a coluna de `Nao identificado`.
+- Ratchet: `controller.ts` foi de 1.492 para 1.375 linhas com a extracao dos leitores
+  Supabase para `src/server/modules/dashboard-measurement/queries.ts`. Sem
+  `lint:size:accept`.
+- Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants. A leitura de
+  `project_commercial_measurement_order_members` filtra por `tenant_id` e a RLS da
+  tabela (415) segue como ultima barreira.

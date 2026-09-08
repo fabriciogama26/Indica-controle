@@ -1,3 +1,8 @@
+export type DashboardTeamsCategory = {
+  code: string;
+  label: string;
+};
+
 export type DashboardTeamsOption = {
   id: string;
   label: string;
@@ -46,7 +51,11 @@ export type DashboardTeamRow = {
 export type DashboardTeamForemanRow = {
   teamId: string;
   teamName: string;
+  // Na operacao tecnica e o encarregado da ordem. Na comercial e a dupla `A / B`,
+  // usada como chave de linha; os nomes separados vem em `memberNames`.
   foremanName: string;
+  // Vazio na tecnica; na comercial traz Eletricista 1 e Eletricista 2, nessa ordem.
+  memberNames: string[];
   totalValue: number;
   orderCount: number;
   projectCount: number;
@@ -73,6 +82,8 @@ export type DashboardSupervisorRow = {
 
 export type DashboardTeamsResponse = {
   message?: string;
+  teamCategoryCode?: string;
+  teamCategories?: DashboardTeamsCategory[];
   cycles?: DashboardTeamsCycle[];
   selectedCycleStart?: string | null;
   startDate?: string | null;
@@ -93,6 +104,7 @@ export type DashboardTeamsResponse = {
 };
 
 export type DashboardTeamsFilters = {
+  teamCategoryCode: string;
   cycleStart: string;
   startDate: string;
   endDate: string;

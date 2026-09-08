@@ -7,279 +7,45 @@ import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { ExportProgressModal } from "@/components/ui/ExportProgressModal";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
+import {
+  completionChartColors,
+  DEFAULT_TEAM_CATEGORY_CODE,
+  filenameToken,
+  formatCompactCurrency,
+  formatCurrency,
+  formatCycleAxisLabel,
+  formatDatePtBr,
+  formatPercent,
+  formatPercentOneDecimal,
+  getCurrentYear,
+  getCurrentYearPeriod,
+  maxValue,
+  metaColors,
+  metaDayLabels,
+  metaLabels,
+  resolveCycleDays,
+  resolveCycleForecastDifference,
+  resolveCycleForecastValue,
+  resolveCycleMetaValue,
+  todayToken,
+} from "./presentation";
+import type {
+  AnnualCycleComparison,
+  CompletionChartItem,
+  CompletionTableTotals,
+  CycleComparison,
+  CycleOption,
+  DashboardResponse,
+  ExpandedChart,
+  MetaMode,
+  Option,
+  PeriodSummary,
+  ProjectDetailModal,
+  ServiceScope,
+  TeamCategoryOption,
+} from "./presentation";
 import styles from "./DashboardMeasurementPageView.module.css";
 
-type Option = {
-  id: string;
-  label: string;
-};
-
-type CycleOption = {
-  cycleStart: string;
-  cycleEnd: string;
-  label: string;
-};
-
-type CompletionChartItem = {
-  label: string;
-  value: number;
-  orders: number;
-  projectCount: number;
-  projects: ProjectProductionDetail[];
-  percentage: number;
-};
-
-type CycleComparison = {
-  label: string;
-  value: number;
-  meta: number;
-  standardMeta: number;
-  workedMeta: number;
-  workdays: number;
-  defaultWorkdays: number;
-  workedDays: number;
-  orderCount: number;
-  projectCount: number;
-  averageTicketValue: number;
-  averageServiceTicketValue: number;
-  completedProjectCount: number;
-  completedAverageTicketValue: number;
-  projectDetails: CycleProjectDetail[];
-  executedWorkdays: number;
-  averageDailyValue: number;
-  workedObjectiveValue: number;
-  objectiveDailyValue: number;
-  targetDailyValue: number;
-  forecastValue: number;
-  forecastPercentage: number;
-  forecastDifference: number;
-  percentage: number;
-};
-
-type AnnualCycleComparison = {
-  cycleStart: string;
-  cycleEnd: string;
-  label: string;
-  measuredValue: number;
-  forecastValue: number;
-  metaValue: number;
-  measuredPercentage: number;
-  forecastPercentage: number;
-  measuredDifference: number;
-  forecastDifference: number;
-  executedWorkdays: number;
-  workdays: number;
-  orderCount: number;
-  projectCount: number;
-  teamCount: number;
-  hasMeta: boolean;
-};
-
-type PeriodSummary = {
-  realizedValue: number;
-  orderCount: number;
-  projectCount: number;
-  averageTicketValue: number;
-  averageServiceTicketValue: number;
-  completedProjectCount: number;
-  completedAverageTicketValue: number;
-};
-
-type CompletionTableTotals = {
-  value: number;
-  orders: number;
-  projectCount: number;
-};
-
-type ProjectProductionDetail = {
-  projectId: string;
-  projectCode: string;
-  serviceCenter: string;
-  totalValue: number;
-  orderCount: number;
-};
-
-type CycleProjectDetail = {
-  projectId: string;
-  projectCode: string;
-  firstActivity: string;
-  valueBeforeCycle: number;
-  valueInCycle: number;
-  accumulatedValue: number;
-  workedCycleCount: number;
-  week: number | null;
-};
-
-type DashboardResponse = {
-  message?: string;
-  cycles?: CycleOption[];
-  periods?: Option[];
-  selectedPeriod?: string | null;
-  startDate?: string | null;
-  endDate?: string | null;
-  selectedCycleStart?: string | null;
-  filters?: {
-    projects: Option[];
-  };
-  completionChart?: CompletionChartItem[];
-  cycleCompletionChart?: CompletionChartItem[];
-  periodCompletionChart?: CompletionChartItem[];
-  periodSummary?: PeriodSummary | null;
-  cycleComparison?: CycleComparison | null;
-  annualYear?: number;
-  annualCycleComparison?: AnnualCycleComparison[];
-};
-
-type ExpandedChart = "completionCycle" | "completionPeriod" | "cycle" | "annual" | null;
-type MetaMode = "cycle" | "standard" | "worked"; type ServiceScope = "ALL" | "OBRAS" | "MANUTENCAO";
-
-type ProjectDetailModal = {
-  kind: "production";
-  title: string;
-  subtitle: string;
-  rows: ProjectProductionDetail[];
-  filename: string;
-} | {
-  kind: "cycle";
-  title: string;
-  subtitle: string;
-  rows: CycleProjectDetail[];
-  filename: string;
-} | null;
-
-const metaLabels: Record<MetaMode, string> = {
-  cycle: "Meta ciclo",
-  standard: "Meta ciclo padrao",
-  worked: "Meta ciclo trabalhado",
-};
-
-const metaDayLabels: Record<MetaMode, string> = {
-  cycle: "Dias uteis",
-  standard: "Dias padrao",
-  worked: "Dias reais",
-};
-
-const metaColors: Record<MetaMode | "value", string> = {
-  value: "#4b77c7",
-  cycle: "#f07f2f",
-  standard: "#17a884",
-  worked: "#7b61ff",
-};
-
-const completionChartColors: Record<string, string> = {
-  Concluido: "#4b77c7",
-  Parcial: "#f07f2f",
-  "Beneficio atingido": "#17a884",
-  Pendente: "#e25555",
-  "Garantia de faturamento minimo": "#7b61ff",
-};
-
-function formatCurrency(value: number, compact = false) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    notation: compact ? "compact" : "standard",
-    maximumFractionDigits: compact ? 1 : 2,
-  }).format(Number.isFinite(value) ? value : 0);
-}
-
-function formatCompactCurrency(value: number) {
-  const safeValue = Number.isFinite(value) ? value : 0;
-  const sign = safeValue < 0 ? "- " : "";
-  const absoluteValue = Math.abs(safeValue);
-  const numberFormat = new Intl.NumberFormat("pt-BR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: absoluteValue >= 1_000_000 ? 2 : 1,
-  });
-
-  if (absoluteValue >= 1_000_000) {
-    return `${sign}R$ ${numberFormat.format(absoluteValue / 1_000_000)} mi`;
-  }
-
-  if (absoluteValue >= 1_000) {
-    return `${sign}R$ ${numberFormat.format(absoluteValue / 1_000)} mil`;
-  }
-
-  return `${sign}${formatCurrency(absoluteValue)}`;
-}
-
-function formatPercent(value: number) {
-  return `${(Number.isFinite(value) ? value : 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 1,
-  })}%`;
-}
-
-function formatPercentOneDecimal(value: number) {
-  return `${(Number.isFinite(value) ? value : 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  })}%`;
-}
-
-function maxValue(values: number[]) {
-  return Math.max(1, ...values.map((value) => Number(value) || 0));
-}
-
-function filenameToken(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/gi, "_")
-    .replace(/^_+|_+$/g, "")
-    .toLowerCase() || "detalhe";
-}
-
-function todayToken() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function formatDatePtBr(value: string | null | undefined) {
-  if (!value) return "";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
-}
-
-function formatCycleAxisLabel(value: string) {
-  const [year, month] = value.split("-");
-  const monthIndex = Number(month) - 1;
-  const monthLabels = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
-  if (!year || monthIndex < 0 || monthIndex > 11) return value;
-  return `${monthLabels[monthIndex]}/${year.slice(2)}`;
-}
-
-function getCurrentYearPeriod() {
-  const year = new Date().getFullYear();
-  return {
-    start: `${year}-01-01`,
-    end: `${year}-12-31`,
-  };
-}
-
-function getCurrentYear() {
-  return new Date().getFullYear();
-}
-
-function resolveCycleMetaValue(cycle: CycleComparison, mode: MetaMode) {
-  if (mode === "standard") return cycle.standardMeta;
-  if (mode === "worked") return cycle.workedMeta;
-  return cycle.meta;
-}
-
-function resolveCycleDays(cycle: CycleComparison, mode: MetaMode) {
-  if (mode === "standard") return cycle.defaultWorkdays;
-  if (mode === "worked") return cycle.workedDays;
-  return cycle.workdays;
-}
-
-function resolveCycleForecastValue(cycle: CycleComparison, mode: MetaMode) {
-  return cycle.averageDailyValue * resolveCycleDays(cycle, mode);
-}
-
-function resolveCycleForecastDifference(cycle: CycleComparison, mode: MetaMode) {
-  return resolveCycleForecastValue(cycle, mode) - resolveCycleMetaValue(cycle, mode);
-}
 
 function ExpandIcon() {
   return (
@@ -292,6 +58,9 @@ function ExpandIcon() {
 export function DashboardMeasurementPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("dashboard_medicao");
+  const [teamCategoryCode, setTeamCategoryCode] = useState(DEFAULT_TEAM_CATEGORY_CODE);
+  const [teamCategoryDraft, setTeamCategoryDraft] = useState(DEFAULT_TEAM_CATEGORY_CODE);
+  const [teamCategories, setTeamCategories] = useState<TeamCategoryOption[]>([]);
   const [cycles, setCycles] = useState<CycleOption[]>([]);
   const [projects, setProjects] = useState<Option[]>([]);
   const [startDate, setStartDate] = useState(() => getCurrentYearPeriod().start);
@@ -326,6 +95,7 @@ export function DashboardMeasurementPageView() {
     if (!session?.accessToken) return;
 
     const params = new URLSearchParams();
+    params.set("teamCategoryCode", teamCategoryCode);
     if (startDate) params.set("startDate", startDate);
     if (endDate) params.set("endDate", endDate);
     if (selectedCycleStart) params.set("cycleStart", selectedCycleStart);
@@ -353,6 +123,7 @@ export function DashboardMeasurementPageView() {
         return;
       }
 
+      setTeamCategories(data.teamCategories ?? []);
       setCycles(data.cycles ?? []);
       setProjects(data.filters?.projects ?? []);
       setCycleCompletionChart(data.cycleCompletionChart ?? []);
@@ -384,7 +155,7 @@ export function DashboardMeasurementPageView() {
     } finally {
       setIsLoading(false);
     }
-  }, [annualYear, completionStatus, endDate, logError, periodServiceScope, projectSearch, selectedCycleStart, serviceScope, session?.accessToken, startDate]);
+  }, [annualYear, completionStatus, endDate, logError, periodServiceScope, projectSearch, selectedCycleStart, serviceScope, session?.accessToken, startDate, teamCategoryCode]);
 
   useEffect(() => {
     if (suppressNextAutoLoadRef.current) {
@@ -437,9 +208,28 @@ export function DashboardMeasurementPageView() {
     setExpandedChart(chart);
   }
 
+  // O tipo operacional passa pelo botao `Filtrar`, como os demais filtros do card.
+  // O que ele NAO pode carregar junto e a selecao anterior: os ciclos sao descobertos
+  // a partir das ordens da operacao e os projetos vem das ordens dela, entao guardar o
+  // ciclo e o SOB da operacao anterior devolveria tela vazia sem explicacao. Limpar os
+  // dois no rascunho faz a rota escolher o ciclo mais recente da operacao nova, como
+  // na primeira carga.
+  function changeTeamCategoryDraft(nextTeamCategoryCode: string) {
+    setTeamCategoryDraft(nextTeamCategoryCode);
+    setCycleDraft("");
+    setProjectSearchDraft("");
+  }
+
+  // Antes da primeira resposta o catalogo ainda nao chegou: o select mostra a operacao
+  // corrente em vez de uma caixa vazia.
+  const teamCategoryOptions = teamCategories.length
+    ? teamCategories
+    : [{ code: teamCategoryDraft, label: teamCategoryDraft }];
+
   function applyDashboardFilters() {
     const nextProjectSearch = projectSearchDraft.trim();
     const filtersAreApplied =
+      teamCategoryCode === teamCategoryDraft &&
       selectedCycleStart === cycleDraft &&
       projectSearch === nextProjectSearch &&
       completionStatus === completionStatusDraft &&
@@ -450,6 +240,7 @@ export function DashboardMeasurementPageView() {
       return;
     }
 
+    setTeamCategoryCode(teamCategoryDraft);
     setSelectedCycleStart(cycleDraft);
     setProjectSearch(nextProjectSearch);
     setProjectSearchDraft(nextProjectSearch);
@@ -910,6 +701,17 @@ export function DashboardMeasurementPageView() {
         </div>
 
         <div className={styles.filterGrid}>
+          <label className={styles.field}>
+            <span>Tipo operacional</span>
+            <select value={teamCategoryDraft} onChange={(event) => changeTeamCategoryDraft(event.target.value)} disabled={isLoading}>
+              {teamCategoryOptions.map((item) => (
+                <option key={item.code} value={item.code}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
           <label className={styles.field}>
             <span>Ciclo</span>
             <select value={cycleDraft} onChange={(event) => setCycleDraft(event.target.value)} disabled={isLoading}>

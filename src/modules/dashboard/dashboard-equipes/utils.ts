@@ -58,8 +58,10 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
   metaValue: number;
   totalValue: number;
   projectCount: number;
+  commercial: boolean;
   rows: Array<{
     foremanName: string;
+    memberNames: string[];
     totalValue: number;
     participationPercentage: number;
     workedDays: number;
@@ -70,7 +72,7 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
   const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const header = [
     "MK / Equipe",
-    "Encarregado",
+    ...(params.commercial ? ["Eletricista 1", "Eletricista 2"] : ["Encarregado"]),
     "Valor produzido",
     "Participacao no MK (%)",
     `Contribuicao sobre ${params.metaLabel} (%)`,
@@ -80,7 +82,7 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
   ];
   const dataRows = params.rows.map((item) => [
     params.teamName,
-    item.foremanName,
+    ...(params.commercial ? [item.memberNames[0] ?? "", item.memberNames[1] ?? ""] : [item.foremanName]),
     item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     item.participationPercentage.toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
     (params.metaValue > 0 ? (item.totalValue / params.metaValue) * 100 : 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
@@ -90,7 +92,7 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
   ]);
   dataRows.push([
     params.teamName,
-    "TOTAL MK",
+    ...(params.commercial ? ["TOTAL MK", ""] : ["TOTAL MK"]),
     params.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     "100",
     (params.metaValue > 0 ? (params.totalValue / params.metaValue) * 100 : 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 }),

@@ -6,6 +6,9 @@ export type TeamPerformanceOrder = {
   projectCodeSnapshot: string | null;
   teamNameSnapshot: string | null;
   foremanNameSnapshot: string | null;
+  // Ordem COMERCIAL nao tem encarregado: quem executou sao os dois eletricistas
+  // gravados por ordem, na ordem dos slots 1 e 2. Vazio/ausente na ordem tecnica.
+  memberNames?: string[];
 };
 
 export type TeamPerformanceTeam = {
@@ -27,7 +30,11 @@ export type TeamPerformanceProjectDetail = {
 export type TeamForemanContributionRow = {
   teamId: string;
   teamName: string;
+  // Na tecnica e o encarregado da ordem. Na comercial e a dupla `A / B`, para a
+  // linha continuar tendo uma chave de exibicao unica.
   foremanName: string;
+  // Vazio na tecnica; na comercial traz Eletricista 1 e Eletricista 2 separados.
+  memberNames: string[];
   totalValue: number;
   orderCount: number;
   projectCount: number;
