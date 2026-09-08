@@ -1518,3 +1518,31 @@ Observacao
   A funcao nova nasce fechada, com EXECUTE so para `service_role`.
 - Valida no fim: nenhum ciclo sem tipo operacional, unicidade antiga ausente, unicidade
   nova presente, nenhum overload antigo e EXECUTE so para `service_role`.
+
+418_fix_deferred_commercial_measurement_validation.sql
+- Corrige a validacao comercial deferida da 415, que reprovava TODA ordem de Medicao
+  Comercial -- inclusive a primeira. Antes desta migration: 971 ordens de medicao no
+  total, ZERO de equipe comercial, ZERO com `commercial_process_id` e ZERO linhas em
+  `project_commercial_measurement_order_members`.
+- A 415 criou `trg_enforce_commercial_measurement_fields` como CONSTRAINT TRIGGER
+  deferido justificando que "diferido, a checagem roda no fim da transacao, com a linha
+  ja completa". A premissa esta errada: `deferrable` muda QUANDO o trigger roda, nao QUAL
+  versao da tupla o evento carrega. O evento de INSERT guarda o `ctid` da tupla inserida e
+  o Postgres busca exatamente aquela versao (`SnapshotAny`) na hora de disparar; o UPDATE
+  posterior gera um SEGUNDO evento, nao substitui o primeiro.
+- Como a ordem comercial nasce em dois passos (INSERT pela RPC tecnica, que nao conhece
+  Processo/horarios/Ordem, e so depois o UPDATE que preenche essas colunas), no COMMIT o
+  evento de INSERT via `commercial_process_id` NULL, caia no ramo comercial e levantava
+  `commercial_process_required`. A transacao inteira fazia rollback -- por isso nao sobrava
+  nem ordem nem lixo parcial, so a mensagem generica na tela.
+- Ordem TECNICA nunca quebrou: `is_commercial_team` e falso e todas as colunas comerciais
+  sao NULL, entao ela cai no ramo de saida limpa do trigger.
+- Correcao: `enforce_commercial_measurement_fields()` passa a RELER a linha por `id` e a
+  validar esse estado. Os dois eventos leem a MESMA linha, entao a checagem virou
+  idempotente. O trigger continua `after insert or update` e continua deferido -- que agora
+  funciona como a 415 descreveu. O boolean do ramo usa `coalesce(..., false)`.
+- Nao muda a regra de negocio validada, nao mexe em `enforce_measurement_project_rules`,
+  nao toca em ordem existente e nao exige backfill.
+- Valida no fim: funcao releu a linha, nao restou validacao por `new`, trigger presente e
+  deferido, nenhuma ordem comercial sem Processo/horarios e nenhuma ordem tecnica com campo
+  comercial preenchido.
