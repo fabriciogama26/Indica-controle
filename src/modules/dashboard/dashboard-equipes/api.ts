@@ -6,6 +6,7 @@ export async function fetchDashboardTeams(params: {
   filters: DashboardTeamsFilters;
 }) {
   const searchParams = new URLSearchParams();
+  searchParams.set("teamCategoryCode", params.filters.teamCategoryCode);
   if (params.filters.cycleStart) searchParams.set("cycleStart", params.filters.cycleStart);
   if (params.filters.startDate) searchParams.set("startDate", params.filters.startDate);
   if (params.filters.endDate) searchParams.set("endDate", params.filters.endDate);

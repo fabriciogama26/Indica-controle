@@ -44,6 +44,7 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros:
+  - Tipo operacional (`Tecnica`, `Comercial`)
   - Ciclo
   - Projeto (SOB) digitavel, no mesmo padrao do filtro da tela Projetos
   - Equipe
@@ -972,3 +973,52 @@ Atualizacao 2026-08-31 - Ratchet de tamanho do controller
 - O controller caiu de 1729 para 1589 linhas pelo `scripts/check-file-size.mjs`.
 - O baseline foi reduzido com `npm run lint:size:update`, mantendo o ratchet mais restritivo para futuras alteracoes.
 - Sem alteracao de API, schema, RLS, grants ou permissoes.
+
+Atualizacao 2026-09-08 - Filtro Tipo operacional (Tecnica / Comercial)
+----------------------------------------------------------------------
+- Motivo: a ordem da tela `Medicao Comercial` grava nas MESMAS tabelas da `Medicao`
+  (`project_measurement_orders` / `project_measurement_order_items`). Sem recorte por
+  categoria de equipe, a primeira ordem comercial salva em producao entraria no
+  realizado, nas metas por tipo de equipe e no comparativo por projeto deste dashboard
+  -- e ordem comercial pode nao ter projeto nenhum.
+- O card `Filtros` ganhou o select `Tipo operacional`, alimentado pelo catalogo
+  `team_categories` (fechado a TECNICA/COMERCIAL pelo CHECK da migration 415), com o
+  nome cadastrado por tenant como rotulo.
+- Padrao `TECNICA`: abrir a tela sem escolher nada entrega exatamente o mesmo recorte
+  de antes desta mudanca.
+- O select passa pelo botao `Filtrar`, como os demais filtros do card. O que ele NAO
+  carrega junto e a selecao anterior: ao trocar a operacao no rascunho, `Ciclo` e
+  `Projeto (SOB)` sao limpos. Os dois pertencem ao universo da operacao anterior -- os
+  ciclos sao descobertos a partir das ordens da categoria e os projetos vem das ordens
+  dela --, entao manter a selecao devolveria tela vazia sem explicacao. Depois de
+  aplicar, a rota escolhe o ciclo mais recente da operacao nova, como na primeira carga.
+- `Estado Trabalho`, `Tipo` (Obras/Manutencao), o periodo `De/Para` e o ano do grafico
+  anual NAO sao limpos: sao dimensoes que existem nas duas operacoes.
+- Backend (`src/server/modules/dashboard-measurement/controller.ts`, compartilhado com
+  o Dashboard Equipes):
+  - `teamCategoryCode` na query string; os `team_id` da categoria vem de
+    `fetchTeamIdsByMeasurementMode`, o mesmo helper que a tela Medicao Comercial usa
+    (tipo operacional do `team_types`, com fallback para `teams.team_category_id`).
+  - Todas as leituras de `project_measurement_orders`, `teams` e historicos de equipe
+    passaram a recortar por esses ids.
+  - `measurement_cycle_workdays` passou a recortar por `team_category_id`. A migration
+    417 trocou a unicidade do ciclo de `(tenant, cycle_start)` para
+    `(tenant, tipo operacional, cycle_start)`: sem esse recorte o `maybeSingle` do ciclo
+    selecionado veria DUAS linhas assim que a operacao comercial cadastrasse o mesmo
+    periodo, e o erro -- que o codigo descartava -- zerava meta e dias uteis EM SILENCIO,
+    inclusive na visao tecnica. O erro agora devolve 500 com mensagem propria.
+  - `measurement_cycle_target_items` nao precisou de recorte: filtra por `cycle_id`,
+    entao herda o do ciclo.
+  - O payload devolve `teamCategoryCode` e `teamCategories`.
+- Permissao: o `Tipo operacional` e filtro DENTRO da tela, coberto por
+  `dashboard-medicao/read`. Nao exige `medicao-comercial`, seguindo o padrao de
+  permissao por tela do CLAUDE.md.
+- Ratchet: `DashboardMeasurementPageView.tsx` caiu de 1.706 para 1.507 linhas com a
+  extracao de tipos, constantes e helpers puros para
+  `src/modules/dashboard/dashboard-medicao/presentation.ts`. Sem `lint:size:accept`.
+  `ExpandIcon` ficou no PageView de proposito, porque e JSX.
+- Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants. Todas as
+  consultas continuam filtradas pelo `tenant_id` da sessao autenticada.
+- Esta tela nao exibe blocos de equipe, encarregado ou supervisor, entao a troca de
+  Eletricista 1 / Eletricista 2 descrita em `docs/Tela_Dashboard_Equipes_SaaS.txt` nao
+  a afeta.

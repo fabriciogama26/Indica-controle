@@ -9,6 +9,7 @@ import { fetchDashboardTeams } from "./api";
 import { EMPTY_DASHBOARD_TEAMS_FILTERS } from "./constants";
 import type {
   DashboardSupervisorRow,
+  DashboardTeamsCategory,
   DashboardTeamForemanRow,
   DashboardTeamRow,
   DashboardTeamsCycle,
@@ -22,6 +23,13 @@ export function useDashboardTeams() {
   const logError = useErrorLogger("dashboard_equipes");
   const [filters, setFilters] = useState<DashboardTeamsFilters>({ ...EMPTY_DASHBOARD_TEAMS_FILTERS });
   const [draftFilters, setDraftFilters] = useState<DashboardTeamsFilters>({ ...EMPTY_DASHBOARD_TEAMS_FILTERS });
+  const [teamCategories, setTeamCategories] = useState<DashboardTeamsCategory[]>([]);
+  // Operacao que a resposta REALMENTE trouxe. E ela que decide os rotulos da tela --
+  // usar o rascunho trocaria `Encarregado` por `Eletricista` antes de os dados
+  // mudarem, com a tabela ainda mostrando a operacao anterior.
+  const [appliedTeamCategoryCode, setAppliedTeamCategoryCode] = useState(
+    EMPTY_DASHBOARD_TEAMS_FILTERS.teamCategoryCode as string,
+  );
   const [cycles, setCycles] = useState<DashboardTeamsCycle[]>([]);
   const [projects, setProjects] = useState<DashboardTeamsOption[]>([]);
   const [teams, setTeams] = useState<DashboardTeamsOption[]>([]);
@@ -48,6 +56,8 @@ export function useDashboardTeams() {
         filters,
       });
       const nextCycleStart = filters.cycleStart || data.selectedCycleStart || "";
+      setTeamCategories(data.teamCategories ?? []);
+      setAppliedTeamCategoryCode(data.teamCategoryCode ?? filters.teamCategoryCode);
       setCycles(data.cycles ?? []);
       setProjects(data.filters?.projects ?? []);
       setTeams(data.filters?.teams ?? []);
@@ -87,12 +97,33 @@ export function useDashboardTeams() {
     void load();
   }, [load]);
 
+  // O tipo operacional passa pelo botao `Filtrar`, como os demais filtros da tela.
+  // O que ele NAO pode fazer e carregar a selecao anterior junto: ciclos, projetos,
+  // equipes, encarregados e supervisores saem das ordens da operacao, entao um
+  // `teamId` tecnico continuaria no estado e seria enviado numa consulta comercial --
+  // o select ja nao mostraria a opcao, mas o valor iria na requisicao. Por isso a
+  // troca limpa esses campos no proprio rascunho.
+  const changeTeamCategoryCode = useCallback((teamCategoryCode: string) => {
+    setDraftFilters((current) => ({
+      ...current,
+      teamCategoryCode,
+      cycleStart: "",
+      project: "",
+      teamId: "",
+      foreman: "",
+      supervisorId: "",
+    }));
+  }, []);
+
   return {
     filters,
     draftFilters,
     setDraftFilters,
     applyFilters: () => setFilters({ ...draftFilters }),
+    changeTeamCategoryCode,
     reload: load,
+    teamCategories,
+    appliedTeamCategoryCode,
     cycles,
     projects,
     teams,
