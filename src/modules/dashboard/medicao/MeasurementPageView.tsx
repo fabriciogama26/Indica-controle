@@ -19,11 +19,17 @@ import {
   type CommercialElectricianOption,
   type CommercialMembersValue,
 } from "./CommercialMembersFields";
+import {
+  CommercialOrderRefField,
+  IDLE_COMMERCIAL_ORDER_REF_CHECK,
+  validateCommercialOrderRef,
+  type CommercialOrderRefCheck,
+} from "./CommercialOrderRefField";
 import { TECHNICAL_MEASUREMENT_VARIANT, type MeasurementVariantConfig } from "./variant";
 
 import {
   activityOptionLabel,
-  buildActivityLookupQueries,
+  buildActivityLookupQueries,
   findActivityOption,
   findActivityOptionByImportCode,
   findActivitySelectionOption,
@@ -34,7 +40,7 @@ import {
   getOpenStatusActionLabel,
   getOpenStatusReasonLabel,
   isMvaHourUnit,
-  measurementKindLabel,
+  measurementKindLabel,
   normalizeMeasurementKindInput,
   normalizeSearchText,
   normalizeWorkCompletionCodeToken,
@@ -47,7 +53,7 @@ import {
   workCompletionStatusLabel,
 } from "./utils";
 import type {
-  ActivityCatalogItem,
+  ActivityCatalogItem,
   MeasurementKind,
   MeasurementStatus,
   ProgrammingMatchStatus,
@@ -703,6 +709,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
   const [electricians, setElectricians] = useState<CommercialElectricianOption[]>([]);
   const [commercialProcesses, setCommercialProcesses] = useState<Array<{ id: string; name: string }>>([]);
   const [commercialMembers, setCommercialMembers] = useState<CommercialMembersValue>(EMPTY_COMMERCIAL_MEMBERS);
+  const [commercialOrderRefCheck, setCommercialOrderRefCheck] = useState<CommercialOrderRefCheck>(IDLE_COMMERCIAL_ORDER_REF_CHECK);
   const [workCompletionCatalog, setWorkCompletionCatalog] = useState<WorkCompletionCatalogItem[]>([]);
   const [filterDraft, setFilterDraft] = useState<Filters>(initialFilters);
   const [filterProjectSearch, setFilterProjectSearch] = useState("");
@@ -2385,6 +2392,12 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
         return;
       }
 
+      const orderRefError = validateCommercialOrderRef(form.commercialOrderRef, commercialOrderRefCheck);
+      if (orderRefError) {
+        setFeedback({ type: "error", message: orderRefError });
+        return;
+      }
+
       if (!form.commercialProcessId) {
         setFeedback({ type: "error", message: "Selecione o Processo da medicao comercial." });
         return;
@@ -2718,15 +2731,18 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
             ) : null}
           </label>
           {variant.commercial ? (
-            <label className={styles.field}>
-              <span>Ordem</span>
-              <input
-                value={form.commercialOrderRef}
-                onChange={(event) => setForm((current) => ({ ...current, commercialOrderRef: event.target.value }))}
-                placeholder="Referencia da ordem (opcional)"
-                maxLength={120}
-              />
-            </label>
+            <CommercialOrderRefField
+              value={form.commercialOrderRef}
+              onChange={(next) => setForm((current) => ({ ...current, commercialOrderRef: next }))}
+              fieldClassName={styles.field}
+              apiBase={apiBase}
+              accessToken={accessToken}
+              teamId={form.teamId}
+              executionDate={form.executionDate}
+              excludeOrderId={form.id}
+              check={commercialOrderRefCheck}
+              onCheckChange={setCommercialOrderRefCheck}
+            />
           ) : null}
           <label className={styles.field}>
             <span>Equipe <span className="requiredMark">*</span></span>
