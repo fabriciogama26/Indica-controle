@@ -456,3 +456,91 @@ Atualizacao 2026-09-08 - Tipo de equipe opcional e Comercial pelo operacional
   `src/server/modules/teams/writes.ts`,
   `supabase/migrations/415_team_categories_and_commercial_measurement.sql` e
   `supabase/migrations/416_team_type_belongs_to_team_category.sql`.
+
+Atualizacao 2026-09-08 - Tipo de equipe obrigatorio e regra so por ele
+--------------------------------------------------------------------------------
+- REVERTE a decisao da entrada anterior deste mesmo dia. `Tipo de equipe`
+  (`team_categories`, TECNICA/COMERCIAL) volta a ser obrigatorio e passa a ser a
+  UNICA fonte da natureza da equipe:
+  - `COMERCIAL` -> `Encarregado` desativado e nao obrigatorio, `Supervisor`
+    obrigatorio;
+  - `TECNICA`   -> `Encarregado` obrigatorio.
+- O atalho `team_types.name = 'COMERCIAL'` sai de todas as camadas (tela, rota,
+  import em massa, trigger e RPC). Ele criava o caminho em que a tela cobrava
+  encarregado (porque olhava a categoria) e o banco apagava o valor (porque
+  olhava o nome do tipo operacional) — o campo sumia sem erro.
+- `Tipo operacional` (`team_types`) continua obrigatorio, mas agora so classifica
+  o servico da equipe. Ele nao decide mais encarregado/supervisor.
+- Divergencia entre os dois campos passa a ser recusada com
+  `TEAM_TYPE_CATEGORY_MISMATCH` (422): quando o tipo operacional tem
+  classificacao propria (`team_types.team_category_id`, migration 416), o
+  `Tipo de equipe` da equipe tem que ser a mesma. Tipo operacional sem
+  classificacao aceita qualquer `Tipo de equipe`.
+- Troca do `Tipo de equipe` para COMERCIAL limpa `foremanId` no estado do
+  formulario (`applyTeamCategoryChange`). Sem isso o select mostraria
+  "Desativado para comercial" enquanto o estado ainda carregava um encarregado
+  invisivel, que o submit enviaria para o backend recusar.
+- Cadastro em massa: `tipo_equipe` entra em `REQUIRED_HEADERS`. Colunas
+  obrigatorias passam a ser `nome`, `placa`, `base`, `tipo_operacional` e
+  `tipo_equipe`. A linha tambem erra quando `tipo_equipe` nao pertence ao
+  `tipo_operacional` informado.
+- Permuta de encarregado (`swapForeman`) deixa de carregar o tipo operacional das
+  duas equipes: a checagem virou `isCommercialTeamCategory` sobre a categoria, o
+  que remove duas queries por permuta.
+
+Banco (migration 420_require_team_category_on_teams.sql)
+- Backfill de `teams.team_category_id` nulo: usa `team_types.team_category_id` e,
+  na falta dele, o nome do tipo (`COMERCIAL` -> COMERCIAL, resto -> TECNICA).
+- Realinha para COMERCIAL as equipes que eram comerciais so pelo nome do tipo
+  operacional. Sem esse passo elas virariam tecnicas sem encarregado, um estado
+  que nao volta a salvar.
+- `teams.team_category_id` passa a NOT NULL.
+- `enforce_team_category_links` e `save_team_record` recriados: categoria
+  obrigatoria, regra so por `team_categories.code`, e recusa de divergencia com a
+  classificacao do tipo operacional.
+- Bloco final de verificacao: falha se sobrar equipe sem categoria; emite NOTICE
+  (nao corrige) quando sobra divergencia entre `Tipo de equipe` e a classificacao
+  do `Tipo operacional`. Corrigir no automatico trocaria a natureza da equipe --
+  perderia o encarregado, ou exigiria um que nao existe.
+
+Permissao
+- Sem mudanca. `page_key` `equipes` continua cobrindo menu, `/api/teams/meta`,
+  listagem, detalhe, historico, exportacao, cadastro em massa e as acoes da tela.
+  Nenhuma permissao granular nova foi criada.
+
+Lacuna conhecida (nao alterada nesta tarefa)
+- `src/server/modules/medicao/teamMode.ts` ainda classifica equipe comercial por
+  `team_types.name = 'COMERCIAL'` OU `team_categories.code = 'COMERCIAL'`. Depois
+  do backfill da 420 as duas leituras concordam em todo dado existente. Elas so
+  divergem se alguem reclassificar, na tela Tipo de Equipe, um tipo operacional
+  chamado "Comercial" para TECNICA. Fica registrado como pendencia da Medicao,
+  fora do escopo desta tarefa.
+
+Arquivos alterados
+- `supabase/migrations/420_require_team_category_on_teams.sql` (novo)
+- `src/modules/dashboard/equipes/TeamsPageView.tsx`
+- `src/modules/dashboard/equipes/presentation.ts`
+- `src/modules/dashboard/equipes/massImport.ts`
+- `src/app/api/teams/route.ts`
+- `src/server/modules/teams/types.ts`
+- `src/server/modules/teams/massImport.ts`
+- `src/server/modules/teams/errors.ts`
+
+Mapa de Codigo (delta desta atualizacao)
+- `resolveTeamFormSelection(form, teamTypes, teamCategories)` -
+  `src/modules/dashboard/equipes/presentation.ts`. Retorna `isCommercialTeam` e
+  `hasCategoryMismatch` do formulario. Substitui a derivacao por nome do tipo
+  operacional que vivia dentro do `PageView`.
+- `applyTeamCategoryChange(current, teamCategoryId, teamCategories)` -
+  `src/modules/dashboard/equipes/presentation.ts`. Troca o Tipo de equipe e limpa
+  o encarregado quando a nova categoria e COMERCIAL.
+- `isCommercialTeamItem(team)` - mesma tela. Agora le so `teamCategoryCode`.
+- `buildMissingTeamMetaReasons(...)` - mesma tela. Ganhou `teamCategoryCount` e
+  trocou `isCommercialOperationalType` por `isCommercialTeam`.
+- `isCommercialTeamCategory(category)` e
+  `hasTeamTypeCategoryMismatch(teamType, teamCategory)` -
+  `src/server/modules/teams/types.ts`. Substituem `shouldTreatAsCommercialTeam` e
+  `isCommercialOperationalType`, removidos.
+- `mapTeamDbError(...)` - `src/server/modules/teams/errors.ts`. Passou a mapear
+  `team_requires_category`, `team_requires_foreman` e `team_requires_supervisor`,
+  excecoes do trigger que antes caiam na mensagem generica.

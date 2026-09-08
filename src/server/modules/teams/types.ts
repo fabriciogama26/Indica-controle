@@ -37,7 +37,7 @@ export type CreateTeamPayload = {
   serviceCenterId: string;
   stockCenterId?: string | null;
   teamTypeId: string;
-  teamCategoryId?: string | null;
+  teamCategoryId: string;
   foremanId?: string | null;
   supervisorId?: string | null;
 };
@@ -101,23 +101,29 @@ export function buildTeamCategoryMap(teamCategories: TeamCategoryRow[]) {
   );
 }
 
+/**
+ * Unica fonte da natureza da equipe (migration 420).
+ *
+ * Ate a 419 valia tambem `team_types.name = 'COMERCIAL'`. Com o Tipo de equipe
+ * obrigatorio, esse atalho so criava o caminho em que a tela pedia encarregado
+ * (porque olhava a categoria) e o banco apagava o valor (porque olhava o nome
+ * do tipo operacional).
+ */
 export function isCommercialTeamCategory(category: { code: string } | null) {
   return normalizeText(category?.code).toUpperCase() === "COMERCIAL";
 }
 
-export function isCommercialOperationalType(teamType: { name: string | null } | null) {
-  const normalized = normalizeText(teamType?.name)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase();
-  return normalized === "COMERCIAL";
-}
-
-export function shouldTreatAsCommercialTeam(params: {
-  teamType: { name: string | null } | null;
-  teamCategory: { code: string } | null;
-}) {
-  return isCommercialOperationalType(params.teamType) || isCommercialTeamCategory(params.teamCategory);
+/**
+ * `team_types.team_category_id` e anulavel desde a 416. Quando esta preenchido,
+ * o Tipo de equipe da equipe tem que ser o mesmo \u2014 senao a mesma equipe teria
+ * duas classificacoes contraditorias.
+ */
+export function hasTeamTypeCategoryMismatch(
+  teamType: { team_category_id?: string | null } | null,
+  teamCategory: { id: string } | null,
+) {
+  const teamTypeCategoryId = normalizeText(teamType?.team_category_id);
+  return Boolean(teamTypeCategoryId) && teamTypeCategoryId !== normalizeText(teamCategory?.id);
 }
 
 export function isTechnicalTeamCategory(category: { code: string } | null) {

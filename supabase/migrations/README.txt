@@ -1580,3 +1580,41 @@ Observacao
 - Sem backfill: nao existe nenhuma ordem comercial gravada (ver 418).
 - Valida no fim: releitura da 418 preservada, obrigatoriedade presente, indice existente,
   unico e parcial, nenhuma ordem comercial ativa sem `Ordem`.
+
+420_require_team_category_on_teams.sql
+- `teams.team_category_id` (`Tipo de equipe`: TECNICA/COMERCIAL) passa a ser NOT NULL, e a
+  natureza da equipe passa a sair SO dele.
+- Motivo: desde a 415 conviviam duas fontes para a mesma pergunta ("esta equipe e
+  comercial?") -- `team_types.name = 'COMERCIAL'` OU `team_categories.code = 'COMERCIAL'` --
+  e a 416 acrescentou uma terceira (`team_types.team_category_id`). Com a categoria opcional,
+  existia o caminho em que a tela cobrava encarregado (olhando a categoria) e o trigger
+  apagava o valor (olhando o nome do tipo operacional): o campo sumia sem erro nenhum.
+- Regra final: TECNICA exige encarregado; COMERCIAL exige supervisor e tem
+  `foreman_person_id` forcado a NULL. O atalho por `team_types.name` sai do trigger
+  `enforce_team_category_links` e da RPC `save_team_record`.
+- Divergencia passa a ser recusada: quando `team_types.team_category_id` esta preenchido, o
+  `team_category_id` da equipe tem que ser o mesmo (`team_type_category_mismatch`, 422). Tipo
+  operacional sem classificacao (anulavel desde a 416) aceita qualquer categoria.
+- Backfill em duas etapas, nesta ordem: (1) categoria nula recebe a classificacao do proprio
+  tipo operacional e, na falta dela, a derivada do nome do tipo; (2) equipe que hoje e
+  comercial APENAS pelo nome do tipo operacional e realinhada para COMERCIAL. O passo 2 nao e
+  cosmetico -- sem ele essas equipes ficariam TECNICA sem encarregado, um estado que o trigger
+  novo recusa em qualquer UPDATE posterior, travando o registro para sempre.
+- `save_team_record` mantem a mesma assinatura de 13 parametros da 415 (nenhum overload novo
+  no PostgREST) e repete o revoke de `public`/`anon`/`authenticated` com EXECUTE so para
+  `service_role`. O trigger, tambem `SECURITY DEFINER`, tem revoke explicito.
+- Divergencia remanescente NAO e corrigida automaticamente: o bloco final so emite NOTICE.
+  Realinhar no automatico trocaria a natureza da equipe -- perderia o encarregado de uma
+  equipe tecnica, ou exigiria um encarregado que a comercial nao tem. A correcao e manual, na
+  tela Equipes.
+- Valida no fim: falha se sobrar equipe sem `team_category_id`; conta e reporta as equipes com
+  `Tipo de equipe` divergente da classificacao do `Tipo operacional`.
+- ORDEM DE LOCK (passo 0, obrigatorio): `lock table public.teams in access exclusive mode` ANTES de
+  qualquer UPDATE, com `lock_timeout = '5s'`. A primeira tentativa de aplicar este arquivo morreu
+  com `40P01: deadlock detected`. Causa: a migration precisa de ACCESS EXCLUSIVE em `teams` duas
+  vezes (o `SET NOT NULL` e a troca de trigger) e chegava la ja segurando ROW EXCLUSIVE pelos quatro
+  UPDATEs do backfill -- elevacao de lock no meio da transacao, com a aplicacao viva do outro lado
+  fechando o ciclo. Pegando o lock no inicio existe UM ponto de aquisicao e o ciclo some. O
+  `lock_timeout` e para FALHAR RAPIDO: pedido de ACCESS EXCLUSIVE pendente bloqueia todo leitor que
+  chega depois dele, entao esperar em silencio derrubaria a aplicacao junto. Se estourar, rodar de
+  novo com a aplicacao ociosa -- a transacao volta atras inteira, nada fica pela metade.

@@ -19,8 +19,10 @@ import {
   buildMissingTeamMetaReasons,
   HISTORY_FIELD_LABELS,
   INITIAL_FILTERS,
+  applyTeamCategoryChange,
   buildQuery,
   formatHistoryValue,
+  resolveTeamFormSelection,
   type TeamFilterState,
 } from "./presentation";
 import {
@@ -101,26 +103,21 @@ export function TeamsPageView() {
   );
   const canSubmitForemanSwap =
     Boolean(swapTeam?.id) && Boolean(selectedSwapTargetTeam?.id) && Boolean(swapReason.trim()) && !isSwappingForeman;
-  const selectedTeamType = useMemo(
-    () => teamTypes.find((item) => item.id === form.teamTypeId) ?? null,
-    [form.teamTypeId, teamTypes],
+  const { isCommercialTeam, hasCategoryMismatch } = useMemo(
+    () => resolveTeamFormSelection(form, teamTypes, teamCategories),
+    [form, teamCategories, teamTypes],
   );
-  const selectedTeamTypeName = String(selectedTeamType?.name ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toUpperCase();
-  const isCommercialOperationalType = selectedTeamTypeName === "COMERCIAL";
   const missingTeamMetaReasons = useMemo(
     () => buildMissingTeamMetaReasons({
       isLoadingMeta,
       serviceCenterCount: serviceCenters.length,
       teamTypeCount: teamTypes.length,
+      teamCategoryCount: teamCategories.length,
       foremanCount: foremen.length,
       supervisorCount: supervisors.length,
-      isCommercialOperationalType,
+      isCommercialTeam,
     }),
-    [foremen.length, isCommercialOperationalType, isLoadingMeta, serviceCenters.length, supervisors.length, teamTypes.length],
+    [foremen.length, isCommercialTeam, isLoadingMeta, serviceCenters.length, supervisors.length, teamCategories.length, teamTypes.length],
   );
   const canSubmitTeamForm = missingTeamMetaReasons.length === 0 && !isSaving;
 
@@ -497,12 +494,22 @@ export function TeamsPageView() {
       return;
     }
 
-    if (!isCommercialOperationalType && !form.foremanId) {
+    if (!form.teamCategoryId) {
+      setFeedback({ type: "error", message: "Tipo de equipe e obrigatorio." });
+      return;
+    }
+
+    if (hasCategoryMismatch) {
+      setFeedback({ type: "error", message: "O tipo de equipe escolhido nao pertence ao tipo operacional da equipe." });
+      return;
+    }
+
+    if (!isCommercialTeam && !form.foremanId) {
       setFeedback({ type: "error", message: "Encarregado e obrigatorio para equipe tecnica." });
       return;
     }
 
-    if (isCommercialOperationalType && !form.supervisorId) {
+    if (isCommercialTeam && !form.supervisorId) {
       setFeedback({ type: "error", message: "Supervisor e obrigatorio para equipe comercial." });
       return;
     }
@@ -517,8 +524,8 @@ export function TeamsPageView() {
         vehiclePlate: normalizePlate(form.vehiclePlate),
         serviceCenterId: normalizeText(form.serviceCenterId),
         teamTypeId: normalizeText(form.teamTypeId),
-        teamCategoryId: normalizeText(form.teamCategoryId) || null,
-        foremanId: isCommercialOperationalType ? null : normalizeText(form.foremanId) || null,
+        teamCategoryId: normalizeText(form.teamCategoryId),
+        foremanId: isCommercialTeam ? null : normalizeText(form.foremanId) || null,
         supervisorId: normalizeText(form.supervisorId) || null,
         ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
@@ -856,19 +863,7 @@ export function TeamsPageView() {
             </span>
             <select
               value={form.teamTypeId}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  teamTypeId: event.target.value,
-                  foremanId: String(event.target.selectedOptions[0]?.textContent ?? "")
-                    .normalize("NFD")
-                    .replace(/[\u0300-\u036f]/g, "")
-                    .trim()
-                    .toUpperCase() === "COMERCIAL"
-                    ? ""
-                    : current.foremanId,
-                }))
-              }
+              onChange={(event) => setForm((current) => ({ ...current, teamTypeId: event.target.value }))}
               required
               disabled={isLoadingMeta}
             >
@@ -884,13 +879,18 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Tipo de equipe</span>
+            <span>Tipo de equipe <span className="requiredMark">*</span></span>
             <select
               value={form.teamCategoryId}
-              onChange={(event) => setForm((current) => ({ ...current, teamCategoryId: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => applyTeamCategoryChange(current, event.target.value, teamCategories))
+              }
+              required
               disabled={isLoadingMeta}
             >
-              <option value="">{isLoadingMeta ? "Carregando..." : "Sem tipo de equipe"}</option>
+              <option value="" disabled>
+                {isLoadingMeta ? "Carregando..." : "Selecione"}
+              </option>
               {teamCategories.map((teamCategory) => (
                 <option key={teamCategory.id} value={teamCategory.id}>
                   {teamCategory.name}
@@ -901,16 +901,16 @@ export function TeamsPageView() {
 
           <label className={styles.field}>
             <span>
-              Encarregado {!isCommercialOperationalType ? <span className="requiredMark">*</span> : null}
+              Encarregado {!isCommercialTeam ? <span className="requiredMark">*</span> : null}
             </span>
             <select
               value={form.foremanId}
               onChange={(event) => setForm((current) => ({ ...current, foremanId: event.target.value }))}
-              required={!isCommercialOperationalType}
-              disabled={isLoadingMeta || isCommercialOperationalType}
+              required={!isCommercialTeam}
+              disabled={isLoadingMeta || isCommercialTeam}
             >
               <option value="">
-                {isLoadingMeta ? "Carregando..." : isCommercialOperationalType ? "Desativado para comercial" : "Selecione"}
+                {isLoadingMeta ? "Carregando..." : isCommercialTeam ? "Desativado para comercial" : "Selecione"}
               </option>
               {foremen.map((foreman) => (
                 <option key={foreman.id} value={foreman.id}>
@@ -921,11 +921,11 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Supervisor {isCommercialOperationalType ? <span className="requiredMark">*</span> : null}</span>
+            <span>Supervisor {isCommercialTeam ? <span className="requiredMark">*</span> : null}</span>
             <select
               value={form.supervisorId}
               onChange={(event) => setForm((current) => ({ ...current, supervisorId: event.target.value }))}
-              required={isCommercialOperationalType}
+              required={isCommercialTeam}
               disabled={isLoadingMeta}
             >
               <option value="">{isLoadingMeta ? "Carregando..." : "Sem supervisor"}</option>

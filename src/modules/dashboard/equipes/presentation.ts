@@ -203,9 +203,66 @@ export function normalizePlate(value: string) {
   return normalizeText(value).toUpperCase();
 }
 
-export function isCommercialTeamItem(team: Pick<TeamItem, "teamTypeName" | "teamCategoryCode">) {
-  const operationalType = normalizeText(team.teamTypeName).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-  return operationalType === "COMERCIAL" || team.teamCategoryCode === "COMERCIAL";
+/**
+ * Natureza da equipe vem SO do Tipo de equipe (migration 420). Ate a 419 valia
+ * tambem `teamTypeName === "COMERCIAL"`; com o campo obrigatorio, aquele atalho
+ * so criava o caminho em que a tela pedia encarregado e o banco apagava o valor.
+ */
+export function isCommercialTeamItem(team: Pick<TeamItem, "teamCategoryCode">) {
+  return normalizeText(team.teamCategoryCode).toUpperCase() === "COMERCIAL";
+}
+
+function isCommercialTeamCategoryOption(category: TeamCategoryOption | null) {
+  return normalizeText(category?.code ?? "").toUpperCase() === "COMERCIAL";
+}
+
+/**
+ * `teamCategoryId` do tipo operacional e anulavel (migration 416). Quando esta
+ * preenchido, o Tipo de equipe tem que ser o mesmo \u2014 o backend recusa a
+ * gravacao, e aqui o usuario ve o erro antes de mandar o request.
+ */
+function hasTeamTypeCategoryMismatch(teamType: TeamTypeOption | null, teamCategory: TeamCategoryOption | null) {
+  const teamTypeCategoryId = normalizeText(teamType?.teamCategoryId ?? "");
+  return Boolean(teamTypeCategoryId) && teamTypeCategoryId !== normalizeText(teamCategory?.id ?? "");
+}
+
+/**
+ * Flags derivadas do formulario de Equipes.
+ *
+ * `isCommercialTeam` sai SO do Tipo de equipe (TECNICA/COMERCIAL) \u2014 e ele que
+ * decide se Encarregado ou Supervisor e obrigatorio, desde a migration 420.
+ */
+export function resolveTeamFormSelection(
+  form: TeamFormState,
+  teamTypes: TeamTypeOption[],
+  teamCategories: TeamCategoryOption[],
+) {
+  const teamType = teamTypes.find((item) => item.id === form.teamTypeId) ?? null;
+  const teamCategory = teamCategories.find((item) => item.id === form.teamCategoryId) ?? null;
+  return {
+    isCommercialTeam: isCommercialTeamCategoryOption(teamCategory),
+    hasCategoryMismatch: hasTeamTypeCategoryMismatch(teamType, teamCategory),
+  };
+}
+
+/**
+ * Troca do Tipo de equipe no formulario.
+ *
+ * Equipe comercial nao renderiza Encarregado. Sem limpar o campo aqui, o estado
+ * guardaria um encarregado invisivel: o select mostraria outra coisa, o submit
+ * enviaria o valor escondido e o backend recusaria a operacao.
+ */
+export function applyTeamCategoryChange(
+  current: TeamFormState,
+  teamCategoryId: string,
+  teamCategories: TeamCategoryOption[],
+): TeamFormState {
+  const teamCategory = teamCategories.find((item) => item.id === teamCategoryId) ?? null;
+  return {
+    ...current,
+    teamCategoryId,
+    foremanId: isCommercialTeamCategoryOption(teamCategory) ? "" : current.foremanId,
+  };
 }
 
 export function scrollDashboardContentToTop() {
@@ -225,16 +282,19 @@ export function scrollDashboardContentToTop() {
 /**
  * Pre-requisitos de cadastro que faltam para o formulario de Equipes.
  *
- * Depende do tipo operacional escolhido: COMERCIAL exige supervisor e desativa
- * encarregado; demais tipos seguem exigindo encarregado.
+ * Depende do Tipo de equipe escolhido: COMERCIAL exige supervisor e desativa
+ * encarregado; TECNICA segue exigindo encarregado. Enquanto o Tipo de equipe
+ * nao foi escolhido, nao da para saber qual dos dois cobrar — o formulario ja
+ * bloqueia o submit pelo `required` do campo.
  */
 export function buildMissingTeamMetaReasons(params: {
   isLoadingMeta: boolean;
   serviceCenterCount: number;
   teamTypeCount: number;
+  teamCategoryCount: number;
   foremanCount: number;
   supervisorCount: number;
-  isCommercialOperationalType: boolean;
+  isCommercialTeam: boolean;
 }) {
   if (params.isLoadingMeta) {
     return [] as string[];
@@ -243,7 +303,8 @@ export function buildMissingTeamMetaReasons(params: {
   const reasons: string[] = [];
   if (params.serviceCenterCount === 0) reasons.push("Base (Centro de Servico)");
   if (params.teamTypeCount === 0) reasons.push("Tipo operacional");
-  if (!params.isCommercialOperationalType && params.foremanCount === 0) reasons.push("Encarregado");
-  if (params.isCommercialOperationalType && params.supervisorCount === 0) reasons.push("Supervisor");
+  if (params.teamCategoryCount === 0) reasons.push("Tipo de equipe");
+  if (!params.isCommercialTeam && params.foremanCount === 0) reasons.push("Encarregado");
+  if (params.isCommercialTeam && params.supervisorCount === 0) reasons.push("Supervisor");
   return reasons;
 }
