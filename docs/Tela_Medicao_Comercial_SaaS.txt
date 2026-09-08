@@ -104,6 +104,7 @@ Persistencia
   - Sao DOIS triggers, com tempos diferentes de proposito:
     - `trg_enforce_measurement_project_rules`: BEFORE, imediato, exatamente como o CHECK que substitui. A ordem TECNICA continua sendo reprovada na propria instrucao, e nao no commit -- mudar isso alteraria em silencio o comportamento de erro de um fluxo que nao faz parte deste pedido.
     - `trg_enforce_commercial_measurement_fields`: CONSTRAINT TRIGGER DEFERIDO, porque a ordem comercial nasce em DOIS passos -- a RPC comercial grava o cabecalho pela RPC da Medicao (que nao conhece Processo, horarios nem Ordem) e so depois preenche esses campos num UPDATE. Um trigger imediato reprovaria o INSERT intermediario, que ainda esta incompleto.
+      ATENCAO (corrigido pela 418): deferir NAO faz o trigger enxergar a linha completa. `deferrable` muda QUANDO o trigger roda, nao QUAL versao da tupla o evento carrega -- o evento de INSERT guarda o `ctid` da tupla inserida e o Postgres busca exatamente aquela versao (`SnapshotAny`) na hora de disparar. O UPDATE posterior gera um SEGUNDO evento, ele nao substitui o primeiro. Por isso a funcao RELE a linha por `id` antes de validar: e a releitura, e nao o `deferrable`, que entrega o estado final da transacao.
 - Projeto obrigatorio deixou de ser CHECK e virou trigger, porque passou a depender da categoria da equipe e CHECK nao consulta outra tabela. Para equipe TECNICA a regra e identica a da 382.
 - `save_project_measurement_order` recebeu a mesma excecao pela cirurgia de texto que a 382 usou (`public.is_commercial_team`), porque nao existe versao integral da funcao em nenhuma migration para recriar do zero.
 - Integrantes: `project_commercial_measurement_order_members`
@@ -176,3 +177,15 @@ Atualizacao 2026-09-08 - Eletricistas por matricula e equipe comercial pelo oper
   `src/server/modules/medicao/list.ts`,
   `src/server/modules/medicao/routeConfig.ts` e
   `supabase/migrations/415_team_categories_and_commercial_measurement.sql`.
+
+Atualizacao 2026-09-08 - Correcao: a tela nunca conseguiu salvar (migration 418)
+-------------------------------------------------------------------------------
+- Sintoma: toda tentativa de salvar voltava "Falha ao salvar ordem de medicao.", sem mais nenhuma informacao.
+- Evidencia no banco antes da correcao: 971 ordens de medicao no total, ZERO de equipe comercial, ZERO com `commercial_process_id` e ZERO linhas em `project_commercial_measurement_order_members`. Nenhuma Medicao Comercial jamais foi gravada.
+- Causa: `trg_enforce_commercial_measurement_fields` (415) validava o `new` do EVENTO, nao o estado final da transacao. Como a ordem comercial nasce em dois passos (INSERT com colunas comerciais NULL + UPDATE que as preenche), o evento de INSERT disparava no COMMIT ainda com `commercial_process_id` NULL, caia no ramo comercial e levantava `commercial_process_required`. A transacao inteira fazia rollback -- por isso nao sobrava nem ordem nem lixo parcial.
+- Ordem TECNICA nunca quebrou: `is_commercial_team` e falso e todas as colunas comerciais sao NULL, entao ela cai no ramo de saida limpa do trigger.
+- Correcao (418): `enforce_commercial_measurement_fields()` passa a RELER a linha por `id` e validar esse estado. Os dois eventos (INSERT e UPDATE) leem a MESMA linha, entao a checagem virou idempotente em vez de contraditoria. O trigger continua deferido e a regra de negocio validada nao mudou.
+- Por que o erro era ilegivel: `saveMeasurementOrder` descartava `error.message` da RPC e a mensagem generica nao batia com nenhuma palavra-chave de `measurementModuleMigrationHint`, entao o `hint` saia vazio. Agora o detalhe tecnico vai para o log do servidor (`console.error("[medicao] RPC ... falhou.", ...)`, mesmo padrao de `programacao-normalizada/rpc.ts`) e a resposta diz explicitamente que a ordem NAO foi gravada. Vale tambem para o lote e para a troca de status.
+- Sem backfill: nenhuma linha comercial chegou a existir.
+- Arquivos alterados: `supabase/migrations/418_fix_deferred_commercial_measurement_validation.sql` e
+  `src/server/modules/medicao/handlers.ts`.

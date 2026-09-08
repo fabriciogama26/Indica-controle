@@ -14,6 +14,29 @@ import { fetchMeasurementOrderDetail, loadHistory, measurementModuleMigrationHin
 import { listMeasurementOrdersPage } from "./list";
 import { DEFAULT_MEASUREMENT_ROUTE_CONFIG, orderMatchesRouteCategory, resolveTeamCategoryCode } from "./routeConfig";
 
+// Erro de RPC vinha sendo descartado aqui: a resposta so dizia "Falha ao salvar
+// ordem de medicao." e o texto do Postgres se perdia. Foi o que escondeu por
+// completo o bug da validacao comercial deferida (migration 418) -- a tela
+// falhava 100% das vezes sem nenhuma pista de qual regra tinha reprovado.
+// O detalhe tecnico fica no log do servidor, nunca na tela: texto cru de banco
+// nao ajuda quem esta na tela e ainda expoe detalhe interno. Mesmo padrao de
+// `src/server/modules/programacao-normalizada/rpc.ts`.
+function logMeasurementRpcFailure(params: {
+  rpcName: string;
+  operation: string;
+  tenantId: string;
+  userId: string;
+  errorMessage: string | undefined;
+}) {
+  console.error(`[medicao] RPC ${params.rpcName} falhou.`, {
+    rpcName: params.rpcName,
+    operation: params.operation,
+    tenantId: params.tenantId,
+    userId: params.userId,
+    technicalDetail: normalizeText(params.errorMessage),
+  });
+}
+
 export async function handleMeasurementGet(request: NextRequest, config = DEFAULT_MEASUREMENT_ROUTE_CONFIG) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para consultar ordens de medicao.",
@@ -317,8 +340,18 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     : await resolution.supabase.rpc("save_project_measurement_order", rpcArgs);
 
   if (error) {
+    logMeasurementRpcFailure({
+      rpcName: config.commercial ? "save_project_commercial_measurement_order" : "save_project_measurement_order",
+      operation: method === "POST" ? "cadastrar ordem de medicao" : "editar ordem de medicao",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
+      errorMessage: error.message,
+    });
     const hint = measurementModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao salvar ordem de medicao.${hint}`.trim() }, { status: 500 });
+    return NextResponse.json(
+      { message: `Falha ao salvar ordem de medicao. A ordem NAO foi gravada.${hint}`.trim() },
+      { status: 500 },
+    );
   }
 
   const result = (data ?? {}) as SaveMeasurementRpcResult;
@@ -425,8 +458,18 @@ async function saveMeasurementOrderBatchPartial(request: NextRequest, config = D
   });
 
   if (error) {
+    logMeasurementRpcFailure({
+      rpcName: "save_project_measurement_order_batch_partial",
+      operation: "importar medicao em lote",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
+      errorMessage: error.message,
+    });
     const hint = measurementModuleMigrationHint(error.message);
-    return NextResponse.json({ message: `Falha ao importar medicao em lote.${hint}`.trim() }, { status: 500 });
+    return NextResponse.json(
+      { message: `Falha ao importar medicao em lote. O lote NAO foi importado.${hint}`.trim() },
+      { status: 500 },
+    );
   }
 
   const result = (data ?? {}) as SaveMeasurementBatchRpcResult;
@@ -526,7 +569,17 @@ export async function handleMeasurementPatch(request: NextRequest, config = DEFA
   });
 
   if (error) {
-    return NextResponse.json({ message: "Falha ao alterar status da ordem de medicao." }, { status: 500 });
+    logMeasurementRpcFailure({
+      rpcName: "set_project_measurement_order_status",
+      operation: `alterar status da ordem de medicao (${action})`,
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
+      errorMessage: error.message,
+    });
+    return NextResponse.json(
+      { message: "Falha ao alterar status da ordem de medicao. O status NAO foi alterado." },
+      { status: 500 },
+    );
   }
 
   const result = (data ?? {}) as SetMeasurementStatusRpcResult;
