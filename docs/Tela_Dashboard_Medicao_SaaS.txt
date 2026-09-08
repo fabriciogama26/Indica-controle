@@ -998,7 +998,9 @@ Atualizacao 2026-09-08 - Filtro Tipo operacional (Tecnica / Comercial)
   o Dashboard Equipes):
   - `teamCategoryCode` na query string; os `team_id` da categoria vem de
     `fetchTeamIdsByMeasurementMode`, o mesmo helper que a tela Medicao Comercial usa
-    (tipo operacional do `team_types`, com fallback para `teams.team_category_id`).
+    (desde 2026-09-08 a classificacao sai SO de `teams.team_category_id` ->
+    `team_categories.code`, alinhada a migration 420; o atalho antigo por
+    `team_types.name = COMERCIAL` nao vale mais).
   - Todas as leituras de `project_measurement_orders`, `teams` e historicos de equipe
     passaram a recortar por esses ids.
   - `measurement_cycle_workdays` passou a recortar por `team_category_id`. A migration
