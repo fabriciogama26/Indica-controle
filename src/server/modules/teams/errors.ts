@@ -74,6 +74,33 @@ export function mapTeamDbError(error: unknown, fallbackMessage: string) {
     } as const;
   }
 
+  // Excecoes do trigger `enforce_team_category_links` (migration 420). Sem
+  // mapeamento elas cairiam na mensagem generica e o usuario nao saberia qual
+  // campo corrigir.
+  if (combined.includes("team_requires_category")) {
+    return {
+      status: 400,
+      message: "Tipo de equipe e obrigatorio.",
+      reason: "MISSING_TEAM_CATEGORY",
+    } as const;
+  }
+
+  if (combined.includes("team_requires_foreman")) {
+    return {
+      status: 400,
+      message: "Encarregado e obrigatorio para equipe tecnica.",
+      reason: "MISSING_FOREMAN",
+    } as const;
+  }
+
+  if (combined.includes("team_requires_supervisor")) {
+    return {
+      status: 400,
+      message: "Supervisor e obrigatorio para equipe comercial.",
+      reason: "MISSING_SUPERVISOR",
+    } as const;
+  }
+
   if (combined.includes("teams_foreman_person_tenant_fk")) {
     return {
       status: 422,

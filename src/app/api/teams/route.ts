@@ -37,8 +37,9 @@ import {
   buildForemanMap,
   buildTeamCategoryMap,
   buildTeamTypeMap,
+  hasTeamTypeCategoryMismatch,
+  isCommercialTeamCategory,
   normalizePlate,
-  shouldTreatAsCommercialTeam,
   type AppUserRow,
   type CreateTeamPayload,
   type HistoryChange,
@@ -432,12 +433,18 @@ export async function POST(request: NextRequest) {
       serviceCenterId: normalizeText(body.serviceCenterId),
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
-      teamCategoryId: normalizeText(body.teamCategoryId) || null,
+      teamCategoryId: normalizeText(body.teamCategoryId),
       foremanId: normalizeText(body.foremanId) || null,
       supervisorId: normalizeText(body.supervisorId) || null,
     };
 
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId) {
+    if (
+      !input.name
+      || !input.vehiclePlate
+      || !input.serviceCenterId
+      || !input.teamTypeId
+      || !input.teamCategoryId
+    ) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
 
@@ -451,14 +458,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Tipo operacional invalido para o tenant atual." }, { status: 422 });
     }
 
-    const teamCategory = input.teamCategoryId
-      ? await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId)
-      : null;
-    if (input.teamCategoryId && !teamCategory) {
+    const teamCategory = await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId);
+    if (!teamCategory) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
     }
 
-    const isCommercialTeam = shouldTreatAsCommercialTeam({ teamType, teamCategory });
+    if (hasTeamTypeCategoryMismatch(teamType, teamCategory)) {
+      return NextResponse.json(
+        {
+          message: "O tipo de equipe escolhido nao pertence ao tipo operacional da equipe.",
+          code: "TEAM_TYPE_CATEGORY_MISMATCH",
+        },
+        { status: 422 },
+      );
+    }
+
+    const isCommercialTeam = isCommercialTeamCategory(teamCategory);
 
     if (!isCommercialTeam && !input.foremanId) {
       return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });
@@ -560,7 +575,7 @@ export async function PUT(request: NextRequest) {
       serviceCenterId: normalizeText(body.serviceCenterId),
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
-      teamCategoryId: normalizeText(body.teamCategoryId) || null,
+      teamCategoryId: normalizeText(body.teamCategoryId),
       foremanId: normalizeText(body.foremanId) || null,
       supervisorId: normalizeText(body.supervisorId) || null,
     };
@@ -573,7 +588,13 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Atualize a lista antes de editar a equipe." }, { status: 400 });
     }
 
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId) {
+    if (
+      !input.name
+      || !input.vehiclePlate
+      || !input.serviceCenterId
+      || !input.teamTypeId
+      || !input.teamCategoryId
+    ) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
 
@@ -610,11 +631,18 @@ export async function PUT(request: NextRequest) {
     if (!nextTeamType) {
       return NextResponse.json({ message: "Tipo operacional invalido para o tenant atual." }, { status: 422 });
     }
-    const nextTeamCategory = input.teamCategoryId
-      ? await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId)
-      : null;
-    if (input.teamCategoryId && !nextTeamCategory) {
+    const nextTeamCategory = await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId);
+    if (!nextTeamCategory) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
+    }
+    if (hasTeamTypeCategoryMismatch(nextTeamType, nextTeamCategory)) {
+      return NextResponse.json(
+        {
+          message: "O tipo de equipe escolhido nao pertence ao tipo operacional da equipe.",
+          code: "TEAM_TYPE_CATEGORY_MISMATCH",
+        },
+        { status: 422 },
+      );
     }
     const nextStockCenter = input.stockCenterId
       ? await fetchStockCenterById(supabase, appUser.tenant_id, input.stockCenterId)
@@ -632,7 +660,7 @@ export async function PUT(request: NextRequest) {
       ? await fetchSupervisorById(supabase, appUser.tenant_id, input.supervisorId)
       : null;
 
-    const isCommercialTeam = shouldTreatAsCommercialTeam({ teamType: nextTeamType, teamCategory: nextTeamCategory });
+    const isCommercialTeam = isCommercialTeamCategory(nextTeamCategory);
 
     if (!isCommercialTeam && !input.foremanId) {
       return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });
@@ -771,14 +799,14 @@ export async function PATCH(request: NextRequest) {
         return buildConcurrencyConflictResponse("A permuta exige duas equipes ativas.", "RECORD_INACTIVE");
       }
 
-      const [sourceTeamType, targetTeamType, sourceTeamCategory, targetTeamCategory] = await Promise.all([
-        fetchTeamTypeById(supabase, appUser.tenant_id, sourceTeam.team_type_id),
-        fetchTeamTypeById(supabase, appUser.tenant_id, targetTeam.team_type_id),
+      // A natureza da equipe vem so do Tipo de equipe (migration 420), entao a
+      // permuta nao precisa mais carregar o tipo operacional das duas equipes.
+      const [sourceTeamCategory, targetTeamCategory] = await Promise.all([
         sourceTeam.team_category_id ? fetchTeamCategoryById(supabase, appUser.tenant_id, sourceTeam.team_category_id) : null,
         targetTeam.team_category_id ? fetchTeamCategoryById(supabase, appUser.tenant_id, targetTeam.team_category_id) : null,
       ]);
-      const sourceIsCommercial = shouldTreatAsCommercialTeam({ teamType: sourceTeamType, teamCategory: sourceTeamCategory });
-      const targetIsCommercial = shouldTreatAsCommercialTeam({ teamType: targetTeamType, teamCategory: targetTeamCategory });
+      const sourceIsCommercial = isCommercialTeamCategory(sourceTeamCategory);
+      const targetIsCommercial = isCommercialTeamCategory(targetTeamCategory);
 
       if (
         sourceIsCommercial

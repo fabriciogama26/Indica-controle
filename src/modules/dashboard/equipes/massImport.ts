@@ -12,7 +12,7 @@ export type TeamImportRow = {
   vehiclePlate: string;
   serviceCenterId: string;
   teamTypeId: string;
-  teamCategoryId: string | null;
+  teamCategoryId: string;
   foremanId: string;
   supervisorId: string;
 };
@@ -22,12 +22,17 @@ export type TeamImportOption = {
   name: string;
 };
 
-// `tipo_operacional` define a regra de vinculo da equipe. `tipo_equipe` e a
-// classificacao opcional TECNICA/COMERCIAL, mantida separada para relatorio.
-const REQUIRED_HEADERS = ["nome", "placa", "base", "tipo_operacional"];
+export type TeamImportTeamTypeOption = TeamImportOption & { teamCategoryId?: string | null };
+
+export type TeamImportCategoryOption = TeamImportOption & { code?: string | null };
+
+// `tipo_equipe` (TECNICA/COMERCIAL) e obrigatorio desde a migration 420 e e ele
+// que decide entre encarregado e supervisor. `tipo_operacional` continua sendo o
+// tipo de servico da equipe.
+const REQUIRED_HEADERS = ["nome", "placa", "base", "tipo_operacional", "tipo_equipe"];
 
 export const TEAM_MASS_IMPORT_COLUMNS_HINT =
-  "Colunas obrigatorias: nome, placa, base e tipo_operacional. Tipo_equipe e opcional. Se tipo_operacional for COMERCIAL, supervisor e obrigatorio e encarregado e ignorado; nos demais tipos operacionais, encarregado e obrigatorio. Base, tipos, encarregado e supervisor sao informados pelo nome exato cadastrado no tenant.";
+  "Colunas obrigatorias: nome, placa, base, tipo_operacional e tipo_equipe. Se tipo_equipe for COMERCIAL, supervisor e obrigatorio e encarregado e ignorado; em TECNICA, encarregado e obrigatorio. O tipo_equipe precisa bater com a classificacao do tipo_operacional informado. Base, tipos, encarregado e supervisor sao informados pelo nome exato cadastrado no tenant.";
 
 function normalizeText(value: string) {
   return String(value ?? "").trim();
@@ -37,8 +42,8 @@ function normalizeText(value: string) {
  * Indexa as opcoes pelo nome normalizado. Nomes repetidos ficam marcados como
  * ambiguos para o import recusar a linha em vez de escolher um registro no escuro.
  */
-function indexByName(options: TeamImportOption[]) {
-  const index = new Map<string, TeamImportOption | "AMBIGUOUS">();
+function indexByName<T extends TeamImportOption>(options: T[]) {
+  const index = new Map<string, T | "AMBIGUOUS">();
 
   for (const option of options) {
     const key = normalizeLookupText(option.name);
@@ -56,8 +61,8 @@ export function buildTeamMassImportTemplateCsv() {
   return buildMassImportTemplateCsv(
     ["nome", "placa", "base", "tipo_operacional", "tipo_equipe", "encarregado", "supervisor"],
     [
-      ["EQUIPE 01", "ABC1D23", "BASE CENTRO", "LEVE", "TECNICA", "JOAO DA SILVA", "MARIA SOUZA"],
-      ["EQUIPE COMERCIAL 01", "XYZ4E56", "BASE NORTE", "COMERCIAL", "COMERCIAL", "", "MARIA SOUZA"],
+      ["EQUIPE 01", "ABC1D23", "BASE CENTRO", "LEVE", "Tecnica", "JOAO DA SILVA", "MARIA SOUZA"],
+      ["EQUIPE COMERCIAL 01", "XYZ4E56", "BASE NORTE", "COMERCIAL", "Comercial", "", "MARIA SOUZA"],
     ],
   );
 }
@@ -66,8 +71,8 @@ export function parseTeamMassImportCsv(params: {
   content: string;
   fileName: string;
   serviceCenters: TeamImportOption[];
-  teamTypes: TeamImportOption[];
-  teamCategories: TeamImportOption[];
+  teamTypes: TeamImportTeamTypeOption[];
+  teamCategories: TeamImportCategoryOption[];
   foremen: TeamImportOption[];
   supervisors: TeamImportOption[];
 }) {
@@ -125,15 +130,32 @@ export function parseTeamMassImportCsv(params: {
       issues.push({ rowNumber, column: "tipo_operacional", value: teamTypeRaw, error: "Existe mais de um tipo operacional com este nome." });
     }
 
-    if (normalizeText(teamCategoryRaw) && !teamCategory) {
+    if (!normalizeText(teamCategoryRaw)) {
+      issues.push({ rowNumber, column: "tipo_equipe", value: teamCategoryRaw, error: "Tipo de equipe obrigatorio." });
+    } else if (!teamCategory) {
       issues.push({ rowNumber, column: "tipo_equipe", value: teamCategoryRaw, error: "Tipo de equipe invalido ou inativo." });
     } else if (teamCategory === "AMBIGUOUS") {
       issues.push({ rowNumber, column: "tipo_equipe", value: teamCategoryRaw, error: "Existe mais de um tipo de equipe com este nome." });
     }
 
-    const teamTypeName = teamType !== "AMBIGUOUS" && teamType ? normalizeLookupText(teamType.name) : "";
-    const teamCategoryName = teamCategory !== "AMBIGUOUS" && teamCategory ? normalizeLookupText(teamCategory.name) : "";
-    const isCommercial = teamTypeName === "comercial" || teamCategoryName === "comercial";
+    const resolvedTeamType = teamType !== "AMBIGUOUS" ? teamType : null;
+    const resolvedTeamCategory = teamCategory !== "AMBIGUOUS" ? teamCategory : null;
+    const teamTypeCategoryId = normalizeText(resolvedTeamType?.teamCategoryId ?? "");
+
+    // `teamCategoryId` do tipo operacional e anulavel (migration 416). Quando
+    // esta preenchido, o tipo_equipe da linha tem que ser o mesmo — e o que o
+    // backend cobra, e o import erra a linha antes de mandar o lote.
+    if (resolvedTeamCategory && teamTypeCategoryId && teamTypeCategoryId !== resolvedTeamCategory.id) {
+      issues.push({
+        rowNumber,
+        column: "tipo_equipe",
+        value: teamCategoryRaw,
+        error: "O tipo de equipe nao pertence ao tipo operacional informado.",
+      });
+    }
+
+    // A natureza da equipe vem SO do tipo_equipe (migration 420).
+    const isCommercial = normalizeText(resolvedTeamCategory?.code ?? "").toUpperCase() === "COMERCIAL";
 
     // Encarregado e obrigatorio so em equipe TECNICA. Em COMERCIAL a coluna pode
     // vir vazia, mas se vier preenchida ainda precisa resolver — senao o vinculo
@@ -173,8 +195,8 @@ export function parseTeamMassImportCsv(params: {
         name,
         vehiclePlate,
         serviceCenterId: serviceCenter !== "AMBIGUOUS" && serviceCenter ? serviceCenter.id : "",
-        teamTypeId: teamType !== "AMBIGUOUS" && teamType ? teamType.id : "",
-        teamCategoryId: teamCategory !== "AMBIGUOUS" && teamCategory ? teamCategory.id : null,
+        teamTypeId: resolvedTeamType ? resolvedTeamType.id : "",
+        teamCategoryId: resolvedTeamCategory ? resolvedTeamCategory.id : "",
         foremanId: !isCommercial && foreman !== "AMBIGUOUS" && foreman ? foreman.id : "",
         supervisorId: supervisor !== "AMBIGUOUS" && supervisor ? supervisor.id : "",
       });
