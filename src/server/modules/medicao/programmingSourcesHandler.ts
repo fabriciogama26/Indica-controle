@@ -101,7 +101,14 @@ async function fetchTeamsByCategory(params: {
     activeOnly: true,
   });
 
-  if (!teamModeResult.ok || teamModeResult.ids.length === 0) {
+  // Falha ao recortar por categoria vira erro da rota, nao select vazio: a tela
+  // nao tem como distinguir "nenhuma equipe comercial cadastrada" de "nao consegui
+  // ler o catalogo de categorias".
+  if (!teamModeResult.ok) {
+    throw new Error(teamModeResult.message);
+  }
+
+  if (teamModeResult.ids.length === 0) {
     return empty;
   }
 
@@ -209,9 +216,15 @@ export async function handleMeasurementProgrammingSourcesGet(
       });
     }
 
-    const [projects, teams, workCompletionCatalog, stages] = await Promise.all([
+    const [projects, activeTeams, technicalTeamIdsResult, workCompletionCatalog, stages] = await Promise.all([
       fetchMeasurementSourceProjects({ supabase: resolution.supabase, tenantId: resolution.appUser.tenant_id }),
       fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
+      fetchTeamIdsByMeasurementMode({
+        supabase: resolution.supabase,
+        tenantId: resolution.appUser.tenant_id,
+        mode: "TECNICA",
+        activeOnly: true,
+      }),
       fetchProgrammingWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
       fetchProgrammingStagesForMeasurementSources({
         supabase: resolution.supabase,
@@ -220,6 +233,19 @@ export async function handleMeasurementProgrammingSourcesGet(
         endDate,
       }),
     ]);
+
+    // `fetchTeams` e o catalogo do quadro da Programacao: devolve TODA equipe ativa
+    // do tenant. A Medicao tecnica so pode oferecer equipe TECNICA -- sem este
+    // recorte o select listava tambem as COMERCIAIS (que aparecem como
+    // `Sem encarregado`, porque equipe comercial nao tem encarregado), e a gravacao
+    // as recusava depois com 422. Opcao visivel que nunca salva e pior do que opcao
+    // ausente.
+    if (!technicalTeamIdsResult.ok) {
+      throw new Error(technicalTeamIdsResult.message);
+    }
+
+    const technicalTeamIds = new Set(technicalTeamIdsResult.ids);
+    const teams = activeTeams.filter((team) => technicalTeamIds.has(team.id));
 
     const activityIds = collectActivityIds(stages);
     const activities = await fetchServiceActivitiesByIds(resolution.supabase, resolution.appUser.tenant_id, activityIds);

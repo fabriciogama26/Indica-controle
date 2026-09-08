@@ -4,7 +4,7 @@ Visao geral
 -----------
 - Ordem de medicao das equipes COMERCIAIS, no mesmo padrao `cadastro + filtros + lista` da tela `Medicao`.
 - Diferenca de negocio em relacao a `Medicao`:
-  - So lista e so aceita equipe cujo `Tipo operacional` (`team_types`) seja `COMERCIAL`, com fallback para `Tipo de equipe` = `COMERCIAL` quando a classificacao opcional estiver preenchida.
+  - So lista e so aceita equipe cujo `Tipo de equipe` seja `COMERCIAL`, lido de `teams.team_category_id` (NOT NULL desde a migration 420, unica fonte da natureza da equipe). O atalho antigo por `team_types.name = COMERCIAL` NAO vale mais.
   - A equipe comercial nao tem encarregado fixo. Cada ordem carrega os DOIS eletricistas que executaram, escolhidos no cadastro de `Pessoas` (cargo com correspondencia em `ELETRICISTA`).
   - Os integrantes NAO sao deduzidos da equipe: sao selecionados ordem a ordem. E exatamente por isso que equipe comercial pode existir sem vinculo fixo com pessoas.
   - `Projeto` continua na tela e continua vindo do cadastro de `Projetos`, mas NAO e obrigatorio -- nem em `Com producao`. A equipe comercial atende demanda que nem sempre tem projeto aberto.
@@ -37,7 +37,7 @@ Arquitetura
 - Handlers compartilhados (regra de negocio):
   - `src/server/modules/medicao/handlers.ts`
   - `src/server/modules/medicao/routeConfig.ts` (`MeasurementRouteConfig`, modo da equipe por variante)
-  - `src/server/modules/medicao/teamMode.ts` (resolve Comercial por tipo operacional, com fallback de categoria)
+  - `src/server/modules/medicao/teamMode.ts` (resolve TECNICA/COMERCIAL so por `teams.team_category_id`, recorte positivo nos dois lados)
   - `src/server/modules/medicao/metaHandler.ts`
   - `src/server/modules/medicao/exportHandler.ts`
   - `src/server/modules/medicao/programmingSourcesHandler.ts`
@@ -127,7 +127,7 @@ Persistencia
 
 Filtros e listagem
 ------------------
-- Mesmos filtros da `Medicao`, com as listas de `Equipe` restritas ao modo comercial resolvido por tipo operacional.
+- Mesmos filtros da `Medicao`, com as listas de `Equipe` restritas a `Tipo de equipe` = `COMERCIAL`.
 - Nao existe filtro por `Ordem`: o campo e livre e nasceu como referencia de leitura. Se virar criterio de busca, o indice parcial ja existe.
 - A coluna que na `Medicao` mostra `Encarregado` aqui mostra `Integrantes` (`Eletricista 1 / Eletricista 2`).
 - Exportacao CSV usa o prefixo `ordens_medicao_comercial_`.
@@ -217,3 +217,27 @@ Atualizacao 2026-09-08 - Ordem obrigatoria e unica por Ordem + Equipe + Data (mi
   `src/modules/dashboard/medicao/CommercialOrderRefField.tsx`,
   `src/modules/dashboard/medicao/MeasurementPageView.tsx` e
   `file-size-baseline.json`.
+
+Atualizacao 2026-09-08 - Categoria da equipe passa a ser a unica fonte (migration 420)
+---------------------------------------------------------------------------------------
+- `src/server/modules/medicao/teamMode.ts` classificava a equipe pelo atalho
+  `team_types.name = 'COMERCIAL'` com fallback para a categoria, e tratava TECNICA por
+  exclusao. Essa e a regra PRE-420: a migration 420 tornou `teams.team_category_id`
+  NOT NULL, tirou o atalho por nome do trigger e da RPC e realinhou as equipes que
+  eram comerciais so pelo nome do tipo operacional. O arquivo (e este TXT) ficaram
+  divergindo do banco desde entao.
+- Agora as duas telas resolvem a categoria SO por `teams.team_category_id` ->
+  `team_categories.code`, com recorte positivo: `Medicao Comercial` lista equipe
+  COMERCIAL, `Medicao` lista equipe TECNICA, e equipe sem categoria resolvivel nao
+  entra em nenhuma das duas.
+- O select de `Equipe` desta tela ja estava correto -- o defeito visivel estava na
+  `Medicao` tecnica, que listava todas as equipes ativas. Detalhe completo da causa e
+  da correcao em `docs/Tela_Medicao_SaaS.txt`, secao
+  `Atualizacao 2026-09-08 - Select de Equipe restrito a equipe TECNICA`.
+- `fetchTeamsByCategory` deixou de devolver lista vazia quando o recorte por categoria
+  falha: agora propaga o erro e a rota responde 500 com mensagem. Vazio silencioso e
+  indistinguivel de "nenhuma equipe comercial cadastrada".
+- Arquivos alterados: `src/server/modules/medicao/teamMode.ts`,
+  `src/server/modules/medicao/programmingSourcesHandler.ts`,
+  `docs/Tela_Medicao_SaaS.txt`, `docs/Tela_Medicao_Comercial_SaaS.txt` e `TASKS.md`.
+- Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.

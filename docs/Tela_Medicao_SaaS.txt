@@ -55,6 +55,7 @@ Cadastro
 - Campos principais:
   - Projeto (padrao `input + datalist`, igual ao filtro; obrigatorio somente em `Com producao`)
   - Equipe (select exibe `Equipe / Encarregado` quando o encarregado esta cadastrado, no mesmo padrao da Composicao de Equipe)
+  - O select de `Equipe` (cadastro e filtro) lista SOMENTE equipe com `Tipo de equipe` = `TECNICA`, lido de `teams.team_category_id`. Equipe COMERCIAL nao aparece aqui: ela pertence a tela `Medicao Comercial`.
   - Data execucao
   - Tipo da medicao (`Com producao` ou `Sem producao`)
   - Motivo sem producao (visivel no formulario, mas habilitado apenas em `Sem producao`)
@@ -1770,4 +1771,44 @@ Atualizacao 2026-09-04 - Variante Comercial e handlers fora do route.ts
   `save_project_measurement_order` recebeu a excecao pela mesma cirurgia de texto
   que a 382 usou, e a migration aborta se a guarda esperada nao for encontrada.
   Nenhuma ordem tecnica muda de comportamento.
+- Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+
+Atualizacao 2026-09-08 - Select de Equipe restrito a equipe TECNICA
+-------------------------------------------------------------------
+- Problema: o select `Equipe` do cadastro -- e o do filtro, que le a mesma lista --
+  mostrava TODAS as equipes ativas do tenant, inclusive as COMERCIAIS, que apareciam
+  como `<Equipe> / Sem encarregado` porque equipe comercial nao tem encarregado. A
+  gravacao ja recusava essas equipes com 422 (`Selecione uma equipe tecnica.`), entao
+  a opcao existia apenas para falhar depois da ordem inteira preenchida.
+- Causa: no ramo tecnico, `handleMeasurementProgrammingSourcesGet` chamava
+  `fetchTeams()` de `programacao-normalizada`. Essa funcao e o catalogo do quadro da
+  Programacao e nao conhece categoria de equipe. O ramo comercial ja recortava por
+  categoria desde a 415; so o tecnico nao tinha recorte nenhum.
+- Correcao: o ramo tecnico intersecta `fetchTeams()` com
+  `fetchTeamIdsByMeasurementMode({ mode: "TECNICA", activeOnly: true })`. A lista
+  cacheada da Programacao continua sendo reaproveitada (nome, encarregado e base nao
+  ganham query nova); entra so a leitura de categoria, que a variante comercial ja
+  fazia.
+- `teamMode.ts` passou a classificar a equipe SO por `teams.team_category_id` ->
+  `team_categories.code`, alinhado a migration 420. Ate aqui o arquivo ainda usava a
+  regra pre-420: atalho por `team_types.name = 'COMERCIAL'` e TECNICA definida por
+  exclusao ("tudo que nao e comercial"). Agora o recorte e POSITIVO dos dois lados --
+  equipe sem categoria resolvivel nao entra em nenhuma das duas telas, em vez de cair
+  na tecnica por omissao.
+- Mesmo recorte, de proposito, nos outros consumidores da funcao: `GET /api/medicao`
+  (listagem), `GET /api/medicao/meta?includeSources=1` (filtros da
+  `Visualizacao Medicao`) e `Dashboard Medicao`. Como `teams.team_category_id` e NOT
+  NULL e a 420 ja realinhou as equipes que eram comerciais so pelo nome do tipo
+  operacional, o conjunto retornado nao muda para dado correto -- muda o criterio.
+- Falha de leitura do catalogo de categorias deixou de virar select vazio: as duas
+  variantes respondem erro da rota. Select vazio e indistinguivel de "nao ha equipe
+  cadastrada", que e o mesmo defeito de dado errado apresentado como certo.
+- Nao entrou nesta tarefa: a Programacao continua oferecendo qualquer equipe ativa no
+  quadro (`fetchTeams` sem recorte). Se uma etapa for programada para equipe
+  COMERCIAL, ela continua chegando em `schedules` sem opcao correspondente no select
+  -- hoje sem efeito visivel, porque o estado `schedules` do PageView e write-only e
+  a gravacao ja barra a equipe.
+- Arquivos alterados: `src/server/modules/medicao/teamMode.ts`,
+  `src/server/modules/medicao/programmingSourcesHandler.ts`,
+  `docs/Tela_Medicao_SaaS.txt`, `docs/Tela_Medicao_Comercial_SaaS.txt` e `TASKS.md`.
 - Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
