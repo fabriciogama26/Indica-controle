@@ -4,9 +4,9 @@ Visao geral
 -----------
 - Ordem de medicao das equipes COMERCIAIS, no mesmo padrao `cadastro + filtros + lista` da tela `Medicao`.
 - Diferenca de negocio em relacao a `Medicao`:
-  - So lista e so aceita equipe com `Tipo de equipe` = `COMERCIAL` (catalogo `team_categories`).
+  - So lista e so aceita equipe cujo `Tipo operacional` (`team_types`) seja `COMERCIAL`, com fallback para `Tipo de equipe` = `COMERCIAL` quando a classificacao opcional estiver preenchida.
   - A equipe comercial nao tem encarregado fixo. Cada ordem carrega os DOIS eletricistas que executaram, escolhidos no cadastro de `Pessoas` (cargo com correspondencia em `ELETRICISTA`).
-  - Os integrantes NAO sao deduzidos da equipe: sao selecionados ordem a ordem. E exatamente por isso que existe o `Tipo de equipe` -- para cadastrar equipe comercial sem vinculo fixo com pessoas.
+  - Os integrantes NAO sao deduzidos da equipe: sao selecionados ordem a ordem. E exatamente por isso que equipe comercial pode existir sem vinculo fixo com pessoas.
   - `Projeto` continua na tela e continua vindo do cadastro de `Projetos`, mas NAO e obrigatorio -- nem em `Com producao`. A equipe comercial atende demanda que nem sempre tem projeto aberto.
   - Campo `Ordem`: texto livre, opcional, sem nenhuma consulta a tabela de projetos. Serve para registrar a referencia da execucao quando nao ha projeto (ou junto com ele).
   - `Processo`, `Hora inicio` e `Hora termino` sao proprios desta tela e OBRIGATORIOS.
@@ -21,7 +21,7 @@ Arquitetura
 - View: `src/modules/dashboard/medicao-comercial/CommercialMeasurementPageView.tsx` (fachada `index.ts`)
 - View compartilhada: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
 - Variantes da tela: `src/modules/dashboard/medicao/variant.ts`
-- Campos dos integrantes: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`
+- Campos dos integrantes por nome/matricula: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`
 - Catalogo de Processo: tabela `measurement_commercial_processes`, servida por `/api/medicao-comercial/meta`. Sem tela de cadastro: nasce semeada pela migration 415 (`Cobrancas`, `Novas_Ligacoes`, `Perdas`) e cresce por SQL.
 - API da tela (todas delegam):
   - `src/app/api/medicao-comercial/route.ts`
@@ -34,7 +34,8 @@ Arquitetura
   - `src/app/api/medicao-comercial/rate-suggestion/route.ts`
 - Handlers compartilhados (regra de negocio):
   - `src/server/modules/medicao/handlers.ts`
-  - `src/server/modules/medicao/routeConfig.ts` (`MeasurementRouteConfig`, categoria da equipe por variante)
+  - `src/server/modules/medicao/routeConfig.ts` (`MeasurementRouteConfig`, modo da equipe por variante)
+  - `src/server/modules/medicao/teamMode.ts` (resolve Comercial por tipo operacional, com fallback de categoria)
   - `src/server/modules/medicao/metaHandler.ts`
   - `src/server/modules/medicao/exportHandler.ts`
   - `src/server/modules/medicao/programmingSourcesHandler.ts`
@@ -68,7 +69,8 @@ Cadastro
   - `Hora termino` (obrigatorio)
 - Regras dos integrantes:
   - Os dois sao obrigatorios em qualquer ordem comercial, inclusive `Sem producao`.
-  - Os dois precisam ser diferentes. O eletricista ja escolhido some da lista do outro campo, mas continua listado no campo em que esta selecionado (senao a edicao de uma ordem salva abriria com o select vazio).
+  - Os dois campos usam `input + datalist` e aceitam escolher por nome ou por `matriculation` do cadastro de Pessoas.
+  - Os dois precisam ser diferentes. O eletricista ja escolhido some das sugestoes do outro campo, mas continua disponivel no campo em que esta selecionado.
   - Precisam estar ativos em `people`, no mesmo tenant, com cargo com correspondencia em `ELETRICISTA`.
   - Validados em tres camadas: formulario, rota (`/api/medicao-comercial`) e RPC `save_project_commercial_measurement_order`.
 - Regras de `Projeto` e `Ordem`:
@@ -109,14 +111,14 @@ Persistencia
   - `(tenant_id, measurement_order_id, person_id)` unico
   - `person_name_snapshot` preserva o nome no momento do salvamento
 - RPC: `save_project_commercial_measurement_order`
-  - Valida categoria da equipe, os dois eletricistas, o Processo ativo do tenant e o intervalo de horario.
+  - Valida que a equipe e comercial pelo tipo operacional, os dois eletricistas, o Processo ativo do tenant e o intervalo de horario.
   - Delega cabecalho e itens para `save_project_measurement_order` em vez de duplicar a regra da Medicao.
   - Regrava os integrantes (`delete` + `insert`) na mesma transacao da chamada.
 - `foreman_name_snapshot` fica vazio na ordem comercial: `resolve_team_foreman_snapshot` devolve `NULL` quando a equipe nao tem encarregado.
 
 Filtros e listagem
 ------------------
-- Mesmos filtros da `Medicao`, com as listas de `Equipe` restritas a categoria `COMERCIAL`.
+- Mesmos filtros da `Medicao`, com as listas de `Equipe` restritas ao modo comercial resolvido por tipo operacional.
 - Nao existe filtro por `Ordem`: o campo e livre e nasceu como referencia de leitura. Se virar criterio de busca, o indice parcial ja existe.
 - A coluna que na `Medicao` mostra `Encarregado` aqui mostra `Integrantes` (`Eletricista 1 / Eletricista 2`).
 - Exportacao CSV usa o prefixo `ordens_medicao_comercial_`.
@@ -139,7 +141,8 @@ Validacao manual
 - Salvar outra `Com producao` COM projeto e sem `Ordem`; conferir que continua funcionando (taxa sugerida, badges de uso de atividade).
 - Digitar um codigo de projeto inexistente e confirmar que o salvamento e recusado, mesmo com o campo opcional.
 - Salvar uma ordem `Com producao` com dois eletricistas; conferir a coluna `Integrantes` na lista e no detalhe.
-- Editar essa ordem e confirmar que os dois selects reabrem com os integrantes gravados.
+- Editar essa ordem e confirmar que os dois campos reabrem com os integrantes gravados.
+- Digitar a matricula de um eletricista ativo e confirmar que o campo seleciona a pessoa correta.
 - Tentar salvar com o mesmo eletricista nos dois campos e confirmar o bloqueio.
 - Salvar uma segunda ordem em seguida (sem recarregar a tela) e confirmar que os integrantes foram limpos pelo reset do formulario.
 - Abrir `Medicao` (tecnica) e confirmar que as ordens comerciais NAO aparecem, e vice-versa.
@@ -158,3 +161,18 @@ Pendencia conhecida
 - Decisao tomada: nao mexer nesses consumidores agora. A direcao acordada e dar a eles um FILTRO `Tecnica`/`Comercial`, em tarefa propria. Registrado tambem em `TASKS.md`.
 - Nao duplicar `save_project_measurement_order`: a RPC comercial e um envelope que delega.
 - Toda query da tela continua filtrando por `tenant_id` no servidor, com RLS como ultima barreira.
+
+Atualizacao 2026-09-08 - Eletricistas por matricula e equipe comercial pelo operacional
+--------------------------------------------------------------------------------------
+- `Eletricista 1` e `Eletricista 2` passaram a usar busca digitavel (`input + datalist`), aceitando nome ou matricula (`people.matriculation`) do cadastro de Pessoas.
+- `/api/medicao-comercial/meta` retorna `matriculation` junto de `id` e `name` para eletricistas ativos do tenant.
+- As equipes comerciais da tela agora sao resolvidas pelo `Tipo operacional = COMERCIAL`, com fallback para `Tipo de equipe = COMERCIAL` quando essa classificacao opcional existir.
+- Arquivos alterados: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`,
+  `src/modules/dashboard/medicao/MeasurementPageView.tsx`,
+  `src/modules/dashboard/medicao/variant.ts`,
+  `src/server/modules/medicao/teamMode.ts`,
+  `src/server/modules/medicao/metaHandler.ts`,
+  `src/server/modules/medicao/programmingSourcesHandler.ts`,
+  `src/server/modules/medicao/list.ts`,
+  `src/server/modules/medicao/routeConfig.ts` e
+  `supabase/migrations/415_team_categories_and_commercial_measurement.sql`.

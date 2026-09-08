@@ -21,7 +21,7 @@ export async function saveTeamViaRpc(params: {
   serviceCenterId: string;
   stockCenterId: string | null;
   teamTypeId: string;
-  teamCategoryId: string;
+  teamCategoryId: string | null;
   foremanId: string | null;
   supervisorId: string | null;
   changes?: Record<string, HistoryChange>;
