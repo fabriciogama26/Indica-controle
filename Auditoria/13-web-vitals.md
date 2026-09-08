@@ -1,8 +1,20 @@
 # Web Vitals — a dimensão de tempo de tela
 
-Dados do Vercel Speed Insights, janela **12 a 18 de agosto de 2026**. É a medição que faltava para decidir as telas: o Nível B mediu **custo de banco**, isto mede **o que o usuário espera**.
+Dados do Vercel Speed Insights. É a medição que faltava para decidir as telas: o Nível B mediu **custo de banco**, isto mede **o que o usuário espera**.
 
 > Ver a distinção em [`06`](06-plano-de-acao.md), seção "Latência ≠ custo de banco". Uma tela pode custar 1% do banco e ainda assim demorar 6 segundos.
+
+## Janelas medidas
+
+| Janela | Device | Onde está neste documento |
+|---|---|---|
+| **12 a 18 de agosto de 2026** | não registrado na coleta | seções 1 a 5 — diagnóstico original, LCP e CLS por rota |
+| **1 a 7 de setembro de 2026** | Desktop, Production | seção 7 — reavaliação da Fase W3 |
+
+Duas frentes que estavam abertas em agosto foram fechadas e estão nas seções novas:
+
+- **Seção 6 — W2.1 medido.** O JS por rota. O tronco comum é **84% do payload da rota mais pesada** e a amplitude entre a maior e a menor rota é de **43,8 kB gzip** — o que derruba o bundle por rota como explicação do LCP e responde o W2.3.
+- **Seção 7 — Fase W3.** A amostra saiu de 2–14 para 15–115 por rota, o CLS caiu de 0,14 para **0,06** (a Fase W1 funcionou) e o LCP **piorou**, de 2,55 s para **3,78 s**.
 
 ---
 
@@ -72,7 +84,7 @@ Também não consegui medir o bundle por rota: o `build-manifest` deste projeto 
 
 #### O gate de sessão
 
-[`AppShell.tsx:474`](../src/components/layout/AppShell.tsx#L474):
+[`AppShell.tsx:511`](../src/components/layout/AppShell.tsx#L511):
 
 ```tsx
 if (isLoading || !session) {
@@ -85,7 +97,7 @@ if (isLoading || !session) {
 ```
 
 **O shell inteiro está atrás do carregamento da sessão** — barra lateral, logo, cabeçalho e conteúdo.
-As duas variáveis vêm de `useAuth` ([`AppShell.tsx:419`](../src/components/layout/AppShell.tsx#L419)),
+As duas variáveis vêm de `useAuth` ([`AppShell.tsx:449`](../src/components/layout/AppShell.tsx#L449)),
 que resolve via `fetch("/api/auth/session-access")` com `cache: "no-store"`
 ([`auth.service.ts:52`](../src/services/auth/auth.service.ts#L52)).
 
@@ -256,23 +268,26 @@ Hoje as três têm 4–8 amostras; ver seção 1.
 
 ### Fase W2 — LCP (caminho crítico de render, não banco)
 
-W2.2 já está respondido — ver 2.2. O gate está em [`AppShell.tsx:474`](../src/components/layout/AppShell.tsx#L474).
+W2.2 e W2.1 estão respondidos — ver 2.2 e a **seção 6**. O gate está em [`AppShell.tsx:511`](../src/components/layout/AppShell.tsx#L511).
 
-| # | Item |
-|---|---|
-| W2.1 | Medir o **JS por rota** — `@next/bundle-analyzer`, ou o painel `Network` numa carga fria de `/medicao`. Ainda não medido. |
-| W2.2 | ~~Confirmar quando o shell pinta~~ — 🟢 confirmado: só depois de JS + hidratação + `/api/auth/session-access` |
-| W2.3 | Decidir a correção, com os dois números na mão: quanto do LCP é bundle e quanto é o gate |
+| # | Item | Estado |
+|---|---|---|
+| W2.1 | Medir o **JS por rota** | 🟢 medido em 2026-09-08 — seção 6. Tronco comum 233,6 kB gzip; amplitude entre rotas 43,8 kB gzip |
+| W2.2 | ~~Confirmar quando o shell pinta~~ | 🟢 só depois de JS + hidratação + `/api/auth/session-access` |
+| W2.3 | Decidir a correção, com os dois números na mão | 🟢 decidido — seção 6.3: o alvo é o gate de sessão, não o code splitting por rota |
+| W2.4 | Executar a correção do gate | ⚪ não iniciado — proposta em 6.4, ainda **não** validada em campo |
 
 **Não iniciar W2.3 antes de W2.1.** Foi exatamente o erro que a auditoria de banco cometeu ao priorizar o `dash-estoque`
 por `calls` sem ter o ranking por custo. Saber *onde* está o gate não diz *qual fração* do tempo ele custa.
+Regra cumprida: W2.3 só foi decidido depois de a medição da seção 6 existir.
 
 Ordem acordada: atacar o caminho crítico de layout/auth/providers **antes** de qualquer consulta. Mexer em API ou RPC
 não move o LCP, porque o LCP acontece antes de a página buscar dados.
 
 ### Fase W3 — reavaliar com amostra maior
 
-Voltar aos números quando as rotas ruins tiverem **≥ 20 amostras**. Hoje `/mapa-programacao` e `/dashboard-medicao` têm 2.
+🟢 **Executada em 2026-09-08 — resultado na seção 7.** O critério de entrada (≥ 20 amostras) foi atingido em 10 das 11 rotas
+do ranking novo; em agosto `/mapa-programacao` e `/dashboard-medicao` tinham 2.
 
 ---
 
@@ -281,8 +296,193 @@ Voltar aos números quando as rotas ruins tiverem **≥ 20 amostras**. Hoje `/ma
 | Frente | Métrica | Estado |
 |---|---|---|
 | Custo de banco | `pg_stat_statements` | 🟢 Nível B fechado — fila: `login_audit` → `get_programming_week_summary` |
-| **Tempo de tela** | **Web Vitals** | 🟡 **este documento** — CLS com causa confirmada, LCP em investigação |
+| **Tempo de tela** | **Web Vitals** | 🟡 **este documento** — CLS corrigido e confirmado em campo (0,06); LCP com causa e alvo decididos, correção não iniciada |
 
 As duas frentes são **independentes**. Corrigir o CLS não muda o banco; corrigir o `login_audit` não muda o LCP. Podem correr em paralelo.
 
 E vale registrar: o `dash-estoque`, que a auditoria de banco tirou da fila, **não aparece entre as piores nem em LCP nem em CLS**. A decisão de tirá-lo da fila continua correta pelas duas medições independentes.
+
+---
+
+## 6. W2.1 — o JS por rota, medido
+
+Coleta de **2026-09-08**, sobre `npm run build` do commit `6afcc1b`.
+Reexecutável: [`scripts/measure-route-bundles-readonly.mjs`](../scripts/measure-route-bundles-readonly.mjs).
+
+> **Ponteiros de linha atualizados nesta revisão.** O gate de sessão descrito em 2.2 continua existindo e inalterado
+> na forma, mas o arquivo cresceu desde agosto: `AppShell.tsx` foi de 474 para **511** (o `if (isLoading || !session)`)
+> e de 419 para **449** (o `useAuth()`). Todas as citações deste documento foram corrigidas para as linhas atuais.
+> Nenhum achado muda — apenas o endereço.
+
+### 6.1 Por que a medição tinha falhado antes
+
+Agosto registrou "o `build-manifest` devolve o mesmo conjunto compartilhado (401 kB) para todas". Duas causas:
+
+1. **`.next/build-manifest.json` é o manifesto do Pages Router.** Num app App Router ele não descreve as rotas de `app/` — devolve o tronco comum e nada mais. A fonte certa seria `app-build-manifest.json`, que **este build não emite**: o projeto usa Next 16 com Turbopack (`next build` imprime `▲ Next.js 16.3.3 (Turbopack)`).
+2. **O `next build` com Turbopack não imprime mais a tabela de "First Load JS" por rota.** A saída lista as rotas sem as colunas de tamanho. Era daí que o número costumava sair.
+
+A fonte que funciona é o **HTML pré-renderizado de cada rota** em `.next/server/app/<rota>.html`: as 170 páginas são estáticas (`○`), e os `/_next/static/*.js` que cada HTML referencia são exatamente os chunks que o navegador busca antes de hidratar. É o que o script mede, somando bytes em disco e em gzip.
+
+> Ressalva de método: a Vercel serve com **brotli**, tipicamente 15–20% menor que gzip. Os números abaixo são, portanto, um **teto** do que trafega — o que só reforça a conclusão, nunca a enfraquece.
+
+### 6.2 O resultado
+
+**59 rotas reais** (fora `_not-found` e `_global-error`, que não carregam os mesmos providers).
+
+| | gzip | cru |
+|---|---|---|
+| **Tronco comum** — 9 chunks presentes em **todas** as rotas | **233,6 kB** | 790,0 kB |
+| Rota mais pesada (`/programacao-normalizada`) | 277,8 kB | 971,6 kB |
+| Rota mais leve (`/`) | 234,1 kB | 790,8 kB |
+| **Amplitude entre a maior e a menor rota** | **43,8 kB** | 180,8 kB |
+
+**O tronco comum é 84,1% do payload da rota mais pesada.** O code splitting por rota já existe e já funciona; o que ele separa é pequeno.
+
+Composição do tronco (`--baseline`):
+
+| Chunk | gzip | cru | Biblioteca |
+|---|---|---|---|
+| `1mkbuudhndal5.js` | 69,7 kB | 223,6 kB | `react-dom` |
+| `1qg-zjzdujtg1.js` | **46,5 kB** | 179,6 kB | **`@supabase/supabase-js`** |
+| `2e_32g43rjawq.js` | 41,6 kB | 151,8 kB | — |
+| `0cz1d0mv5g_q7.js` | 38,6 kB | 110,0 kB | — |
+| outros 5 | 37,2 kB | 125,0 kB | — |
+
+`react-dom` + `@supabase/supabase-js` somam **116,2 kB gzip, ~50% do tronco**. O `supabase-js` entra pela cadeia
+[`AuthContext.tsx`](../src/context/AuthContext.tsx) → [`src/lib/supabase/client.ts`](../src/lib/supabase/client.ts),
+que está no layout raiz — ou seja, **toda rota embarca o cliente do Supabase**, inclusive `/` e `/login`.
+
+### 6.3 W2.3 — a decisão, agora com o número
+
+A pergunta era: quanto do LCP é bundle e quanto é o gate de sessão. Resposta:
+
+| | `/login` | `/medicao` | diferença |
+|---|---|---|---|
+| Bundle (gzip) | 241,3 kB | 268,7 kB | **27,4 kB** |
+| LCP (agosto) | 1,02 s | 4,61 s | **3,59 s** |
+
+**27,4 kB gzip não produzem 3,59 s.** Mesmo a 1 Mbps efetivo — pessimista para o parque real — são ~0,22 s de
+transferência, menos de 6% da diferença; parse e execução do delta acrescentam dezenas de milissegundos, não segundos.
+
+O caso que fecha o argumento é um experimento natural que o próprio código oferece:
+
+| Rota | Bundle gzip | RES (1–7 set) |
+|---|---|---|
+| `/medicao` | 268,7 kB | 81 |
+| `/medicao-comercial` | 268,8 kB | 87 |
+
+[`CommercialMeasurementPageView`](../src/modules/dashboard/medicao-comercial/CommercialMeasurementPageView.tsx) **é o
+mesmo `MeasurementPageView` com uma prop de variante** — os bundles diferem em 0,1 kB. Ainda assim o RES difere em
+6 pontos. Bundle idêntico não pode explicar RES diferente.
+
+E no conjunto das 11 rotas do ranking de setembro, a relação entre tamanho de bundle e RES **não aparece**:
+
+```
+Pearson  RES x bundle_gzip : 0,091
+Spearman RES x bundle_gzip : 0,145
+faixa de bundle: 25,5 kB gzip   |   faixa de RES: 20 pontos
+```
+
+Correlação nula e de sinal invertido (bundle maior → RES marginalmente melhor), o que é ruído.
+**Ressalva honesta:** com n = 11 e apenas 25,5 kB de dispersão, este teste não teria poder para detectar um efeito
+pequeno mesmo se ele existisse. Ele não *prova* que o bundle é irrelevante — quem sustenta isso é o par
+`/medicao` × `/medicao-comercial` e a aritmética dos 27,4 kB. A correlação apenas não contradiz.
+
+**Veredito do W2.3: o alvo é o gate de sessão, não o code splitting por rota.** Dividir bundle por rota disputa
+43,8 kB gzip no melhor caso absoluto — e o LCP a bater está em segundos.
+
+### 6.4 W2.4 — o que atacar, em ordem de retorno
+
+⚠️ **Nada disto foi aplicado.** É proposta, não entrega, e cada item precisa da sua própria tarefa e validação.
+
+| # | Alvo | Por quê | Risco |
+|---|---|---|---|
+| 1 | **Não esconder o shell atrás da sessão** — [`AppShell.tsx:511`](../src/components/layout/AppShell.tsx#L511) devolver a moldura (logo, barra lateral, cabeçalho) imediatamente e gatear só o conteúdo | O elemento de LCP medido **é a moldura**. Pintá-la sem esperar a rede tira o round-trip inteiro do caminho crítico | Médio — mexe em fluxo de auth; a moldura não pode exibir dado de tenant antes de a sessão resolver |
+| 2 | **Resolver a sessão no servidor**, em vez de `fetch("/api/auth/session-access")` com `cache: "no-store"` no cliente ([`auth.service.ts:52`](../src/services/auth/auth.service.ts#L52)) | Elimina a ida à rede em série depois da hidratação | Alto — redesenho do caminho de sessão, multi-tenant |
+| 3 | **Tirar `@supabase/supabase-js` do tronco** (46,5 kB gzip em toda rota) | Único item que rende em **todas** as 59 rotas de uma vez | Médio — exige confirmar que o cliente de browser só é necessário sob demanda |
+
+O item 1 é o de melhor relação retorno/risco e ataca a causa medida. O item 3 é o maior ganho de bytes disponível —
+e ainda assim vale lembrar que 46,5 kB gzip valem centenas de milissegundos, não os 3 s do gap.
+
+---
+
+## 7. Fase W3 — reavaliação com a janela de 1 a 7 de setembro de 2026
+
+Captura do Speed Insights em **Desktop / Production**, "Last 7 Days", lida em 2026-09-08.
+
+### 7.1 Agregado
+
+| Métrica | Agosto | Setembro | Estado |
+|---|---|---|---|
+| **RES** | não registrado | **87** | 🟡 abaixo de 90 |
+| FCP | não registrado | **0,77 s** | 🟢 |
+| **LCP** | 2,55 s | **3,78 s** | 🟡 **piorou** |
+| INP | não registrado | **128 ms** | 🟢 |
+| **CLS** | 0,14 | **0,06** | 🟢 **caiu 57%** |
+
+**O CLS valida a Fase W1.** O aceite de campo que estava pendente desde 19/08 passou no agregado: 0,06 está abaixo
+de 0,1. Ressalva: esta captura traz RES por rota, **não** CLS por rota — o aceite *por rota* segue não verificado.
+
+**O INP nunca havia sido medido** e está verde (128 ms). Não gera ação.
+
+### 7.2 O FCP é a nova evidência do gate
+
+FCP **0,77 s** com LCP **3,78 s**: três segundos entre a primeira pintura e a maior pintura.
+
+Isso é a assinatura exata do gate descrito em 2.2. Algo pinta rápido — o card `Carregando sessao...` de
+[`AppShell.tsx:511`](../src/components/layout/AppShell.tsx#L511) — e a moldura real só aparece três segundos depois,
+quando a sessão resolve. Em agosto a hipótese vinha do seletor do elemento de LCP; agora o intervalo FCP→LCP a
+confirma pelo agregado, por um caminho independente.
+
+Também explica por que o LCP piorou enquanto o CLS melhorou: são causas distintas, e a W1 nunca tocou no gate.
+
+### 7.3 RES por rota
+
+Todas as 11 rotas abaixo de 90.
+
+| Rota | Amostras | RES | Bundle gzip (§6) | Já auditada em agosto? |
+|---|---|---|---|---|
+| `/dashboard-equipes` | 24 | **69** | 256,9 kB | não |
+| `/programacao-normalizada` | 80 | **70** | **277,8 kB** (maior) | sim — LCP 2,67 s, CLS 0,24 |
+| `/projetos` | 46 | 71 | 268,5 kB | não |
+| `/atividades` | 44 | 71 | 259,6 kB | não |
+| `/permissoes` | 21 | 73 | 252,3 kB | não |
+| `/composicao-equipe` | 38 | 75 | 260,3 kB | sim — LCP 5,47 s, CLS 0,25 → W1 aplicada |
+| `/entrada` | 15 | 76 | 266,7 kB | sim — LCP 2,55 s, CLS 0,11 |
+| `/meta` | 25 | 77 | 256,1 kB | não |
+| `/medicao` | 115 | 81 | 268,7 kB | sim — LCP 4,61 s |
+| `/medicao-comercial` | 103 | 87 | 268,8 kB | não |
+| `/equipes` | 65 | **89** | 261,7 kB | não |
+
+**Sete das onze rotas nunca foram auditadas** — o ranking de agosto olhava outro conjunto.
+
+### 7.4 O que NÃO é comparável entre as duas janelas
+
+Registrado para o documento não sugerir uma comparação que os dados não sustentam:
+
+1. **Métricas diferentes por rota.** Agosto tem LCP e CLS por rota; setembro tem **RES** por rota, que é um índice
+   composto (FCP + LCP + CLS + INP) ponderado por amostra. A coluna "RES" e a coluna "LCP" não se comparam.
+2. **Device diferente.** Esta captura é explicitamente **Desktop**; a coleta de agosto não registrou o filtro de device.
+   Parte da variação de 2,55 s → 3,78 s pode ser mix de dispositivo, não regressão de código. **Não tratar a piora do
+   LCP como regressão confirmada** sem repetir a leitura com o mesmo filtro.
+3. **Rotas ausentes.** `/mapa-programacao`, `/dashboard-medicao`, `/requisicao-atendimento`, `/cronograma-solicitacoes`,
+   `/login` e `/home` não aparecem no ranking de setembro. Ausência aqui é falta de tráfego na janela, não melhora.
+
+### 7.5 O que a amostra maior corrigiu
+
+O critério de entrada da W3 era ≥ 20 amostras. Foi atingido em **10 das 11** rotas — `/entrada` tem 15.
+Em agosto, `/mapa-programacao` e `/dashboard-medicao` tinham 2 e `/entrada` tinha 1.
+
+A ressalva da seção 1 ("P75 sobre 2 amostras não é P75") **deixa de valer para as rotas desta tabela**, e passa a
+valer o oposto: os números de agosto para `/mapa-programacao` (6,72 s) e `/dashboard-medicao` (5,13 s), que
+orientaram a priorização, continuam apoiados em 2 amostras cada e **nunca foram confirmados**. Não usá-los para
+ordenar trabalho novo.
+
+### 7.6 Fila sugerida a partir desta janela
+
+| # | Item | Justificativa |
+|---|---|---|
+| 1 | **W2.4 item 1** — soltar a moldura do gate de sessão | Ataca o intervalo FCP→LCP de 3 s, que é global; nenhuma rota escapa dele |
+| 2 | **W1.6** — CLS de `/programacao-normalizada` | Ficou de fora da W1 e a rota é a 2ª pior de RES, com o maior bundle |
+| 3 | **Diagnosticar `/dashboard-equipes`** (RES 69, o pior) | Nunca auditada, bundle mediano — a causa não está nos bytes |
+| 4 | Repetir a captura com filtro **Mobile** e por rota em LCP/CLS | Fecha as lacunas 1 e 2 da seção 7.4 |

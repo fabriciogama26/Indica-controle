@@ -25,7 +25,7 @@ Todo artefato `.md` de auditoria de performance vive aqui. Nada nesta pasta alte
 | [`10-cutover-programacao.md`](10-cutover-programacao.md) | A/D | O corte da Programação Normalizada — estado das fases e os passos C0 a C8 |
 | [`11-infraestrutura.md`](11-infraestrutura.md) | B | **Evidência de infraestrutura** — CPU/Disk I/O em 82–86% com banco de 90 MB; marco T0 do before/after |
 | [`12-nivel-b-ranking-custo.md`](12-nivel-b-ranking-custo.md) | B | **Ranking por custo — fecha o Nível B.** ~32% do banco é introspecção do Supabase Studio; o dash-estoque custa ~1% |
-| [`13-web-vitals.md`](13-web-vitals.md) | — | **Tempo de tela** (Vercel Speed Insights) — LCP e CLS por rota. CLS: causa corrigida (fase W1, 2026-08-19). LCP: causa confirmada no gate de sessao do `AppShell` — nao e banco nem numero de consultas |
+| [`13-web-vitals.md`](13-web-vitals.md) | — | **Tempo de tela** (Vercel Speed Insights), duas janelas: 12-18/ago e 1-7/set. CLS corrigido e confirmado em campo (0,14 -> 0,06, fase W1). LCP: causa no gate de sessao do `AppShell`, e o W2.1 finalmente medido (2026-09-08) — o tronco comum e 84% do payload de toda rota, entao o bundle por rota nao explica o LCP |
 | [`16-unused-index-supabase-advisor.md`](16-unused-index-supabase-advisor.md) | B | Runbook pos-399 para auditar `unused_index`: 438 alertas INFO, 366 `idx_fk_*`, sem remocao automatica |
 | [`baseline/`](baseline/) | B | Capturas brutas de `scripts/perf-baseline-capture.sql`, uma por arquivo |
 
@@ -59,6 +59,18 @@ Argumento opcional para focar um módulo:
 ```
 /auditoria-performance medicao
 ```
+
+### Frente de Web Vitals
+
+A dimensão de **tempo de tela** ([`13`](13-web-vitals.md)) não roda pelo comando acima — os dados vêm do painel Speed Insights da Vercel. A parte medível localmente é o JS por rota:
+
+```
+npm run build
+node scripts/measure-route-bundles-readonly.mjs
+node scripts/measure-route-bundles-readonly.mjs --baseline
+```
+
+Somente leitura, sobre o build já gerado — não toca banco, rede nem `src/`.
 
 ---
 
