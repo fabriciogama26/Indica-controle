@@ -1,17 +1,11 @@
 "use client";
 
-// Os dois eletricistas da ordem de Medicao Comercial.
-//
-// Fica em componente proprio para que a variante comercial nao engorde o
-// PageView da Medicao, que ja esta acima do teto de linhas do CLAUDE.md.
-//
-// Os integrantes NAO sao deduzidos da equipe: sao escolhidos a cada ordem a
-// partir do cadastro de Pessoas (cargo Eletricista), que e a razao de existir a
-// categoria COMERCIAL -- equipe comercial nao tem vinculo fixo com pessoas.
+import { useEffect, useMemo, useState } from "react";
 
 export type CommercialElectricianOption = {
   id: string;
   name: string;
+  matriculation?: string | null;
 };
 
 export type CommercialMembersValue = {
@@ -42,7 +36,34 @@ export function validateCommercialMembers(value: CommercialMembersValue) {
   return null;
 }
 
-function MemberSelect(props: {
+function normalizeLookup(value: string | null | undefined) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function electricianOptionLabel(item: CommercialElectricianOption) {
+  const matriculation = String(item.matriculation ?? "").trim();
+  return matriculation ? `${matriculation} - ${item.name}` : item.name;
+}
+
+function findElectricianOption(input: string, electricians: CommercialElectricianOption[]) {
+  const normalized = normalizeLookup(input);
+  if (!normalized) {
+    return null;
+  }
+
+  return electricians.find((item) => {
+    const label = normalizeLookup(electricianOptionLabel(item));
+    const name = normalizeLookup(item.name);
+    const matriculation = normalizeLookup(item.matriculation);
+    return item.id === input || label === normalized || name === normalized || matriculation === normalized;
+  }) ?? null;
+}
+
+function MemberInput(props: {
   label: string;
   selected: string;
   otherSelected: string;
@@ -51,24 +72,48 @@ function MemberSelect(props: {
   fieldClassName: string;
   disabled?: boolean;
 }) {
+  const availableElectricians = useMemo(
+    () => props.electricians.filter((item) => item.id === props.selected || item.id !== props.otherSelected),
+    [props.electricians, props.otherSelected, props.selected],
+  );
+  const selectedOption = props.electricians.find((item) => item.id === props.selected) ?? null;
+  const selectedLabel = selectedOption ? electricianOptionLabel(selectedOption) : "";
+  const [search, setSearch] = useState("");
+  const listId = `medicao-comercial-${props.label.toLowerCase().replace(/\s+/g, "-")}-list`;
+
+  useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (active) {
+        setSearch(selectedLabel);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedLabel]);
+
   return (
     <label className={props.fieldClassName}>
       <span>
         {props.label} <span className="requiredMark">*</span>
       </span>
-      <select value={props.selected} onChange={(event) => props.onSelect(event.target.value)} disabled={props.disabled}>
-        <option value="">Selecione</option>
-        {props.electricians
-          // O ja escolhido no outro campo some daqui, mas continua listado
-          // quando e o valor deste campo — senao a edicao de uma ordem salva
-          // abriria com o select vazio.
-          .filter((item) => item.id === props.selected || item.id !== props.otherSelected)
-          .map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-      </select>
+      <input
+        value={search}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          setSearch(nextValue);
+          props.onSelect(findElectricianOption(nextValue, availableElectricians)?.id ?? "");
+        }}
+        list={listId}
+        placeholder="Digite matricula ou nome"
+        disabled={props.disabled}
+      />
+      <datalist id={listId}>
+        {availableElectricians.map((item) => (
+          <option key={item.id} value={electricianOptionLabel(item)} />
+        ))}
+      </datalist>
     </label>
   );
 }
@@ -82,7 +127,7 @@ export function CommercialMembersFields({
 }: CommercialMembersFieldsProps) {
   return (
     <>
-      <MemberSelect
+      <MemberInput
         label="Eletricista 1"
         selected={value.employee1Id}
         otherSelected={value.employee2Id}
@@ -91,7 +136,7 @@ export function CommercialMembersFields({
         fieldClassName={fieldClassName}
         disabled={disabled}
       />
-      <MemberSelect
+      <MemberInput
         label="Eletricista 2"
         selected={value.employee2Id}
         otherSelected={value.employee1Id}

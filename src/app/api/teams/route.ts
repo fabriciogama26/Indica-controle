@@ -37,10 +37,8 @@ import {
   buildForemanMap,
   buildTeamCategoryMap,
   buildTeamTypeMap,
-  isCommercialTeamCategory,
-  isTechnicalTeamCategory,
   normalizePlate,
-  TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE,
+  shouldTreatAsCommercialTeam,
   type AppUserRow,
   type CreateTeamPayload,
   type HistoryChange,
@@ -349,7 +347,7 @@ export async function GET(request: NextRequest) {
         teamTypeName: teamTypeMap.get(row.team_type_id) ?? "Nao identificado",
         teamCategoryId: row.team_category_id,
         teamCategoryCode: teamCategoryMap.get(row.team_category_id ?? "")?.code ?? "",
-        teamCategoryName: teamCategoryMap.get(row.team_category_id ?? "")?.name ?? "Nao identificado",
+        teamCategoryName: row.team_category_id ? teamCategoryMap.get(row.team_category_id)?.name ?? "Nao identificado" : "",
         foremanId: row.foreman_person_id,
         foremanName: row.foreman_person_id ? foremanMap.get(row.foreman_person_id) ?? "Nao identificado" : "Sem encarregado",
         supervisorId: row.supervisor_person_id,
@@ -434,12 +432,12 @@ export async function POST(request: NextRequest) {
       serviceCenterId: normalizeText(body.serviceCenterId),
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
-      teamCategoryId: normalizeText(body.teamCategoryId),
+      teamCategoryId: normalizeText(body.teamCategoryId) || null,
       foremanId: normalizeText(body.foremanId) || null,
       supervisorId: normalizeText(body.supervisorId) || null,
     };
 
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.teamCategoryId) {
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
 
@@ -450,24 +448,28 @@ export async function POST(request: NextRequest) {
 
     const teamType = await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId);
     if (!teamType) {
+      return NextResponse.json({ message: "Tipo operacional invalido para o tenant atual." }, { status: 422 });
+    }
+
+    const teamCategory = input.teamCategoryId
+      ? await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId)
+      : null;
+    if (input.teamCategoryId && !teamCategory) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
     }
 
-    const teamCategory = await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId);
-    if (!teamCategory) {
-      return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
-    }
+    const isCommercialTeam = shouldTreatAsCommercialTeam({ teamType, teamCategory });
 
-    if (teamType.team_category_id !== input.teamCategoryId) {
-      return NextResponse.json({ message: TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE }, { status: 422 });
-    }
-
-    if (isTechnicalTeamCategory(teamCategory) && !input.foremanId) {
+    if (!isCommercialTeam && !input.foremanId) {
       return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });
     }
 
-    if (isCommercialTeamCategory(teamCategory) && !input.supervisorId) {
+    if (isCommercialTeam && !input.supervisorId) {
       return NextResponse.json({ message: "Supervisor e obrigatorio para equipe comercial." }, { status: 400 });
+    }
+
+    if (isCommercialTeam) {
+      input.foremanId = null;
     }
 
     const foreman = input.foremanId ? await fetchForemanById(supabase, appUser.tenant_id, input.foremanId) : null;
@@ -558,7 +560,7 @@ export async function PUT(request: NextRequest) {
       serviceCenterId: normalizeText(body.serviceCenterId),
       stockCenterId: normalizeText(body.stockCenterId) || null,
       teamTypeId: normalizeText(body.teamTypeId),
-      teamCategoryId: normalizeText(body.teamCategoryId),
+      teamCategoryId: normalizeText(body.teamCategoryId) || null,
       foremanId: normalizeText(body.foremanId) || null,
       supervisorId: normalizeText(body.supervisorId) || null,
     };
@@ -571,7 +573,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: "Atualize a lista antes de editar a equipe." }, { status: 400 });
     }
 
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.teamCategoryId) {
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId) {
       return NextResponse.json({ message: "Preencha todos os campos obrigatorios da equipe." }, { status: 400 });
     }
 
@@ -606,10 +608,12 @@ export async function PUT(request: NextRequest) {
     }
     const nextTeamType = await fetchTeamTypeById(supabase, appUser.tenant_id, input.teamTypeId);
     if (!nextTeamType) {
-      return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
+      return NextResponse.json({ message: "Tipo operacional invalido para o tenant atual." }, { status: 422 });
     }
-    const nextTeamCategory = await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId);
-    if (!nextTeamCategory) {
+    const nextTeamCategory = input.teamCategoryId
+      ? await fetchTeamCategoryById(supabase, appUser.tenant_id, input.teamCategoryId)
+      : null;
+    if (input.teamCategoryId && !nextTeamCategory) {
       return NextResponse.json({ message: "Tipo de equipe invalido para o tenant atual." }, { status: 422 });
     }
     const nextStockCenter = input.stockCenterId
@@ -628,16 +632,18 @@ export async function PUT(request: NextRequest) {
       ? await fetchSupervisorById(supabase, appUser.tenant_id, input.supervisorId)
       : null;
 
-    if (nextTeamType.team_category_id !== input.teamCategoryId) {
-      return NextResponse.json({ message: TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE }, { status: 422 });
-    }
+    const isCommercialTeam = shouldTreatAsCommercialTeam({ teamType: nextTeamType, teamCategory: nextTeamCategory });
 
-    if (isTechnicalTeamCategory(nextTeamCategory) && !input.foremanId) {
+    if (!isCommercialTeam && !input.foremanId) {
       return NextResponse.json({ message: "Encarregado e obrigatorio para equipe tecnica." }, { status: 400 });
     }
 
-    if (isCommercialTeamCategory(nextTeamCategory) && !input.supervisorId) {
+    if (isCommercialTeam && !input.supervisorId) {
       return NextResponse.json({ message: "Supervisor e obrigatorio para equipe comercial." }, { status: 400 });
+    }
+
+    if (isCommercialTeam) {
+      input.foremanId = null;
     }
 
     if (input.foremanId && !nextForeman) {
@@ -669,7 +675,7 @@ export async function PUT(request: NextRequest) {
     addChange(changes, "serviceCenterName", currentServiceCenter?.name ?? null, nextServiceCenter.name);
     addChange(changes, "stockCenterName", currentStockCenter?.name ?? null, nextStockCenter?.name ?? null);
     addChange(changes, "teamTypeName", currentTeamType?.name ?? null, nextTeamType.name);
-    addChange(changes, "teamCategoryName", currentTeamCategory?.name ?? null, nextTeamCategory.name);
+    addChange(changes, "teamCategoryName", currentTeamCategory?.name ?? null, nextTeamCategory?.name ?? null);
     addChange(changes, "foremanName", currentForeman?.name ?? null, nextForeman?.name ?? null);
     addChange(changes, "supervisorName", currentSupervisor?.name ?? null, nextSupervisor?.name ?? null);
 
@@ -765,14 +771,18 @@ export async function PATCH(request: NextRequest) {
         return buildConcurrencyConflictResponse("A permuta exige duas equipes ativas.", "RECORD_INACTIVE");
       }
 
-      const [sourceTeamCategory, targetTeamCategory] = await Promise.all([
+      const [sourceTeamType, targetTeamType, sourceTeamCategory, targetTeamCategory] = await Promise.all([
+        fetchTeamTypeById(supabase, appUser.tenant_id, sourceTeam.team_type_id),
+        fetchTeamTypeById(supabase, appUser.tenant_id, targetTeam.team_type_id),
         sourceTeam.team_category_id ? fetchTeamCategoryById(supabase, appUser.tenant_id, sourceTeam.team_category_id) : null,
         targetTeam.team_category_id ? fetchTeamCategoryById(supabase, appUser.tenant_id, targetTeam.team_category_id) : null,
       ]);
+      const sourceIsCommercial = shouldTreatAsCommercialTeam({ teamType: sourceTeamType, teamCategory: sourceTeamCategory });
+      const targetIsCommercial = shouldTreatAsCommercialTeam({ teamType: targetTeamType, teamCategory: targetTeamCategory });
 
       if (
-        !isTechnicalTeamCategory(sourceTeamCategory)
-        || !isTechnicalTeamCategory(targetTeamCategory)
+        sourceIsCommercial
+        || targetIsCommercial
         || !sourceTeam.foreman_person_id
         || !targetTeam.foreman_person_id
       ) {
@@ -887,4 +897,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ message: "Falha ao atualizar status da equipe." }, { status: 500 });
   }
 }
-

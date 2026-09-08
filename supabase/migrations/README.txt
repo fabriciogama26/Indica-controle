@@ -1448,8 +1448,9 @@ Observacao
   cadastro por ora: cresce por SQL. RLS de SELECT e escrita fechada, padrao da 393.
 - A ordem ganha `commercial_process_id` (FK composta com tenant), o snapshot do nome e
   `commercial_start_time`/`commercial_end_time`. As colunas sao ANULAVEIS porque a ordem
-  TECNICA nao tem esses campos: a obrigatoriedade depende da categoria da equipe e vive
-  no trigger, junto com a regra de Projeto.
+  TECNICA nao tem esses campos: a obrigatoriedade depende do tipo operacional da equipe
+  (`team_types.name = COMERCIAL`, com fallback em `team_categories.code = COMERCIAL`) e
+  vive no trigger, junto com a regra de Projeto.
 - Sao DOIS triggers, com tempos diferentes de proposito:
   - `trg_enforce_measurement_project_rules` e BEFORE, imediato, exatamente como o CHECK
     que substitui. A ordem TECNICA continua reprovada na propria instrucao, e nao no
@@ -1469,36 +1470,28 @@ Observacao
   comercial, com snapshot do nome, `sort_order in (1,2)` e unicidade por slot e por
   pessoa dentro da ordem). RLS de SELECT e escrita fechada, no padrao da 393.
 - Cria `save_project_commercial_measurement_order` (com `p_commercial_order_ref`), que
-  valida a categoria da equipe e
+  valida que a equipe e comercial pelo tipo operacional e
   os dois eletricistas (cargo `ELETRICISTA`, ativos, do mesmo tenant), DELEGA cabecalho
   e itens para `save_project_measurement_order` em vez de duplicar a regra da Medicao, e
   regrava os integrantes na mesma transacao.
 - Registra a pagina `medicao-comercial` em `app_pages` com `default_user_access = false`
   (padrao da 245) e faz o backfill das 7 colunas de acao juntas (padrao da 253), senao o
   administrador abriria a tela e tomaria 403 no proprio CSV.
-- Valida no fim: todo tenant com as duas categorias, nenhuma equipe sem categoria,
+- Valida no fim: todo tenant com as duas categorias, nenhuma equipe sem tipo operacional,
   nenhum overload antigo de `save_team_record`, EXECUTE so para `service_role` nas duas
   RPCs e a pagina cadastrada.
 
 416_team_type_belongs_to_team_category.sql
-- `team_types.team_category_id` obrigatorio, com backfill TECNICA para todo tipo ja
-  existente. Fecha a lacuna da 415: a equipe COMERCIAL era obrigada a escolher CESTO,
-  LINHA MORTA ou LINHA VIVA, tipos de rede eletrica sem significado para cobranca e
-  nova ligacao.
-- Tornar `team_type_id` opcional na comercial NAO resolveria: Meta, Dashboard Medicao e
-  Apuracao de Fator Minimo AGRUPAM por tipo, e a equipe sem tipo sumiria do agrupamento
-  em vez de aparecer zerada. Por isso o tipo passa a pertencer a uma categoria.
+- `team_types.team_category_id` passa a existir como classificacao opcional. O backfill
+  preenche COMERCIAL para tipo operacional chamado `COMERCIAL` e TECNICA para os demais,
+  preservando relatórios/metas existentes sem tornar o campo obrigatorio.
 - `save_team_type_record` ganha `p_team_category_id` (5 -> 6 parametros, overload antigo
-  derrubado), registra a troca no historico e RECUSA trocar a categoria de um tipo ja
-  vinculado a equipes: isso moveria equipes inteiras de operacao em silencio, e o erro
-  so apareceria na proxima edicao delas, com mensagem que nao explica a origem.
-- O trigger `enforce_team_category_links` passa a exigir que o tipo escolhido pertenca a
-  categoria da equipe. As duas regras anteriores (encarregado/supervisor) ficam iguais.
-- Nao cria nenhum tipo comercial: quem cadastra e o administrador, pela tela
-  `/tipo-equipe`, que ganhou o campo. Enquanto nao houver nenhum, o cadastro de equipe
-  COMERCIAL avisa que falta o pre-requisito em vez de deixar salvar com tipo tecnico.
-- Valida no fim: nenhum tipo sem categoria, nenhuma equipe com tipo de outra categoria,
-  nenhum overload antigo e EXECUTE so para `service_role`.
+  derrubado), mas aceita `NULL`; quando preenchido, valida a categoria do tenant e registra
+  a troca no historico.
+- O trigger `enforce_team_category_links` aplica a regra pelo tipo operacional:
+  `COMERCIAL` exige supervisor e limpa encarregado; demais tipos exigem encarregado. A
+  categoria opcional so entra como fallback de compatibilidade.
+- Valida no fim: nenhum overload antigo e EXECUTE so para `service_role`.
 
 417_measurement_meta_by_team_category.sql
 - Permite meta para a operacao COMERCIAL. As duas tabelas de meta

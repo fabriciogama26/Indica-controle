@@ -2606,7 +2606,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
     setIsExporting(true);
     setExportProgress({ title: "Gerando...", message: "Gerando arquivo CSV no servidor." });
     try {
-      await downloadMeasurementExport("summary", `ordens_medicao_${toIsoDate(new Date())}.csv`);
+      await downloadMeasurementExport("summary", `${variant.exportPrefix}_${toIsoDate(new Date())}.csv`);
       setExportProgress({ title: "Gerando...", message: "Exportacao concluida." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar ordens de medicao." });
@@ -2627,7 +2627,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
     setIsExportingDetails(true);
     setExportProgress({ title: "Gerando...", message: "Gerando detalhamento CSV no servidor." });
     try {
-      await downloadMeasurementExport("details", `ordens_medicao_detalhamento_${toIsoDate(new Date())}.csv`);
+      await downloadMeasurementExport("details", `${variant.exportPrefix}_detalhamento_${toIsoDate(new Date())}.csv`);
       setExportProgress({ title: "Gerando...", message: "Exportacao concluida." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar detalhamento da medicao." });
@@ -2647,7 +2647,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
     setIsExportingScore(true);
     setExportProgress({ title: "Gerando...", message: "Gerando pontuacao CSV no servidor." });
     try {
-      await downloadMeasurementExport("score", `ordens_medicao_pontuacao_${toIsoDate(new Date())}.csv`);
+      await downloadMeasurementExport("score", `${variant.exportPrefix}_pontuacao_${toIsoDate(new Date())}.csv`);
       setExportProgress({ title: "Gerando...", message: "Exportacao concluida." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao exportar pontuacao da medicao." });
@@ -2674,7 +2674,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
       {feedback ? <div className={feedback.type === "success" ? styles.feedbackSuccess : styles.feedbackError}>{feedback.message}</div> : null}
 
       <article className={`${styles.card} ${form.id ? styles.editingCard : ""}`}>
-        <h2 className={styles.cardTitle}>Cadastro de Ordem de Medicao</h2>
+        <h2 className={styles.cardTitle}>{variant.formTitle}</h2>
         <form id="measurement-order-form" className={styles.formGrid} onSubmit={submitOrder}>
           <label className={styles.field}>
             <span>Projeto {requiresProjectField ? <span className="requiredMark">*</span> : null}</span>
@@ -3025,7 +3025,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
 
       <article className={styles.card}>
         <div className={styles.tableHeader}>
-          <h2 className={styles.cardTitle}>Lista de Ordens de Medicao</h2>
+          <h2 className={styles.cardTitle}>{variant.listTitle}</h2>
           <div className={styles.tableHeaderActions}>
             <button
               type="button"

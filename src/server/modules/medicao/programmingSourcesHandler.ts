@@ -17,6 +17,7 @@ import {
 } from "@/server/modules/programacao-normalizada";
 
 import { DEFAULT_MEASUREMENT_ROUTE_CONFIG, type MeasurementRouteConfig } from "./routeConfig";
+import { fetchTeamIdsByMeasurementMode } from "./teamMode";
 
 type ProjectSourceRow = {
   id: string;
@@ -29,11 +30,6 @@ type CommercialTeamRow = {
   id: string;
   name: string | null;
   supervisor_person_id: string | null;
-};
-
-type TeamCategoryRow = {
-  id: string;
-  code: string | null;
 };
 
 const PROJECT_SOURCE_SELECT = "id, sob, service_description, service_type_text";
@@ -98,16 +94,14 @@ async function fetchTeamsByCategory(params: {
 }) {
   const empty = [] as Array<{ id: string; name: string; foremanName: string }>;
 
-  const categoryResult = await params.supabase
-    .from("team_categories")
-    .select("id, code")
-    .eq("tenant_id", params.tenantId)
-    .eq("ativo", true)
-    .eq("code", params.code)
-    .maybeSingle<TeamCategoryRow>();
+  const teamModeResult = await fetchTeamIdsByMeasurementMode({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    mode: params.code,
+    activeOnly: true,
+  });
 
-  const teamCategoryId = categoryResult.error ? null : categoryResult.data?.id ?? null;
-  if (!teamCategoryId) {
+  if (!teamModeResult.ok || teamModeResult.ids.length === 0) {
     return empty;
   }
 
@@ -116,7 +110,7 @@ async function fetchTeamsByCategory(params: {
     .select("id, name, supervisor_person_id")
     .eq("tenant_id", params.tenantId)
     .eq("ativo", true)
-    .eq("team_category_id", teamCategoryId)
+    .in("id", teamModeResult.ids)
     .order("name", { ascending: true })
     .returns<CommercialTeamRow[]>();
 
@@ -284,4 +278,3 @@ export async function handleMeasurementProgrammingSourcesGet(
     return NextResponse.json({ message }, { status: 500 });
   }
 }
-

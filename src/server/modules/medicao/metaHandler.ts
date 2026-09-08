@@ -8,6 +8,7 @@ import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
 
 import { DEFAULT_MEASUREMENT_ROUTE_CONFIG, type MeasurementRouteConfig } from "./routeConfig";
+import { fetchTeamIdsByMeasurementMode } from "./teamMode";
 
 type NoProductionReasonRow = {
   id: string;
@@ -40,17 +41,12 @@ type ProjectSourceRow = {
 type TeamSourceRow = {
   id: string;
   name: string | null;
-  team_category_id: string | null;
-};
-
-type TeamCategoryRow = {
-  id: string;
-  code: string | null;
 };
 
 type ElectricianRow = {
   id: string;
   nome: string | null;
+  matriculation: string | null;
 };
 
 type CommercialProcessRow = {
@@ -89,13 +85,12 @@ async function fetchFilterSources(params: {
   tenantId: string;
   teamCategoryCode: "TECNICA" | "COMERCIAL";
 }) {
-  const categoryResult = await params.supabase
-    .from("team_categories")
-    .select("id, code")
-    .eq("tenant_id", params.tenantId)
-    .eq("ativo", true)
-    .eq("code", params.teamCategoryCode)
-    .maybeSingle<TeamCategoryRow>();
+  const teamModeResult = await fetchTeamIdsByMeasurementMode({
+    supabase: params.supabase,
+    tenantId: params.tenantId,
+    mode: params.teamCategoryCode,
+    activeOnly: true,
+  });
 
   const projectQuery = params.supabase
     .from("project_with_labels")
@@ -109,17 +104,16 @@ async function fetchFilterSources(params: {
       .eq("is_test", false)
       .eq("is_third_party", false)
       .returns<ProjectSourceRow[]>(),
-    params.supabase
-      .from("teams")
-      .select("id, name, team_category_id")
-      .eq("tenant_id", params.tenantId)
-      .eq("ativo", true)
-      // Tenant sem a categoria cadastrada devolve lista vazia em vez de todas as
-      // equipes: o UUID sentinela mantem as duas consultas em paralelo sem
-      // precisar de um segundo round-trip so para descobrir se ha categoria.
-      .eq("team_category_id", categoryResult.data?.id ?? "00000000-0000-0000-0000-000000000000")
-      .order("name", { ascending: true })
-      .returns<TeamSourceRow[]>(),
+    teamModeResult.ok && teamModeResult.ids.length > 0
+      ? params.supabase
+          .from("teams")
+          .select("id, name")
+          .eq("tenant_id", params.tenantId)
+          .eq("ativo", true)
+          .in("id", teamModeResult.ids)
+          .order("name", { ascending: true })
+          .returns<TeamSourceRow[]>()
+      : Promise.resolve({ data: [] as TeamSourceRow[], error: null }),
   ]);
 
   // Tolerancia herdada do `fetchProjects` da Programacao antiga (removida no C8):
@@ -142,7 +136,7 @@ async function fetchFilterSources(params: {
         || String(item.service_type_text ?? "").trim()
         || "Sem descricao",
     })),
-    teams: (teamResult.error ? [] : teamResult.data ?? []).map((item) => ({
+    teams: (!teamModeResult.ok || teamResult.error ? [] : teamResult.data ?? []).map((item) => ({
       id: item.id,
       name: String(item.name ?? "").trim(),
     })),
@@ -162,12 +156,12 @@ async function fetchElectricians(params: {
     .returns<Array<{ id: string }>>();
 
   if (jobTitleError || !jobTitles?.length) {
-    return [] as Array<{ id: string; name: string }>;
+    return [] as Array<{ id: string; name: string; matriculation: string | null }>;
   }
 
   const { data, error } = await params.supabase
     .from("people")
-    .select("id, nome")
+    .select("id, nome, matriculation")
     .eq("tenant_id", params.tenantId)
     .eq("ativo", true)
     .in("job_title_id", jobTitles.map((item) => item.id))
@@ -175,11 +169,15 @@ async function fetchElectricians(params: {
     .returns<ElectricianRow[]>();
 
   if (error) {
-    return [] as Array<{ id: string; name: string }>;
+    return [] as Array<{ id: string; name: string; matriculation: string | null }>;
   }
 
   return (data ?? [])
-    .map((item) => ({ id: item.id, name: String(item.nome ?? "").trim() }))
+    .map((item) => ({
+      id: item.id,
+      name: String(item.nome ?? "").trim(),
+      matriculation: item.matriculation ? String(item.matriculation).trim() : null,
+    }))
     .filter((item) => Boolean(item.id) && Boolean(item.name));
 }
 
@@ -303,4 +301,3 @@ export async function handleMeasurementMetaGet(
     })),
   });
 }
-

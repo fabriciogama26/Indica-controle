@@ -147,8 +147,9 @@ begin
 end;
 $$;
 
-alter table if exists public.teams
-  alter column team_category_id set not null;
+-- Categoria/classificacao da equipe e opcional. A regra operacional vem de
+-- `team_types.name = COMERCIAL`; `team_category_id` fica como apoio de relatorio
+-- e compatibilidade com cadastros antigos.
 
 create index if not exists idx_teams_tenant_category_active_name
   on public.teams (tenant_id, team_category_id, ativo, name);
@@ -169,26 +170,52 @@ set search_path = public
 as $$
 declare
   v_code text;
+  v_team_type_name text;
+  v_is_commercial boolean := false;
 begin
-  select tc.code
-  into v_code
-  from public.team_categories tc
-  where tc.id = new.team_category_id
-    and tc.tenant_id = new.tenant_id;
+  if new.team_category_id is not null then
+    select tc.code
+    into v_code
+    from public.team_categories tc
+    where tc.id = new.team_category_id
+      and tc.tenant_id = new.tenant_id;
 
-  if v_code is null then
-    raise exception using
-      errcode = '23503',
-      message = 'invalid_team_category: tipo de equipe invalido para o tenant atual.';
+    if v_code is null then
+      raise exception using
+        errcode = '23503',
+        message = 'invalid_team_category: tipo de equipe invalido para o tenant atual.';
+    end if;
   end if;
 
-  if v_code = 'TECNICA' and new.foreman_person_id is null then
+  select tt.name
+  into v_team_type_name
+  from public.team_types tt
+  where tt.id = new.team_type_id
+    and tt.tenant_id = new.tenant_id;
+
+  if v_team_type_name is null then
+    raise exception using
+      errcode = '23503',
+      message = 'invalid_team_type: tipo operacional invalido para o tenant atual.';
+  end if;
+
+  v_is_commercial := coalesce(
+    translate(upper(btrim(coalesce(v_team_type_name, ''))), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') = 'COMERCIAL'
+    or v_code = 'COMERCIAL',
+    false
+  );
+
+  if v_is_commercial then
+    new.foreman_person_id := null;
+  end if;
+
+  if not v_is_commercial and new.foreman_person_id is null then
     raise exception using
       errcode = '23514',
       message = 'team_requires_foreman: encarregado e obrigatorio para equipe tecnica.';
   end if;
 
-  if v_code = 'COMERCIAL' and new.supervisor_person_id is null then
+  if v_is_commercial and new.supervisor_person_id is null then
     raise exception using
       errcode = '23514',
       message = 'team_requires_supervisor: supervisor e obrigatorio para equipe comercial.';
@@ -351,7 +378,6 @@ as $$
 $$;
 
 revoke all on function public.resolve_team_foreman_snapshot(uuid, uuid, date) from public;
-grant execute on function public.resolve_team_foreman_snapshot(uuid, uuid, date) to authenticated;
 grant execute on function public.resolve_team_foreman_snapshot(uuid, uuid, date) to service_role;
 
 -- =============================================================================
@@ -385,24 +411,54 @@ declare
   v_updated_at timestamptz;
   v_effective_stock_center_id uuid;
   v_team_category_code text;
+  v_team_type_name text;
+  v_is_commercial boolean := false;
 begin
-  select tc.code
-  into v_team_category_code
-  from public.team_categories tc
-  where tc.id = p_team_category_id
-    and tc.tenant_id = p_tenant_id
-    and tc.ativo = true;
+  select tt.name
+  into v_team_type_name
+  from public.team_types tt
+  where tt.id = p_team_type_id
+    and tt.tenant_id = p_tenant_id
+    and tt.ativo = true;
 
-  if v_team_category_code is null then
+  if v_team_type_name is null then
     return jsonb_build_object(
       'success', false,
       'status', 422,
-      'reason', 'INVALID_TEAM_CATEGORY',
-      'message', 'Tipo de equipe invalido para o tenant atual.'
+      'reason', 'INVALID_TEAM_TYPE',
+      'message', 'Tipo operacional invalido para o tenant atual.'
     );
   end if;
 
-  if v_team_category_code = 'TECNICA' and p_foreman_person_id is null then
+  if p_team_category_id is not null then
+    select tc.code
+    into v_team_category_code
+    from public.team_categories tc
+    where tc.id = p_team_category_id
+      and tc.tenant_id = p_tenant_id
+      and tc.ativo = true;
+
+    if v_team_category_code is null then
+      return jsonb_build_object(
+        'success', false,
+        'status', 422,
+        'reason', 'INVALID_TEAM_CATEGORY',
+        'message', 'Tipo de equipe invalido para o tenant atual.'
+      );
+    end if;
+  end if;
+
+  v_is_commercial := coalesce(
+    translate(upper(btrim(coalesce(v_team_type_name, ''))), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') = 'COMERCIAL'
+    or v_team_category_code = 'COMERCIAL',
+    false
+  );
+
+  if v_is_commercial then
+    p_foreman_person_id := null;
+  end if;
+
+  if not v_is_commercial and p_foreman_person_id is null then
     return jsonb_build_object(
       'success', false,
       'status', 400,
@@ -411,7 +467,7 @@ begin
     );
   end if;
 
-  if v_team_category_code = 'COMERCIAL' and p_supervisor_person_id is null then
+  if v_is_commercial and p_supervisor_person_id is null then
     return jsonb_build_object(
       'success', false,
       'status', 400,
@@ -903,12 +959,18 @@ as $$
   select exists (
     select 1
     from public.teams t
-    join public.team_categories tc
+    join public.team_types tt
+      on tt.id = t.team_type_id
+     and tt.tenant_id = t.tenant_id
+    left join public.team_categories tc
       on tc.id = t.team_category_id
      and tc.tenant_id = t.tenant_id
     where t.tenant_id = p_tenant_id
       and t.id = p_team_id
-      and tc.code = 'COMERCIAL'
+      and (
+        translate(upper(btrim(coalesce(tt.name, ''))), 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'AAAAAEEEEIIIIOOOOOUUUUC') = 'COMERCIAL'
+        or tc.code = 'COMERCIAL'
+      )
   );
 $$;
 
@@ -1056,29 +1118,22 @@ begin
   v_definition := replace(v_definition, chr(13) || chr(10), chr(10));
 
   v_step := v_definition;
-  v_definition := replace(
+  -- A funcao pode ter sido recriada por migrations intermediarias com outra
+  -- quebra de linha/mensagem. O ponto de regra que precisa mudar e so a
+  -- condicao "COM_PRODUCAO sem projeto"; a mensagem pode variar.
+  v_definition := regexp_replace(
     v_definition,
-    replace($old$    if v_team_id is null or v_execution_date is null or (v_measurement_kind = 'COM_PRODUCAO' and v_project_id is null) then
-      return jsonb_build_object('success', false, 'status', 400, 'reason', 'MISSING_MEASUREMENT_CONTEXT', 'message', case when v_measurement_kind = 'COM_PRODUCAO' then 'Projeto, equipe e data de execucao sao obrigatorios.' else 'Equipe e data de execucao sao obrigatorias.' end);$old$, chr(13) || chr(10), chr(10)),
-    replace($new$    if v_team_id is null or v_execution_date is null or (v_measurement_kind = 'COM_PRODUCAO' and v_project_id is null and not public.is_commercial_team(p_tenant_id, v_team_id)) then
-      return jsonb_build_object('success', false, 'status', 400, 'reason', 'MISSING_MEASUREMENT_CONTEXT', 'message', case when v_measurement_kind = 'COM_PRODUCAO' then 'Projeto, equipe e data de execucao sao obrigatorios.' else 'Equipe e data de execucao sao obrigatorias.' end);$new$, chr(13) || chr(10), chr(10))
+    '\(v_measurement_kind\s*=\s*''COM_PRODUCAO''\s+and\s+v_project_id\s+is\s+null\)',
+    '(v_measurement_kind = ''COM_PRODUCAO'' and v_project_id is null and not public.is_commercial_team(p_tenant_id, v_team_id))',
+    'g'
   );
 
   if v_definition = v_step then
-    raise exception '415: guarda de contexto (insert) nao encontrada em save_project_measurement_order';
-  end if;
-
-  v_step := v_definition;
-  v_definition := replace(
-    v_definition,
-    replace($old$    if v_team_id is null or v_execution_date is null or (v_measurement_kind = 'COM_PRODUCAO' and v_project_id is null) then
-      return jsonb_build_object('success', false, 'status', 400, 'reason', 'MISSING_MEASUREMENT_CONTEXT', 'message', case when v_measurement_kind = 'COM_PRODUCAO' then 'Projeto, equipe e data de execucao sao obrigatorios na edicao.' else 'Equipe e data de execucao sao obrigatorias na edicao.' end);$old$, chr(13) || chr(10), chr(10)),
-    replace($new$    if v_team_id is null or v_execution_date is null or (v_measurement_kind = 'COM_PRODUCAO' and v_project_id is null and not public.is_commercial_team(p_tenant_id, v_team_id)) then
-      return jsonb_build_object('success', false, 'status', 400, 'reason', 'MISSING_MEASUREMENT_CONTEXT', 'message', case when v_measurement_kind = 'COM_PRODUCAO' then 'Projeto, equipe e data de execucao sao obrigatorios na edicao.' else 'Equipe e data de execucao sao obrigatorias na edicao.' end);$new$, chr(13) || chr(10), chr(10))
-  );
-
-  if v_definition = v_step then
-    raise exception '415: guarda de contexto (update) nao encontrada em save_project_measurement_order';
+    -- Idempotencia: ambientes que ja receberam a excecao comercial nao precisam
+    -- de novo patch, mas tambem nao devem abortar a migration.
+    if position('not public.is_commercial_team(p_tenant_id, v_team_id)' in v_definition) = 0 then
+      raise exception '415: guarda de contexto nao encontrada em save_project_measurement_order';
+    end if;
   end if;
 
   execute v_definition;
@@ -1201,7 +1256,6 @@ as $$
 declare
   v_result jsonb;
   v_order_id uuid;
-  v_team_category_code text;
   v_employee_1_name text;
   v_employee_2_name text;
   v_commercial_order_ref text := nullif(btrim(coalesce(p_commercial_order_ref, '')), '');
@@ -1259,16 +1313,7 @@ begin
     );
   end if;
 
-  select tc.code
-  into v_team_category_code
-  from public.teams t
-  join public.team_categories tc
-    on tc.id = t.team_category_id
-   and tc.tenant_id = t.tenant_id
-  where t.tenant_id = p_tenant_id
-    and t.id = p_team_id;
-
-  if v_team_category_code is distinct from 'COMERCIAL' then
+  if not public.is_commercial_team(p_tenant_id, p_team_id) then
     return jsonb_build_object(
       'success', false,
       'status', 422,
@@ -1499,14 +1544,14 @@ begin
     raise exception '415: % tenant(s) ficaram sem TECNICA/COMERCIAL em team_categories.', v_missing;
   end if;
 
-  -- Nenhuma equipe existente pode ter ficado sem categoria.
+  -- Categoria agora e opcional, mas tipo operacional continua obrigatorio.
   select count(*)
   into v_missing
   from public.teams
-  where team_category_id is null;
+  where team_type_id is null;
 
   if v_missing > 0 then
-    raise exception '415: % equipe(s) ficaram sem team_category_id.', v_missing;
+    raise exception '415: % equipe(s) ficaram sem team_type_id.', v_missing;
   end if;
 
   -- O overload antigo de save_team_record nao pode sobrar: com as duas versoes

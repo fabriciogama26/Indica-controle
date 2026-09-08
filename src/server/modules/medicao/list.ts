@@ -7,8 +7,9 @@
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
 import { loadProgrammingMatchMap } from "./programmingMatch";
-import type { MeasurementOrderActivityFilterRow, MeasurementOrderAggregateItem, MeasurementOrderRow, ProgrammingMatchStatus, ProjectServiceTypeProjectRow, TeamCategoryRow } from "./types";
+import type { MeasurementOrderActivityFilterRow, MeasurementOrderAggregateItem, MeasurementOrderRow, ProgrammingMatchStatus, ProjectServiceTypeProjectRow } from "./types";
 import { buildMeasurementCycleStart, buildProgrammingMatchKey, measurementScoreTypeLabel, normalizeMeasurementKind, normalizeText, resolveAppUserName } from "./normalizers";
+import { fetchTeamIdsByMeasurementMode } from "./teamMode";
 import {
   MEASUREMENT_ORDER_SELECT,
   fetchAppUserMap,
@@ -109,34 +110,17 @@ export async function listMeasurementOrdersPage(params: {
 
   let categoryTeamIdSet: Set<string> | null = null;
   if (teamCategoryCodeFilter) {
-    const categoryResult = await supabase
-      .from("team_categories")
-      .select("id, code")
-      .eq("tenant_id", tenantId)
-      .eq("ativo", true)
-      .eq("code", teamCategoryCodeFilter)
-      .maybeSingle<TeamCategoryRow>();
+    const teamModeResult = await fetchTeamIdsByMeasurementMode({
+      supabase,
+      tenantId,
+      mode: teamCategoryCodeFilter,
+    });
 
-    const teamCategoryId = categoryResult.error ? null : categoryResult.data?.id ?? null;
-    if (!teamCategoryId) {
-      return { ok: true as const, orders: [], total: 0 };
+    if (!teamModeResult.ok) {
+      return { ok: false as const, message: teamModeResult.message };
     }
 
-    const teamResult = await fetchPagedSupabaseRows<{ id: string }>((from, to) =>
-      supabase
-        .from("teams")
-        .select("id")
-        .eq("tenant_id", tenantId)
-        .eq("team_category_id", teamCategoryId)
-        .range(from, to)
-        .returns<Array<{ id: string }>>(),
-    );
-
-    if (teamResult.error) {
-      return { ok: false as const, message: "Falha ao filtrar equipes por tipo de equipe." };
-    }
-
-    categoryTeamIdSet = new Set(teamResult.data.map((item) => item.id));
+    categoryTeamIdSet = new Set(teamModeResult.ids);
     if (categoryTeamIdSet.size === 0) {
       return { ok: true as const, orders: [], total: 0 };
     }

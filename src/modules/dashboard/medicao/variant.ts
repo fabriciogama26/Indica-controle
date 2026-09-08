@@ -16,6 +16,9 @@ export type MeasurementVariantConfig = {
   commercial: boolean;
   /** Rotulo da coluna/campo que identifica quem executou. */
   executorLabel: string;
+  formTitle: string;
+  listTitle: string;
+  exportPrefix: string;
 };
 
 export const TECHNICAL_MEASUREMENT_VARIANT: MeasurementVariantConfig = {
@@ -23,6 +26,9 @@ export const TECHNICAL_MEASUREMENT_VARIANT: MeasurementVariantConfig = {
   apiBase: "/api/medicao",
   commercial: false,
   executorLabel: "Encarregado",
+  formTitle: "Cadastro de Ordem de Medicao",
+  listTitle: "Lista de Ordens de Medicao",
+  exportPrefix: "ordens_medicao",
 };
 
 export const COMMERCIAL_MEASUREMENT_VARIANT: MeasurementVariantConfig = {
@@ -30,4 +36,7 @@ export const COMMERCIAL_MEASUREMENT_VARIANT: MeasurementVariantConfig = {
   apiBase: "/api/medicao-comercial",
   commercial: true,
   executorLabel: "Integrantes",
+  formTitle: "Cadastro de Ordem de Medicao Comercial",
+  listTitle: "Lista de Ordens de Medicao Comercial",
+  exportPrefix: "ordens_medicao_comercial",
 };

@@ -3,16 +3,16 @@
 Visao geral
 -----------
 - Tela para cadastro e manutencao de equipes operacionais por tenant.
-- Cada equipe possui: nome, placa do veiculo, base, tipo de equipe, tipo operacional, encarregado e supervisor.
-- `Tipo de equipe` (`team_categories`: `TECNICA` ou `COMERCIAL`) define quem e obrigatorio:
-  - `TECNICA`: encarregado obrigatorio, supervisor opcional (comportamento historico).
-  - `COMERCIAL`: supervisor obrigatorio, encarregado opcional -- a equipe comercial existe sem vinculo fixo com pessoas, e os executantes sao escolhidos a cada ordem na tela `Medicao Comercial`.
-- O antigo campo `Tipo` passou a se chamar `Tipo operacional` na tela, para nao competir com `Tipo de equipe`. O catalogo (`team_types`) e a regra nao mudaram.
+- Cada equipe possui: nome, placa do veiculo, base, tipo operacional, tipo de equipe opcional, encarregado e supervisor.
+- `Tipo operacional` (`team_types`) define quem e obrigatorio:
+  - `COMERCIAL`: supervisor obrigatorio e encarregado desativado/gravado como `NULL`.
+  - demais tipos operacionais: encarregado obrigatorio e supervisor opcional.
+- `Tipo de equipe` (`team_categories`: `TECNICA` ou `COMERCIAL`) e classificacao opcional. Quando preenchida como `COMERCIAL`, tambem e tratada como fallback comercial para compatibilidade.
 - Cada equipe passa a receber automaticamente um `Centro de estoque proprio` (`stock_center_id`) no mesmo salvamento do cadastro.
 - O encarregado e vinculado a `people`, filtrando cargos com correspondencia em `ENCARREGADO`.
 - O supervisor e vinculado a `people`, filtrando cargos com correspondencia em `SUPERVISOR`, e pode se repetir em varias equipes.
 - O tipo operacional e vinculado ao catalogo `team_types` por tenant.
-- O tipo de equipe e vinculado ao catalogo `team_categories` por tenant, semeado com `TECNICA` e `COMERCIAL`. E catalogo fechado: nao tem tela de cadastro e o `code` e restrito por check.
+- O tipo de equipe e vinculado ao catalogo `team_categories` por tenant, semeado com `TECNICA` e `COMERCIAL`, mas o preenchimento e opcional no cadastro da equipe.
 - A base corresponde ao catalogo `project_service_centers` do tenant.
 
 Arquitetura
@@ -51,13 +51,12 @@ Cadastro
   - `Nome da equipe`
   - `Placa do veiculo`
   - `Base`
-  - `Tipo de equipe` (`TECNICA` ou `COMERCIAL`)
   - `Tipo operacional`
-  - `Encarregado` somente quando `Tipo de equipe` = `TECNICA`
-  - `Supervisor` somente quando `Tipo de equipe` = `COMERCIAL`
+  - `Encarregado` somente quando `Tipo operacional` nao for `COMERCIAL`
+  - `Supervisor` somente quando `Tipo operacional` = `COMERCIAL`
 - Campo opcional:
-  - `Encarregado` em equipe `COMERCIAL`
-  - `Supervisor` em equipe `TECNICA`
+  - `Tipo de equipe` (`TECNICA` ou `COMERCIAL`)
+  - `Supervisor` em equipe nao comercial
   - `Centro de estoque proprio` gerado automaticamente pelo sistema no save
 - Regras:
   - Base deve existir no tenant e estar ativa em `project_service_centers`.
@@ -67,9 +66,9 @@ Cadastro
   - Um mesmo supervisor pode ficar vinculado a varias equipes ativas ou inativas.
   - Nao permitir cadastrar/editar equipe quando ja existir outra equipe ativa com o mesmo encarregado no tenant. A trava so se aplica quando ha encarregado: varias equipes comerciais podem existir sem nenhum.
   - Tipo operacional deve existir no tenant e estar ativo em `team_types`.
-  - Tipo de equipe deve existir no tenant e estar ativo em `team_categories`.
-  - A obrigatoriedade de encarregado/supervisor por tipo de equipe e validada em tres camadas: formulario, rota (`/api/teams`) e banco (RPC `save_team_record` + trigger `enforce_team_category_links`). Trigger porque `CHECK` nao consulta outra tabela.
-  - `Permutar encarregado` fica disponivel apenas para equipe `TECNICA` com encarregado vinculado.
+  - Tipo de equipe, quando preenchido, deve existir no tenant e estar ativo em `team_categories`.
+  - A obrigatoriedade de encarregado/supervisor pelo tipo operacional e validada em tres camadas: formulario, rota (`/api/teams`) e banco (RPC `save_team_record` + trigger `enforce_team_category_links`).
+  - `Permutar encarregado` fica disponivel apenas para equipe nao comercial com encarregado vinculado.
   - Equipe sem encarregado nao abre periodo em `team_foreman_history`, para nao gravar `Nao identificado` como snapshot da Medicao.
   - Bloqueio de duplicidade por combinacao (`tenant_id`, `foreman_person_id`, `name`, `vehicle_plate`).
   - O `stock_center_id` da equipe deve apontar para um centro `OWN` ativo do mesmo tenant.
@@ -156,9 +155,9 @@ Atualizacao 2026-03
 - Tela e API passaram a carregar, filtrar, listar e detalhar a `Base` da equipe.
 - Tela e API passam a bloquear sobrescrita silenciosa na edicao e no cancelamento/ativacao por `expectedUpdatedAt`.
 - Tela e API passam a delegar cadastro, edicao e status para RPC transacional com historico no banco.
-- Tipo de equipe (2026-09-04): novo catalogo `team_categories` (`TECNICA`/`COMERCIAL`), `teams.team_category_id` obrigatorio com backfill `TECNICA` para todo cadastro existente, e `teams.foreman_person_id` passou a aceitar `NULL`.
-  - Nenhuma equipe existente muda de comportamento: todas nasceram `TECNICA` no backfill, onde o encarregado segue obrigatorio.
-  - Cadastro em massa: o CSV ganhou a coluna obrigatoria `tipo_equipe` e a coluna `tipo` virou `tipo_operacional`. `encarregado` deixou de ser obrigatorio no cabecalho e passou a ser exigido por linha, conforme o tipo de equipe.
+  - Tipo de equipe (2026-09-04, revisado em 2026-09-08): novo catalogo `team_categories` (`TECNICA`/`COMERCIAL`), `teams.team_category_id` opcional com backfill `TECNICA` para cadastros existentes, e `teams.foreman_person_id` passou a aceitar `NULL`.
+  - Nenhuma equipe existente muda de comportamento: as equipes ja cadastradas continuam com categoria `TECNICA` e encarregado obrigatorio pelo tipo operacional nao comercial.
+  - Cadastro em massa: o CSV ganhou a coluna `tipo_operacional` obrigatoria; `tipo_equipe` ficou opcional.
 - Revisao de cadastro (2026-03-20): formulario bloqueia `Cadastrar/Atualizar` quando faltarem prerequisitos de metadados (`Base`, `Tipo de Equipe` e/ou `Encarregado`).
 - Revisao de cadastro (2026-03-20): tela passa a exibir mensagem explicita listando os prerequisitos faltantes.
 - Revisao de cadastro (2026-03-20): filtro de cargos para encarregado foi ampliado para `ENCARREGADO`/`SUPERVISOR` em `code` e `name` com busca parcial.
@@ -385,14 +384,14 @@ Atualizacao 2026-08-15 - Formulario nao e mais apagado em conflito de concorrenc
 Cadastro em massa
 -----------------
 - Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao, e fica desabilitado enquanto os catalogos da tela carregam.
-- Modelo CSV: `nome;placa;base;tipo_equipe;encarregado;supervisor`.
-- Colunas obrigatorias: `nome`, `placa`, `base`, `tipo_equipe` e `encarregado`. `supervisor` e opcional.
-- `base`, `tipo_equipe`, `encarregado` e `supervisor` sao informados pelo nome e resolvidos contra os catalogos ativos ja carregados na tela.
+- Modelo CSV: `nome;placa;base;tipo_operacional;tipo_equipe;encarregado;supervisor`.
+- Colunas obrigatorias: `nome`, `placa`, `base` e `tipo_operacional`. `tipo_equipe` e opcional.
+- `base`, `tipo_operacional`, `tipo_equipe`, `encarregado` e `supervisor` sao informados pelo nome e resolvidos contra os catalogos ativos ja carregados na tela.
 - Nome repetido no catalogo (duas bases com o mesmo nome, dois encarregados homonimos) recusa a linha como ambigua em vez de escolher um registro no escuro.
-- Placa repetida no arquivo e encarregado repetido no arquivo sao recusados na pre-validacao (um encarregado so pode ter uma equipe ativa).
+- Placa repetida no arquivo e encarregado repetido no arquivo sao recusados na pre-validacao de equipes nao comerciais (um encarregado so pode ter uma equipe ativa).
 - O lote nao define `Centro de estoque proprio`: as equipes importadas seguem o mesmo comportamento do cadastro manual da tela.
 - Envio: `POST /api/teams` com `action = BATCH_IMPORT` e `rows`.
-- O backend revalida base, tipo, encarregado, supervisor e a regra de encarregado ja vinculado antes de chamar `saveTeamViaRpc` linha a linha.
+- O backend revalida base, tipo operacional, tipo de equipe opcional, encarregado, supervisor e a regra de encarregado ja vinculado antes de chamar `saveTeamViaRpc` linha a linha.
 - Erros parciais geram CSV de retorno com `linha`, `coluna`, `valor` e `erro`; as linhas validas sao salvas mesmo assim.
 - Infraestrutura compartilhada do cadastro em massa:
   - Modal: `src/components/ui/MassImportModal.tsx` (3 etapas: baixar modelo, preencher, enviar).
@@ -404,7 +403,7 @@ Atualizacao 2026-08-25 - Cadastro em massa
 --------------------------------------------------------------------------------------------
 - `Equipes` passa a ter cadastro em massa por CSV, no mesmo padrao ja existente em `Materiais` e `Pessoas`.
 - Antes: so era possivel cadastrar uma equipe por vez pelo formulario.
-- Depois: o CSV `nome;placa;base;tipo_equipe;encarregado;supervisor` cadastra ate 500 equipes por arquivo, com pre-validacao no frontend e CSV de erros por linha.
+- Depois: o CSV `nome;placa;base;tipo_operacional;tipo_equipe;encarregado;supervisor` cadastra ate 500 equipes por arquivo, com pre-validacao no frontend e CSV de erros por linha.
 - Reorganizacao de backend exigida pelo teto de tamanho de `src/app/api/teams/route.ts` (estava em 1.635 linhas, acima do teto de 1.500 para `route.ts`):
   * `src/server/modules/teams/lookups.ts`: tipos das tabelas consultadas e `fetchForemanById`, `fetchSupervisorById`, `fetchTeamTypeById`,
     `fetchServiceCenterById`, `fetchStockCenterById`, `fetchTeamById`, `fetchExistingTeamByForeman`.
@@ -422,25 +421,38 @@ Atualizacao 2026-08-25 - Cadastro em massa
 Atualizacao 2026-09-04 - Nomenclatura invertida e tipo vinculado a categoria
 --------------------------------------------------------------------------------
 - NOMENCLATURA (vale para toda a tela, os filtros, o CSV e o historico):
-  - `Tipo de equipe`  = catalogo `team_types` (CESTO, LINHA MORTA, LINHA VIVA),
-    mantido na tela `/tipo-equipe`.
-  - `Tipo operacional` = catalogo `team_categories` (TECNICA, COMERCIAL), sem
-    tela de cadastro.
-  A entrega anterior tinha invertido isso so dentro desta tela, o que deixou o
-  cadastro chamado `Tipo de Equipe` alimentando um campo chamado `Tipo
-  operacional`, e o campo `Tipo de equipe` sem cadastro nenhum.
-- No CSV de importacao as colunas acompanharam: `tipo_equipe` voltou a significar
-  o que sempre significou (CESTO, LINHA VIVA) e a coluna NOVA e `tipo_operacional`
-  (TECNICA/COMERCIAL). O arquivo que o cliente ja usava continua valido para a
-  coluna antiga.
+  - `Tipo operacional` = catalogo `team_types`, obrigatorio.
+  - `Tipo de equipe` = catalogo `team_categories` (TECNICA, COMERCIAL), opcional.
+- No CSV de importacao as colunas acompanham a revisao de 2026-09-08:
+  `tipo_operacional` e obrigatoria; `tipo_equipe` e opcional.
 - `page_key` `tipo-equipe` e a tabela `team_types` NAO mudaram de nome: renomear
   chave de permissao exigiria migration e backfill sem ganho nenhum.
-- Cada `Tipo de equipe` agora pertence a um `Tipo operacional` (migration 416).
-  O select da tela so oferece os tipos do tipo operacional escolhido, e trocar o
-  tipo operacional limpa o tipo ja selecionado.
-- A coerencia e garantida em tres camadas: tela, rota (`POST`/`PUT` e import em
-  massa) e banco (trigger `enforce_team_category_links`).
-- Enquanto o tenant nao tiver nenhum tipo com tipo operacional COMERCIAL, o
-  formulario bloqueia o cadastro de equipe comercial e diz qual pre-requisito
-  falta, em vez de deixar salvar com um tipo tecnico.
+- A categoria nao e mais obrigatoria nem precisa casar com o tipo operacional.
+- A regra de equipe comercial e garantida em tres camadas: tela, rota (`POST`/`PUT`
+  e import em massa) e banco (trigger `enforce_team_category_links`).
 - Base SQL: `supabase/migrations/416_team_type_belongs_to_team_category.sql`
+
+Atualizacao 2026-09-08 - Tipo de equipe opcional e Comercial pelo operacional
+--------------------------------------------------------------------------------
+- `Tipo operacional` (`team_types`) voltou a ser o campo obrigatorio que dirige a
+  regra do formulario. Se o nome normalizado for `COMERCIAL`, o select de
+  `Encarregado` fica desativado, o valor e limpo no submit e `Supervisor` passa a
+  ser obrigatorio.
+- `Tipo de equipe` (`team_categories`) deixou de ser obrigatorio no formulario e
+  no CSV. Quando informado como `COMERCIAL`, continua sendo aceito como fallback
+  comercial para compatibilidade com cadastros anteriores.
+- A permuta de encarregado foi restringida a equipes nao comerciais com
+  encarregado vinculado, usando a mesma regra do tipo operacional.
+- Cadastro em massa revisado: colunas obrigatorias `nome`, `placa`, `base` e
+  `tipo_operacional`; `tipo_equipe` opcional; em operacional `COMERCIAL`, o
+  encarregado informado e ignorado.
+- Arquivos alterados: `src/modules/dashboard/equipes/TeamsPageView.tsx`,
+  `src/modules/dashboard/equipes/presentation.ts`,
+  `src/modules/dashboard/equipes/massImport.ts`,
+  `src/app/api/teams/route.ts`,
+  `src/server/modules/teams/massImport.ts`,
+  `src/server/modules/teams/lookups.ts`,
+  `src/server/modules/teams/types.ts`,
+  `src/server/modules/teams/writes.ts`,
+  `supabase/migrations/415_team_categories_and_commercial_measurement.sql` e
+  `supabase/migrations/416_team_type_belongs_to_team_category.sql`.

@@ -7,7 +7,7 @@
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 
 import { COMMERCIAL_MEASUREMENT_PAGE_KEY, MEASUREMENT_PAGE_KEY } from "./authorization";
-import { normalizeText } from "./normalizers";
+import { resolveTeamMeasurementMode } from "./teamMode";
 
 export type MeasurementTeamCategoryCode = "TECNICA" | "COMERCIAL";
 
@@ -34,29 +34,7 @@ export async function resolveTeamCategoryCode(params: {
   tenantId: string;
   teamId: string;
 }) {
-  const { data, error } = await params.supabase
-    .from("teams")
-    .select("team_category_id")
-    .eq("tenant_id", params.tenantId)
-    .eq("id", params.teamId)
-    .maybeSingle<{ team_category_id: string | null }>();
-
-  if (error || !data?.team_category_id) {
-    return null;
-  }
-
-  const categoryResult = await params.supabase
-    .from("team_categories")
-    .select("code")
-    .eq("tenant_id", params.tenantId)
-    .eq("id", data.team_category_id)
-    .maybeSingle<{ code: string | null }>();
-
-  if (categoryResult.error || !categoryResult.data) {
-    return null;
-  }
-
-  return normalizeText(categoryResult.data.code).toUpperCase();
+  return resolveTeamMeasurementMode(params);
 }
 
 export async function orderMatchesRouteCategory(params: {

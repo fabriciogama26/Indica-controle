@@ -17,10 +17,8 @@ import {
   type TeamCategoryRow,
 } from "./lookups";
 import {
-  isCommercialTeamCategory,
-  isTechnicalTeamCategory,
-  TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE,
   normalizePlate,
+  shouldTreatAsCommercialTeam,
   type CreateTeamPayload,
 } from "./types";
 import { saveTeamViaRpc } from "./writes";
@@ -51,12 +49,12 @@ export async function importTeamBatch(params: {
       vehiclePlate: normalizePlate(row.vehiclePlate),
       serviceCenterId: normalizeText(row.serviceCenterId),
       teamTypeId: normalizeText(row.teamTypeId),
-      teamCategoryId: normalizeText(row.teamCategoryId),
+      teamCategoryId: normalizeText(row.teamCategoryId) || null,
       foremanId: normalizeText(row.foremanId) || null,
       supervisorId: normalizeText(row.supervisorId) || null,
     };
 
-    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId || !input.teamCategoryId) {
+    if (!input.name || !input.vehiclePlate || !input.serviceCenterId || !input.teamTypeId) {
       results.push({
         rowNumber,
         success: false,
@@ -87,43 +85,37 @@ export async function importTeamBatch(params: {
 
     const teamType = validTeamTypeIds.get(input.teamTypeId) ?? null;
     if (!teamType) {
-      results.push({ rowNumber, success: false, message: "Tipo de equipe invalido para o tenant atual.", code: "INVALID_TEAM_TYPE" });
+      results.push({ rowNumber, success: false, message: "Tipo operacional invalido para o tenant atual.", code: "INVALID_TEAM_TYPE" });
       continue;
     }
 
-    // Desde a 416 o tipo pertence a uma categoria: linha que cruza as duas e
-    // recusada aqui, com a mesma mensagem da tela.
-    if (teamType.team_category_id !== input.teamCategoryId) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE,
-        code: "TEAM_TYPE_CATEGORY_MISMATCH",
-      });
-      continue;
-    }
-
-    if (!validTeamCategoryIds.has(input.teamCategoryId)) {
+    if (input.teamCategoryId && !validTeamCategoryIds.has(input.teamCategoryId)) {
       validTeamCategoryIds.set(
         input.teamCategoryId,
         await fetchTeamCategoryById(params.supabase, params.tenantId, input.teamCategoryId),
       );
     }
 
-    const teamCategory = validTeamCategoryIds.get(input.teamCategoryId) ?? null;
-    if (!teamCategory) {
+    const teamCategory = input.teamCategoryId ? validTeamCategoryIds.get(input.teamCategoryId) ?? null : null;
+    if (input.teamCategoryId && !teamCategory) {
       results.push({ rowNumber, success: false, message: "Tipo de equipe invalido para o tenant atual.", code: "INVALID_TEAM_CATEGORY" });
       continue;
     }
 
-    if (isTechnicalTeamCategory(teamCategory) && !input.foremanId) {
+    const isCommercialTeam = shouldTreatAsCommercialTeam({ teamType, teamCategory });
+
+    if (!isCommercialTeam && !input.foremanId) {
       results.push({ rowNumber, success: false, message: "Encarregado e obrigatorio para equipe tecnica.", code: "MISSING_FOREMAN" });
       continue;
     }
 
-    if (isCommercialTeamCategory(teamCategory) && !input.supervisorId) {
+    if (isCommercialTeam && !input.supervisorId) {
       results.push({ rowNumber, success: false, message: "Supervisor e obrigatorio para equipe comercial.", code: "MISSING_SUPERVISOR" });
       continue;
+    }
+
+    if (isCommercialTeam) {
+      input.foremanId = null;
     }
 
     if (input.foremanId && !(await fetchForemanById(params.supabase, params.tenantId, input.foremanId))) {

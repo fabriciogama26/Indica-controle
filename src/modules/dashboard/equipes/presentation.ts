@@ -20,8 +20,8 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   vehiclePlate: "Placa do veiculo",
   serviceCenterName: "Base",
   stockCenterName: "Centro de estoque proprio",
-  teamTypeName: "Tipo de equipe",
-  teamCategoryName: "Tipo operacional",
+  teamTypeName: "Tipo operacional",
+  teamCategoryName: "Tipo de equipe",
   foremanName: "Encarregado",
   supervisorName: "Supervisor",
   isActive: "Status",
@@ -95,7 +95,7 @@ export type TeamItem = {
   stockCenterName: string;
   teamTypeId: string;
   teamTypeName: string;
-  teamCategoryId: string;
+  teamCategoryId: string | null;
   teamCategoryCode: string;
   teamCategoryName: string;
   foremanId: string | null;
@@ -203,6 +203,11 @@ export function normalizePlate(value: string) {
   return normalizeText(value).toUpperCase();
 }
 
+export function isCommercialTeamItem(team: Pick<TeamItem, "teamTypeName" | "teamCategoryCode">) {
+  const operationalType = normalizeText(team.teamTypeName).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  return operationalType === "COMERCIAL" || team.teamCategoryCode === "COMERCIAL";
+}
+
 export function scrollDashboardContentToTop() {
   if (typeof window === "undefined") {
     return;
@@ -220,21 +225,16 @@ export function scrollDashboardContentToTop() {
 /**
  * Pre-requisitos de cadastro que faltam para o formulario de Equipes.
  *
- * Depende do tipo operacional escolhido: TECNICA exige encarregado, COMERCIAL
- * exige supervisor, e o tipo de equipe so e cobrado depois da escolha -- antes
- * disso nao da para saber se falta, porque o tenant pode ter tipos so de um
- * dos lados.
+ * Depende do tipo operacional escolhido: COMERCIAL exige supervisor e desativa
+ * encarregado; demais tipos seguem exigindo encarregado.
  */
 export function buildMissingTeamMetaReasons(params: {
   isLoadingMeta: boolean;
   serviceCenterCount: number;
-  teamCategoryCount: number;
-  teamTypeOptionCount: number;
+  teamTypeCount: number;
   foremanCount: number;
   supervisorCount: number;
-  selectedTeamCategoryId: string;
-  isTechnicalCategory: boolean;
-  isCommercialCategory: boolean;
+  isCommercialOperationalType: boolean;
 }) {
   if (params.isLoadingMeta) {
     return [] as string[];
@@ -242,11 +242,8 @@ export function buildMissingTeamMetaReasons(params: {
 
   const reasons: string[] = [];
   if (params.serviceCenterCount === 0) reasons.push("Base (Centro de Servico)");
-  if (params.teamCategoryCount === 0) reasons.push("Tipo operacional");
-  if (params.selectedTeamCategoryId && params.teamTypeOptionCount === 0) {
-    reasons.push("Tipo de equipe para este tipo operacional");
-  }
-  if (params.isTechnicalCategory && params.foremanCount === 0) reasons.push("Encarregado");
-  if (params.isCommercialCategory && params.supervisorCount === 0) reasons.push("Supervisor");
+  if (params.teamTypeCount === 0) reasons.push("Tipo operacional");
+  if (!params.isCommercialOperationalType && params.foremanCount === 0) reasons.push("Encarregado");
+  if (params.isCommercialOperationalType && params.supervisorCount === 0) reasons.push("Supervisor");
   return reasons;
 }

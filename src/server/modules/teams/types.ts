@@ -37,7 +37,7 @@ export type CreateTeamPayload = {
   serviceCenterId: string;
   stockCenterId?: string | null;
   teamTypeId: string;
-  teamCategoryId: string;
+  teamCategoryId?: string | null;
   foremanId?: string | null;
   supervisorId?: string | null;
 };
@@ -105,10 +105,20 @@ export function isCommercialTeamCategory(category: { code: string } | null) {
   return normalizeText(category?.code).toUpperCase() === "COMERCIAL";
 }
 
-// Desde a 416 o tipo operacional pertence a uma categoria. O banco garante a
-// coerencia por trigger; a checagem aqui existe so para a mensagem ser util.
-export const TEAM_TYPE_CATEGORY_MISMATCH_MESSAGE =
-  "O tipo de equipe escolhido nao pertence ao tipo operacional da equipe.";
+export function isCommercialOperationalType(teamType: { name: string | null } | null) {
+  const normalized = normalizeText(teamType?.name)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  return normalized === "COMERCIAL";
+}
+
+export function shouldTreatAsCommercialTeam(params: {
+  teamType: { name: string | null } | null;
+  teamCategory: { code: string } | null;
+}) {
+  return isCommercialOperationalType(params.teamType) || isCommercialTeamCategory(params.teamCategory);
+}
 
 export function isTechnicalTeamCategory(category: { code: string } | null) {
   return normalizeText(category?.code).toUpperCase() === "TECNICA";
