@@ -1,11 +1,18 @@
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 
+// Linha ja expandida pela tela: na visao Comercial e uma Incidencia, na tecnica e o
+// projeto. O CSV do modal exporta exatamente estas linhas.
 type DashboardProjectCsvRow = {
   projectCode: string;
   serviceCenter: string;
   totalValue: number;
   orderCount: number;
-  commercialOrderRefs?: string[];
+  incidence: string;
+};
+
+type DashboardProjectSummaryRow = {
+  projectCode: string;
+  commercialOrders?: Array<{ orderRef: string }>;
 };
 
 type DashboardContributionCsvRow = {
@@ -17,7 +24,7 @@ type DashboardContributionCsvRow = {
   workedDays: number;
   orderCount: number;
   projectCount: number;
-  projects?: DashboardProjectCsvRow[];
+  projects?: DashboardProjectSummaryRow[];
 };
 
 export function formatDashboardCurrency(value: number, compact = false) {
@@ -58,25 +65,34 @@ export function exportDashboardProjectsCsv(filename: string, params: {
     "Centro",
     "Valor cobrado",
     "Ordens",
-    ...(params.commercial ? ["Incidencias"] : []),
+    ...(params.commercial ? ["Incidencia"] : []),
   ];
   const dataRows = params.rows.map((item) => [
     item.projectCode,
     item.serviceCenter,
     item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     item.orderCount,
-    ...(params.commercial ? [formatIncidences([item])] : []),
+    ...(params.commercial ? [item.incidence] : []),
   ]);
   downloadCsvFile(buildCsvContent(header, dataRows), filename);
 }
 
-function formatProjectCodes(projects: DashboardProjectCsvRow[] | undefined) {
+function formatProjectCodes(projects: DashboardProjectSummaryRow[] | undefined) {
   return (projects ?? []).map((project) => project.projectCode).join(", ") || "Nenhum";
 }
 
-function formatIncidences(projects: DashboardProjectCsvRow[] | undefined) {
-  const refs = Array.from(new Set((projects ?? []).flatMap((project) => project.commercialOrderRefs ?? [])));
-  return refs.sort((left, right) => left.localeCompare(right)).join(", ");
+function listIncidences(projects: DashboardProjectSummaryRow[] | undefined) {
+  const refs = new Set<string>();
+  for (const project of projects ?? []) {
+    for (const order of project.commercialOrders ?? []) {
+      if (order.orderRef) refs.add(order.orderRef);
+    }
+  }
+  return Array.from(refs).sort((left, right) => left.localeCompare(right));
+}
+
+function formatIncidences(projects: DashboardProjectSummaryRow[] | undefined) {
+  return listIncidences(projects).join(", ");
 }
 
 export function exportDashboardTeamContributionsCsv(filename: string, params: {
@@ -94,7 +110,7 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
     workedDays: number;
     orderCount: number;
     projectCount: number;
-    projects?: DashboardProjectCsvRow[];
+    projects?: DashboardProjectSummaryRow[];
   }>;
 }) {
   const header = [
@@ -131,7 +147,8 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
     params.rows.reduce((sum, item) => sum + item.orderCount, 0),
     params.projectCount,
     "",
-    ...(params.commercial ? [""] : []),
+    // Total: quantidade de Incidencias distintas, nao a lista concatenada.
+    ...(params.commercial ? [listIncidences(params.rows.flatMap((item) => item.projects ?? [])).length] : []),
   ]);
 
   downloadCsvFile(buildCsvContent(header, dataRows), filename);

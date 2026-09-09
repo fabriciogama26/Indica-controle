@@ -1,5 +1,6 @@
 import type {
   SupervisorPerformanceRow,
+  TeamPerformanceCommercialOrderDetail,
   TeamPerformanceOrder,
   TeamPerformanceProjectDetail,
   TeamPerformanceRow,
@@ -8,13 +9,25 @@ import type {
   TeamPerformanceWindowResult,
 } from "./contracts";
 
+// Espelha `TeamPerformanceProjectDetail`, mas com as Incidencias em `Map` para
+// acumular valor e ordens por Incidencia enquanto a janela e percorrida.
+// `buildProjectRows` converte para o contrato publico.
+type ProjectProductionAggregate = {
+  projectId: string | null;
+  projectCode: string;
+  serviceCenter: string;
+  totalValue: number;
+  orderCount: number;
+  commercialOrders: Map<string, TeamPerformanceCommercialOrderDetail>;
+};
+
 type TeamAggregate = {
   teamId: string;
   teamName: string;
   foremanNames: Set<string>;
   totalValue: number;
   projectIds: Set<string>;
-  projects: Map<string, TeamPerformanceProjectDetail>;
+  projects: Map<string, ProjectProductionAggregate>;
   workedDates: Set<string>;
   foremanContributions: Map<string, {
     foremanName: string;
@@ -22,7 +35,7 @@ type TeamAggregate = {
     totalValue: number;
     orderCount: number;
     projectIds: Set<string>;
-    projects: Map<string, TeamPerformanceProjectDetail>;
+    projects: Map<string, ProjectProductionAggregate>;
     workedDates: Set<string>;
   }>;
 };
@@ -33,7 +46,7 @@ type SupervisorAggregate = {
   totalValue: number;
   orderCount: number;
   projectIds: Set<string>;
-  projects: Map<string, TeamPerformanceProjectDetail>;
+  projects: Map<string, ProjectProductionAggregate>;
   productiveTeamIds: Set<string>;
   potentialTeamIds: Set<string>;
   potentialTeamDates: Map<string, Set<string>>;
@@ -89,7 +102,7 @@ function listMetaBaseDates(input: TeamPerformanceWindowInput) {
 }
 
 function addProjectProduction(
-  target: Map<string, TeamPerformanceProjectDetail>,
+  target: Map<string, ProjectProductionAggregate>,
   order: TeamPerformanceOrder,
   totalValue: number,
   getProjectServiceCenter: TeamPerformanceWindowInput["getProjectServiceCenter"],
@@ -102,21 +115,45 @@ function addProjectProduction(
     serviceCenter: projectId ? getProjectServiceCenter(projectId) || "Centro nao informado" : "Centro nao informado",
     totalValue: 0,
     orderCount: 0,
-    commercialOrderRefs: [],
+    commercialOrders: new Map<string, TeamPerformanceCommercialOrderDetail>(),
   };
 
   current.totalValue += totalValue;
   current.orderCount += 1;
-  const commercialOrderRef = normalizeText(order.commercialOrderRef);
-  if (commercialOrderRef && !current.commercialOrderRefs.includes(commercialOrderRef)) {
-    current.commercialOrderRefs.push(commercialOrderRef);
-    current.commercialOrderRefs.sort((left, right) => left.localeCompare(right));
-  }
+
+  // Toda ordem entra, inclusive a sem Incidencia (chave vazia): a tela quebra o
+  // projeto numa linha por Incidencia, e a soma dessas linhas tem que fechar com o
+  // total do projeto.
+  const orderRef = normalizeText(order.commercialOrderRef);
+  const commercialOrder = current.commercialOrders.get(orderRef) ?? { orderRef, totalValue: 0, orderCount: 0 };
+  commercialOrder.totalValue += totalValue;
+  commercialOrder.orderCount += 1;
+  current.commercialOrders.set(orderRef, commercialOrder);
+
   target.set(projectKey, current);
 }
 
-function buildProjectRows(target: Map<string, TeamPerformanceProjectDetail>) {
-  return Array.from(target.values()).sort((left, right) => right.totalValue - left.totalValue);
+function buildCommercialOrderRows(target: Map<string, TeamPerformanceCommercialOrderDetail>) {
+  // Sem Incidencia por ultimo; o resto alfabetico, para a lista nao trocar de ordem
+  // entre duas cargas com os mesmos dados.
+  return Array.from(target.values()).sort((left, right) => {
+    if (!left.orderRef) return 1;
+    if (!right.orderRef) return -1;
+    return left.orderRef.localeCompare(right.orderRef);
+  });
+}
+
+function buildProjectRows(target: Map<string, ProjectProductionAggregate>): TeamPerformanceProjectDetail[] {
+  return Array.from(target.values())
+    .sort((left, right) => right.totalValue - left.totalValue)
+    .map((project) => ({
+      projectId: project.projectId,
+      projectCode: project.projectCode,
+      serviceCenter: project.serviceCenter,
+      totalValue: project.totalValue,
+      orderCount: project.orderCount,
+      commercialOrders: buildCommercialOrderRows(project.commercialOrders),
+    }));
 }
 
 export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput): TeamPerformanceWindowResult {
@@ -181,7 +218,7 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
       foremanNames: new Set<string>(),
       totalValue: 0,
       projectIds: new Set<string>(),
-      projects: new Map<string, TeamPerformanceProjectDetail>(),
+      projects: new Map<string, ProjectProductionAggregate>(),
       workedDates: new Set<string>(),
       foremanContributions: new Map(),
     };
@@ -202,7 +239,7 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
       totalValue: 0,
       orderCount: 0,
       projectIds: new Set<string>(),
-      projects: new Map<string, TeamPerformanceProjectDetail>(),
+      projects: new Map<string, ProjectProductionAggregate>(),
       workedDates: new Set<string>(),
     };
     contribution.totalValue += totalValue;
@@ -265,7 +302,7 @@ function ensureSupervisorAggregate(
     totalValue: 0,
     orderCount: 0,
     projectIds: new Set<string>(),
-    projects: new Map<string, TeamPerformanceProjectDetail>(),
+    projects: new Map<string, ProjectProductionAggregate>(),
     productiveTeamIds: new Set<string>(),
     potentialTeamIds: new Set<string>(),
     potentialTeamDates: new Map<string, Set<string>>(),

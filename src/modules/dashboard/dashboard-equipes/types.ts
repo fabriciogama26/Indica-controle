@@ -22,13 +22,21 @@ export type DashboardTeamsWeek = {
   workdays: number;
 };
 
+// Espelha `TeamPerformanceCommercialOrderDetail` do servidor. `orderRef` vazio e a
+// ordem comercial sem Incidencia preenchida.
+export type DashboardTeamsCommercialOrder = {
+  orderRef: string;
+  totalValue: number;
+  orderCount: number;
+};
+
 export type DashboardTeamsProject = {
   projectId: string | null;
   projectCode: string;
   serviceCenter: string;
   totalValue: number;
   orderCount: number;
-  commercialOrderRefs: string[];
+  commercialOrders: DashboardTeamsCommercialOrder[];
 };
 
 export type DashboardTeamRow = {

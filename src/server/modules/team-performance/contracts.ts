@@ -20,13 +20,22 @@ export type TeamPerformanceTeam = {
   isActive: boolean;
 };
 
+// Uma linha por Incidencia (`commercial_order_ref`) dentro do projeto. A ordem
+// comercial pode nao ter Incidencia, e nesse caso ela cai na entrada de `orderRef`
+// vazio -- sem isso a soma das linhas nao fecharia com o total do projeto.
+export type TeamPerformanceCommercialOrderDetail = {
+  orderRef: string;
+  totalValue: number;
+  orderCount: number;
+};
+
 export type TeamPerformanceProjectDetail = {
   projectId: string | null;
   projectCode: string;
   serviceCenter: string;
   totalValue: number;
   orderCount: number;
-  commercialOrderRefs: string[];
+  commercialOrders: TeamPerformanceCommercialOrderDetail[];
 };
 
 export type TeamForemanContributionRow = {
