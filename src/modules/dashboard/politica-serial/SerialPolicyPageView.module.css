@@ -1,0 +1,108 @@
+.wrapper {
+  display: grid;
+  gap: 20px;
+}
+
+.card {
+  padding: 22px;
+  display: grid;
+  gap: 14px;
+  border-radius: 24px;
+  border: 1px solid rgba(20, 41, 97, 0.1);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 18px 38px rgba(15, 32, 74, 0.08);
+}
+
+.cardTitle {
+  margin: 0;
+  color: #17347a;
+  font-size: 1.3rem;
+}
+
+.intro {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.92rem;
+  max-width: 78ch;
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+}
+
+.option {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(23, 52, 122, 0.12);
+  background: #f8faff;
+  cursor: pointer;
+}
+
+.optionHeader {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #17347a;
+  font-size: 0.98rem;
+}
+
+.optionHint {
+  color: #5b6a85;
+  font-size: 0.86rem;
+  max-width: 78ch;
+}
+
+.warning {
+  margin: 0;
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(205, 127, 50, 0.2);
+  background: rgba(205, 127, 50, 0.08);
+  color: #8b4f13;
+  font-size: 0.88rem;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.primaryButton {
+  border: none;
+  border-radius: 14px;
+  min-height: 44px;
+  padding: 0 20px;
+  cursor: pointer;
+  font-weight: 800;
+  background: #254a9c;
+  color: #ffffff;
+}
+
+.primaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.feedbackSuccess,
+.feedbackError {
+  margin: 0;
+  border-radius: 16px;
+  padding: 12px 16px;
+  font-weight: 700;
+}
+
+.feedbackSuccess {
+  background: rgba(38, 106, 196, 0.1);
+  color: #17347a;
+  border: 1px solid rgba(38, 106, 196, 0.16);
+}
+
+.feedbackError {
+  background: #fff1f1;
+  color: #8b1e1e;
+  border: 1px solid rgba(180, 30, 30, 0.16);
+}

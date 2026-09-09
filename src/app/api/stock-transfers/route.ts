@@ -6,6 +6,8 @@ import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { loadAllRows, loadRowsInChunks, parsePositiveInteger, SUPABASE_RESPONSE_ROW_CAP } from "@/lib/server/apiHelpers";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { canCreatePendingSerial as canCreatePendingSerialItem, movementTypeLabel } from "@/lib/stockSerialPolicy";
+import { loadStockSerialPolicy } from "@/lib/server/stockSerialPolicy";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -1371,6 +1373,16 @@ async function handleCreateStockTransfer(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao validar materiais da movimentacao de estoque." }, { status: 500 });
     }
 
+    const policyResult = await loadStockSerialPolicy(supabase, appUser.tenant_id);
+    if (policyResult.error) {
+      return NextResponse.json(
+        { message: "Falha ao carregar a politica de pendencia de serial do contrato." },
+        { status: 500 },
+      );
+    }
+
+    const serialPolicy = policyResult.data;
+
     const materialMap = new Map((materialsResult.data ?? []).map((row) => [row.id, row]));
     for (const item of items) {
       const material = materialMap.get(item.materialId);
@@ -1396,14 +1408,20 @@ async function handleCreateStockTransfer(request: NextRequest) {
         );
       }
 
-      const canCreatePendingSerial = allowsPendingSerialIdentification(
+      const canCreatePendingSerial = canCreatePendingSerialItem({
         serialTrackingType,
-        material?.allow_pending_serial_identification,
-      ) && (movementType === "ENTRY" || movementType === "TRANSFER");
+        allowPendingSerialIdentification: material?.allow_pending_serial_identification,
+        movementType,
+        policy: serialPolicy,
+      });
 
       if (!hasSerial && !canCreatePendingSerial) {
         return NextResponse.json(
-          { message: `Serial e obrigatorio para material ${serialTrackingLabel(serialTrackingType)}.` },
+          {
+            message: allowsPendingSerialIdentification(serialTrackingType, material?.allow_pending_serial_identification)
+              ? `Serial e obrigatorio para material ${serialTrackingLabel(serialTrackingType)} em ${movementTypeLabel(movementType)}: este contrato nao aceita pendencia de identificacao neste movimento.`
+              : `Serial e obrigatorio para material ${serialTrackingLabel(serialTrackingType)}.`,
+          },
           { status: 400 },
         );
       }

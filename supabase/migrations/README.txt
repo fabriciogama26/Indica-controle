@@ -1618,3 +1618,23 @@ Observacao
   `lock_timeout` e para FALHAR RAPIDO: pedido de ACCESS EXCLUSIVE pendente bloqueia todo leitor que
   chega depois dele, entao esperar em silencio derrubaria a aplicacao junto. Se estourar, rodar de
   novo com a aplicacao ociosa -- a transacao volta atras inteira, nada fica pela metade.
+
+421_create_tenant_stock_serial_policy.sql
+- Cria `tenant_stock_serial_policy` (um registro por tenant, unique em `tenant_id`) com
+  `allow_pending_on_entry`, `allow_pending_on_transfer` e `allow_pending_on_exit`.
+- Torna configuravel por contrato em quais movimentos um material rastreado por serial pode
+  ser lancado sem Serial. Vale em AND com `materials.allow_pending_serial_identification`
+  (414): a pendencia so e aceita quando o material permite E o contrato permite o movimento.
+- Backfill grava `entry=true, transfer=true, exit=false` para todo tenant -- exatamente a
+  regra que estava fixa no codigo. Nenhum contrato muda de comportamento no deploy.
+- RLS ativa com `select` por `user_can_access_tenant`; sem escrita direta para
+  `anon`/`authenticated`. Escrita apenas por `save_tenant_stock_serial_policy`, com
+  `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`
+  (`module_key = 'politica-serial'`) na mesma transacao.
+- Cria a pagina `politica-serial` em `app_pages` com `default_user_access = false` e semeia
+  `role_page_permissions` e `app_user_page_permissions` liberando apenas admin, no mesmo
+  molde da 408.
+- A politica NAO alcanca `identify_pending_serial_tracked_unit`: saldo pendente ja acumulado
+  precisa continuar liquidavel mesmo depois de o contrato apertar a regra, senao fica preso.
+- Valida no fim: RPC nao executavel por anon/authenticated, tabela sem escrita direta, pagina
+  ativa e nenhum tenant sem linha de politica.

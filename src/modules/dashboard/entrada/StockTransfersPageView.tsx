@@ -7,6 +7,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { canCreatePendingSerial, DEFAULT_STOCK_SERIAL_POLICY, type StockSerialPolicy } from "@/lib/stockSerialPolicy";
+import { csvEscape, downloadCsv, normalizeHeaderName } from "./csv";
 import styles from "./StockTransfersPageView.module.css";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 
@@ -39,6 +41,7 @@ type MetaResponse = {
   projects?: ProjectOption[];
   materials?: MaterialOption[];
   reversalReasons?: ReversalReasonOption[];
+  serialPolicy?: StockSerialPolicy;
   message?: string;
 };
 type SerialOption = {
@@ -470,12 +473,18 @@ function isWholeQuantity(quantity: number | null) {
   return Number.isInteger(quantity) && quantity > 0;
 }
 
-function canCreatePendingSerialEntry(material: Pick<MaterialOption, "serialTrackingType" | "allowPendingSerialIdentification"> | null | undefined, movementType: FormState["movementType"]) {
-  return allowsPendingSerialIdentification(material?.serialTrackingType, material?.allowPendingSerialIdentification)
-    && (movementType === "ENTRY" || movementType === "TRANSFER");
+type PendingSerialMaterial = Pick<MaterialOption, "serialTrackingType" | "allowPendingSerialIdentification"> | null | undefined;
+
+function canCreatePendingSerialEntry(material: PendingSerialMaterial, movementType: FormState["movementType"], policy: StockSerialPolicy) {
+  return canCreatePendingSerial({
+    serialTrackingType: material?.serialTrackingType,
+    allowPendingSerialIdentification: material?.allowPendingSerialIdentification,
+    movementType,
+    policy,
+  });
 }
 
-function canIdentifyPendingSerialOnExit(material: Pick<MaterialOption, "serialTrackingType" | "allowPendingSerialIdentification"> | null | undefined, movementType: FormState["movementType"]) {
+function canIdentifyPendingSerialOnExit(material: PendingSerialMaterial, movementType: FormState["movementType"]) {
   return allowsPendingSerialIdentification(material?.serialTrackingType, material?.allowPendingSerialIdentification)
     && movementType === "EXIT";
 }
@@ -486,33 +495,6 @@ function parsePositiveNumber(value: string) {
   const parsed = Number(normalized.replace(",", "."));
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return Number(parsed.toFixed(3));
-}
-
-function csvEscape(value: string | number | null | undefined) {
-  const raw = String(value ?? "").replace(/\r?\n|\r/g, " ").trim();
-  if (raw.includes(";") || raw.includes('"')) {
-    return `"${raw.replace(/"/g, '""')}"`;
-  }
-  return raw;
-}
-
-function downloadCsv(content: string, filename: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function normalizeHeaderName(value: string) {
-  return normalizeText(value)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
 }
 
 function parseCsvContent(content: string) {
@@ -597,6 +579,7 @@ export function StockTransfersPageView() {
   const [stockCenters, setStockCenters] = useState<StockCenterOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
+  const [serialPolicy, setSerialPolicy] = useState<StockSerialPolicy>(DEFAULT_STOCK_SERIAL_POLICY);
   const [serialOptions, setSerialOptions] = useState<SerialOption[]>([]);
   const [reversalReasons, setReversalReasons] = useState<ReversalReasonOption[]>([]);
 
@@ -679,7 +662,7 @@ export function StockTransfersPageView() {
     [stockCenters],
   );
 
-  const selectedMaterialAllowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
+  const selectedMaterialAllowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType, serialPolicy);
   const selectedMaterialAllowsExitSerialIdentification = canIdentifyPendingSerialOnExit(selectedMaterial, form.movementType);
   const hasSerialDraft = Boolean(normalizeText(form.serialNumber));
   const serialFieldAvailable = isSerialTrackedMaterial(selectedMaterial?.serialTrackingType);
@@ -765,6 +748,7 @@ export function StockTransfersPageView() {
       setStockCenters(data.stockCenters ?? []);
       setProjects(data.projects ?? []);
       setMaterials(data.materials ?? []);
+      setSerialPolicy(data.serialPolicy ?? DEFAULT_STOCK_SERIAL_POLICY);
       const fetchedReversalReasons = data.reversalReasons ?? [];
       setReversalReasons(fetchedReversalReasons);
       if (fetchedReversalReasons.length > 0) {
@@ -1127,7 +1111,7 @@ export function StockTransfersPageView() {
       description: matchedMaterial?.description ?? "",
       entryType: normalizeMaterialEntryType(matchedMaterial?.materialType ?? ""),
       quantity: isSerialTrackedMaterial(matchedMaterial?.serialTrackingType)
-        && !canCreatePendingSerialEntry(matchedMaterial, current.movementType)
+        && !canCreatePendingSerialEntry(matchedMaterial, current.movementType, serialPolicy)
         ? "1"
         : current.quantity,
       serialNumber: "",
@@ -1291,7 +1275,7 @@ export function StockTransfersPageView() {
       return "Quantidade deve ser maior que zero.";
     }
 
-    const allowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
+    const allowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType, serialPolicy);
     const hasSerial = Boolean(normalizeText(form.serialNumber));
 
     if (isSerialTrackedMaterial(selectedMaterial?.serialTrackingType)) {
@@ -1345,7 +1329,7 @@ export function StockTransfersPageView() {
       return;
     }
 
-    const allowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType);
+    const allowsPendingSerial = canCreatePendingSerialEntry(selectedMaterial, form.movementType, serialPolicy);
     const hasSerial = Boolean(normalizeText(form.serialNumber));
 
     if (isSerialTrackedMaterial(selectedMaterial.serialTrackingType)) {
@@ -1471,7 +1455,7 @@ export function StockTransfersPageView() {
         return { ok: true } as const;
       }
 
-      if (canCreatePendingSerialEntry(item, form.movementType) && !normalizeText(item.serialNumber)) {
+      if (canCreatePendingSerialEntry(item, form.movementType, serialPolicy) && !normalizeText(item.serialNumber)) {
         return { ok: true } as const;
       }
 
@@ -1536,7 +1520,7 @@ export function StockTransfersPageView() {
         || !canIdentifyPendingSerialOnExit(item, form.movementType)
       )
     ) {
-      if (canCreatePendingSerialEntry(item, form.movementType) && !normalizeText(item.serialNumber)) {
+      if (canCreatePendingSerialEntry(item, form.movementType, serialPolicy) && !normalizeText(item.serialNumber)) {
         return { ok: true } as const;
       }
 
@@ -1719,7 +1703,7 @@ export function StockTransfersPageView() {
         }
 
         if (item.isTransformer) {
-          const itemAllowsPendingSerial = canCreatePendingSerialEntry(item, form.movementType);
+          const itemAllowsPendingSerial = canCreatePendingSerialEntry(item, form.movementType, serialPolicy);
           const itemHasSerial = Boolean(normalizeText(item.serialNumber));
 
           if (!isTransformerQuantityValid(item.quantity) && (!itemAllowsPendingSerial || itemHasSerial)) {
@@ -2384,7 +2368,7 @@ export function StockTransfersPageView() {
           return;
         }
 
-        const allowPendingSerialInImport = canCreatePendingSerialEntry(material, movementType);
+        const allowPendingSerialInImport = canCreatePendingSerialEntry(material, movementType, serialPolicy);
 
         if (isSerialTrackedMaterial(material.serialTrackingType) && !serialNumber && !allowPendingSerialInImport) {
           importIssues.push({ rowNumber, column: "serial", value: serialNumberRaw, error: `Serial e obrigatorio para material ${serialTrackingLabel(material.serialTrackingType)}.` });
