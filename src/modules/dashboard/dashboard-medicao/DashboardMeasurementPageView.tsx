@@ -9,6 +9,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import {
   completionChartColors,
+  cycleMetricHelp,
   DEFAULT_TEAM_CATEGORY_CODE,
   filenameToken,
   formatCompactCurrency,
@@ -23,6 +24,7 @@ import {
   metaColors,
   metaDayLabels,
   metaLabels,
+  periodMetricHelp,
   resolveCycleDays,
   resolveCycleForecastDifference,
   resolveCycleForecastValue,
@@ -44,6 +46,7 @@ import type {
   ServiceScope,
   TeamCategoryOption,
 } from "./presentation";
+import { MetricTile } from "./MetricTile";
 import styles from "./DashboardMeasurementPageView.module.css";
 
 
@@ -785,26 +788,11 @@ export function DashboardMeasurementPageView() {
           </div>
         </div>
         <div className={`${styles.cycleMetricGrid} ${styles.periodMetricGrid}`}>
-          <div className={styles.metric}>
-            <span>Ticket medio / Projetos</span>
-            <strong>{formatCurrency(periodSummary?.averageTicketValue ?? 0)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ticket medio / Projetos (concluidos)</span>
-            <strong>{formatCurrency(periodSummary?.completedAverageTicketValue ?? 0)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ticket medio / Servicos</span>
-            <strong>{formatCurrency(periodSummary?.averageServiceTicketValue ?? 0)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Projetos no ciclo</span>
-            <strong>{periodSummary?.projectCount ?? 0}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ordens de Servicos no ciclo</span>
-            <strong>{periodSummary?.orderCount ?? 0}</strong>
-          </div>
+          <MetricTile label="Ticket medio / Projetos" value={formatCurrency(periodSummary?.averageTicketValue ?? 0)} help={periodMetricHelp.averageTicket} />
+          <MetricTile label="Ticket medio / Projetos (concluidos)" value={formatCurrency(periodSummary?.completedAverageTicketValue ?? 0)} help={periodMetricHelp.completedAverageTicket} />
+          <MetricTile label="Ticket medio / Servicos" value={formatCurrency(periodSummary?.averageServiceTicketValue ?? 0)} help={periodMetricHelp.averageServiceTicket} />
+          <MetricTile label="Projetos no ciclo" value={String(periodSummary?.projectCount ?? 0)} />
+          <MetricTile label="Ordens de Servicos no ciclo" value={String(periodSummary?.orderCount ?? 0)} />
         </div>
         {renderCompletionTable(
           periodCompletionChart,
@@ -840,42 +828,15 @@ export function DashboardMeasurementPageView() {
         </div>
 
         <div className={styles.cycleMetricGrid}>
-          <div className={styles.metric}>
-            <span>Ticket medio / Projetos</span>
-            <strong>{formatCurrency(cycleComparison?.averageTicketValue ?? 0)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ticket medio / Projetos (concluidos)</span>
-            <strong>{formatCurrency(cycleComparison?.completedAverageTicketValue ?? 0)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ticket medio / Servicos</span>
-            <strong>{formatCurrency(cycleComparison?.averageServiceTicketValue ?? 0)}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Projetos no ciclo</span>
-            <strong>{cycleComparison?.projectCount ?? 0}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Projetos no ciclo (concluidos)</span>
-            <strong>{cycleComparison?.completedProjectCount ?? 0}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ordens de Servicos no ciclo</span>
-            <strong>{cycleComparison?.orderCount ?? 0}</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ritmo atual</span>
-            <strong>{formatCurrency(cycleComparison?.averageDailyValue ?? 0)}/dia</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ritmo produtivo</span>
-            <strong>{formatCurrency(cycleComparison?.objectiveDailyValue ?? 0)}/dia</strong>
-          </div>
-          <div className={styles.metric}>
-            <span>Ritmo meta</span>
-            <strong>{formatCurrency(cycleComparison?.targetDailyValue ?? 0)}/dia</strong>
-          </div>
+          <MetricTile label="Ticket medio / Projetos" value={formatCurrency(cycleComparison?.averageTicketValue ?? 0)} help={cycleMetricHelp.averageTicket} />
+          <MetricTile label="Ticket medio / Projetos (concluidos)" value={formatCurrency(cycleComparison?.completedAverageTicketValue ?? 0)} help={cycleMetricHelp.completedAverageTicket} />
+          <MetricTile label="Ticket medio / Servicos" value={formatCurrency(cycleComparison?.averageServiceTicketValue ?? 0)} help={cycleMetricHelp.averageServiceTicket} />
+          <MetricTile label="Projetos no ciclo" value={String(cycleComparison?.projectCount ?? 0)} />
+          <MetricTile label="Projetos no ciclo (concluidos)" value={String(cycleComparison?.completedProjectCount ?? 0)} />
+          <MetricTile label="Ordens de Servicos no ciclo" value={String(cycleComparison?.orderCount ?? 0)} />
+          <MetricTile label="Ritmo atual" value={`${formatCurrency(cycleComparison?.averageDailyValue ?? 0)}/dia`} help={cycleMetricHelp.currentPace} />
+          <MetricTile label="Ritmo produtivo" value={`${formatCurrency(cycleComparison?.objectiveDailyValue ?? 0)}/dia`} help={cycleMetricHelp.productivePace} />
+          <MetricTile label="Ritmo meta" value={`${formatCurrency(cycleComparison?.targetDailyValue ?? 0)}/dia`} help={cycleMetricHelp.targetPace} />
         </div>
 
         <div className={styles.tableWrapper}>

@@ -167,6 +167,33 @@ export const metaDayLabels: Record<MetaMode, string> = {
   worked: "Dias reais",
 };
 
+// Textos do icone de informe dos cards de indicador. O card de periodo e o card de
+// ciclo somam bases diferentes: o periodo inclui a Garantia de faturamento minimo,
+// o ciclo nao. Ver docs/Tela_Dashboard_Medicao_SaaS.txt.
+export const periodMetricHelp = {
+  averageTicket:
+    "Valor total do recorte De/Para dividido pelos projetos distintos do recorte. Valor e projetos incluem a Garantia de faturamento minimo.",
+  completedAverageTicket:
+    "Valor das ordens com Estado Trabalho Concluido no recorte De/Para dividido pelos projetos distintos concluidos. Nao inclui a Garantia de faturamento minimo.",
+  averageServiceTicket:
+    "Valor total do recorte De/Para dividido pela quantidade de ordens do recorte. Valor e contagem incluem a Garantia de faturamento minimo.",
+} as const;
+
+export const cycleMetricHelp = {
+  averageTicket:
+    "Valor realizado no ciclo dividido pelos projetos distintos do ciclo e dos filtros aplicados.",
+  completedAverageTicket:
+    "Valor das ordens com Estado Trabalho Concluido dividido pelos projetos distintos concluidos, no ciclo e nos filtros aplicados.",
+  averageServiceTicket:
+    "Valor realizado no ciclo dividido pela quantidade de ordens com producao do ciclo e dos filtros aplicados.",
+  currentPace:
+    "Valor realizado no ciclo dividido pelos Dias trabalhados, ou seja, as datas distintas de execucao das medicoes com producao. Dia sem execucao nao entra na conta.",
+  productivePace:
+    "Soma da meta diaria do tipo de equipe vigente para cada par unico de equipe + data com producao, dividida pelos Dias trabalhados. Ordens sem producao, canceladas e a Garantia de faturamento minimo ficam de fora.",
+  targetPace:
+    "Soma de Valor diario x Equipes medida cadastrada na Meta do ciclo, por tipo de equipe. Nao depende do que foi executado.",
+} as const;
+
 export const metaColors: Record<MetaMode | "value", string> = {
   value: "#4b77c7",
   cycle: "#f07f2f",

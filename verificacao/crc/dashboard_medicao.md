@@ -23,7 +23,9 @@
 | Arquivo | Responsabilidade |
 |---|---|
 | `src/app/(dashboard)/dashboard-medicao/page.tsx` | Entry point |
-| `src/modules/dashboard/dashboard-medicao/DashboardMedicaoPageView.tsx` | Componente principal |
+| `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx` | Componente principal |
+| `src/modules/dashboard/dashboard-medicao/presentation.ts` | Tipos, constantes, formatadores e textos de ajuda dos cards |
+| `src/modules/dashboard/dashboard-medicao/MetricTile.tsx` | Card de indicador com icone de informe opcional |
 | `src/app/api/dashboard-medicao/route.ts` | Delega para controller |
 | **`src/server/modules/dashboard-measurement/controller.ts`** | **Toda a lógica — 1.179 linhas** |
 | `src/server/modules/dashboard-measurement/index.ts` | Exporta `handleDashboardMeasurementGet` |
