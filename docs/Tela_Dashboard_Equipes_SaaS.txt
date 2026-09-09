@@ -534,8 +534,8 @@ Atualizacao 2026-09-08 - Eletricista 1 / Eletricista 2 na visao Comercial
   `project_commercial_measurement_order_members` filtra por `tenant_id` e a RLS da
   tabela (415) segue como ultima barreira.
 
-Atualizacao 2026-09-09 - Incidencia no detalhe do MK, CSV do bloco de eletricistas e
-contagem de projetos sem projeto vinculado
+Atualizacao 2026-09-09 - Incidencia na tela, CSV do bloco de eletricistas e contagem
+de projetos sem projeto vinculado
 -------------------------------------------------------------------------
 - Motivo: a ordem COMERCIAL nao exige projeto. `project_measurement_orders.project_id`
   e NULL nessas ordens (migration 415) e o identificador do trabalho e a `Incidencia`,
@@ -553,28 +553,42 @@ contagem de projetos sem projeto vinculado
   A linha continua aparecendo na lista de projetos, com o valor e as ordens dela, mas
   NAO entra na contagem. Foi decisao deliberada: esconder a linha sumiria com valor
   realizado que existe, e conta-la como projeto era exatamente o bug relatado.
-- INCIDENCIA NA TELA (somente visao `Comercial`):
-  - `commercial_order_ref` entra nos quatro `select` de `project_measurement_orders` do
-    `controller.ts` e chega ao calculo por `TeamPerformanceOrder.commercialOrderRef`;
-  - `TeamPerformanceProjectDetail.commercialOrderRefs` acumula as Incidencias distintas
-    por projeto, ordenadas, sem repeticao;
-  - o modal de detalhe do MK ganha a coluna `Incidencias` por linha de dupla e no
-    rodape `Total MK`; o modal de lista de projetos ganha a mesma coluna por linha e no
-    total. Na visao tecnica a coluna nao existe, porque o campo e exclusivo da ordem
-    comercial.
+- GRANULARIDADE DO MODAL DE PROJETOS: na visao `Comercial` a linha da tabela e a
+  INCIDENCIA, nao o projeto. Sem isso o modal virava uma linha unica `Sem projeto` com
+  dezenas de Incidencias concatenadas numa celula so, ilegivel e sem valor por
+  Incidencia. `TeamPerformanceProjectDetail.commercialOrders` traz
+  `{ orderRef, totalValue, orderCount }` por Incidencia, e `buildProjectDetailRows`
+  (PageView) expande projeto -> Incidencia para a tabela e para o CSV, das mesmas
+  linhas, para o arquivo nao divergir da tela.
+  - A ordem SEM Incidencia preenchida (`commercial_order_ref` e opcional na 415) entra
+    numa linha propria rotulada `Sem incidencia`, ordenada por ultimo. Descarta-la
+    faria a soma das linhas nao fechar com o total do projeto.
+  - Incidencia repetida em varias ordens vira UMA linha, somando valor e ordens.
+  - Na visao tecnica a coluna nao existe e a linha continua sendo o projeto.
+- TOTAL: o rodape do modal de projetos e o `Total MK` do modal de detalhe mostram a
+  QUANTIDADE de Incidencias distintas, nao a lista. Lista concatenada em linha de total
+  nao informa nada e estoura a largura da celula. A contagem ignora a linha
+  `Sem incidencia`, que nao e uma Incidencia. Nas linhas de detalhe do modal do MK a
+  lista continua, porque ali ela e o recorte daquela dupla.
 - CSV DO BLOCO `Eletricistas no ciclo`: botao `Extrair CSV` no cabecalho do bloco, so na
   visao `Comercial`, exportando as linhas ja filtradas pela semana selecionada
   (`exportDashboardTeamForemenCsv`). Respeita o mesmo `exportCooldown` dos outros CSVs.
   O nome do arquivo usa o rotulo do periodo do bloco, nao o do filtro global, porque o
   bloco tem filtro de semana proprio.
 - Os tres CSVs da tela agora saem por `buildCsvContent`/`downloadCsvFile` de
-  `src/lib/utils/csv.ts`, no lugar de tres copias locais de escape e download. Os CSVs de
-  contribuicao e de projetos ganharam `Lista de projetos` e `Incidencias`; a coluna de
-  Incidencias so e emitida quando a exportacao e da visao `Comercial`.
-- Validacao: `npx tsc --noEmit` e `npm run lint` limpos. Sem suite automatizada: o
-  caminho longo foi conferido a mao na visao `Comercial` (abrir MK, conferir Incidencia
-  por dupla, trocar a semana do bloco, extrair os tres CSVs) e na visao tecnica
-  (confirmar que a coluna `Incidencias` nao aparece em tela nem no CSV).
+  `src/lib/utils/csv.ts`, no lugar de tres copias locais de escape e download. O CSV do
+  modal de projetos acompanha a granularidade da tela (coluna `Incidencia`, uma linha
+  por Incidencia); os CSVs de contribuicao ganharam `Lista de projetos` e `Incidencias`
+  por linha, e a linha de total leva a contagem distinta. Coluna de Incidencia so e
+  emitida quando a exportacao e da visao `Comercial`.
+- Validacao: `npx tsc --noEmit` e `npm run lint` limpos. Sem suite automatizada, a
+  reconciliacao foi conferida executando `calculateTeamPerformanceWindow` compilada
+  fora do app, com 5 ordens sem projeto (uma Incidencia repetida e uma ordem sem
+  Incidencia): `projectCount` 0, 4 linhas por Incidencia, soma das linhas igual ao total
+  do projeto e 3 Incidencias distintas no total. Teste manual da tela pendente: caminho
+  longo na visao `Comercial` (abrir MK, conferir Incidencia por dupla, trocar a semana
+  do bloco, extrair os tres CSVs) e na visao tecnica (confirmar que a coluna nao
+  aparece em tela nem no CSV).
 - Permissao: nenhuma nova. Tudo dentro de `dashboard-equipes/read`, coberto pelo
   `page_key` da tela visivel.
 - Ratchet: nenhum arquivo do modulo passou do teto. Sem `lint:size:accept`.

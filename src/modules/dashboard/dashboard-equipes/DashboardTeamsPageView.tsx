@@ -30,6 +30,16 @@ type ProjectDetailModal = {
   rows: DashboardTeamsProject[];
   filename: string;
 } | null;
+// Linha ja expandida para exibicao: na visao Comercial e uma Incidencia, na tecnica
+// e o proprio projeto.
+type ProjectDetailRow = {
+  key: string;
+  projectCode: string;
+  serviceCenter: string;
+  totalValue: number;
+  orderCount: number;
+  incidence: string;
+};
 type TeamDetailModal = {
   row: DashboardTeamRow;
   periodLabel: string;
@@ -87,9 +97,50 @@ function formatProjectList(rows: DashboardTeamsProject[]) {
   return rows.map((project) => project.projectCode).join(", ") || "Nenhum";
 }
 
+function listIncidences(rows: DashboardTeamsProject[]) {
+  const refs = new Set<string>();
+  for (const project of rows) {
+    for (const order of project.commercialOrders ?? []) {
+      if (order.orderRef) refs.add(order.orderRef);
+    }
+  }
+  return Array.from(refs).sort((left, right) => left.localeCompare(right));
+}
+
 function formatIncidenceList(rows: DashboardTeamsProject[]) {
-  const refs = Array.from(new Set(rows.flatMap((project) => project.commercialOrderRefs ?? [])));
-  return refs.sort((left, right) => left.localeCompare(right)).join(", ") || "-";
+  return listIncidences(rows).join(", ") || "-";
+}
+
+function countIncidences(rows: DashboardTeamsProject[]) {
+  return listIncidences(rows).length;
+}
+
+// Na visao Comercial a linha da tabela de detalhe e a Incidencia, nao o projeto: a
+// ordem comercial em geral nao tem projeto e quem identifica o trabalho e a
+// Incidencia. A ordem sem Incidencia vira uma linha propria para a soma das linhas
+// continuar fechando com o total do projeto.
+function buildProjectDetailRows(rows: DashboardTeamsProject[], commercial: boolean): ProjectDetailRow[] {
+  return rows.flatMap((project, index) => {
+    const projectKey = project.projectId ?? `sem-projeto-${index}`;
+    const base = { projectCode: project.projectCode, serviceCenter: project.serviceCenter };
+    const commercialOrders = project.commercialOrders ?? [];
+    if (!commercial || !commercialOrders.length) {
+      return [{
+        key: projectKey,
+        ...base,
+        totalValue: project.totalValue,
+        orderCount: project.orderCount,
+        incidence: commercial ? "Sem incidencia" : "",
+      }];
+    }
+    return commercialOrders.map((order) => ({
+      key: `${projectKey}-${order.orderRef || "sem-incidencia"}`,
+      ...base,
+      totalValue: order.totalValue,
+      orderCount: order.orderCount,
+      incidence: order.orderRef || "Sem incidencia",
+    }));
+  });
 }
 
 function resolveMetaValue(row: MetaComparisonRow, mode: MetaMode) {
@@ -214,6 +265,13 @@ export function DashboardTeamsPageView() {
   const isCommercialView = dashboard.appliedTeamCategoryCode === "COMERCIAL";
   const foremanColumnLabel = isCommercialView ? "Eletricista" : "Encarregado";
 
+  // A tabela e o CSV do modal de detalhe saem da MESMA lista expandida, para o arquivo
+  // nunca divergir do que esta na tela.
+  const projectDetailRows = useMemo(
+    () => (projectDetailModal ? buildProjectDetailRows(projectDetailModal.rows, isCommercialView) : []),
+    [projectDetailModal, isCommercialView],
+  );
+
   // Antes da primeira resposta o catalogo ainda nao chegou: o select mostra a operacao
   // corrente em vez de uma caixa vazia.
   const teamCategoryOptions = dashboard.teamCategories.length
@@ -256,7 +314,7 @@ export function DashboardTeamsPageView() {
   }
 
   async function exportProjectDetails() {
-    if (!projectDetailModal?.rows.length) {
+    if (!projectDetailModal || !projectDetailRows.length) {
       setLocalMessage("Nenhum projeto encontrado para exportar.");
       return;
     }
@@ -267,7 +325,7 @@ export function DashboardTeamsPageView() {
     setIsExporting(true);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
-      exportDashboardProjectsCsv(projectDetailModal.filename, { commercial: isCommercialView, rows: projectDetailModal.rows });
+      exportDashboardProjectsCsv(projectDetailModal.filename, { commercial: isCommercialView, rows: projectDetailRows });
       setLocalMessage("");
     } finally {
       setIsExporting(false);
@@ -679,7 +737,7 @@ export function DashboardTeamsPageView() {
                       <td>{teamDetailModal.row.foremanContributions.reduce((sum, item) => sum + item.orderCount, 0)}</td>
                       <td>{teamDetailModal.row.projectCount}</td>
                       <td>-</td>
-                      {isCommercialView ? <td>{formatIncidenceList(teamDetailModal.row.projects)}</td> : null}
+                      {isCommercialView ? <td>{countIncidences(teamDetailModal.row.projects)}</td> : null}
                     </tr>
                   </tfoot>
                 </table>
@@ -689,7 +747,48 @@ export function DashboardTeamsPageView() {
         </div>
       ) : null}
 
-      {projectDetailModal ? <div className={styles.modalBackdrop} role="dialog" aria-modal="true"><div className={styles.modal}><div className={styles.modalHeader}><div><h2>{projectDetailModal.title}</h2><p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p></div><div className={styles.modalActions}><CsvExportButton onClick={() => void exportProjectDetails()} isLoading={isExporting} className={styles.secondaryButton} idleLabel="Exportar Excel (CSV)" showProgressModal={false} /><button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)}>x</button></div></div><div className={styles.modalBody}><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Projeto</th><th>Centro</th><th>Valor cobrado</th><th>Ordens</th>{isCommercialView ? <th>Incidencias</th> : null}</tr></thead><tbody>{projectDetailModal.rows.length ? projectDetailModal.rows.map((item, index) => <tr key={item.projectId ?? `sem-projeto-${index}`}><td>{item.projectCode}</td><td>{item.serviceCenter}</td><td>{formatDashboardCurrency(item.totalValue)}</td><td>{item.orderCount}</td>{isCommercialView ? <td className={styles.projectListCell}>{formatIncidenceList([item])}</td> : null}</tr>) : <tr><td colSpan={isCommercialView ? 5 : 4} className={styles.emptyRow}>Nenhum projeto encontrado.</td></tr>}</tbody><tfoot><tr><td>Total</td><td>{countLinkedProjects(projectDetailModal.rows)} projetos</td><td>{formatDashboardCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td><td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td>{isCommercialView ? <td>{formatIncidenceList(projectDetailModal.rows)}</td> : null}</tr></tfoot></table></div></div></div></div> : null}
+      {projectDetailModal ? (
+        <div className={styles.modalBackdrop} role="dialog" aria-modal="true">
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <div><h2>{projectDetailModal.title}</h2><p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p></div>
+              <div className={styles.modalActions}>
+                <CsvExportButton onClick={() => void exportProjectDetails()} isLoading={isExporting} className={styles.secondaryButton} idleLabel="Exportar Excel (CSV)" showProgressModal={false} />
+                <button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)}>x</button>
+              </div>
+            </div>
+            <div className={styles.modalBody}>
+              <div className={styles.tableWrapper}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr><th>Projeto</th><th>Centro</th><th>Valor cobrado</th><th>Ordens</th>{isCommercialView ? <th>Incidencia</th> : null}</tr>
+                  </thead>
+                  <tbody>
+                    {projectDetailRows.length ? projectDetailRows.map((item) => (
+                      <tr key={item.key}>
+                        <td>{item.projectCode}</td>
+                        <td>{item.serviceCenter}</td>
+                        <td>{formatDashboardCurrency(item.totalValue)}</td>
+                        <td>{item.orderCount}</td>
+                        {isCommercialView ? <td>{item.incidence}</td> : null}
+                      </tr>
+                    )) : <tr><td colSpan={isCommercialView ? 5 : 4} className={styles.emptyRow}>Nenhum projeto encontrado.</td></tr>}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td>Total</td>
+                      <td>{countLinkedProjects(projectDetailModal.rows)} projetos</td>
+                      <td>{formatDashboardCurrency(projectDetailRows.reduce((sum, item) => sum + item.totalValue, 0))}</td>
+                      <td>{projectDetailRows.reduce((sum, item) => sum + item.orderCount, 0)}</td>
+                      {isCommercialView ? <td>{countIncidences(projectDetailModal.rows)}</td> : null}
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
