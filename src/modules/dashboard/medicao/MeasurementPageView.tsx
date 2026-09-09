@@ -2296,7 +2296,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
 
     const matchedProject = findProjectOption(formProjectSearch, projects);
     // Na Medicao Comercial o Projeto e opcional: a equipe atende demanda que nem
-    // sempre tem projeto aberto, e a referencia da execucao vira o campo `Ordem`.
+    // sempre tem projeto aberto, e a referencia da execucao vira o campo `Incidencia`.
     // Texto digitado ainda precisa casar com um projeto ativo -- opcional nao e
     // o mesmo que aceitar codigo inexistente.
     const requiresProject = form.measurementKind === "COM_PRODUCAO" && !variant.commercial;
@@ -3100,7 +3100,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
             <thead><tr>
               <th>Ordem</th>
               <th>Projeto</th>
-              {variant.commercial ? <th>Ordem (informada)</th> : null}
+              {variant.commercial ? <th>Incidencia</th> : null}
               <th>Data execucao</th>
               <th>Equipe</th>
               {/* A Medicao Comercial nao trabalha com Composicao de Equipe nem com
@@ -3296,7 +3296,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
             <div className={styles.modalBody}>
               <div className={styles.detailGrid}>
                 <div><strong>Projeto:</strong> {detailOrder.projectId ? (projectMap.get(detailOrder.projectId)?.code ?? "-") : "Sem projeto"}</div>
-                {variant.commercial ? <div><strong>Ordem:</strong> {detailOrder.commercialOrderRef || "-"}</div> : null}
+                {variant.commercial ? <div><strong>Incidencia:</strong> {detailOrder.commercialOrderRef || "-"}</div> : null}
                 <div><strong>Equipe:</strong> {detailOrder.teamName || teamMap.get(detailOrder.teamId)?.name || "-"}</div>
                 {variant.commercial ? (
                   <>

@@ -268,10 +268,11 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
       return NextResponse.json({ message: "Selecione o Processo da medicao comercial." }, { status: 400 });
     }
 
-    // `Ordem` obrigatoria nos DOIS tipos de medicao, igual a Processo e aos
-    // horarios (migration 419). A ordem TECNICA nao tem o campo.
+    // `Incidencia` (coluna `commercial_order_ref`) obrigatoria nos DOIS tipos de
+    // medicao, igual a Processo e aos horarios (migration 419). A ordem TECNICA
+    // nao tem o campo.
     if (!commercialOrderRef) {
-      return NextResponse.json({ message: "Informe a Ordem da medicao comercial." }, { status: 400 });
+      return NextResponse.json({ message: "Informe a Incidencia da medicao comercial." }, { status: 400 });
     }
 
     if (!commercialStartTime || !commercialEndTime) {
@@ -370,7 +371,7 @@ async function saveMeasurementOrder(request: NextRequest, method: "POST" | "PUT"
     if (isCommercialOrderRefConflict(error)) {
       return NextResponse.json(
         {
-          message: "Ja existe ordem de medicao comercial para esta Ordem + Equipe + Data de execucao.",
+          message: "Ja existe ordem de medicao comercial para esta Incidencia + Equipe + Data de execucao.",
           reason: "COMMERCIAL_ORDER_REF_ALREADY_EXISTS",
         },
         { status: 409 },
@@ -606,12 +607,12 @@ export async function handleMeasurementPatch(request: NextRequest, config = DEFA
       errorMessage: error.message,
     });
     // Reabrir (`ABRIR`) uma ordem cancelada devolve a linha ao indice unico da
-    // 419. Se a Ordem dela foi reutilizada enquanto estava cancelada, a colisao
-    // e real e o usuario precisa saber qual e.
+    // 419. Se a Incidencia dela foi reutilizada enquanto estava cancelada, a
+    // colisao e real e o usuario precisa saber qual e.
     if (isCommercialOrderRefConflict(error)) {
       return NextResponse.json(
         {
-          message: "Nao foi possivel reabrir: a Ordem desta medicao ja foi usada em outra ordem da mesma Equipe + Data de execucao.",
+          message: "Nao foi possivel reabrir: a Incidencia desta medicao ja foi usada em outra ordem da mesma Equipe + Data de execucao.",
           reason: "COMMERCIAL_ORDER_REF_ALREADY_EXISTS",
         },
         { status: 409 },
