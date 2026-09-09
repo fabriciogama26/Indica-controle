@@ -1,6 +1,13 @@
 # Regras Configuráveis por Tenant — Plano de Implementação
 Gerado em: 2026-06-27 | Revisado em: 2026-06-27 (revisão técnica obrigatória)
 
+> **AVISO (2026-09-09).** Este documento e de 2026-06-27 e parou na migration ~275. O repositorio esta na 420.
+> A ordem das fases nao pode ser executada como esta: a Fase 5 (Programacao) era a primeira e hoje aponta para tela congelada.
+> Antes de usar qualquer numero, nome de tabela ou referencia de linha daqui, ler
+> [`regras-configuraveis-por-tenant-revisao-2026-09.md`](regras-configuraveis-por-tenant-revisao-2026-09.md),
+> que lista as divergencias confirmadas e refaz o levantamento por tela.
+
+
 Pré-requisito: leitura e validação de `regras-configuraveis-por-tenant-estudo.md` e `regras-configuraveis-por-tenant-inventario.md`.
 
 Toda `rule_key` usa namespace de módulo obrigatório (`<modulo>.<nome>`). Não usar chaves sem namespace — a coluna `rule_key` em `business_rule_definitions` é UNIQUE global; o namespace previne colisão entre módulos.

@@ -172,6 +172,27 @@ Pendencia conhecida
 - Decisao tomada: nao mexer nesses consumidores agora. A direcao acordada e dar a eles um FILTRO `Tecnica`/`Comercial`, em tarefa propria. Registrado tambem em `TASKS.md`.
 - Nao duplicar `save_project_measurement_order`: a RPC comercial e um envelope que delega.
 - Toda query da tela continua filtrando por `tenant_id` no servidor, com RLS como ultima barreira.
+- FORMATO DA `Incidencia` -- PEDIDO REGISTRADO, NAO IMPLEMENTADO (2026-09-09):
+  - Regra desejada: somente digitos, exatamente 8, e recusar as que comecam com `00`.
+    Expressao equivalente: circunflexo, (?!00), [0-9]{8}, cifrao.
+  - Hoje o campo aceita texto livre ate 120 caracteres; a unica validacao e nao estar em
+    branco, nas tres camadas (formulario, rota e trigger `enforce_commercial_measurement_fields`).
+  - Decisao do usuario: a regra NAO deve ser cravada no codigo. Ela pertence a uma tela de
+    configuracao de regras a ser criada. Chave proposta: `medicao_comercial.incidencia_formato`.
+  - Impacto no banco: nenhum. Nao existe `CHECK` de formato sobre `commercial_order_ref`, e
+    o indice unico da migration 419 vale independentemente do formato.
+  - CUIDADO NA IMPLANTACAO: a regra APERTA o formato. Incidencia ja gravada que nao casar com o
+    padrao passa a ser invalida, e editar essa ordem passa a falhar. Medir quantas linhas nao
+    passam ANTES de ligar a regra.
+  - Levantamento completo, com a expressao escrita por extenso:
+    `docs/arquitetura/regras-configuraveis-por-tenant-revisao-2026-09.md` (secao 7).
+- CENTRO DE SERVICOS NO CSV -- PERGUNTA ABERTA, NAO IMPLEMENTADA (2026-09-09):
+  - A coluna sai de `project_with_labels.service_center_text` e por isso mostra `Sem projeto`
+    em toda ordem comercial sem projeto, que e o caso normal desta tela.
+  - Saida proposta: cair para a Base da equipe (`teams.service_center_id`, obrigatoria no
+    cadastro de Equipes desde a 068) quando a ordem nao tiver projeto.
+  - NAO e regra configuravel: e troca de fonte de dado, portanto mudanca de codigo. Registrado
+    na secao 8 do levantamento acima.
 
 Atualizacao 2026-09-08 - Eletricistas por matricula e equipe comercial pelo operacional
 --------------------------------------------------------------------------------------
