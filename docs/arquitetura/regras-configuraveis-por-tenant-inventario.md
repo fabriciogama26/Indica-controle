@@ -1,6 +1,13 @@
 # Regras Configuráveis por Tenant — Inventário
 Gerado em: 2026-06-27 | Revisado em: 2026-06-27 (revisão técnica obrigatória)
 
+> **AVISO (2026-09-09).** Este documento e de 2026-06-27 e parou na migration ~275. O repositorio esta na 420.
+> PARCIALMENTE OBSOLETO: a tela `/programacao-simples` esta congelada, `src/app/api/programacao/route.ts` nao existe mais, os nomes das tabelas de permissao estao errados e 18 telas ficaram de fora.
+> Antes de usar qualquer numero, nome de tabela ou referencia de linha daqui, ler
+> [`regras-configuraveis-por-tenant-revisao-2026-09.md`](regras-configuraveis-por-tenant-revisao-2026-09.md),
+> que lista as divergencias confirmadas e refaz o levantamento por tela.
+
+
 Base de dados: 284+ migrations, 68 rotas de API, ~29 módulos. Nomes de tabelas verificados diretamente nas migrations — não presumidos.
 
 Toda `rule_key` usa **namespace de módulo** para garantir unicidade global e prevenir colisão entre módulos distintos. Formato obrigatório: `<modulo>.<nome_da_regra>`. A coluna `rule_key` em `business_rule_definitions` tem constraint UNIQUE global — o namespace torna a unicidade semântica e previsível.

@@ -1,6 +1,13 @@
 # Regras Configuráveis por Tenant — Estudo Técnico
 Gerado em: 2026-06-27 | Revisado em: 2026-06-27 (revisão técnica obrigatória)
 
+> **AVISO (2026-09-09).** Este documento e de 2026-06-27 e parou na migration ~275. O repositorio esta na 420.
+> Os numeros do resumo executivo (284 migrations, 68 rotas, 29 modulos) nao valem mais; o desenho de arquitetura continua valido.
+> Antes de usar qualquer numero, nome de tabela ou referencia de linha daqui, ler
+> [`regras-configuraveis-por-tenant-revisao-2026-09.md`](regras-configuraveis-por-tenant-revisao-2026-09.md),
+> que lista as divergencias confirmadas e refaz o levantamento por tela.
+
+
 Escopo: repositório `Indica-controle` com stack Next.js 16 + Supabase/Postgres + Vercel.
 Propósito: mapear a arquitetura atual e propor modelo de regras configuráveis por tenant sem duplicar código, sem branches por cliente e sem `if (tenantId === "x")` espalhado.
 
