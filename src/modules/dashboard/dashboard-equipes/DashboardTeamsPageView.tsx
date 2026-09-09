@@ -14,6 +14,7 @@ import {
   dashboardFilenameToken,
   exportDashboardProjectsCsv,
   exportDashboardTeamContributionsCsv,
+  exportDashboardTeamForemenCsv,
   formatDashboardCurrency,
   formatDashboardPercent,
   maxDashboardValue,
@@ -76,6 +77,19 @@ function formatDashboardDateRange(startDate: string, endDate: string) {
   if (startDate) return `A partir de ${formatDashboardDate(startDate)}`;
   if (endDate) return `Ate ${formatDashboardDate(endDate)}`;
   return "";
+}
+
+function countLinkedProjects(rows: DashboardTeamsProject[]) {
+  return rows.filter((project) => project.projectId).length;
+}
+
+function formatProjectList(rows: DashboardTeamsProject[]) {
+  return rows.map((project) => project.projectCode).join(", ") || "Nenhum";
+}
+
+function formatIncidenceList(rows: DashboardTeamsProject[]) {
+  const refs = Array.from(new Set(rows.flatMap((project) => project.commercialOrderRefs ?? [])));
+  return refs.sort((left, right) => left.localeCompare(right)).join(", ") || "-";
 }
 
 function resolveMetaValue(row: MetaComparisonRow, mode: MetaMode) {
@@ -253,7 +267,7 @@ export function DashboardTeamsPageView() {
     setIsExporting(true);
     await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
     try {
-      exportDashboardProjectsCsv(projectDetailModal.filename, projectDetailModal.rows);
+      exportDashboardProjectsCsv(projectDetailModal.filename, { commercial: isCommercialView, rows: projectDetailModal.rows });
       setLocalMessage("");
     } finally {
       setIsExporting(false);
@@ -280,6 +294,31 @@ export function DashboardTeamsPageView() {
           totalValue: teamDetailModal.row.totalValue,
           projectCount: teamDetailModal.row.projectCount,
           rows: teamDetailModal.row.foremanContributions,
+        },
+      );
+      setLocalMessage("");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function exportForemanBlockDetails() {
+    if (!selectedTeamForemen.length) {
+      setLocalMessage("Nenhum eletricista encontrado para exportar.");
+      return;
+    }
+    if (!exportCooldown.tryStart()) {
+      setLocalMessage(`Aguarde ${exportCooldown.getRemainingSeconds()} segundos entre as exportacoes.`);
+      return;
+    }
+    setIsExporting(true);
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+    try {
+      exportDashboardTeamForemenCsv(
+        `dashboard_equipes_eletricistas_${dashboardFilenameToken(foremanPeriodLabel)}_${new Date().toISOString().slice(0, 10)}.csv`,
+        {
+          commercial: isCommercialView,
+          rows: selectedTeamForemen,
         },
       );
       setLocalMessage("");
@@ -533,6 +572,15 @@ export function DashboardTeamsPageView() {
         <div className={styles.cardHeader}>
           <div><h2 className={styles.cardTitle}>{isCommercialView ? "Eletricistas no ciclo" : "Encarregados no ciclo"}</h2><p className={styles.cardSubtitle}>{isCommercialView ? "Contribuicao separada por MK + dupla de eletricistas, sem rateio da meta oficial da equipe." : "Contribuicao separada por MK + encarregado, sem rateio da meta oficial da equipe."}</p></div>
           <div className={styles.chartActions}>
+            {isCommercialView ? (
+              <CsvExportButton
+                onClick={() => void exportForemanBlockDetails()}
+                isLoading={isExporting}
+                className={styles.secondaryButton}
+                idleLabel="Extrair CSV"
+                showProgressModal={false}
+              />
+            ) : null}
             <label className={styles.inlineSelect}><span>Semana</span><select value={foremanWeekFilter} onChange={(event) => setForemanWeekFilter(event.target.value)}><option value="">Ciclo completo</option>{dashboard.cycleWeeks.map((week) => <option key={week.id} value={week.id}>{week.label}</option>)}</select></label>
           </div>
         </div>
@@ -599,6 +647,7 @@ export function DashboardTeamsPageView() {
                       <th>Ordens</th>
                       <th>Projetos</th>
                       <th>Lista de projetos</th>
+                      {isCommercialView ? <th>Incidencias</th> : null}
                     </tr>
                   </thead>
                   <tbody>
@@ -613,10 +662,11 @@ export function DashboardTeamsPageView() {
                           <td>{item.workedDays}</td>
                           <td>{item.orderCount}</td>
                           <td>{item.projectCount}</td>
-                          <td className={styles.projectListCell}>{item.projects.map((project) => project.projectCode).join(", ") || "Nenhum"}</td>
+                          <td className={styles.projectListCell}>{formatProjectList(item.projects)}</td>
+                          {isCommercialView ? <td className={styles.projectListCell}>{formatIncidenceList(item.projects)}</td> : null}
                         </tr>
                       );
-                    }) : <tr><td colSpan={isCommercialView ? 9 : 8} className={styles.emptyRow}>{isCommercialView ? "Nenhuma contribuicao de eletricista identificada." : "Nenhuma contribuicao de encarregado identificada."}</td></tr>}
+                    }) : <tr><td colSpan={isCommercialView ? 10 : 8} className={styles.emptyRow}>{isCommercialView ? "Nenhuma contribuicao de eletricista identificada." : "Nenhuma contribuicao de encarregado identificada."}</td></tr>}
                   </tbody>
                   <tfoot>
                     <tr>
@@ -629,6 +679,7 @@ export function DashboardTeamsPageView() {
                       <td>{teamDetailModal.row.foremanContributions.reduce((sum, item) => sum + item.orderCount, 0)}</td>
                       <td>{teamDetailModal.row.projectCount}</td>
                       <td>-</td>
+                      {isCommercialView ? <td>{formatIncidenceList(teamDetailModal.row.projects)}</td> : null}
                     </tr>
                   </tfoot>
                 </table>
@@ -638,7 +689,7 @@ export function DashboardTeamsPageView() {
         </div>
       ) : null}
 
-      {projectDetailModal ? <div className={styles.modalBackdrop} role="dialog" aria-modal="true"><div className={styles.modal}><div className={styles.modalHeader}><div><h2>{projectDetailModal.title}</h2><p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p></div><div className={styles.modalActions}><CsvExportButton onClick={() => void exportProjectDetails()} isLoading={isExporting} className={styles.secondaryButton} idleLabel="Exportar Excel (CSV)" showProgressModal={false} /><button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)}>x</button></div></div><div className={styles.modalBody}><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Projeto</th><th>Centro</th><th>Valor cobrado</th><th>Ordens</th></tr></thead><tbody>{projectDetailModal.rows.length ? projectDetailModal.rows.map((item) => <tr key={item.projectId}><td>{item.projectCode}</td><td>{item.serviceCenter}</td><td>{formatDashboardCurrency(item.totalValue)}</td><td>{item.orderCount}</td></tr>) : <tr><td colSpan={4} className={styles.emptyRow}>Nenhum projeto encontrado.</td></tr>}</tbody><tfoot><tr><td>Total</td><td>{projectDetailModal.rows.length} projetos</td><td>{formatDashboardCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td><td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td></tr></tfoot></table></div></div></div></div> : null}
+      {projectDetailModal ? <div className={styles.modalBackdrop} role="dialog" aria-modal="true"><div className={styles.modal}><div className={styles.modalHeader}><div><h2>{projectDetailModal.title}</h2><p className={styles.modalSubtitle}>{projectDetailModal.subtitle}</p></div><div className={styles.modalActions}><CsvExportButton onClick={() => void exportProjectDetails()} isLoading={isExporting} className={styles.secondaryButton} idleLabel="Exportar Excel (CSV)" showProgressModal={false} /><button type="button" className={styles.closeButton} onClick={() => setProjectDetailModal(null)}>x</button></div></div><div className={styles.modalBody}><div className={styles.tableWrapper}><table className={styles.table}><thead><tr><th>Projeto</th><th>Centro</th><th>Valor cobrado</th><th>Ordens</th>{isCommercialView ? <th>Incidencias</th> : null}</tr></thead><tbody>{projectDetailModal.rows.length ? projectDetailModal.rows.map((item, index) => <tr key={item.projectId ?? `sem-projeto-${index}`}><td>{item.projectCode}</td><td>{item.serviceCenter}</td><td>{formatDashboardCurrency(item.totalValue)}</td><td>{item.orderCount}</td>{isCommercialView ? <td className={styles.projectListCell}>{formatIncidenceList([item])}</td> : null}</tr>) : <tr><td colSpan={isCommercialView ? 5 : 4} className={styles.emptyRow}>Nenhum projeto encontrado.</td></tr>}</tbody><tfoot><tr><td>Total</td><td>{countLinkedProjects(projectDetailModal.rows)} projetos</td><td>{formatDashboardCurrency(projectDetailModal.rows.reduce((sum, item) => sum + item.totalValue, 0))}</td><td>{projectDetailModal.rows.reduce((sum, item) => sum + item.orderCount, 0)}</td>{isCommercialView ? <td>{formatIncidenceList(projectDetailModal.rows)}</td> : null}</tr></tfoot></table></div></div></div></div> : null}
     </section>
   );
 }

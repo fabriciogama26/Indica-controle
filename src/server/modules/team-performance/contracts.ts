@@ -1,11 +1,12 @@
 export type TeamPerformanceOrder = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   teamId: string;
   executionDate: string;
   projectCodeSnapshot: string | null;
   teamNameSnapshot: string | null;
   foremanNameSnapshot: string | null;
+  commercialOrderRef?: string | null;
   // Ordem COMERCIAL nao tem encarregado: quem executou sao os dois eletricistas
   // gravados por ordem, na ordem dos slots 1 e 2. Vazio/ausente na ordem tecnica.
   memberNames?: string[];
@@ -20,11 +21,12 @@ export type TeamPerformanceTeam = {
 };
 
 export type TeamPerformanceProjectDetail = {
-  projectId: string;
+  projectId: string | null;
   projectCode: string;
   serviceCenter: string;
   totalValue: number;
   orderCount: number;
+  commercialOrderRefs: string[];
 };
 
 export type TeamForemanContributionRow = {

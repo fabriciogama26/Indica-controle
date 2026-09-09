@@ -23,11 +23,12 @@ export type DashboardTeamsWeek = {
 };
 
 export type DashboardTeamsProject = {
-  projectId: string;
+  projectId: string | null;
   projectCode: string;
   serviceCenter: string;
   totalValue: number;
   orderCount: number;
+  commercialOrderRefs: string[];
 };
 
 export type DashboardTeamRow = {
