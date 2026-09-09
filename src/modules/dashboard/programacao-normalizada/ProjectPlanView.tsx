@@ -54,6 +54,7 @@ function buildFormFromStage(stage: ProgrammingStage, params: { executionDate: st
     teamIds: activeTeams.map((team) => team.teamId),
     teamForemanIds: Object.fromEntries(activeTeams.map((team) => [team.teamId, team.programmedForemanPersonId ?? ""])),
     teamSearch: "",
+    teamCategoryCode: "",
     serviceDescription: stage.serviceDescription,
     period: stage.period ?? ("INTEGRAL" as const),
     startTime: (stage.startTime ?? "").slice(0, 5),

@@ -7,6 +7,7 @@ import { ActionIcon } from "@/components/ui/ActionIcon";
 import { DOCUMENT_KEYS } from "./constants";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import {
+  buildTeamCategoryOptions,
   formatDate,
   getStageDisplayClassification,
   getStageStatusDisplayLabel,
@@ -14,6 +15,7 @@ import {
   isActiveStageStatus,
   isOnHoldStage,
   isPendenciaPrimary,
+  matchesTeamCategory,
 } from "./utils";
 import type {
   ActivityCatalogItem,
@@ -494,9 +496,15 @@ export function StageFormPanel(props: {
   }
 
   const teamSearchLower = form.teamSearch.trim().toLowerCase();
-  const visibleTeamOptions = teamSearchLower
-    ? teamOptions.filter((team) => team.name.toLowerCase().includes(teamSearchLower))
-    : teamOptions;
+  const teamCategoryOptions = buildTeamCategoryOptions(teamOptions);
+  // Equipe JA marcada nunca some da grade, nem pelo tipo nem pela busca. Ela continua
+  // contando em `teamsMissingForeman` e travando o salvamento, entao esconde-la deixava
+  // o usuario bloqueado por uma equipe que ele nao tinha como desmarcar.
+  const visibleTeamOptions = teamOptions.filter((team) => {
+    if (form.teamIds.includes(team.id)) return true;
+    if (!matchesTeamCategory(team, form.teamCategoryCode)) return false;
+    return !teamSearchLower || team.name.toLowerCase().includes(teamSearchLower);
+  });
   const selectedTeamOptions = teamOptions.filter((team) => form.teamIds.includes(team.id));
   const allowBlankForemanTeamIdSet = new Set(allowBlankForemanTeamIds);
   const teamsMissingForeman = selectedTeamOptions.filter((team) => !form.teamForemanIds[team.id] && !allowBlankForemanTeamIdSet.has(team.id));
@@ -695,6 +703,17 @@ export function StageFormPanel(props: {
               placeholder="Buscar equipe..."
               disabled={isSubmitting}
             />
+            <select
+              aria-label="Filtrar por tipo de equipe"
+              value={form.teamCategoryCode}
+              onChange={(event) => setField("teamCategoryCode", event.target.value)}
+              disabled={isSubmitting || !teamCategoryOptions.length}
+            >
+              <option value="">Tipo de equipe: todos</option>
+              {teamCategoryOptions.map((option) => (
+                <option key={option.code} value={option.code}>{option.label}</option>
+              ))}
+            </select>
             <div className={styles.actions}>
               <button
                 type="button"
