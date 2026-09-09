@@ -1769,3 +1769,45 @@ Atualizacao 2026-08-31 - Hardening de brechas do encarregado programado
   mesma equipe no mesmo dia, o passado nao tem granularidade suficiente para
   reconstruir a hora exata; o fluxo novo nao sofre disso porque salva o snapshot
   no momento da programacao.
+
+Atualizacao 2026-09-09 - Filtro por Tipo de equipe no bloco Equipes
+-------------------------------------------------------------------
+- O bloco `Equipes` do formulario de etapa e o modal `Adicionar equipe` ganharam um
+  select `Tipo de equipe` (TECNICA/COMERCIAL), que recorta a lista de equipes
+  oferecida. E FILTRO DE EXIBICAO, nao regra de negocio: a Programacao continua
+  aceitando equipe das duas categorias, e o padrao do select e "todos".
+- Nomenclatura, para nao repetir a confusao que a migration 420 corrigiu no cadastro:
+  - `Tipo de equipe`  = `teams.team_category_id` -> `team_categories.code`
+    (TECNICA/COMERCIAL). E a UNICA fonte da natureza da equipe.
+  - `Tipo operacional` = `teams.team_type_id` -> `team_types.name` (catalogo livre,
+    tela `/tipo-equipe`). NAO classifica a equipe como comercial ou tecnica.
+  O catalogo da Programacao ja expunha `teamTypeName`, que e o SEGUNDO. Filtrar por
+  ele pareceria funcionar e estaria errado.
+- Backend: `BoardTeamEntry` (`catalogs.ts`) passou a carregar `teamCategoryCode` e
+  `teamCategoryName`, resolvidos de `team_categories` com filtro por `tenant_id`.
+  As duas leituras de `teams` (`fetchTeams` e `fetchTeamsByIds`) selecionam
+  `team_category_id`. Sem migration, sem RPC nova, sem mudanca de permissao: a
+  leitura continua dentro do `GET /api/programacao-normalizada/meta`, sob o mesmo
+  `programacao-normalizada/read`.
+- Equipe sem categoria (base sem a migration 420 aplicada) chega com
+  `teamCategoryCode` vazio e `teamCategoryName` = "Sem tipo de equipe". Ela NAO gera
+  opcao no select e so aparece com o filtro em branco — melhor sumir de um recorte do
+  que ser classificada errada.
+- As opcoes do select saem do proprio catalogo carregado, nao de constante no codigo:
+  o rotulo e o `team_categories.name` do tenant, e categoria sem nenhuma equipe nao
+  vira opcao morta. `buildTeamCategoryOptions`/`matchesTeamCategory` em `utils.ts`,
+  compartilhados pela grade e pelo modal.
+- Equipe JA MARCADA continua visivel na grade mesmo fora do filtro (vale tambem para a
+  busca por nome, que antes a escondia). Motivo: equipe marcada segue contando em
+  `teamsMissingForeman` e travando o `Salvar`, entao esconde-la deixava o usuario
+  bloqueado por uma equipe que ele nao tinha como desmarcar. `Marcar visiveis` passa a
+  respeitar o filtro; `Limpar` continua limpando a SELECAO, nao o filtro.
+- No modal, trocar o filtro para uma categoria que nao contem a equipe ja escolhida
+  limpa a escolha. Sem isso o select exibiria a primeira opcao enquanto o estado
+  guardava outra equipe, e o `Concluir` adicionaria a equipe invisivel.
+- O filtro do modal zera em `Todos` a cada abertura, porque o corpo do modal
+  (`AddTeamModalBody`) so e renderizado com ele aberto e desmonta ao fechar.
+- Validacao manual: abrir um projeto, marcar uma equipe TECNICA, trocar o filtro para
+  COMERCIAL e conferir que a marcada continua visivel e que `Marcar visiveis` so pega
+  as comerciais; no modal `Adicionar equipe`, escolher uma equipe e trocar o filtro
+  para a outra categoria, conferindo que a escolha limpa e o `Concluir` fica travado.

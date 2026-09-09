@@ -82,6 +82,7 @@ export function createInitialForm(executionDate: string): FormState {
     teamIds: [],
     teamForemanIds: {},
     teamSearch: "",
+    teamCategoryCode: "",
     serviceDescription: "",
     period: "INTEGRAL",
     startTime: "08:00",

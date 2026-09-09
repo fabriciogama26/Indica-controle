@@ -970,7 +970,7 @@
 
 .teamSelectionHeader {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 190px) auto;
   gap: 10px;
   align-items: center;
 }
@@ -1341,6 +1341,12 @@
 
   .formGrid {
     grid-template-columns: 1fr;
+  }
+
+  /* Busca, filtro de tipo e botoes empilham: em 3 colunas o select do tipo de
+     equipe espremia os dois botoes de acao contra a borda do cartao. */
+  .teamSelectionHeader {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

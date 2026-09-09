@@ -364,6 +364,30 @@ function normalizeSearchText(value: string) {
     .toLowerCase();
 }
 
+type TeamCategoryFields = { teamCategoryCode: string; teamCategoryName: string };
+
+/**
+ * Opcoes do filtro `Tipo de equipe`, derivadas do proprio catalogo ja carregado.
+ *
+ * O dominio de `team_categories.code` e fechado em TECNICA/COMERCIAL pelo CHECK da
+ * migration 415, mas o rotulo exibido e o `name` do tenant — por isso o codigo nao
+ * fica escrito na tela. Derivar da lista tambem esconde a opcao que nao tem nenhuma
+ * equipe, em vez de oferecer um filtro que so devolve vazio. Equipe sem categoria
+ * (base sem a migration 420) nao gera opcao e so aparece com o filtro em branco.
+ */
+export function buildTeamCategoryOptions(teams: TeamCategoryFields[]) {
+  const labelByCode = new Map<string, string>();
+  for (const team of teams) {
+    if (!team.teamCategoryCode || labelByCode.has(team.teamCategoryCode)) continue;
+    labelByCode.set(team.teamCategoryCode, team.teamCategoryName || team.teamCategoryCode);
+  }
+  return Array.from(labelByCode, ([code, label]) => ({ code, label })).sort((left, right) => left.label.localeCompare(right.label));
+}
+
+export function matchesTeamCategory(team: TeamCategoryFields, categoryCode: string) {
+  return !categoryCode || team.teamCategoryCode === categoryCode;
+}
+
 export function resolveTeamStructureCode(team?: { teamTypeName?: string; name?: string } | null) {
   if (!team) return "";
   const normalized = normalizeSearchText(`${team.teamTypeName ?? ""} ${team.name ?? ""}`);

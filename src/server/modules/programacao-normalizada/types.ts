@@ -24,6 +24,7 @@ export type TeamRow = {
   name: string;
   vehicle_plate: string | null;
   team_type_id: string;
+  team_category_id: string | null;
   foreman_person_id: string | null;
   service_center_id: string | null;
   ativo: boolean;
@@ -31,6 +32,16 @@ export type TeamRow = {
 
 export type TeamTypeRow = {
   id: string;
+  name: string;
+};
+
+// `Tipo de equipe` da UI (TECNICA/COMERCIAL), que NAO e o `Tipo operacional`
+// (`team_types`). O dominio de `code` e fechado pelo CHECK
+// `team_categories_code_allowed_check` (migration 415). `teams.team_category_id`
+// e NOT NULL desde a 420; fica anulavel aqui so para ambiente sem a 420 aplicada.
+export type TeamCategoryRow = {
+  id: string;
+  code: string;
   name: string;
 };
 

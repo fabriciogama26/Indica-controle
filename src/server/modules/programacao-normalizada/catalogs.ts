@@ -13,6 +13,7 @@ import type {
   ProjectRow,
   ServiceActivityRow,
   ServiceCenterRow,
+  TeamCategoryRow,
   TeamRow,
   TeamTypeRow,
 } from "./types";
@@ -40,6 +41,11 @@ export type BoardTeamEntry = {
   name: string;
   vehiclePlate: string;
   teamTypeName: string;
+  // `Tipo de equipe` (TECNICA/COMERCIAL). Campo separado de `teamTypeName`, que e
+  // o `Tipo operacional` -- desde a migration 420 o nome do tipo operacional nao
+  // decide mais a natureza da equipe, so `teams.team_category_id` decide.
+  teamCategoryCode: string;
+  teamCategoryName: string;
   foremanId: string | null;
   foremanName: string;
   serviceCenterName: string;
@@ -49,13 +55,17 @@ async function buildBoardTeamEntries(supabase: SupabaseClient, tenantId: string,
   if (!teams.length) return [] as BoardTeamEntry[];
 
   const teamTypeIds = Array.from(new Set(teams.map((item) => item.team_type_id).filter(Boolean)));
+  const teamCategoryIds = Array.from(new Set(teams.map((item) => item.team_category_id).filter((id): id is string => Boolean(id))));
   const foremanIds = Array.from(new Set(teams.map((item) => item.foreman_person_id).filter(Boolean)));
   const serviceCenterIds = Array.from(new Set(teams.map((item) => item.service_center_id).filter((id): id is string => Boolean(id))));
 
-  const [{ data: teamTypes }, { data: people }, { data: serviceCenters }] = await Promise.all([
+  const [{ data: teamTypes }, { data: teamCategories }, { data: people }, { data: serviceCenters }] = await Promise.all([
     teamTypeIds.length
       ? supabase.from("team_types").select("id, name").eq("tenant_id", tenantId).in("id", teamTypeIds).returns<TeamTypeRow[]>()
       : Promise.resolve({ data: [] as TeamTypeRow[] }),
+    teamCategoryIds.length
+      ? supabase.from("team_categories").select("id, code, name").eq("tenant_id", tenantId).in("id", teamCategoryIds).returns<TeamCategoryRow[]>()
+      : Promise.resolve({ data: [] as TeamCategoryRow[] }),
     foremanIds.length
       ? supabase.from("people").select("id, nome").eq("tenant_id", tenantId).in("id", foremanIds).returns<PersonRow[]>()
       : Promise.resolve({ data: [] as PersonRow[] }),
@@ -65,18 +75,30 @@ async function buildBoardTeamEntries(supabase: SupabaseClient, tenantId: string,
   ]);
 
   const teamTypeMap = new Map((teamTypes ?? []).map((item) => [item.id, normalizeText(item.name)]));
+  const teamCategoryMap = new Map(
+    (teamCategories ?? []).map((item) => [item.id, { code: normalizeText(item.code).toUpperCase(), name: normalizeText(item.name) }]),
+  );
   const foremanMap = new Map((people ?? []).map((item) => [item.id, normalizeText(item.nome)]));
   const serviceCenterMap = new Map((serviceCenters ?? []).map((item) => [item.id, normalizeText(item.name)]));
 
-  return teams.map((team) => ({
-    id: team.id,
-    name: normalizeText(team.name),
-    vehiclePlate: normalizeText(team.vehicle_plate),
-    teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
-    foremanId: team.foreman_person_id ?? null,
-    foremanName: team.foreman_person_id ? foremanMap.get(team.foreman_person_id) ?? "Sem encarregado" : "Sem encarregado",
-    serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
-  }));
+  return teams.map((team) => {
+    // Categoria ausente vira string vazia, nunca um codigo chutado: a tela usa isso
+    // para deixar a equipe fora de qualquer recorte por tipo, em vez de classifica-la
+    // errado. So acontece em ambiente sem a migration 420 aplicada.
+    const teamCategory = team.team_category_id ? teamCategoryMap.get(team.team_category_id) : undefined;
+
+    return {
+      id: team.id,
+      name: normalizeText(team.name),
+      vehiclePlate: normalizeText(team.vehicle_plate),
+      teamTypeName: teamTypeMap.get(team.team_type_id) ?? "Sem tipo",
+      teamCategoryCode: teamCategory?.code ?? "",
+      teamCategoryName: teamCategory?.name ?? "Sem tipo de equipe",
+      foremanId: team.foreman_person_id ?? null,
+      foremanName: team.foreman_person_id ? foremanMap.get(team.foreman_person_id) ?? "Sem encarregado" : "Sem encarregado",
+      serviceCenterName: team.service_center_id ? serviceCenterMap.get(team.service_center_id) ?? "Sem base" : "Sem base",
+    };
+  });
 }
 
 export async function fetchForemen(supabase: SupabaseClient, tenantId: string) {
@@ -146,7 +168,7 @@ export async function fetchTeams(supabase: SupabaseClient, tenantId: string) {
 
   const { data: teams, error } = await supabase
     .from("teams")
-    .select("id, name, vehicle_plate, team_type_id, foreman_person_id, service_center_id, ativo")
+    .select("id, name, vehicle_plate, team_type_id, team_category_id, foreman_person_id, service_center_id, ativo")
     .eq("tenant_id", tenantId)
     .eq("ativo", true)
     .order("name", { ascending: true })
@@ -166,7 +188,7 @@ export async function fetchTeamsByIds(supabase: SupabaseClient, tenantId: string
 
   const { data: teams, error } = await supabase
     .from("teams")
-    .select("id, name, vehicle_plate, team_type_id, foreman_person_id, service_center_id, ativo")
+    .select("id, name, vehicle_plate, team_type_id, team_category_id, foreman_person_id, service_center_id, ativo")
     .eq("tenant_id", tenantId)
     .in("id", uniqueIds)
     .order("name", { ascending: true })
