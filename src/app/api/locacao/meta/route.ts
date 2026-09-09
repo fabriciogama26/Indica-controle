@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { loadAllRows } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 
 type ProjectMetaRow = {
@@ -109,20 +109,9 @@ export async function GET(request: NextRequest) {
       ),
     );
 
-    const { data: appUsers, error: appUsersError } = appUserIds.length
-      ? await supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", appUserIds)
-          .returns<AppUserRow[]>()
-      : { data: [], error: null };
+    const appUsers = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, appUserIds);
 
-    if (appUsersError) {
-      return NextResponse.json({ message: "Falha ao carregar responsaveis da locacao." }, { status: 500 });
-    }
-
-    const appUsersById = new Map((appUsers ?? []).map((item) => [item.id, item]));
+    const appUsersById = new Map(appUsers.map((item) => [item.id, item]));
     const plansByProjectId = new Map((plans ?? []).map((item) => [item.project_id, item]));
 
     const { data: sgdTypesData, error: sgdTypesError } = await supabase

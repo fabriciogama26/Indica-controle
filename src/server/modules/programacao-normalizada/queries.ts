@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { loadAllRows } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAppUserName } from "./normalizers";
 import { PROGRAMMING_STAGE_SELECT_WITH_CHILDREN } from "./selects";
 import type {
@@ -19,16 +19,7 @@ export async function fetchAppUsersByIds(params: { supabase: SupabaseClient; ten
   const uniqueIds = Array.from(new Set(params.ids.filter((value): value is string => Boolean(value))));
   if (!uniqueIds.length) return [] as AppUserLookupRow[];
 
-  const { data, error } = await params.supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", params.tenantId)
-    .in("id", uniqueIds)
-    .returns<AppUserLookupRow[]>();
-
-  if (error) return [] as AppUserLookupRow[];
-
-  return data ?? [];
+  return fetchTenantLinkedAppUsers<AppUserLookupRow>(params.supabase, params.tenantId, uniqueIds);
 }
 
 // Filtro por equipe e derivado (cruza programming_team antes da query principal),

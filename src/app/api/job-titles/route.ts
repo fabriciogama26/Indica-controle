@@ -3,7 +3,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
 
@@ -257,19 +257,7 @@ export async function GET(request: NextRequest) {
         new Set((historyData ?? []).map((entry) => entry.created_by).filter((value): value is string => Boolean(value))),
       );
 
-      let users: AppUserRow[] = [];
-      if (userIds.length > 0) {
-        const usersResult = await supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>();
-
-        if (!usersResult.error) {
-          users = usersResult.data ?? [];
-        }
-      }
+      const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
       const userDisplayMap = buildUserDisplayMap(users);
 
@@ -337,19 +325,7 @@ export async function GET(request: NextRequest) {
       ),
     );
 
-    let users: AppUserRow[] = [];
-    if (userIds.length > 0) {
-      const usersResult = await supabase
-        .from("app_users")
-        .select("id, display, login_name")
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", userIds)
-        .returns<AppUserRow[]>();
-
-      if (!usersResult.error) {
-        users = usersResult.data ?? [];
-      }
-    }
+    const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
     let types: JobTitleTypeRow[] = [];
     if (jobTitleIds.length > 0) {

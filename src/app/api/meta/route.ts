@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { loadAllRows } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
@@ -284,17 +284,8 @@ async function fetchAppUserMap(params: {
   tenantId: string;
   ids: string[];
 }) {
-  const ids = Array.from(new Set(params.ids.filter(Boolean)));
-  if (!ids.length) return new Map<string, AppUserRow>();
-
-  const { data } = await params.supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", params.tenantId)
-    .in("id", ids)
-    .returns<AppUserRow[]>();
-
-  return new Map((data ?? []).map((item) => [item.id, item]));
+  const users = await fetchTenantLinkedAppUsers<AppUserRow>(params.supabase, params.tenantId, params.ids);
+  return new Map(users.map((item) => [item.id, item]));
 }
 
 // Tipo operacional em que a Meta esta operando. A tela manda o id escolhido; sem

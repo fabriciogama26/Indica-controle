@@ -8,7 +8,7 @@ import {
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
-import { loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type CompositionRow = {
   id: string;
@@ -850,10 +850,8 @@ export async function GET(request: NextRequest) {
       }
 
       const userIds = Array.from(new Set((data ?? []).map((item) => item.created_by).filter((item): item is string => Boolean(item))));
-      const { data: users } = userIds.length
-        ? await supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
-        : { data: [] as AppUserRow[] };
-      const userMap = buildUserMap(users ?? []);
+      const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
+      const userMap = buildUserMap(users);
 
       return NextResponse.json({
         history: (data ?? []).map((entry) => ({
@@ -888,12 +886,10 @@ export async function GET(request: NextRequest) {
       }
 
       const userIds = [composition.created_by, composition.updated_by].filter((item): item is string => Boolean(item));
-      const { data: users } = userIds.length
-        ? await supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
-        : { data: [] as AppUserRow[] };
+      const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
       return NextResponse.json({
-        composition: mapComposition(composition, members, buildUserMap(users ?? []), compositionProjects),
+        composition: mapComposition(composition, members, buildUserMap(users), compositionProjects),
       });
     }
 
@@ -1013,12 +1009,10 @@ export async function GET(request: NextRequest) {
     const userIds = Array.from(
       new Set(compositions.flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))),
     );
-    const [members, compositionProjects, usersResult] = await Promise.all([
+    const [members, compositionProjects, users] = await Promise.all([
       loadCompositionMembers(supabase, appUser.tenant_id, compositionIds),
       loadCompositionProjects(supabase, appUser.tenant_id, compositionIds),
-      userIds.length
-        ? supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
-        : Promise.resolve({ data: [] as AppUserRow[], error: null }),
+      fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     ]);
 
     if (!members) {
@@ -1028,11 +1022,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao carregar projetos das composicoes." }, { status: 500 });
     }
 
-    if (usersResult.error) {
-      return NextResponse.json({ message: "Falha ao carregar usuarios das composicoes." }, { status: 500 });
-    }
-
-    const userMap = buildUserMap(usersResult.data ?? []);
+    const userMap = buildUserMap(users);
     const memberMap = new Map<string, MemberRow[]>();
     for (const member of members) {
       memberMap.set(member.composition_id, [...(memberMap.get(member.composition_id) ?? []), member]);

@@ -3,7 +3,7 @@
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 import { fetchProjectServiceCenterMap, PROJECT_SERVICE_CENTER_FALLBACK } from "@/server/modules/projects/serviceCenters";
 
 type AsbuiltMeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
@@ -466,18 +466,8 @@ async function fetchAppUserMap(params: {
   tenantId: string;
   ids: string[];
 }) {
-  if (!params.ids.length) {
-    return new Map<string, AppUserRow>();
-  }
-
-  const { data } = await params.supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", params.tenantId)
-    .in("id", params.ids)
-    .returns<AppUserRow[]>();
-
-  return new Map((data ?? []).map((item) => [item.id, item]));
+  const users = await fetchTenantLinkedAppUsers<AppUserRow>(params.supabase, params.tenantId, params.ids);
+  return new Map(users.map((item) => [item.id, item]));
 }
 
 async function fetchAsbuiltMeasurementOrderDetail(params: {

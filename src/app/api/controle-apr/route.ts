@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 
 type AprStatus = "ATIVO" | "CANCELADO" | "DIVERGENTE" | "CONFERIDO";
 
@@ -220,15 +220,8 @@ export async function GET(request: NextRequest) {
     const userIds = Array.from(
       new Set((historyResult.data ?? []).map((item) => item.created_by).filter((item): item is string => Boolean(item))),
     );
-    const usersResult = userIds.length
-      ? await resolution.supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", tenantId)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : { data: [] as AppUserRow[], error: null };
-    const userMap = new Map((usersResult.data ?? []).map((item) => [item.id, item]));
+    const users = await fetchTenantLinkedAppUsers<AppUserRow>(resolution.supabase, tenantId, userIds);
+    const userMap = new Map(users.map((item) => [item.id, item]));
 
     return NextResponse.json({
       history: (historyResult.data ?? []).map((item) => ({

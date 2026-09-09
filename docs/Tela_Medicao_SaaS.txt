@@ -1818,3 +1818,9 @@ Atualizacao 2026-09-08 - Select de Equipe restrito a equipe TECNICA
   `src/server/modules/medicao/programmingSourcesHandler.ts`,
   `docs/Tela_Medicao_SaaS.txt`, `docs/Tela_Medicao_Comercial_SaaS.txt` e `TASKS.md`.
 - Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+
+Atualizacao 2026-09-09 - Autor do historico em usuario multi-tenant
+--------------------------------------------------------------------
+- `fetchAppUserMap` em `src/server/modules/medicao/queries.ts` passou a resolver autores de historico/lista/detalhe pelo helper compartilhado `fetchTenantLinkedAppUsers`, que tambem cobre outras telas editaveis com historico/autoria.
+- Causa: usuario/admin multi-tenant opera no tenant ativo, mas o `created_by`/`updated_by` gravado e o `app_users.id` home do usuario. A leitura antiga buscava esse id somente em `app_users.tenant_id = tenant ativo`, entao exibia `Nao identificado`.
+- O fallback so aceita ids que tenham vinculo ativo em `app_user_tenants` para o tenant da tela. Sem mudanca de schema, RLS, permissao ou contrato de API.

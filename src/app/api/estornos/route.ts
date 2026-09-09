@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
-import { loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type ReversalSource = "ESTOQUE" | "EQUIPE";
 type ReversalType = "ITEM" | "INTEGRAL";
@@ -598,7 +598,9 @@ export async function GET(request: NextRequest) {
       loadLookupMap<StockCenterRow>(context.supabase, "stock_centers", context.appUser.tenant_id, stockCenterIds, "id, name"),
       loadLookupMap<ProjectRow>(context.supabase, "project", context.appUser.tenant_id, projectIds, "id, sob"),
       loadLookupMap<MaterialRow>(context.supabase, "materials", context.appUser.tenant_id, materialIds, "id, codigo, descricao, umb, tipo"),
-      loadLookupMap<AppUserRow>(context.supabase, "app_users", context.appUser.tenant_id, userIds, "id, display, login_name"),
+      fetchTenantLinkedAppUsers<AppUserRow>(context.supabase, context.appUser.tenant_id, userIds).then(
+        (users) => new Map(users.map((user) => [user.id, user])),
+      ),
     ]);
 
     const itemRows = itemReversals.flatMap((reversal) => {
