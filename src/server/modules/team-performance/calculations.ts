@@ -94,17 +94,25 @@ function addProjectProduction(
   totalValue: number,
   getProjectServiceCenter: TeamPerformanceWindowInput["getProjectServiceCenter"],
 ) {
-  const current = target.get(order.projectId) ?? {
-    projectId: order.projectId,
-    projectCode: normalizeText(order.projectCodeSnapshot) || "Projeto sem codigo",
-    serviceCenter: getProjectServiceCenter(order.projectId) || "Centro nao informado",
+  const projectId = normalizeText(order.projectId) || null;
+  const projectKey = projectId ?? "__NO_PROJECT__";
+  const current = target.get(projectKey) ?? {
+    projectId,
+    projectCode: projectId ? normalizeText(order.projectCodeSnapshot) || "Projeto sem codigo" : "Sem projeto",
+    serviceCenter: projectId ? getProjectServiceCenter(projectId) || "Centro nao informado" : "Centro nao informado",
     totalValue: 0,
     orderCount: 0,
+    commercialOrderRefs: [],
   };
 
   current.totalValue += totalValue;
   current.orderCount += 1;
-  target.set(order.projectId, current);
+  const commercialOrderRef = normalizeText(order.commercialOrderRef);
+  if (commercialOrderRef && !current.commercialOrderRefs.includes(commercialOrderRef)) {
+    current.commercialOrderRefs.push(commercialOrderRef);
+    current.commercialOrderRefs.sort((left, right) => left.localeCompare(right));
+  }
+  target.set(projectKey, current);
 }
 
 function buildProjectRows(target: Map<string, TeamPerformanceProjectDetail>) {
@@ -185,7 +193,7 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
       teamAggregate.foremanNames.add(foremanName);
     }
     teamAggregate.totalValue += totalValue;
-    teamAggregate.projectIds.add(order.projectId);
+    if (order.projectId) teamAggregate.projectIds.add(order.projectId);
     teamAggregate.workedDates.add(order.executionDate);
     addProjectProduction(teamAggregate.projects, order, totalValue, input.getProjectServiceCenter);
     const contribution = teamAggregate.foremanContributions.get(measuredForemanName) ?? {
@@ -199,7 +207,7 @@ export function calculateTeamPerformanceWindow(input: TeamPerformanceWindowInput
     };
     contribution.totalValue += totalValue;
     contribution.orderCount += 1;
-    contribution.projectIds.add(order.projectId);
+    if (order.projectId) contribution.projectIds.add(order.projectId);
     contribution.workedDates.add(order.executionDate);
     addProjectProduction(contribution.projects, order, totalValue, input.getProjectServiceCenter);
     teamAggregate.foremanContributions.set(measuredForemanName, contribution);
@@ -284,7 +292,7 @@ function addSupervisorOrder(
 
   current.totalValue += totalValue;
   current.orderCount += 1;
-  current.projectIds.add(order.projectId);
+  if (order.projectId) current.projectIds.add(order.projectId);
   current.productiveTeamIds.add(order.teamId);
   addProjectProduction(current.projects, order, totalValue, input.getProjectServiceCenter);
   target.set(supervisorKey, current);

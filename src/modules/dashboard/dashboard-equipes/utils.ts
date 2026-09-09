@@ -1,3 +1,25 @@
+import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
+
+type DashboardProjectCsvRow = {
+  projectCode: string;
+  serviceCenter: string;
+  totalValue: number;
+  orderCount: number;
+  commercialOrderRefs?: string[];
+};
+
+type DashboardContributionCsvRow = {
+  teamName?: string;
+  foremanName: string;
+  memberNames: string[];
+  totalValue: number;
+  participationPercentage: number;
+  workedDays: number;
+  orderCount: number;
+  projectCount: number;
+  projects?: DashboardProjectCsvRow[];
+};
+
 export function formatDashboardCurrency(value: number, compact = false) {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -27,29 +49,34 @@ export function dashboardFilenameToken(value: string) {
     .toLowerCase() || "detalhe";
 }
 
-export function exportDashboardProjectsCsv(filename: string, rows: Array<{
-  projectCode: string;
-  serviceCenter: string;
-  totalValue: number;
-  orderCount: number;
-}>) {
-  const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-  const header = ["Projeto", "Centro", "Valor cobrado", "Ordens"];
-  const dataRows = rows.map((item) => [
+export function exportDashboardProjectsCsv(filename: string, params: {
+  commercial: boolean;
+  rows: DashboardProjectCsvRow[];
+}) {
+  const header = [
+    "Projeto",
+    "Centro",
+    "Valor cobrado",
+    "Ordens",
+    ...(params.commercial ? ["Incidencias"] : []),
+  ];
+  const dataRows = params.rows.map((item) => [
     item.projectCode,
     item.serviceCenter,
     item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     item.orderCount,
+    ...(params.commercial ? [formatIncidences([item])] : []),
   ]);
-  const csv = `\uFEFF${[header, ...dataRows].map((line) => line.map(escape).join(";")).join("\n")}`;
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  downloadCsvFile(buildCsvContent(header, dataRows), filename);
+}
+
+function formatProjectCodes(projects: DashboardProjectCsvRow[] | undefined) {
+  return (projects ?? []).map((project) => project.projectCode).join(", ") || "Nenhum";
+}
+
+function formatIncidences(projects: DashboardProjectCsvRow[] | undefined) {
+  const refs = Array.from(new Set((projects ?? []).flatMap((project) => project.commercialOrderRefs ?? [])));
+  return refs.sort((left, right) => left.localeCompare(right)).join(", ");
 }
 
 export function exportDashboardTeamContributionsCsv(filename: string, params: {
@@ -67,9 +94,9 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
     workedDays: number;
     orderCount: number;
     projectCount: number;
+    projects?: DashboardProjectCsvRow[];
   }>;
 }) {
-  const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const header = [
     "MK / Equipe",
     ...(params.commercial ? ["Eletricista 1", "Eletricista 2"] : ["Encarregado"]),
@@ -79,6 +106,8 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
     "Dias com producao",
     "Ordens",
     "Projetos",
+    "Lista de projetos",
+    ...(params.commercial ? ["Incidencias"] : []),
   ];
   const dataRows = params.rows.map((item) => [
     params.teamName,
@@ -89,6 +118,8 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
     item.workedDays,
     item.orderCount,
     item.projectCount,
+    formatProjectCodes(item.projects),
+    ...(params.commercial ? [formatIncidences(item.projects)] : []),
   ]);
   dataRows.push([
     params.teamName,
@@ -99,15 +130,39 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
     "",
     params.rows.reduce((sum, item) => sum + item.orderCount, 0),
     params.projectCount,
+    "",
+    ...(params.commercial ? [""] : []),
   ]);
 
-  const csv = `\uFEFF${[header, ...dataRows].map((line) => line.map(escape).join(";")).join("\n")}`;
-  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8;" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  downloadCsvFile(buildCsvContent(header, dataRows), filename);
+}
+
+export function exportDashboardTeamForemenCsv(filename: string, params: {
+  commercial: boolean;
+  rows: DashboardContributionCsvRow[];
+}) {
+  const header = [
+    "MK / Equipe",
+    ...(params.commercial ? ["Eletricista 1", "Eletricista 2"] : ["Encarregado"]),
+    "Valor produzido",
+    "Participacao no MK (%)",
+    "Dias com producao",
+    "Ordens",
+    "Projetos",
+    "Lista de projetos",
+    ...(params.commercial ? ["Incidencias"] : []),
+  ];
+  const dataRows = params.rows.map((item) => [
+    item.teamName ?? "",
+    ...(params.commercial ? [item.memberNames[0] ?? "", item.memberNames[1] ?? ""] : [item.foremanName]),
+    item.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+    item.participationPercentage.toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
+    item.workedDays,
+    item.orderCount,
+    item.projectCount,
+    formatProjectCodes(item.projects),
+    ...(params.commercial ? [formatIncidences(item.projects)] : []),
+  ]);
+
+  downloadCsvFile(buildCsvContent(header, dataRows), filename);
 }

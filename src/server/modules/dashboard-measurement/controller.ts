@@ -68,6 +68,7 @@ function toTeamPerformanceOrder(order: MeasurementOrderRow, memberNames?: string
     projectCodeSnapshot: order.project_code_snapshot,
     teamNameSnapshot: order.team_name_snapshot,
     foremanNameSnapshot: order.foreman_name_snapshot,
+    commercialOrderRef: order.commercial_order_ref,
     memberNames,
   };
 }
@@ -115,7 +116,9 @@ function buildOrderCompletionMapForWindow(params: {
 }) {
   const result = new Map<string, string>();
   for (const order of params.orders) {
-    const projectCompletion = resolveProjectCompletionAtWindowEnd(params.timeline, order.project_id, params.windowEndDate);
+    const projectCompletion = order.project_id
+      ? resolveProjectCompletionAtWindowEnd(params.timeline, order.project_id, params.windowEndDate)
+      : null;
     const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
     result.set(order.id, projectCompletion ?? (snapshot !== "NAO_INFORMADO" ? snapshot : "NAO_INFORMADO"));
   }
@@ -302,7 +305,7 @@ export async function handleDashboardMeasurementGet(
     teamCategoryTeamIds.length
       ? loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
           .from("project_measurement_orders")
-          .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+          .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, commercial_order_ref, programming_completion_status_snapshot")
           .eq("tenant_id", tenantId)
           .eq("is_active", true)
           .eq("measurement_kind", "COM_PRODUCAO")
@@ -319,7 +322,7 @@ export async function handleDashboardMeasurementGet(
       ? Promise.resolve({ data: [] as MeasurementOrderRow[], error: null })
       : loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
           .from("project_measurement_orders")
-          .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+          .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, commercial_order_ref, programming_completion_status_snapshot")
           .eq("tenant_id", tenantId)
           .eq("is_active", true)
           .eq("measurement_kind", "COM_PRODUCAO")
@@ -348,7 +351,7 @@ export async function handleDashboardMeasurementGet(
     ? { data: [] as MeasurementOrderRow[], error: null }
     : await resolution.supabase
         .from("project_measurement_orders")
-        .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+        .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, commercial_order_ref, programming_completion_status_snapshot")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .eq("measurement_kind", "SEM_PRODUCAO")
@@ -396,25 +399,27 @@ export async function handleDashboardMeasurementGet(
   const projectMetaMap = await fetchProjectMetaMap({
     supabase: resolution.supabase,
     tenantId,
-    projectIds: [...(orders ?? []), ...(annualOrdersResult.data ?? []), ...(minimumBillingGuaranteeOrders ?? [])].map((item) => item.project_id),
+    projectIds: [...(orders ?? []), ...(annualOrdersResult.data ?? []), ...(minimumBillingGuaranteeOrders ?? [])]
+      .map((item) => item.project_id)
+      .filter((id): id is string => Boolean(id)),
   });
 
   const validOrders = (orders ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => {
-      const projectMeta = projectMetaMap.get(order.project_id);
+      const projectMeta = order.project_id ? projectMetaMap.get(order.project_id) : null;
       return !projectMeta?.isTest && !projectMeta?.isThirdParty && (serviceScopeFilter === "ALL" || isMaintenanceServiceType(projectMeta?.serviceTypeText) === (serviceScopeFilter === "MANUTENCAO"));
     });
   const annualValidOrders = (annualOrdersResult.data ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => {
-      const projectMeta = projectMetaMap.get(order.project_id);
+      const projectMeta = order.project_id ? projectMetaMap.get(order.project_id) : null;
       return !projectMeta?.isTest && !projectMeta?.isThirdParty && (serviceScopeFilter === "ALL" || isMaintenanceServiceType(projectMeta?.serviceTypeText) === (serviceScopeFilter === "MANUTENCAO"));
     });
   const validMinimumBillingGuaranteeOrders = (minimumBillingGuaranteeOrders ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => {
-      const projectMeta = projectMetaMap.get(order.project_id);
+      const projectMeta = order.project_id ? projectMetaMap.get(order.project_id) : null;
       return !projectMeta?.isTest && !projectMeta?.isThirdParty && (serviceScopeFilter === "ALL" || isMaintenanceServiceType(projectMeta?.serviceTypeText) === (serviceScopeFilter === "MANUTENCAO"));
     });
 
@@ -466,7 +471,7 @@ export async function handleDashboardMeasurementGet(
     : await fetchProjectCompletionTimeline({
         supabase: resolution.supabase,
         tenantId,
-        projectIds: completionOrders.map((order) => order.project_id),
+        projectIds: completionOrders.map((order) => order.project_id).filter((id): id is string => Boolean(id)),
         endDate: completionTimelineEndDate,
       });
 
@@ -484,7 +489,7 @@ export async function handleDashboardMeasurementGet(
   for (const order of annualValidOrders) {
     const orderCycle = annualCycles.find((cycle) => order.execution_date >= cycle.cycleStart && order.execution_date <= cycle.cycleEnd);
     const projectCompletion = orderCycle
-      ? resolveProjectCompletionAtWindowEnd(projectCompletionTimeline, order.project_id, orderCycle.cycleEnd)
+      ? (order.project_id ? resolveProjectCompletionAtWindowEnd(projectCompletionTimeline, order.project_id, orderCycle.cycleEnd) : null)
       : null;
     const snapshot = normalizeCompletionStatus(order.programming_completion_status_snapshot);
     annualOrderCompletionMap.set(order.id, projectCompletion ?? (snapshot !== "NAO_INFORMADO" ? snapshot : "NAO_INFORMADO"));
@@ -626,8 +631,8 @@ export async function handleDashboardMeasurementGet(
   const personMap = new Map((peopleResult.data ?? []).map((person) => [person.id, normalizeText(person.nome)]));
 
   const projectOptions = Array.from(
-    new Map(optionSourceOrders.map((order) => [order.project_id, {
-      id: order.project_id,
+    new Map(optionSourceOrders.filter((order) => order.project_id).map((order) => [order.project_id as string, {
+      id: order.project_id as string,
       label: normalizeText(order.project_code_snapshot) || "Projeto sem codigo",
     }])).values(),
   ).sort((left, right) => left.label.localeCompare(right.label));
@@ -723,7 +728,7 @@ export async function handleDashboardMeasurementGet(
   });
 
   const periodFilteredOrders = periodOrders.filter((order) => {
-    if (periodServiceScopeFilter !== "ALL" && isMaintenanceServiceType(projectMetaMap.get(order.project_id)?.serviceTypeText) !== (periodServiceScopeFilter === "MANUTENCAO")) return false;
+    if (periodServiceScopeFilter !== "ALL" && isMaintenanceServiceType(order.project_id ? projectMetaMap.get(order.project_id)?.serviceTypeText : "") !== (periodServiceScopeFilter === "MANUTENCAO")) return false;
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
@@ -752,7 +757,7 @@ export async function handleDashboardMeasurementGet(
     return true;
   });
   const periodFilteredMinimumBillingGuaranteeOrders = periodMinimumBillingGuaranteeOrders.filter((order) => {
-    if (periodServiceScopeFilter !== "ALL" && isMaintenanceServiceType(projectMetaMap.get(order.project_id)?.serviceTypeText) !== (periodServiceScopeFilter === "MANUTENCAO")) return false;
+    if (periodServiceScopeFilter !== "ALL" && isMaintenanceServiceType(order.project_id ? projectMetaMap.get(order.project_id)?.serviceTypeText : "") !== (periodServiceScopeFilter === "MANUTENCAO")) return false;
     if (projectIdFilter && order.project_id !== projectIdFilter) return false;
     if (projectQueryFilter && !normalizeText(order.project_code_snapshot).toLowerCase().includes(projectQueryFilter)) return false;
     if (teamIdFilter && order.team_id !== teamIdFilter) return false;
@@ -772,7 +777,7 @@ export async function handleDashboardMeasurementGet(
   const cycleDetailHistoryOrdersResult = !isTeamsDashboard && cycleDetailProjectIds.length && teamCategoryTeamIds.length
     ? await loadAllRows<MeasurementOrderRow>((from, to) => resolution.supabase
         .from("project_measurement_orders")
-        .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, programming_completion_status_snapshot")
+        .select("id, project_id, team_id, execution_date, measurement_kind, minimum_billing_amount, status, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, commercial_order_ref, programming_completion_status_snapshot")
         .eq("tenant_id", tenantId)
         .eq("is_active", true)
         .eq("measurement_kind", "COM_PRODUCAO")
@@ -793,7 +798,7 @@ export async function handleDashboardMeasurementGet(
   const cycleDetailHistoryOrders = (cycleDetailHistoryOrdersResult.data ?? [])
     .filter((order) => normalizeIsoDate(order.execution_date))
     .filter((order) => {
-      const projectMeta = projectMetaMap.get(order.project_id);
+      const projectMeta = order.project_id ? projectMetaMap.get(order.project_id) : null;
       return !projectMeta?.isTest && !projectMeta?.isThirdParty;
     });
 
@@ -827,10 +832,11 @@ export async function handleDashboardMeasurementGet(
     if (isTeamsDashboard || !filteredOrders.length) return [];
 
     const cycleOrdersByProject = new Map<string, MeasurementOrderRow[]>();
-    for (const order of filteredOrders) {
-      const current = cycleOrdersByProject.get(order.project_id) ?? [];
+    for (const order of filteredOrders.filter((item) => item.project_id)) {
+      const projectId = order.project_id as string;
+      const current = cycleOrdersByProject.get(projectId) ?? [];
       current.push(order);
-      cycleOrdersByProject.set(order.project_id, current);
+      cycleOrdersByProject.set(projectId, current);
     }
 
     return Array.from(cycleOrdersByProject.entries())
@@ -932,6 +938,7 @@ export async function handleDashboardMeasurementGet(
   const defaultWorkdays = Number(selectedCycleRecord?.default_workdays ?? selectedCycleRecord?.workdays ?? 0);
 
   function addProjectProduction(target: Map<string, ProjectProductionDetail>, order: MeasurementOrderRow, totalValue: number) {
+    if (!order.project_id) return;
     const current = target.get(order.project_id) ?? {
       projectId: order.project_id,
       projectCode: normalizeText(order.project_code_snapshot) || "Projeto sem codigo",
@@ -982,7 +989,7 @@ export async function handleDashboardMeasurementGet(
     };
     completionTotal.value += totalValue;
     completionTotal.orders += 1;
-    completionTotal.projectIds.add(order.project_id);
+    if (order.project_id) completionTotal.projectIds.add(order.project_id);
     addProjectProduction(completionTotal.projects, order, totalValue);
     target.set(completion, completionTotal);
   }
@@ -991,7 +998,7 @@ export async function handleDashboardMeasurementGet(
     const totalValue = Number(order.minimum_billing_amount ?? 0);
     target.value += totalValue;
     target.orders += 1;
-    target.projectIds.add(order.project_id);
+    if (order.project_id) target.projectIds.add(order.project_id);
     addProjectProduction(target.projects, order, totalValue);
   }
 
@@ -1194,7 +1201,7 @@ export async function handleDashboardMeasurementGet(
   const teamsProductionRows = cyclePerformance.teams;
   const teamForemenRows = cyclePerformance.teamForemen;
   const realizedValue = cyclePerformance.realizedValue;
-  const projectCount = new Set(performanceOrders.map((order) => order.project_id)).size;
+  const projectCount = new Set(performanceOrders.map((order) => order.project_id).filter(Boolean)).size;
   const averageTicketValue = projectCount > 0 ? realizedValue / projectCount : 0;
   const averageServiceTicketValue = performanceOrders.length > 0 ? realizedValue / performanceOrders.length : 0;
   const cycleCompletedValue = cycleCompletionTotals.get("CONCLUIDO")?.value ?? 0;
@@ -1207,7 +1214,7 @@ export async function handleDashboardMeasurementGet(
   const periodProjectCount = new Set([
     ...periodFilteredOrders.map((order) => order.project_id),
     ...periodFilteredMinimumBillingGuaranteeOrders.map((order) => order.project_id),
-  ]).size;
+  ].filter(Boolean)).size;
   const periodAverageTicketValue = periodProjectCount > 0 ? periodRealizedValue / periodProjectCount : 0;
   const periodAverageServiceTicketValue = periodOrderCount > 0 ? periodRealizedValue / periodOrderCount : 0;
   const periodCompletedValue = periodCompletionTotals.get("CONCLUIDO")?.value ?? 0;
@@ -1272,7 +1279,7 @@ export async function handleDashboardMeasurementGet(
           executedWorkdays: executedWorkdaysInCycle,
           workdays: cycleWorkdays,
           orderCount: cycleOrdersInYear.length,
-          projectCount: new Set(cycleOrdersInYear.map((order) => order.project_id)).size,
+          projectCount: new Set(cycleOrdersInYear.map((order) => order.project_id).filter(Boolean)).size,
           teamCount: measuredTeamCount,
           hasMeta: Boolean(cycleRecord),
         };

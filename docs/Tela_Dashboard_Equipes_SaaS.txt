@@ -533,3 +533,50 @@ Atualizacao 2026-09-08 - Eletricista 1 / Eletricista 2 na visao Comercial
 - Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants. A leitura de
   `project_commercial_measurement_order_members` filtra por `tenant_id` e a RLS da
   tabela (415) segue como ultima barreira.
+
+Atualizacao 2026-09-09 - Incidencia no detalhe do MK, CSV do bloco de eletricistas e
+contagem de projetos sem projeto vinculado
+-------------------------------------------------------------------------
+- Motivo: a ordem COMERCIAL nao exige projeto. `project_measurement_orders.project_id`
+  e NULL nessas ordens (migration 415) e o identificador do trabalho e a `Incidencia`,
+  gravada em `commercial_order_ref`. A tela tratava `project_id` como sempre presente,
+  entao um `Set` de projetos recebia `null` e devolvia `size` 1 para um recorte sem
+  nenhum projeto vinculado. A tela tambem nao exibia a Incidencia em lugar nenhum.
+- CONTAGEM DE PROJETOS: todo `projectIds.add` em
+  `src/server/modules/team-performance/calculations.ts` passou a ser condicionado a
+  `order.projectId`, e os `Set` de `project_id` do `controller.ts` filtram nulo antes do
+  `.size`. Recorte so com ordem sem projeto agora mostra `0`, nao `1`. Afeta as colunas
+  `Projetos` de `Equipes no ciclo`, de `Eletricistas no ciclo` e do modal do MK, o
+  rodape do modal de projetos e o ticket medio por projeto.
+- ORDEM SEM PROJETO NA LISTA: `addProjectProduction` agrupa essas ordens sob a chave
+  interna `__NO_PROJECT__` e devolve `projectId: null` com `projectCode` `Sem projeto`.
+  A linha continua aparecendo na lista de projetos, com o valor e as ordens dela, mas
+  NAO entra na contagem. Foi decisao deliberada: esconder a linha sumiria com valor
+  realizado que existe, e conta-la como projeto era exatamente o bug relatado.
+- INCIDENCIA NA TELA (somente visao `Comercial`):
+  - `commercial_order_ref` entra nos quatro `select` de `project_measurement_orders` do
+    `controller.ts` e chega ao calculo por `TeamPerformanceOrder.commercialOrderRef`;
+  - `TeamPerformanceProjectDetail.commercialOrderRefs` acumula as Incidencias distintas
+    por projeto, ordenadas, sem repeticao;
+  - o modal de detalhe do MK ganha a coluna `Incidencias` por linha de dupla e no
+    rodape `Total MK`; o modal de lista de projetos ganha a mesma coluna por linha e no
+    total. Na visao tecnica a coluna nao existe, porque o campo e exclusivo da ordem
+    comercial.
+- CSV DO BLOCO `Eletricistas no ciclo`: botao `Extrair CSV` no cabecalho do bloco, so na
+  visao `Comercial`, exportando as linhas ja filtradas pela semana selecionada
+  (`exportDashboardTeamForemenCsv`). Respeita o mesmo `exportCooldown` dos outros CSVs.
+  O nome do arquivo usa o rotulo do periodo do bloco, nao o do filtro global, porque o
+  bloco tem filtro de semana proprio.
+- Os tres CSVs da tela agora saem por `buildCsvContent`/`downloadCsvFile` de
+  `src/lib/utils/csv.ts`, no lugar de tres copias locais de escape e download. Os CSVs de
+  contribuicao e de projetos ganharam `Lista de projetos` e `Incidencias`; a coluna de
+  Incidencias so e emitida quando a exportacao e da visao `Comercial`.
+- Validacao: `npx tsc --noEmit` e `npm run lint` limpos. Sem suite automatizada: o
+  caminho longo foi conferido a mao na visao `Comercial` (abrir MK, conferir Incidencia
+  por dupla, trocar a semana do bloco, extrair os tres CSVs) e na visao tecnica
+  (confirmar que a coluna `Incidencias` nao aparece em tela nem no CSV).
+- Permissao: nenhuma nova. Tudo dentro de `dashboard-equipes/read`, coberto pelo
+  `page_key` da tela visivel.
+- Ratchet: nenhum arquivo do modulo passou do teto. Sem `lint:size:accept`.
+- Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants. A leitura de
+  `commercial_order_ref` e uma coluna a mais em `select` que ja filtra por `tenant_id`.
