@@ -1,13 +1,18 @@
 "use client";
 
-// Campo `Ordem` da Medicao Comercial.
+// Campo `Incidencia` da Medicao Comercial.
+//
+// `Incidencia` e o rotulo visivel; a coluna no banco continua
+// `project_measurement_orders.commercial_order_ref`, e por isso os nomes internos
+// deste arquivo (`orderRef`, `CommercialOrderRefField`) seguem o contrato do
+// servidor, e nao o texto da tela.
 //
 // Vive fora do `MeasurementPageView` por dois motivos: o PageView e legado e
 // esta no ratchet de tamanho (guia_frontend.md, regra 15), e a checagem de
 // duplicidade e busca de dados -- que a regra 12 manda tirar do PageView.
 //
 // A checagem aqui e AVISO, nao barreira: entre ela e o submit existe janela para
-// outro usuario gravar a mesma Ordem. Quem garante e o UNIQUE INDEX parcial
+// outro usuario gravar a mesma Incidencia. Quem garante e o UNIQUE INDEX parcial
 // `uq_project_measurement_orders_commercial_ref_team_date` (migration 419), cujo
 // conflito volta como 409 no salvamento.
 import { useEffect, useState } from "react";
@@ -24,8 +29,8 @@ export const IDLE_COMMERCIAL_ORDER_REF_CHECK: CommercialOrderRefCheck = {
 
 export function duplicateCommercialOrderRefMessage(orderNumber: string | null) {
   return orderNumber
-    ? `Ja existe a ordem ${orderNumber} para esta Ordem + Equipe + Data de execucao.`
-    : "Ja existe ordem de medicao para esta Ordem + Equipe + Data de execucao.";
+    ? `Ja existe a ordem ${orderNumber} para esta Incidencia + Equipe + Data de execucao.`
+    : "Ja existe ordem de medicao para esta Incidencia + Equipe + Data de execucao.";
 }
 
 // Obrigatoriedade + aviso da checagem, juntos, para o PageView decidir o submit
@@ -33,7 +38,7 @@ export function duplicateCommercialOrderRefMessage(orderNumber: string | null) {
 // unico da migration 419.
 export function validateCommercialOrderRef(value: string, check: CommercialOrderRefCheck) {
   if (!value.trim()) {
-    return "Informe a Ordem da medicao comercial.";
+    return "Informe a Incidencia da medicao comercial.";
   }
   if (check.status === "duplicate") {
     return duplicateCommercialOrderRefMessage(check.orderNumber);
@@ -49,7 +54,7 @@ type CommercialOrderRefFieldProps = {
   accessToken: string | null;
   teamId: string;
   executionDate: string;
-  /** Ordem em edicao: ela nao pode se acusar de duplicada. */
+  /** Ordem de medicao em edicao: ela nao pode se acusar de duplicada. */
   excludeOrderId: string | null;
   check: CommercialOrderRefCheck;
   onCheckChange: (next: CommercialOrderRefCheck) => void;
@@ -69,8 +74,8 @@ export function CommercialOrderRefField({
   onCheckChange,
   disabled,
 }: CommercialOrderRefFieldProps) {
-  // A consulta dispara ao SAIR do campo, e nao a cada tecla: o usuario digita um
-  // numero de ordem inteiro, entao checar no meio da digitacao so produziria
+  // A consulta dispara ao SAIR do campo, e nao a cada tecla: o usuario digita a
+  // incidencia inteira, entao checar no meio da digitacao so produziria
   // "duplicada" falso e request desperdicado.
   const [committedRef, setCommittedRef] = useState("");
 
@@ -136,21 +141,21 @@ export function CommercialOrderRefField({
   return (
     <label className={fieldClassName}>
       <span>
-        Ordem <span className="requiredMark">*</span>
+        Incidencia <span className="requiredMark">*</span>
       </span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onBlur={(event) => setCommittedRef(event.target.value)}
-        placeholder="Referencia da ordem"
+        placeholder="Referencia da incidencia"
         maxLength={120}
         disabled={disabled}
       />
-      {check.status === "checking" ? <small>Verificando a Ordem...</small> : null}
+      {check.status === "checking" ? <small>Verificando a Incidencia...</small> : null}
       {check.status === "duplicate" ? (
         <small role="alert">{duplicateCommercialOrderRefMessage(check.orderNumber)}</small>
       ) : null}
-      {check.status === "error" ? <small>Nao foi possivel verificar a Ordem agora.</small> : null}
+      {check.status === "error" ? <small>Nao foi possivel verificar a Incidencia agora.</small> : null}
     </label>
   );
 }

@@ -46,8 +46,8 @@ export async function handleCommercialOrderRefCheck(request: NextRequest) {
   const executionDate = normalizeIsoDate(request.nextUrl.searchParams.get("executionDate"));
   const excludeOrderId = normalizeUuid(request.nextUrl.searchParams.get("excludeOrderId"));
 
-  // Sem os tres nao ha o que checar: a chave da unicidade e Ordem + Equipe +
-  // Data. Responder 200 com `duplicate: false` mantem a tela simples -- o campo
+  // Sem os tres nao ha o que checar: a chave da unicidade e Incidencia + Equipe
+  // + Data. Responder 200 com `duplicate: false` mantem a tela simples -- o campo
   // vazio ja e barrado pela validacao de obrigatoriedade, nao por aqui.
   if (!orderRef || !teamId || !executionDate) {
     return NextResponse.json({ duplicate: false, orderNumber: null });
@@ -57,7 +57,7 @@ export async function handleCommercialOrderRefCheck(request: NextRequest) {
   // O que sobra e no maximo um punhado de ordens da mesma equipe no mesmo dia,
   // e so a comparacao normalizada de texto acontece aqui -- PostgREST nao
   // expressa `upper(btrim(col))` no filtro, e montar `ilike` com texto livre
-  // exigiria escapar `%`/`_` da Ordem digitada pelo usuario.
+  // exigiria escapar `%`/`_` da Incidencia digitada pelo usuario.
   const { data, error } = await resolution.supabase
     .from("project_measurement_orders")
     .select("id, order_number, commercial_order_ref")

@@ -256,15 +256,15 @@ async function fetchWorkCompletionLabelMap(params: {
   );
 }
 
-// `commercial` acrescenta a coluna da `Ordem` digitada na tela comercial. O
-// cabecalho e "Ordem (informada)" porque a primeira coluna, "Ordem", ja e o
-// numero da ordem de medicao gerado pelo sistema.
+// `commercial` acrescenta a coluna da `Incidencia` digitada na tela comercial
+// (coluna `commercial_order_ref` no banco). Ela e uma coluna separada de
+// "Ordem", que e o numero da ordem de medicao gerado pelo sistema.
 function buildSummaryCsv(orders: OrderItem[], labelMap: Map<string, string>, commercial = false) {
   return buildCsvContent(
     [
       "Ordem",
       "Projeto",
-      ...(commercial ? ["Ordem (informada)"] : []),
+      ...(commercial ? ["Incidencia"] : []),
       "Centro de Servicos",
       "Data execucao",
       "Equipe",
@@ -351,6 +351,7 @@ async function buildDetailsCsv(params: {
       return [
         detail.orderNumber,
         summary?.projectCode || detail.projectId || "Sem projeto",
+        ...(commercial ? [summary?.commercialOrderRef || "-"] : []),
         summary?.projectServiceCenter ?? detail.projectServiceCenter ?? "Sem base",
         formatDate(detail.executionDate),
         summary?.teamName ?? detail.teamId,
@@ -387,6 +388,8 @@ async function buildDetailsCsv(params: {
     [
       "Ordem",
       "Projeto",
+      // Mesma posicao que no CSV de resumo, para os dois arquivos lerem igual.
+      ...(commercial ? ["Incidencia"] : []),
       "Centro de Servicos",
       "Data execucao",
       "Equipe",
