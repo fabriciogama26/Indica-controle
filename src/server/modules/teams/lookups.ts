@@ -1,6 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
-import { normalizeText } from "@/lib/server/apiHelpers";
+import { loadRowsInChunks, normalizeText } from "@/lib/server/apiHelpers";
 
 export type TeamRow = {
   id: string;
@@ -62,6 +62,13 @@ type ExistingTeamByForemanRow = {
   name: string;
   foreman_person_id: string;
 };
+
+type TeamServiceCenterRow = {
+  id: string;
+  service_center_id: string | null;
+};
+
+const TEAM_SERVICE_CENTER_ID_CHUNK = 200;
 
 const FOREMAN_JOB_TITLE_FILTER = "code.ilike.%ENCARREGADO%,name.ilike.%ENCARREGADO%";
 const SUPERVISOR_JOB_TITLE_FILTER = "code.ilike.%SUPERVISOR%,name.ilike.%SUPERVISOR%";
@@ -308,4 +315,85 @@ export async function fetchExistingTeamByForeman(params: {
   }
 
   return data[0];
+}
+
+// Base (Centro de Servico) de cada equipe: Map `teamId` -> nome da Base.
+//
+// Equipe sem Base fica FORA do Map de proposito, para o chamador escolher o
+// proprio texto de ausencia em vez de receber uma string pronta.
+//
+// `teams.service_center_id` e anulavel no banco (migration 068 criou a coluna
+// sem NOT NULL), mas a Base e obrigatoria no formulario de Equipes e no
+// `POST`/`PUT` de `/api/teams` desde entao -- na pratica so equipe legada,
+// gravada antes da regra, fica de fora.
+export async function fetchTeamServiceCenterMap(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  teamIds: string[];
+}) {
+  const empty = new Map<string, string>();
+  const uniqueTeamIds = Array.from(new Set(params.teamIds.filter(Boolean)));
+  if (!uniqueTeamIds.length) {
+    return empty;
+  }
+
+  const teamsResult = await loadRowsInChunks<TeamServiceCenterRow>(
+    uniqueTeamIds,
+    (chunk, from, to) =>
+      params.supabase
+        .from("teams")
+        .select("id, service_center_id")
+        .eq("tenant_id", params.tenantId)
+        .in("id", chunk)
+        .range(from, to)
+        .returns<TeamServiceCenterRow[]>(),
+    { chunkSize: TEAM_SERVICE_CENTER_ID_CHUNK },
+  );
+
+  if (teamsResult.error) {
+    return empty;
+  }
+
+  const teamRows = teamsResult.data ?? [];
+  const serviceCenterIds = teamRows
+    .map((item) => item.service_center_id)
+    .filter((item): item is string => Boolean(item));
+
+  if (!serviceCenterIds.length) {
+    return empty;
+  }
+
+  // `ativo` fica FORA do filtro de proposito: base desativada depois do cadastro
+  // ainda descreve a equipe, e esconder o nome so devolveria "Sem base" para um
+  // dado que existe. Difere de `fetchServiceCenterById`, que valida escolha nova.
+  const centersResult = await loadRowsInChunks<ServiceCenterRow>(
+    serviceCenterIds,
+    (chunk, from, to) =>
+      params.supabase
+        .from("project_service_centers")
+        .select("id, name")
+        .eq("tenant_id", params.tenantId)
+        .in("id", chunk)
+        .range(from, to)
+        .returns<ServiceCenterRow[]>(),
+    { chunkSize: TEAM_SERVICE_CENTER_ID_CHUNK },
+  );
+
+  if (centersResult.error) {
+    return empty;
+  }
+
+  const nameByCenterId = new Map(
+    (centersResult.data ?? []).map((item) => [item.id, normalizeText(item.name)] as const),
+  );
+
+  const result = new Map<string, string>();
+  for (const team of teamRows) {
+    const name = team.service_center_id ? nameByCenterId.get(team.service_center_id) : "";
+    if (name) {
+      result.set(team.id, name);
+    }
+  }
+
+  return result;
 }

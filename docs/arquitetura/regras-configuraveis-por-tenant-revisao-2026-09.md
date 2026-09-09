@@ -179,11 +179,11 @@ Formato equivalente: `^(?!00)[0-9]{8}$`.
 
 ## 8. Um caso que a tela de regras não resolve
 
-O usuário levantou, na mesma tarefa, que a coluna `Centro de Servicos` do CSV de Detalhamento depende de projeto e por isso sai vazia em quase toda ordem comercial.
+O usuário levantou, na mesma tarefa, que a coluna `Centro de Servicos` dos CSVs de Medição depende de projeto e por isso saía vazia em quase toda ordem comercial.
 
-Isso **não é regra configurável**. É escolha de fonte de dado: hoje vem de `project_with_labels.service_center_text`, e a saída proposta é cair para a Base da equipe, `teams.service_center_id`, que é obrigatória no cadastro de Equipes.
+Isso **não é regra configurável**. É escolha de fonte de dado. Foi resolvido em código na mesma data, com fallback para a Base da equipe: ordem com projeto continua usando o Centro de Serviço do projeto, ordem sem projeto usa `teams.service_center_id`, e `Sem base` sobra só para equipe legada sem Base. O texto `Sem projeto` deixou de aparecer nessa coluna.
 
-Registrado aqui porque a fronteira importa. Configuração parametriza uma regra que já existe. Trocar de onde um dado vem é mudança de código. Misturar os dois transformaria a tela de regras num painel de comportamento arbitrário, que é exatamente o que o estudo de junho quis evitar.
+Registrado aqui porque a fronteira importa, e este caso a demonstra. Configuração parametriza uma regra que já existe e tem dois valores plausíveis. Trocar de onde um dado vem tem uma resposta certa e uma errada, então é mudança de código, não parâmetro. Misturar os dois transformaria a tela de regras num painel de comportamento arbitrário, que é exatamente o que o estudo de junho quis evitar.
 
 ---
 

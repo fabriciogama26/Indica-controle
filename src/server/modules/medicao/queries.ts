@@ -4,9 +4,10 @@
 
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
+import { fetchTeamServiceCenterMap } from "@/server/modules/teams/lookups";
 import { loadProgrammingMatchMap } from "./programmingMatch";
 import type { AppUserRow, CycleTargetItemRow, CycleWorkdaysRow, MeasurementCommercialMemberRow, MeasurementHistoryRow, MeasurementOrderItemRow, MeasurementOrderRow, MeasurementScoreTargetRow, MeasurementTeamTypeTargetRow, ProgrammingMatchStatus, ProjectTestRow, ServiceActivityIddRow, SupabasePageResult, TeamCompositionContextRow, TeamRow, TeamTypeHistoryRow, TeamTypeRow } from "./types";
-import { buildMeasurementCycleStart, buildProgrammingMatchKey, normalizeMeasurementKind, normalizeText, resolveAppUserName } from "./normalizers";
+import { buildMeasurementCycleStart, buildProgrammingMatchKey, normalizeMeasurementKind, normalizeText, resolveAppUserName, resolveMeasurementOrderServiceCenter } from "./normalizers";
 export const SUPABASE_LIST_PAGE_SIZE = 1000;
 export const HISTORY_LIMIT = 50;
 export const MEASUREMENT_ORDER_SELECT = "id, order_number, programming_id, project_id, commercial_order_ref, commercial_process_id, commercial_process_name_snapshot, commercial_start_time, commercial_end_time, team_id, execution_date, measurement_date, voice_point, manual_rate, measurement_kind, no_production_reason_id, no_production_reason_name_snapshot, status, notes, project_code_snapshot, team_name_snapshot, foreman_name_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by, programming_completion_status_snapshot, programming_completion_status_snapshot_at, minimum_billing_amount, minimum_billing_team_type_id, minimum_billing_team_type_name_snapshot, minimum_billing_score_target_id, minimum_billing_target_points, minimum_billing_unit_value_source_activity_id, minimum_billing_unit_value_group_snapshot, minimum_billing_unit_value, minimum_billing_calculated_at";
@@ -389,11 +390,12 @@ export function buildMeasurementOrderDetail(params: {
   serviceActivityIddMap: Awaited<ReturnType<typeof fetchServiceActivityIddMap>>;
   userMap: Awaited<ReturnType<typeof fetchAppUserMap>>;
   projectServiceCenterMap: Awaited<ReturnType<typeof fetchProjectServiceCenterMap>>;
+  teamServiceCenterMap: Awaited<ReturnType<typeof fetchTeamServiceCenterMap>>;
   teamCompositionKeys: Awaited<ReturnType<typeof fetchTeamCompositionContextSet>>["data"];
   programmingMatchMap: Awaited<ReturnType<typeof loadProgrammingMatchMap>>;
   commercialMemberMap?: Awaited<ReturnType<typeof fetchCommercialMemberMap>>;
 }) {
-  const { order, itemRows, serviceActivityIddMap, userMap, projectServiceCenterMap, teamCompositionKeys, programmingMatchMap } = params;
+  const { order, itemRows, serviceActivityIddMap, userMap, projectServiceCenterMap, teamServiceCenterMap, teamCompositionKeys, programmingMatchMap } = params;
   const normalizedItems = itemRows.map((item) => ({
     id: item.id,
     activityId: item.service_activity_id,
@@ -437,7 +439,12 @@ export function buildMeasurementOrderDetail(params: {
     status: order.status,
     notes: normalizeText(order.notes),
     projectCode: normalizeText(order.project_code_snapshot),
-    projectServiceCenter: order.project_id ? (projectServiceCenterMap.get(order.project_id) ?? "Sem base") : "Sem projeto",
+    projectServiceCenter: resolveMeasurementOrderServiceCenter({
+      projectId: order.project_id,
+      teamId: order.team_id,
+      projectServiceCenterMap,
+      teamServiceCenterMap,
+    }),
     teamName: normalizeText(order.team_name_snapshot),
     foremanName: normalizeText(order.foreman_name_snapshot),
     commercialOrderRef: normalizeText(order.commercial_order_ref),
@@ -496,6 +503,7 @@ export async function fetchMeasurementOrderDetail(params: {
     userMap,
     programmingMatchMap,
     projectServiceCenterMap,
+    teamServiceCenterMap,
     teamCompositionContexts,
   ] = await Promise.all([
     params.supabase
@@ -527,6 +535,14 @@ export async function fetchMeasurementOrderDetail(params: {
       tenantId: params.tenantId,
       projectIds: order.project_id ? [order.project_id] : [],
     }),
+    // Base da equipe: so e usada quando a ordem nao tem projeto, mas a consulta
+    // e de uma linha e sai no mesmo Promise.all -- ramificar aqui custaria mais
+    // do que a propria consulta.
+    fetchTeamServiceCenterMap({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      teamIds: [order.team_id],
+    }),
     fetchTeamCompositionContextSet({
       supabase: params.supabase,
       tenantId: params.tenantId,
@@ -551,6 +567,7 @@ export async function fetchMeasurementOrderDetail(params: {
     serviceActivityIddMap,
     userMap,
     projectServiceCenterMap,
+    teamServiceCenterMap,
     teamCompositionKeys: teamCompositionContexts.data,
     programmingMatchMap,
     commercialMemberMap,
@@ -662,7 +679,7 @@ export async function fetchMeasurementOrderDetailsForExport(params: {
     .flatMap((order) => [order.created_by, order.updated_by])
     .filter((item): item is string => Boolean(item));
 
-  const [userMap, projectServiceCenterMap, teamCompositionContexts, serviceActivityIddMap, commercialMemberMap] = await Promise.all([
+  const [userMap, projectServiceCenterMap, teamServiceCenterMap, teamCompositionContexts, serviceActivityIddMap, commercialMemberMap] = await Promise.all([
     fetchAppUserMap({
       supabase: params.supabase,
       tenantId: params.tenantId,
@@ -672,6 +689,14 @@ export async function fetchMeasurementOrderDetailsForExport(params: {
       supabase: params.supabase,
       tenantId: params.tenantId,
       projectIds: Array.from(new Set(orderRows.map((order) => order.project_id).filter((item): item is string => Boolean(item)))),
+    }),
+    // Base das equipes de TODAS as ordens do lote, para as que nao tem projeto.
+    // O helper deduplica e fatia por conta propria, entao o volume aqui e o
+    // numero de equipes distintas, nao o de ordens.
+    fetchTeamServiceCenterMap({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      teamIds: orderRows.map((order) => order.team_id),
     }),
     fetchTeamCompositionContextSet({
       supabase: params.supabase,
@@ -744,6 +769,7 @@ export async function fetchMeasurementOrderDetailsForExport(params: {
         serviceActivityIddMap,
         userMap,
         projectServiceCenterMap,
+        teamServiceCenterMap,
         teamCompositionKeys: teamCompositionContexts.data,
         programmingMatchMap,
         commercialMemberMap,

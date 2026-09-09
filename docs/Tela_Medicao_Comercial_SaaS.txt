@@ -133,6 +133,21 @@ Filtros e listagem
 - Exportacao CSV usa o prefixo `ordens_medicao_comercial_`.
 - Nos CSVs de resumo e de detalhamento, as colunas `Composicao equipe`, `Encarregado`, `Programacao` e `Status execucao` dao lugar a `Processo`, `Hora inicio`, `Hora termino` e `Integrantes`.
 - Os dois CSVs trazem `Incidencia` logo depois de `Projeto`, na mesma posicao, para os arquivos serem lidos do mesmo jeito.
+- `Centro de Servicos` tem DUAS origens, nesta ordem:
+  1. Ordem COM projeto: o Centro de Servico do projeto (`project_with_labels.service_center_text`),
+     exatamente como antes.
+  2. Ordem SEM projeto: a Base da equipe da ordem (`teams.service_center_id` -> `project_service_centers.name`).
+  3. `Sem base` sobra so para equipe legada sem Base gravada.
+  - O texto `Sem projeto` NAO aparece mais nesta coluna. Ele era erro de categoria: a coluna
+    responde "qual base executou", e ausencia de projeto nao e nome de base. Como `Projeto` e
+    opcional nesta tela, a coluna vinha vazia de sentido em praticamente toda linha.
+  - A resolucao vive em `resolveMeasurementOrderServiceCenter` (`medicao/normalizers.ts`), usada
+    pela listagem (`list.ts`) e pelo detalhe (`queries.ts`), entao tela e CSVs nunca divergem.
+  - A leitura da Base e `fetchTeamServiceCenterMap` (`server/modules/teams/lookups.ts`), que
+    deduplica as equipes e fatia com `loadRowsInChunks` -- o teto de 1.000 linhas do PostgREST
+    nao corta em silencio nem numa exportacao grande.
+  - Vale para a Medicao TECNICA tambem, e la muda so a ordem `Sem producao` sem projeto, que e o
+    unico caso tecnico sem projeto. Ordem com projeto nao muda em lugar nenhum.
 
 Permissao
 ---------
@@ -186,13 +201,7 @@ Pendencia conhecida
     passam ANTES de ligar a regra.
   - Levantamento completo, com a expressao escrita por extenso:
     `docs/arquitetura/regras-configuraveis-por-tenant-revisao-2026-09.md` (secao 7).
-- CENTRO DE SERVICOS NO CSV -- PERGUNTA ABERTA, NAO IMPLEMENTADA (2026-09-09):
-  - A coluna sai de `project_with_labels.service_center_text` e por isso mostra `Sem projeto`
-    em toda ordem comercial sem projeto, que e o caso normal desta tela.
-  - Saida proposta: cair para a Base da equipe (`teams.service_center_id`, obrigatoria no
-    cadastro de Equipes desde a 068) quando a ordem nao tiver projeto.
-  - NAO e regra configuravel: e troca de fonte de dado, portanto mudanca de codigo. Registrado
-    na secao 8 do levantamento acima.
+- CENTRO DE SERVICOS NOS CSVs -- RESOLVIDO em 2026-09-09. Ver a secao `Filtros e listagem`.
 
 Atualizacao 2026-09-08 - Eletricistas por matricula e equipe comercial pelo operacional
 --------------------------------------------------------------------------------------

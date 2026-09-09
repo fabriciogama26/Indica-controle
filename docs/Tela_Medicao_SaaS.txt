@@ -165,8 +165,14 @@ Filtros, auto-complete e listagem
   - Cor do status na lista: `ABERTA` em verde, `FECHADA` e `CANCELADA` em vermelho
   - Atualizado em
   - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
-  - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela, incluindo `Centro de Servicos` do projeto.
-  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`, `Codigo IDD` e `Centro de Servicos` do projeto.
+  - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela, incluindo `Centro de Servicos`.
+  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`, `Codigo IDD` e `Centro de Servicos`.
+  - `Centro de Servicos` tem DUAS origens desde 2026-09-09: ordem COM projeto usa o Centro de
+    Servico do projeto, sem mudanca; ordem SEM projeto usa a Base da equipe
+    (`teams.service_center_id`). Na Medicao TECNICA o unico caso sem projeto e `Sem producao`,
+    entao so essas linhas mudaram -- antes elas imprimiam `Sem projeto` nessa coluna. `Sem base`
+    sobra so para equipe legada sem Base. Resolucao em `resolveMeasurementOrderServiceCenter`
+    (`src/server/modules/medicao/normalizers.ts`), compartilhada por listagem e detalhe.
   - Botao `Exportar pontuacao` para baixar CSV com `Tipo`, `Nome`, `Data`, `Projeto`, `Pontos`, `Valor (R$)`, `Status` e `Compensatorio`.
   - As colunas monetarias dos CSVs de Medicao exportam valores numericos sem prefixo `R$`, mantendo a unidade no cabecalho para permitir soma no Excel.
   - A `Pontuacao` nao fica visivel na lista; e calculada para exportacao por `sum(Pontos da atividade x Quantidade)`.

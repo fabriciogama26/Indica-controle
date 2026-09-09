@@ -67,6 +67,9 @@ Filtros, auto-complete e listagem
 
 Colunas dos CSVs
 ----------------
+- `Centro de Servicos` nos dois CSVs: ordem COM projeto usa o Centro de Servico do projeto;
+  ordem SEM projeto usa a Base da equipe (`teams.service_center_id`), desde 2026-09-09.
+  `Sem base` sobra so para equipe legada sem Base. Detalhe em `docs/Tela_Medicao_SaaS.txt`.
 - `Exportar Excel (CSV)`: Ordem, Projeto, Centro de Servicos, Data execucao, Equipe,
   Composicao equipe, Encarregado, Tipo da medicao, Motivo sem producao, Programacao,
   Status execucao, Itens, Valor total (R$), Status, Atualizado em.
