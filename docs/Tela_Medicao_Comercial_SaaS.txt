@@ -254,6 +254,13 @@ Atualizacao 2026-09-09 - Historico dos campos comerciais
 - Backend HTTP: `buildMeasurementChangedFields` em `src/server/modules/medicao/handlers.ts` tambem passou a comparar os campos comerciais quando uma edicao volta 409 por concorrencia.
 - Sem nova tabela, coluna, rota ou permissao. A RPC continua `SECURITY DEFINER` com `EXECUTE` apenas para `service_role`, e o historico segue filtrado por `tenant_id`.
 
+Atualizacao 2026-09-09 - Autor do historico em usuario multi-tenant
+--------------------------------------------------------------------
+- Sintoma: o modal de `Historico` mostrava data/hora corretamente, mas o autor aparecia como `Nao identificado`.
+- Causa provavel confirmada no codigo: o historico grava `created_by = app_users.id`; em usuario/admin multi-tenant, esse `app_users.id` pode pertencer ao tenant home do usuario, enquanto a operacao roda no tenant ativo via `app_user_tenants`. A leitura antiga de Medicao buscava o nome apenas em `app_users.tenant_id = tenant ativo`, entao nao encontrava o registro.
+- Correcao: `fetchAppUserMap` em `src/server/modules/medicao/queries.ts` agora usa o helper compartilhado `fetchTenantLinkedAppUsers`: resolve primeiro por `app_users.tenant_id` como antes; para ids faltantes, aceita usuario com vinculo ativo em `app_user_tenants` para o tenant da tela e entao carrega `display/login_name`. O mesmo helper foi aplicado nas outras telas editaveis que exibem historico/autoria.
+- Nao abre leitura livre de usuarios: o fallback so roda para ids ja presentes em registros de Medicao do tenant atual e exige vinculo ativo com esse tenant.
+
 Atualizacao 2026-09-08 - Eletricistas por matricula e equipe comercial pelo operacional
 --------------------------------------------------------------------------------------
 - `Eletricista 1` e `Eletricista 2` passaram a usar busca digitavel (`input + datalist`), aceitando nome ou matricula (`people.matriculation`) do cadastro de Pessoas.

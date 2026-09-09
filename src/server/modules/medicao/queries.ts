@@ -3,6 +3,7 @@
 // a rota de export NAO deve voltar a chamar a rota de listagem por HTTP.
 
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { fetchTenantLinkedAppUsers } from "@/lib/server/apiHelpers";
 import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
 import { fetchTeamServiceCenterMap } from "@/server/modules/teams/lookups";
 import { loadProgrammingMatchMap } from "./programmingMatch";
@@ -331,18 +332,8 @@ export async function fetchAppUserMap(params: {
   tenantId: string;
   ids: string[];
 }) {
-  if (!params.ids.length) {
-    return new Map<string, AppUserRow>();
-  }
-
-  const { data } = await params.supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", params.tenantId)
-    .in("id", params.ids)
-    .returns<AppUserRow[]>();
-
-  return new Map((data ?? []).map((item) => [item.id, item]));
+  const users = await fetchTenantLinkedAppUsers<AppUserRow>(params.supabase, params.tenantId, params.ids);
+  return new Map(users.map((item) => [item.id, item]));
 }
 
 type PersonSearchRow = {

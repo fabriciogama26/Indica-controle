@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
@@ -229,7 +229,9 @@ async function buildResponseRows(context: AuthenticatedAppUserContext, requestRo
     loadLookupMap(context, "stock_centers", stockCenterIds, "id, name"),
     loadLookupMap(context, "project", projectIds, "id, sob"),
     loadLookupMap(context, "materials", materialIds, "id, codigo, descricao, umb"),
-    loadLookupMap(context, "app_users", userIds, "id, display, login_name"),
+    fetchTenantLinkedAppUsers<LookupRow>(context.supabase, context.appUser.tenant_id, userIds).then(
+      (users) => new Map(users.map((user) => [user.id, user])),
+    ),
   ]);
 
   const itemsByRequest = new Map<string, RequestItemRow[]>();

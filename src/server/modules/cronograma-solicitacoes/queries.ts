@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { loadAllRows, normalizeText } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, normalizeText } from "@/lib/server/apiHelpers";
 import { fetchWorkCompletionByProject } from "@/server/modules/programacao-normalizada";
 import {
   isPrioridade,
@@ -139,18 +139,14 @@ export async function fetchUserNameMap(
   tenantId: string,
   ids: string[],
 ): Promise<Map<string, string>> {
-  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
-  if (!uniqueIds.length) return new Map();
-
-  const { data } = await supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", tenantId)
-    .in("id", uniqueIds)
-    .returns<Array<{ id: string; display: string | null; login_name: string | null }>>();
+  const users = await fetchTenantLinkedAppUsers<Array<{ id: string; display: string | null; login_name: string | null }>[number]>(
+    supabase,
+    tenantId,
+    ids,
+  );
 
   return new Map(
-    (data ?? []).map((item) => [
+    users.map((item) => [
       item.id,
       normalizeText(item.display) || normalizeText(item.login_name) || "Nao identificado",
     ]),

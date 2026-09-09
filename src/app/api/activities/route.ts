@@ -12,6 +12,7 @@ import {
   buildNameMap,
   buildUserDisplayMap,
   buildUserLoginNameMap,
+  fetchTenantLinkedAppUsers,
   formatComparableValue,
   normalizeHistoryChanges,
   normalizeNullableText,
@@ -641,19 +642,7 @@ export async function GET(request: NextRequest) {
         new Set((historyData ?? []).map((entry) => entry.created_by).filter((value): value is string => Boolean(value))),
       );
 
-      let users: AppUserRow[] = [];
-      if (userIds.length > 0) {
-        const usersResult = await supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>();
-
-        if (!usersResult.error) {
-          users = usersResult.data ?? [];
-        }
-      }
+      const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
       const userDisplayMap = buildUserDisplayMap(users);
 
@@ -743,19 +732,7 @@ export async function GET(request: NextRequest) {
       new Set((data ?? []).map((item) => item.type_service).filter((value): value is string => Boolean(value))),
     );
 
-    let users: AppUserRow[] = [];
-    if (userIds.length > 0) {
-      const usersResult = await supabase
-        .from("app_users")
-        .select("id, display, login_name")
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", userIds)
-        .returns<AppUserRow[]>();
-
-      if (!usersResult.error) {
-        users = usersResult.data ?? [];
-      }
-    }
+    const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
     let teamTypes: TeamTypeRow[] = [];
     if (teamTypeIds.length > 0) {

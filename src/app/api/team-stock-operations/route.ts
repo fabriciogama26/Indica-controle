@@ -5,7 +5,7 @@ import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/mate
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { loadAllRows, loadRowsInChunks, parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, loadRowsInChunks, parsePagination } from "@/lib/server/apiHelpers";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -764,7 +764,7 @@ async function loadTeamOperationList(request: NextRequest) {
     materialsResult,
     stockCentersResult,
     projectsResult,
-    usersResult,
+    users,
     teamsResult,
     reversalsFromOriginalResult,
     reversalsByReversalResult,
@@ -795,14 +795,7 @@ async function loadTeamOperationList(request: NextRequest) {
           .in("id", projectIds)
           .returns<ProjectRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
-    userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+    fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     teamIds.length
       ? supabase
           .from("teams")
@@ -950,7 +943,7 @@ async function loadTeamOperationList(request: NextRequest) {
   const materialSubcategoryMap = new Map((materialSubcategoriesResult.data ?? []).map((row) => [row.id, row.name]));
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
-  const userMap = new Map((usersResult.data ?? []).map((row) => [
+  const userMap = new Map(users.map((row) => [
     row.id,
     String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
   ]));
@@ -1178,15 +1171,8 @@ async function loadTeamOperationHistory(request: NextRequest) {
   const stockCenterIds = Array.from(new Set([transferResult.data.from_stock_center_id, transferResult.data.to_stock_center_id].filter(Boolean)));
   const projectIds = Array.from(new Set([transferResult.data.project_id].filter(Boolean)));
 
-  const [usersResult, historyStockCentersResult, historyProjectsResult] = await Promise.all([
-    userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+  const [users, historyStockCentersResult, historyProjectsResult] = await Promise.all([
+    fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     stockCenterIds.length
       ? supabase
           .from("stock_centers")
@@ -1209,7 +1195,7 @@ async function loadTeamOperationHistory(request: NextRequest) {
     stockCenters: new Map((historyStockCentersResult.data ?? []).map((row) => [row.id, row.name])),
     projects: new Map((historyProjectsResult.data ?? []).map((row) => [row.id, row.sob])),
   };
-  const userMap = new Map((usersResult.data ?? []).map((row) => [
+  const userMap = new Map(users.map((row) => [
     row.id,
     String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
   ]));

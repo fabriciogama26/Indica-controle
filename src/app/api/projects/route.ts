@@ -15,7 +15,7 @@ import {
 } from "@/server/modules/programacao-normalizada";
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 
 type ProjectRow = {
   id: string;
@@ -1403,16 +1403,9 @@ export async function GET(request: NextRequest) {
         new Set((historyRows ?? []).map((item) => item.created_by).filter((value): value is string => Boolean(value))),
       );
 
-      const { data: creators } = creatorIds.length
-        ? await supabase
-            .from("app_users")
-            .select("id, display, login_name")
-            .eq("tenant_id", appUser.tenant_id)
-            .in("id", creatorIds)
-            .returns<ProjectUserRow[]>()
-        : { data: [] as ProjectUserRow[] };
+      const creators = await fetchTenantLinkedAppUsers<ProjectUserRow>(supabase, appUser.tenant_id, creatorIds);
 
-      const creatorMap = buildUserDisplayMap(creators ?? []);
+      const creatorMap = buildUserDisplayMap(creators);
 
       return NextResponse.json({
         project: {
@@ -1492,17 +1485,10 @@ export async function GET(request: NextRequest) {
       ),
     );
 
-    const { data: users } = userIds.length
-      ? await supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<ProjectUserRow[]>()
-      : { data: [] as ProjectUserRow[] };
+    const users = await fetchTenantLinkedAppUsers<ProjectUserRow>(supabase, appUser.tenant_id, userIds);
 
-    const userMap = buildUserDisplayMap(users ?? []);
-    const userLoginNameMap = buildUserLoginNameMap(users ?? []);
+    const userMap = buildUserDisplayMap(users);
+    const userLoginNameMap = buildUserLoginNameMap(users);
 
     return NextResponse.json({
       projects: (data ?? []).map((item) => ({

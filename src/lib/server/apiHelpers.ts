@@ -1,6 +1,12 @@
-import type { PostgrestError } from "@supabase/supabase-js";
+import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 
 type HistoryChange = { from: string | null; to: string | null };
+
+export type AppUserAuditLookupRow = {
+  id: string;
+  display?: string | null;
+  login_name?: string | null;
+};
 
 /**
  * Teto de linhas que o PostgREST deste projeto entrega por resposta (`db-max-rows`).
@@ -249,6 +255,52 @@ export function buildUserDisplayMap(
       String(user.display ?? user.login_name ?? "").trim() || "Nao identificado",
     ]),
   );
+}
+
+export async function fetchTenantLinkedAppUsers<T extends AppUserAuditLookupRow = AppUserAuditLookupRow>(
+  supabase: SupabaseClient,
+  tenantId: string,
+  ids: readonly string[],
+): Promise<T[]> {
+  const uniqueIds = Array.from(new Set(ids.filter(Boolean)));
+  if (!uniqueIds.length) return [];
+
+  const { data: tenantUsers } = await supabase
+    .from("app_users")
+    .select("id, display, login_name")
+    .eq("tenant_id", tenantId)
+    .in("id", uniqueIds)
+    .returns<T[]>();
+
+  const users = tenantUsers ?? [];
+  const userMap = new Map(users.map((user) => [user.id, user]));
+  const missingIds = uniqueIds.filter((id) => !userMap.has(id));
+  if (!missingIds.length) return users;
+
+  // Usuarios multi-tenant mantem o app_users.id do tenant de origem, mas podem
+  // alterar dados no tenant ativo via app_user_tenants.
+  const { data: links } = await supabase
+    .from("app_user_tenants")
+    .select("user_id")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .in("user_id", missingIds)
+    .returns<Array<{ user_id: string }>>();
+
+  const linkedUserIds = Array.from(new Set((links ?? []).map((link) => link.user_id).filter(Boolean)));
+  if (!linkedUserIds.length) return users;
+
+  const { data: linkedUsers } = await supabase
+    .from("app_users")
+    .select("id, display, login_name")
+    .in("id", linkedUserIds)
+    .returns<T[]>();
+
+  for (const user of linkedUsers ?? []) {
+    userMap.set(user.id, user);
+  }
+
+  return Array.from(userMap.values());
 }
 
 export function buildUserLoginNameMap(

@@ -5,6 +5,7 @@ import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
 import {
   buildUserDisplayMap,
   buildUserLoginNameMap,
+  fetchTenantLinkedAppUsers,
   normalizeHistoryChanges,
   normalizeNullableText,
   normalizeText,
@@ -146,17 +147,7 @@ async function fetchUtilityContactById(
 }
 
 async function fetchUsersByIds(supabase: SupabaseClient, tenantId: string, userIds: string[]) {
-  if (userIds.length === 0) return [] as AppUserRow[];
-
-  const { data, error } = await supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", tenantId)
-    .in("id", userIds)
-    .returns<AppUserRow[]>();
-
-  if (error) return [] as AppUserRow[];
-  return data ?? [];
+  return fetchTenantLinkedAppUsers<AppUserRow>(supabase, tenantId, userIds);
 }
 
 async function saveUtilityContactViaRpc(params: {

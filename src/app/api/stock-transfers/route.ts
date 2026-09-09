@@ -4,7 +4,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { loadAllRows, loadRowsInChunks, parsePositiveInteger, SUPABASE_RESPONSE_ROW_CAP } from "@/lib/server/apiHelpers";
+import {
+  fetchTenantLinkedAppUsers,
+  loadAllRows,
+  loadRowsInChunks,
+  parsePositiveInteger,
+  SUPABASE_RESPONSE_ROW_CAP,
+} from "@/lib/server/apiHelpers";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
 import { canCreatePendingSerial as canCreatePendingSerialItem, movementTypeLabel } from "@/lib/stockSerialPolicy";
 import { loadStockSerialPolicy } from "@/lib/server/stockSerialPolicy";
@@ -808,7 +814,7 @@ async function loadTransferList(request: NextRequest) {
     materialsResult,
     stockCentersResult,
     projectsResult,
-    usersResult,
+    users,
     reversalsFromOriginalResult,
     reversalsByReversalResult,
     itemReversalsFromOriginalResult,
@@ -838,14 +844,7 @@ async function loadTransferList(request: NextRequest) {
           .in("id", enrichProjectIds)
           .returns<ProjectRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
-    userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+    fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
           transferIds,
@@ -933,7 +932,7 @@ async function loadTransferList(request: NextRequest) {
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map(
-    (usersResult.data ?? []).map((row) => [
+    users.map((row) => [
       row.id,
       String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
     ]),
@@ -1148,21 +1147,10 @@ async function loadTransferEditHistory(request: NextRequest) {
     new Set((historyRows ?? []).map((row) => row.created_by).filter((value): value is string => Boolean(value))),
   );
 
-  const usersResult = userIds.length
-    ? await supabase
-        .from("app_users")
-        .select("id, display, login_name")
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", userIds)
-        .returns<AppUserRow[]>()
-    : ({ data: [], error: null } as { data: AppUserRow[]; error: null });
-
-  if (usersResult.error) {
-    return NextResponse.json({ message: "Falha ao carregar autores do historico da movimentacao." }, { status: 500 });
-  }
+  const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
   const userMap = new Map(
-    (usersResult.data ?? []).map((row) => [
+    users.map((row) => [
       row.id,
       String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
     ]),

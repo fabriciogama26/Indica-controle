@@ -4,7 +4,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
-import { loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type MaterialRelation = {
   id: string;
@@ -505,7 +505,7 @@ async function loadTrafoHistory(request: NextRequest) {
   const [
     stockCentersResult,
     projectsResult,
-    usersResult,
+    users,
     teamOperationsResult,
     teamsResult,
     reversalsFromOriginalResult,
@@ -527,14 +527,7 @@ async function loadTrafoHistory(request: NextRequest) {
           .in("id", projectIds)
           .returns<ProjectRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
-    userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+    fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     transferIds.length
       ? supabase
           .from("stock_transfer_team_operations")
@@ -571,7 +564,6 @@ async function loadTrafoHistory(request: NextRequest) {
   if (
     stockCentersResult.error
     || projectsResult.error
-    || usersResult.error
     || teamOperationsResult.error
     || teamsResult.error
     || reversalsFromOriginalResult.error
@@ -583,7 +575,7 @@ async function loadTrafoHistory(request: NextRequest) {
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map(
-    (usersResult.data ?? []).map((row) => [row.id, String(row.display ?? row.login_name ?? "").trim() || "Nao informado"]),
+    users.map((row) => [row.id, String(row.display ?? row.login_name ?? "").trim() || "Nao informado"]),
   );
   const teamById = new Map((teamsResult.data ?? []).map((row) => [row.id, row]));
   const teamOperationMap = new Map(
@@ -820,7 +812,7 @@ export async function GET(request: NextRequest) {
     );
     const projectIds = Array.from(new Set((data ?? []).map((row) => row.last_project_id).filter((value): value is string => Boolean(value))));
 
-    const [lastTransfersResult, usersResult, projectsResult, teamOperationsResult] = await Promise.all([
+    const [lastTransfersResult, users, projectsResult, teamOperationsResult] = await Promise.all([
       lastTransferIds.length
         ? supabase
             .from("stock_transfers")
@@ -829,14 +821,7 @@ export async function GET(request: NextRequest) {
             .in("id", lastTransferIds)
             .returns<StockTransferHeaderRow[]>()
         : Promise.resolve({ data: [], error: null } as { data: StockTransferHeaderRow[]; error: null }),
-      userIds.length
-        ? supabase
-            .from("app_users")
-            .select("id, display, login_name")
-            .eq("tenant_id", appUser.tenant_id)
-            .in("id", userIds)
-            .returns<AppUserRow[]>()
-        : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+      fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
       projectIds.length
         ? supabase
             .from("project")
@@ -855,7 +840,7 @@ export async function GET(request: NextRequest) {
         : Promise.resolve({ data: [], error: null } as { data: TeamOperationRow[]; error: null }),
     ]);
 
-    if (lastTransfersResult.error || usersResult.error || projectsResult.error || teamOperationsResult.error) {
+    if (lastTransfersResult.error || projectsResult.error || teamOperationsResult.error) {
       return NextResponse.json({ message: "Falha ao carregar o rastreio de serial." }, { status: 500 });
     }
 
@@ -900,7 +885,7 @@ export async function GET(request: NextRequest) {
 
     const transferMap = new Map(transferRows.map((row) => [row.id, row]));
     const userMap = new Map(
-      (usersResult.data ?? []).map((row) => [row.id, String(row.display ?? row.login_name ?? "").trim() || "Nao informado"]),
+      users.map((row) => [row.id, String(row.display ?? row.login_name ?? "").trim() || "Nao informado"]),
     );
     const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
     const teamOperationMap = new Map(
