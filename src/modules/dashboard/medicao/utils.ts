@@ -107,6 +107,23 @@ export function formatHistoryActionLabel(action: string) {
   return normalized || "Atualizacao";
 }
 
+export const HISTORY_FIELD_LABELS: Record<string, string> = {
+  projectId: "Projeto",
+  teamId: "Equipe",
+  executionDate: "Data execucao",
+  manualRate: "Taxa manual",
+  measurementKind: "Tipo da medicao",
+  noProductionReason: "Motivo sem producao",
+  itemCount: "Quantidade de itens",
+  status: "Status",
+  commercialOrderRef: "Incidencia",
+  commercialProcessName: "Processo",
+  commercialStartTime: "Hora inicio",
+  commercialEndTime: "Hora termino",
+  commercialEmployee1Name: "Eletricista 1",
+  commercialEmployee2Name: "Eletricista 2",
+};
+
 export function getOpenStatusActionLabel(status: MeasurementStatus | undefined) { return status === "CANCELADA" ? "Descancelar" : "Abrir"; }
 export function getOpenStatusReasonLabel(status: MeasurementStatus | undefined) { return status === "CANCELADA" ? "descancelamento" : "reabertura"; }
 

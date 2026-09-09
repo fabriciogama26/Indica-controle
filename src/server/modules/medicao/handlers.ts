@@ -191,6 +191,20 @@ function buildMeasurementChangedFields(
   add("executionDate", current.executionDate, normalizeIsoDate(payload.executionDate));
   add("measurementDate", current.measurementDate, normalizeIsoDate(payload.measurementDate));
   add("notes", current.notes, normalizeText(payload.notes) || null);
+  add("commercialOrderRef", current.commercialOrderRef, normalizeText(payload.commercialOrderRef) || null);
+  add("commercialProcessId", current.commercialProcessId, normalizeUuid(payload.commercialProcessId));
+  add("commercialStartTime", current.commercialStartTime, normalizeText(payload.commercialStartTime) || null);
+  add("commercialEndTime", current.commercialEndTime, normalizeText(payload.commercialEndTime) || null);
+  add(
+    "commercialEmployee1Id",
+    current.commercialMembers?.find((item) => item.sortOrder === 1)?.personId ?? null,
+    normalizeUuid(payload.commercialEmployee1Id),
+  );
+  add(
+    "commercialEmployee2Id",
+    current.commercialMembers?.find((item) => item.sortOrder === 2)?.personId ?? null,
+    normalizeUuid(payload.commercialEmployee2Id),
+  );
   return changes;
 }
 

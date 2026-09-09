@@ -123,6 +123,7 @@ Persistencia
   - Valida que a equipe e comercial pelo tipo operacional, os dois eletricistas, o Processo ativo do tenant e o intervalo de horario.
   - Delega cabecalho e itens para `save_project_measurement_order` em vez de duplicar a regra da Medicao.
   - Regrava os integrantes (`delete` + `insert`) na mesma transacao da chamada.
+  - Desde a migration 422, anexa ao historico da ordem os campos proprios da tela (`Incidencia`, Processo, horarios e Eletricista 1/2). A RPC tecnica grava o historico antes de conhecer esses campos; por isso o envelope comercial captura o estado anterior, faz o UPDATE comercial e completa o mesmo registro de `project_measurement_order_history`.
 - `foreman_name_snapshot` fica vazio na ordem comercial: `resolve_team_foreman_snapshot` devolve `NULL` quando a equipe nao tem encarregado.
 
 Filtros e listagem
@@ -173,6 +174,8 @@ Validacao manual
 - Salvar uma segunda ordem em seguida (sem recarregar a tela) e confirmar que os integrantes foram limpos pelo reset do formulario.
 - Abrir `Medicao` (tecnica) e confirmar que as ordens comerciais NAO aparecem, e vice-versa.
 - Com usuario que so tem `medicao-visualizacao`, confirmar que `Visualizacao Medicao` continua carregando (o endpoint compartilhado aceita `medicao` OU `medicao-visualizacao`).
+- Editar uma ordem comercial alterando somente `Incidencia`; abrir `Historico` e confirmar que a linha de `Edicao` mostra `Incidencia` com `De/Para`.
+- Editar Processo, horarios e eletricistas; abrir `Historico` e confirmar que aparecem `Processo`, `Hora inicio`, `Hora termino`, `Eletricista 1` e `Eletricista 2`.
 
 Boas praticas
 -------------
@@ -202,6 +205,15 @@ Pendencia conhecida
   - Levantamento completo, com a expressao escrita por extenso:
     `docs/arquitetura/regras-configuraveis-por-tenant-revisao-2026-09.md` (secao 7).
 - CENTRO DE SERVICOS NOS CSVs -- RESOLVIDO em 2026-09-09. Ver a secao `Filtros e listagem`.
+
+Atualizacao 2026-09-09 - Historico dos campos comerciais
+---------------------------------------------------------
+- Sintoma: em `Historico`, editar a Medicao Comercial salvava a ordem, mas a linha de `Edicao` mostrava principalmente `Quantidade de itens`; alteracoes em `Incidencia` nao apareciam.
+- Causa: `save_project_commercial_measurement_order` chamava `save_project_measurement_order`, e a RPC tecnica gravava `project_measurement_order_history` antes de a RPC comercial preencher `commercial_order_ref`, `commercial_process_*`, horarios e integrantes.
+- Correcao: migration `422_commercial_measurement_history_fields.sql` recria somente a RPC comercial para capturar o estado anterior, montar `commercialOrderRef`, `commercialProcessName`, `commercialStartTime`, `commercialEndTime`, `commercialEmployee1Name` e `commercialEmployee2Name`, anexar esses campos ao mesmo historico criado pela RPC tecnica e retornar o `updated_at` final.
+- Front: `HISTORY_FIELD_LABELS` em `utils.ts` recebeu os rotulos legiveis desses campos, entao o modal mostra `Incidencia`, `Processo`, `Hora inicio`, `Hora termino`, `Eletricista 1` e `Eletricista 2`, em vez de chaves tecnicas.
+- Backend HTTP: `buildMeasurementChangedFields` em `src/server/modules/medicao/handlers.ts` tambem passou a comparar os campos comerciais quando uma edicao volta 409 por concorrencia.
+- Sem nova tabela, coluna, rota ou permissao. A RPC continua `SECURITY DEFINER` com `EXECUTE` apenas para `service_role`, e o historico segue filtrado por `tenant_id`.
 
 Atualizacao 2026-09-08 - Eletricistas por matricula e equipe comercial pelo operacional
 --------------------------------------------------------------------------------------
