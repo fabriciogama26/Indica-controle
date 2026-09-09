@@ -80,6 +80,7 @@ const menuSections = [
       { href: "/prioridade", label: "Prioridade", icon: "settings" },
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
       { href: "/centro-estoque", label: "Centro de estoque", icon: "settings" },
+      { href: "/politica-serial", label: "Politica de Serial", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
       { href: "/categoria-atividade", label: "Categoria de Atividade", icon: "settings" },
       { href: "/grupo-atividade", label: "Grupo de Atividade", icon: "settings" },

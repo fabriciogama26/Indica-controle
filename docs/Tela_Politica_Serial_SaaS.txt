@@ -1,0 +1,83 @@
+Tela: Politica de Serial SaaS
+
+Visao geral
+-----------
+- Tela de Cadastro Base que define, por contrato (tenant), em quais movimentos de estoque um
+  material rastreado por serial pode ser lancado sem o Serial informado, ficando pendente de
+  identificacao.
+- Um registro por tenant, sempre existente: a migration 421 faz backfill de todos os tenants e
+  a leitura na aplicacao cai num default quando nao houver linha.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/politica-serial/page.tsx`
+- View: `src/modules/dashboard/politica-serial/SerialPolicyPageView.tsx`
+- CSS: `src/modules/dashboard/politica-serial/SerialPolicyPageView.module.css`
+- Fachada frontend: `src/modules/dashboard/politica-serial/index.ts`
+- API: `src/app/api/stock-serial-policy/route.ts`
+- Backend: `src/server/modules/stock-serial-policy/controller.ts`
+- Fachada backend: `src/server/modules/stock-serial-policy/index.ts`
+- Regra compartilhada (client + server): `src/lib/stockSerialPolicy.ts`
+- Leitura server-side: `src/lib/server/stockSerialPolicy.ts`
+- Banco: `tenant_stock_serial_policy`, criada por `supabase/migrations/421_create_tenant_stock_serial_policy.sql`
+- Historico generico: `app_entity_history`, `module_key = 'politica-serial'`
+
+Campos e regras
+---------------
+- Tres opcoes booleanas, uma por tipo de movimento:
+  - `Entrada` (`allow_pending_on_entry`), default `true`.
+  - `Transferencia` (`allow_pending_on_transfer`), default `true`.
+  - `Saida` (`allow_pending_on_exit`), default `false`.
+- O trio default reproduz exatamente a regra que estava fixa no codigo antes da 421, entao
+  nenhum contrato muda de comportamento no deploy.
+- A politica vale em AND com `materials.allow_pending_serial_identification` (migration 414):
+  a pendencia so e aceita quando o material permite E o movimento esta liberado no contrato.
+  Contrato rigido nunca e furado por material mal cadastrado.
+- TRAFO nao e afetado: exige `Serial + LP` em qualquer movimento, garantido pela constraint
+  `materials_pending_serial_not_trafo_check`.
+- Operacoes de Equipe e Requisicao nao sao afetadas: exigem Serial sempre (375 e 295), entao
+  pendencia nunca chega a ser criada por esses fluxos.
+- O backend deriva `tenant_id` e usuario pela sessao; o cliente nao envia tenant.
+- Edicao exige `expectedUpdatedAt` e usa RPC com `SELECT ... FOR UPDATE`.
+- Toda alteracao grava `app_entity_history` na mesma transacao: mudanca de regra de
+  rastreabilidade precisa ter autor e data.
+
+O que a politica NAO alcanca
+----------------------------
+- Identificacao/liquidacao de pendencia. `identify_pending_serial_tracked_unit` continua fora
+  da politica. Se o contrato apertar a regra, o saldo ja acumulado precisa continuar
+  liquidavel -- caso contrario ele fica preso, que e o mesmo defeito que a 414 fechou no nivel
+  do material. Por isso a tela avisa que desligar um movimento nao apaga pendencia existente.
+- Estorno. O estorno roda pela RPC propria (`reverse_stock_transfer_item` e as versoes em
+  lote), chamada por `/api/stock-transfers/reversal`, e nao passa pelo caminho de criacao de
+  movimento da aplicacao. Como o enforcement desta fase esta na camada de aplicacao, o estorno
+  fica isento por construcao: nenhum bypass explicito foi necessario. Aplicar a regra de hoje
+  a um movimento de ontem quebraria o estorno de pendencia legitima.
+
+Onde a politica e aplicada
+--------------------------
+- `GET /api/stock-transfers/meta` devolve `serialPolicy`, consumida pelo formulario da
+  Movimentacao de Estoque para habilitar/desabilitar o campo Serial e o texto de ajuda.
+- `POST /api/stock-transfers` recusa item sem Serial quando o movimento nao esta liberado,
+  com mensagem que distingue os dois motivos: material que nao aceita pendencia versus
+  contrato que nao aceita pendencia naquele movimento.
+- `POST /api/stock-transfers/import` aplica a mesma regra na importacao CSV.
+- Em todos os casos a politica e lida no servidor pelo `tenant_id` da sessao; o cliente nunca
+  envia a politica de volta.
+
+Permissao
+---------
+- `page_key` = `politica-serial`, `default_user_access = false`.
+- `read` carrega a tela; `update` salva. Mesma permissao funcional da tela visivel, conforme o
+  padrao de permissao por tela do CLAUDE.md.
+- A Movimentacao de Estoque continua com o `page_key` dela e apenas LE a politica pela propria
+  meta: nao exige permissao de `politica-serial` para operar.
+
+Limitacao conhecida desta fase
+------------------------------
+- O enforcement esta nas camadas de UI, API e importacao, nao no banco. As tabelas estao
+  fechadas para escrita direta de `authenticated` desde a migration 393 e toda escrita passa
+  por RPC com `service_role`, entao na pratica o unico caminho de criacao de movimento pela
+  aplicacao ja esta coberto. A barreira no banco (dentro de `apply_serial_tracked_stock_transfer_item`)
+  fica como fase seguinte, junto do parametro explicito de bypass para o estorno -- ver
+  `TASKS.md`.

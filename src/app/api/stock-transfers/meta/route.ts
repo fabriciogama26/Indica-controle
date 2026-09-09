@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { fetchActiveOperationalMaterials, toOperationalMaterialOption } from "@/lib/server/materialCatalog";
+import { loadStockSerialPolicy } from "@/lib/server/stockSerialPolicy";
+import { DEFAULT_STOCK_SERIAL_POLICY } from "@/lib/stockSerialPolicy";
 
 type StockCenterRow = {
   id: string;
@@ -49,7 +51,7 @@ export async function GET(request: NextRequest) {
 
     const { supabase, appUser } = resolution;
 
-    const [stockCentersResult, teamsResult, projectsResult, materialsResult, reversalReasonsResult] = await Promise.all([
+    const [stockCentersResult, teamsResult, projectsResult, materialsResult, reversalReasonsResult, serialPolicyResult] = await Promise.all([
       supabase
         .from("stock_centers")
         .select("id, name, center_type, controls_balance")
@@ -77,11 +79,18 @@ export async function GET(request: NextRequest) {
         .order("sort_order", { ascending: true })
         .order("code", { ascending: true })
         .returns<ReversalReasonRow[]>(),
+      loadStockSerialPolicy(supabase, appUser.tenant_id),
     ]);
 
     if (stockCentersResult.error || teamsResult.error || projectsResult.error || materialsResult.error) {
       return NextResponse.json({ message: "Falha ao carregar metadados da movimentacao de estoque." }, { status: 500 });
     }
+
+    // Politica ausente ou ilegivel nao pode derrubar a tela: cai no default que
+    // reproduz a regra anterior a migration 421.
+    const serialPolicy = serialPolicyResult.error || !serialPolicyResult.data
+      ? DEFAULT_STOCK_SERIAL_POLICY
+      : serialPolicyResult.data;
 
     const teamStockCenterIds = new Set(
       (teamsResult.data ?? []).map((row) => String(row.stock_center_id ?? "").trim()).filter(Boolean),
@@ -101,6 +110,11 @@ export async function GET(request: NextRequest) {
         projectCode: row.sob,
       })),
       materials: (materialsResult.data ?? []).map(toOperationalMaterialOption),
+      serialPolicy: {
+        allowPendingOnEntry: serialPolicy.allowPendingOnEntry,
+        allowPendingOnTransfer: serialPolicy.allowPendingOnTransfer,
+        allowPendingOnExit: serialPolicy.allowPendingOnExit,
+      },
       reversalReasons: reversalReasonsResult.error
         ? DEFAULT_REVERSAL_REASONS
         : (reversalReasonsResult.data ?? []).map((row) => ({

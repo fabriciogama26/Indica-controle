@@ -925,3 +925,26 @@ Atualizacao 2026-09-03 - Pendencia de serial passa a ser configuravel no cadastr
   protege o saldo de `stock_serial_pending_balances` que so esta tela e as Operacoes de
   Equipe conseguem liquidar.
 - Arquivos alterados nesta tela: nenhum. A mudanca e de cadastro e de RPC de material.
+
+Atualizacao 2026-09-09 - Pendencia de serial passa a ser configuravel por contrato
+--------------------------------------------------------------------------------------------
+- Antes: em quais movimentos a pendencia podia ser criada era decisao fixa no codigo
+  (`ENTRY` e `TRANSFER` sim, `EXIT` nao), replicada na UI, na API e na importacao CSV.
+- Depois: a regra vem de `tenant_stock_serial_policy`, configurada na tela `Politica de
+  Serial` (Cadastro Base). Ver `docs/Tela_Politica_Serial_SaaS.txt`.
+- O backfill da migration 421 grava exatamente o trio anterior para todo tenant, e a leitura
+  cai no mesmo default quando nao houver linha, entao nenhum contrato muda de comportamento
+  no deploy desta tela.
+- A politica vale em AND com `materials.allow_pending_serial_identification`: a pendencia so
+  e aceita quando o material permite E o contrato permite aquele movimento.
+- `GET /api/stock-transfers/meta` passa a devolver `serialPolicy`; o formulario usa esse
+  valor para habilitar o campo Serial e escolher o texto de ajuda.
+- Quando o item e recusado por falta de Serial, a mensagem distingue os dois motivos: material
+  que nao aceita pendencia versus contrato que nao aceita pendencia naquele movimento.
+- O estorno nao e afetado: ele roda por `/api/stock-transfers/reversal` e pela RPC propria,
+  sem passar pelo caminho de criacao de movimento onde a politica e aplicada. Estorno
+  reproduz fato ja ocorrido e nao pode ser barrado pela regra vigente hoje.
+- Operacoes de Equipe e Requisicao continuam exigindo Serial sempre, sem excecao.
+- Arquivos alterados nesta tela: `StockTransfersPageView.tsx` (le a politica da meta e a passa
+  para `canCreatePendingSerialEntry`), com os helpers de CSV extraidos para
+  `src/modules/dashboard/entrada/csv.ts` para caber no ratchet de tamanho.
