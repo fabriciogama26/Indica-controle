@@ -1024,3 +1024,36 @@ Atualizacao 2026-09-08 - Filtro Tipo operacional (Tecnica / Comercial)
 - Esta tela nao exibe blocos de equipe, encarregado ou supervisor, entao a troca de
   Eletricista 1 / Eletricista 2 descrita em `docs/Tela_Dashboard_Equipes_SaaS.txt` nao
   a afeta.
+
+Atualizacao 2026-09-09 - Icone de informe nos cards de indicador
+----------------------------------------------------------------
+- Motivo: os cards de ticket medio e de ritmo mostram o numero, mas a base do calculo
+  so existia neste TXT. Quem abre a tela nao tinha como saber que o ticket do periodo
+  soma a Garantia de faturamento minimo e o do ciclo nao, nem que os ritmos dividem por
+  Dias trabalhados e nao por dias uteis do ciclo.
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/dashboard-medicao/MetricTile.tsx` (novo)
+  - `src/modules/dashboard/dashboard-medicao/presentation.ts`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx`
+  - `src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.module.css`
+  - `file-size-baseline.json`
+- `MetricTile` e o card de indicador dos blocos `Visao geral por periodo` e
+  `Ciclo da medicao`: rotulo, valor e, quando existe texto de ajuda, o botao redondo
+  com `ActionIcon name="info"` e `title`/`aria-label`. E o mesmo padrao de informe ja
+  usado em Apuracao Fator Minimo e Dash Estoque.
+- Ganharam icone de informe:
+  - `Ticket medio / Projetos` (periodo e ciclo)
+  - `Ticket medio / Projetos (concluidos)` (periodo e ciclo)
+  - `Ticket medio / Servicos` (periodo e ciclo)
+  - `Ritmo atual`, `Ritmo produtivo` e `Ritmo meta` (ciclo)
+- Continuam sem icone, por serem contagem direta do recorte ja descrito no rotulo:
+  `Projetos no ciclo`, `Projetos no ciclo (concluidos)` e `Ordens de Servicos no ciclo`.
+- Os textos ficam em `periodMetricHelp` e `cycleMetricHelp` (`presentation.ts`), separados
+  de proposito: o card de periodo inclui a Garantia de faturamento minimo no valor, nos
+  projetos e na contagem de ordens; o card de ciclo nao inclui. Repetir um texto unico
+  nos dois blocos descreveria errado um dos dois.
+- Sem mudanca de backend, contrato de API, schema, RLS ou permissao. A tela continua sob
+  `dashboard-medicao/read` e os numeros exibidos sao os mesmos de antes.
+- Ratchet: `DashboardMeasurementPageView.tsx` caiu de 1.508 para 1.469 linhas, porque os
+  cards de 4 linhas viraram uma chamada de `MetricTile` por card. Baseline reduzido com
+  `npm run lint:size:update`, sem `lint:size:accept`.

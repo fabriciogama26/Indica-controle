@@ -6,7 +6,7 @@
     "src/modules/dashboard/atividades/ActivitiesPageView.tsx": 1242,
     "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1303,
     "src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx": 2319,
-    "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1508,
+    "src/modules/dashboard/dashboard-medicao/DashboardMeasurementPageView.tsx": 1469,
     "src/modules/dashboard/entrada/StockTransfersPageView.tsx": 3662,
     "src/modules/dashboard/equipes/TeamsPageView.tsx": 1581,
     "src/modules/dashboard/faturamento/BillingPageView.tsx": 1247,

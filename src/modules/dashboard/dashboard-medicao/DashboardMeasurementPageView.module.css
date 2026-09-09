@@ -173,6 +173,39 @@
   color: #002b7f;
 }
 
+.metricLabel {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.infoButton {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #c8d5ea;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1f4ea3;
+  cursor: help;
+  padding: 0;
+}
+
+.infoButton:hover,
+.infoButton:focus-visible {
+  border-color: #1f4ea3;
+  outline: none;
+}
+
+.infoIcon {
+  width: 13px;
+  height: 13px;
+}
+
 .annualMetric {
   min-height: 96px;
 }
