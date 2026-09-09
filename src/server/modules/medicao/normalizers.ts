@@ -159,6 +159,33 @@ export function findDuplicateMeasurementActivityId(
   return null;
 }
 
+// Centro de Servico da ordem de medicao.
+//
+// Ordem COM projeto continua vindo do projeto, sem mudanca nenhuma. Ordem SEM
+// projeto cai para a Base da equipe (`teams.service_center_id`).
+//
+// O fallback existe porque a coluna nasceu amarrada ao projeto: na Medicao
+// Comercial `Projeto` e OPCIONAL e o normal e nao ter, entao a coluna imprimia
+// "Sem projeto" em praticamente toda linha -- que alem de vazio era erro de
+// categoria, porque "Sem projeto" nao e nome de Centro de Servico. A Base da
+// equipe responde a mesma pergunta e e obrigatoria no cadastro de Equipes.
+//
+// "Sem base" sobra so para equipe legada gravada antes da Base virar
+// obrigatoria: `teams.service_center_id` e anulavel no banco desde a 068.
+export function resolveMeasurementOrderServiceCenter(params: {
+  projectId: string | null;
+  teamId: string | null;
+  projectServiceCenterMap: Map<string, string>;
+  teamServiceCenterMap: Map<string, string>;
+}) {
+  if (params.projectId) {
+    return params.projectServiceCenterMap.get(params.projectId) ?? "Sem base";
+  }
+
+  const teamServiceCenter = params.teamId ? params.teamServiceCenterMap.get(params.teamId) : "";
+  return teamServiceCenter || "Sem base";
+}
+
 export function resolveAppUserName(user: AppUserRow | undefined) {
   if (!user) {
     return "Nao identificado";

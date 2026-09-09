@@ -6,9 +6,10 @@
 
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchProjectServiceCenterMap } from "@/server/modules/projects/serviceCenters";
+import { fetchTeamServiceCenterMap } from "@/server/modules/teams/lookups";
 import { loadProgrammingMatchMap } from "./programmingMatch";
 import type { MeasurementOrderActivityFilterRow, MeasurementOrderAggregateItem, MeasurementOrderRow, ProgrammingMatchStatus, ProjectServiceTypeProjectRow } from "./types";
-import { buildMeasurementCycleStart, buildProgrammingMatchKey, measurementScoreTypeLabel, normalizeMeasurementKind, normalizeText, resolveAppUserName } from "./normalizers";
+import { buildMeasurementCycleStart, buildProgrammingMatchKey, measurementScoreTypeLabel, normalizeMeasurementKind, normalizeText, resolveAppUserName, resolveMeasurementOrderServiceCenter } from "./normalizers";
 import { fetchTeamIdsByMeasurementMode } from "./teamMode";
 import {
   MEASUREMENT_ORDER_SELECT,
@@ -182,6 +183,7 @@ export async function listMeasurementOrdersPage(params: {
       simpleProgrammingMatchMap,
       simpleProjectIsTestMap,
       simpleProjectServiceCenterMap,
+      simpleTeamServiceCenterMap,
       simpleTeamCompositionContexts,
       simpleCommercialMemberMap,
     ] = await Promise.all([
@@ -207,6 +209,14 @@ export async function listMeasurementOrdersPage(params: {
         supabase: supabase,
         tenantId: tenantId,
         projectIds: simpleProjectIds,
+      }),
+      // Base das equipes da pagina, para as ordens SEM projeto. Sempre carregada:
+      // as equipes de uma pagina sao no maximo o tamanho dela, e testar antes se
+      // existe ordem sem projeto trocaria uma consulta barata por um ramo a mais.
+      fetchTeamServiceCenterMap({
+        supabase: supabase,
+        tenantId: tenantId,
+        teamIds: simpleOrders.map((item) => item.team_id),
       }),
       isCommercial
         ? Promise.resolve({ data: new Set<string>(), error: null })
@@ -249,7 +259,12 @@ export async function listMeasurementOrdersPage(params: {
         status: item.status,
         notes: normalizeText(item.notes),
         projectCode: normalizeText(item.project_code_snapshot),
-        projectServiceCenter: item.project_id ? (simpleProjectServiceCenterMap.get(item.project_id) ?? "Sem base") : "Sem projeto",
+        projectServiceCenter: resolveMeasurementOrderServiceCenter({
+          projectId: item.project_id,
+          teamId: item.team_id,
+          projectServiceCenterMap: simpleProjectServiceCenterMap,
+          teamServiceCenterMap: simpleTeamServiceCenterMap,
+        }),
         teamName: normalizeText(item.team_name_snapshot),
         foremanName: normalizeText(item.foreman_name_snapshot),
         commercialOrderRef: normalizeText(item.commercial_order_ref),
