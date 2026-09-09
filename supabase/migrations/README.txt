@@ -1638,3 +1638,19 @@ Observacao
   precisa continuar liquidavel mesmo depois de o contrato apertar a regra, senao fica preso.
 - Valida no fim: RPC nao executavel por anon/authenticated, tabela sem escrita direta, pagina
   ativa e nenhum tenant sem linha de politica.
+
+422_commercial_measurement_history_fields.sql
+- Recria `save_project_commercial_measurement_order` para registrar no historico os campos
+  proprios da Medicao Comercial: `Incidencia` (`commercial_order_ref`), Processo, Hora inicio,
+  Hora termino, Eletricista 1 e Eletricista 2.
+- Motivo: a RPC comercial delega cabecalho e itens para `save_project_measurement_order`; a RPC
+  tecnica grava `project_measurement_order_history` antes de a comercial preencher esses campos.
+  Assim, a ordem era salva, mas o modal de historico mostrava so `Quantidade de itens`.
+- A correcao captura o estado anterior quando for edicao, monta o JSON de mudancas comerciais e
+  anexa esse JSON ao mesmo registro de historico criado pela RPC tecnica. Se a linha esperada nao
+  for encontrada, grava um historico separado com `source = measurement-commercial-api`.
+- O `updated_at` retornado passa a ser o final, depois do UPDATE comercial.
+- Sem nova tabela, coluna, policy, indice ou rota. A funcao permanece `SECURITY DEFINER`, com
+  `EXECUTE` revogado de `public`/`anon`/`authenticated` e concedido apenas a `service_role`.
+- Valida no fim: definicao contem `commercialOrderRef` e `commercialFieldsIncluded`, e a RPC nao
+  esta executavel por `anon`/`authenticated`.

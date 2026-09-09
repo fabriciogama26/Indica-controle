@@ -39,6 +39,7 @@ import {
   formatHistoryValue,
   getOpenStatusActionLabel,
   getOpenStatusReasonLabel,
+  HISTORY_FIELD_LABELS,
   isMvaHourUnit,
   measurementKindLabel,
   normalizeMeasurementKindInput,
@@ -386,17 +387,6 @@ type ExportProgress = {
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = 200;
 const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
-const HISTORY_FIELD_LABELS: Record<string, string> = {
-  projectId: "Projeto",
-  teamId: "Equipe",
-  executionDate: "Data execucao",
-  manualRate: "Taxa manual",
-  measurementKind: "Tipo da medicao",
-  noProductionReason: "Motivo sem producao",
-  itemCount: "Quantidade de itens",
-  status: "Status",
-};
-
 type Filters = {
   startDate: string;
   endDate: string;
