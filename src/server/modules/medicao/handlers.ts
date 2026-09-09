@@ -137,7 +137,12 @@ export async function handleMeasurementGet(request: NextRequest, config = DEFAUL
   });
 
   if (!listResult.ok) {
-    return NextResponse.json({ message: listResult.message }, { status: 500 });
+    // `status` so existe nas falhas que sao erro de entrada (hoje, termo de
+    // Eletricista amplo demais). O resto continua 500, como antes.
+    return NextResponse.json(
+      { message: listResult.message },
+      { status: "status" in listResult ? listResult.status : 500 },
+    );
   }
 
   return NextResponse.json({

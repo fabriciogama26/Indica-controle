@@ -18,6 +18,7 @@ import {
   fetchFinancialTargetMap,
   fetchPagedSupabaseRows,
   fetchPointTargetMap,
+  fetchPeopleIdsBySearchTerm,
   fetchProjectIsTestMap,
   fetchTeamCompositionContextSet,
   fetchTeamTypeResolutionMaps,
@@ -51,6 +52,8 @@ export async function listMeasurementOrdersPage(params: {
   programmingMatchFilter: string;
   workCompletionStatusFilter: string;
   completionAlertFilter: string;
+  commercialOrderRefFilter?: string;
+  commercialMemberFilter?: string;
   teamCategoryCodeFilter?: "TECNICA" | "COMERCIAL" | null;
   page: number | null;
   pageSize: number | null;
@@ -59,7 +62,7 @@ export async function listMeasurementOrdersPage(params: {
     supabase, tenantId, startDate, endDate, projectId, teamId, serviceTypeId, activityId,
     statusFilter, measurementKindFilter, noProductionReasonIdFilter, programmingMatchFilter,
     workCompletionStatusFilter, completionAlertFilter, page, pageSize,
-    teamCategoryCodeFilter,
+    teamCategoryCodeFilter, commercialOrderRefFilter, commercialMemberFilter,
   } = params;
 
   // A Medicao Comercial nao trabalha com Composicao de Equipe nem com Programacao:
@@ -109,6 +112,40 @@ export async function listMeasurementOrdersPage(params: {
     }
   }
 
+  // Filtro de Eletricista: o termo casa por matricula OU por nome, entao a
+  // resolucao acontece em `people` e o que vai para a consulta das ordens sao os
+  // `person_id`. Casar direto pelo `person_name_snapshot` da tabela de
+  // integrantes pegaria o nome, mas nunca a matricula, que e como o usuario
+  // identifica eletricista no dia a dia.
+  let commercialMemberPersonIds: string[] | null = null;
+  if (commercialMemberFilter) {
+    const peopleResult = await fetchPeopleIdsBySearchTerm({
+      supabase,
+      tenantId,
+      term: commercialMemberFilter,
+    });
+
+    if (!peopleResult.ok) {
+      // Termo amplo demais e erro de entrada do usuario, nao falha de servidor:
+      // sai como 400 para nao virar ruido de erro 5xx no log.
+      return peopleResult.tooBroad
+        ? {
+            ok: false as const,
+            status: 400,
+            message: "Busca de Eletricista muito ampla. Informe mais caracteres ou use a matricula.",
+          }
+        : { ok: false as const, message: "Falha ao filtrar ordens por Eletricista." };
+    }
+
+    // Termo que nao casa com ninguem nao pode virar consulta sem o filtro: seria
+    // devolver a lista inteira como se o filtro nao existisse.
+    if (!peopleResult.ids.length) {
+      return { ok: true as const, orders: [], total: 0 };
+    }
+
+    commercialMemberPersonIds = peopleResult.ids;
+  }
+
   let categoryTeamIdSet: Set<string> | null = null;
   if (teamCategoryCodeFilter) {
     const teamModeResult = await fetchTeamIdsByMeasurementMode({
@@ -129,9 +166,18 @@ export async function listMeasurementOrdersPage(params: {
 
   const startIndex = ((page ?? 1) - 1) * (pageSize ?? 20);
 
+    // O join interno com a tabela de integrantes so entra quando o filtro existe,
+    // para o caminho normal da listagem continuar exatamente a consulta de antes.
+    // `!inner` descarta a ordem sem integrante correspondente e NAO duplica a
+    // ordem que tem os dois eletricistas casando: o PostgREST aninha os filhos em
+    // vez de multiplicar o pai, entao o `count` continua sendo de ordens.
+    const pagedSelect = commercialMemberPersonIds
+      ? `${MEASUREMENT_ORDER_SELECT}, project_commercial_measurement_order_members!inner(person_id)`
+      : MEASUREMENT_ORDER_SELECT;
+
     let pagedQuery = supabase
       .from("project_measurement_orders")
-      .select(MEASUREMENT_ORDER_SELECT, { count: "exact" })
+      .select(pagedSelect, { count: "exact" })
       .eq("tenant_id", tenantId)
       .gte("execution_date", startDate)
       .lte("execution_date", endDate)
@@ -144,6 +190,14 @@ export async function listMeasurementOrdersPage(params: {
       pagedQuery = pagedQuery.in("team_id", Array.from(categoryTeamIdSet));
     }
     if (statusFilter && statusFilter !== "TODOS") pagedQuery = pagedQuery.eq("status", statusFilter);
+    // Incidencia: busca por trecho, sem diferenciar caixa -- a mesma semantica do
+    // indice unico da 419, que compara `upper(btrim(...))`.
+    if (commercialOrderRefFilter) {
+      pagedQuery = pagedQuery.ilike("commercial_order_ref", `%${commercialOrderRefFilter}%`);
+    }
+    if (commercialMemberPersonIds) {
+      pagedQuery = pagedQuery.in("project_commercial_measurement_order_members.person_id", commercialMemberPersonIds);
+    }
     if (serviceTypeProjectIdSet && serviceTypeProjectIdSet.size > 0) {
       pagedQuery = pagedQuery.in("project_id", Array.from(serviceTypeProjectIdSet));
     }
