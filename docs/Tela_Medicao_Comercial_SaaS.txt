@@ -22,6 +22,7 @@ Arquitetura
 - View compartilhada: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
 - Variantes da tela: `src/modules/dashboard/medicao/variant.ts`
 - Campos dos integrantes por nome/matricula: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`
+- Filtros proprios da tela (`Incidencia` e `Eletricista`): `src/modules/dashboard/medicao/CommercialFilterFields.tsx`
 - Campo `Incidencia` + checagem de duplicidade: `src/modules/dashboard/medicao/CommercialOrderRefField.tsx` (o nome do arquivo e do componente segue a coluna `commercial_order_ref`, nao o rotulo da tela)
 - Catalogo de Processo: tabela `measurement_commercial_processes`, servida por `/api/medicao-comercial/meta`. Sem tela de cadastro: nasce semeada pela migration 415 (`Cobrancas`, `Novas_Ligacoes`, `Perdas`) e cresce por SQL.
 - API da tela (todas delegam):
@@ -129,7 +130,31 @@ Persistencia
 Filtros e listagem
 ------------------
 - Mesmos filtros da `Medicao`, com as listas de `Equipe` restritas a `Tipo de equipe` = `COMERCIAL`.
-- Nao existe filtro por `Incidencia`: o campo e livre e nasceu como referencia de leitura. Se virar criterio de busca, o indice parcial ja existe.
+- DOIS filtros existem SO nesta tela, porque so a ordem comercial tem os campos:
+  - `Incidencia`: busca por TRECHO, sem diferenciar caixa (`ilike` sobre `commercial_order_ref`).
+    Mesma semantica do indice unico da 419, que compara `upper(btrim(...))`. Digitar `123` acha
+    `1234` e `0123`.
+  - `Eletricista`: texto livre que casa por MATRICULA OU NOME. O termo resolve as pessoas em
+    `people` (`matriculation`/`nome`, por trecho) e a ordem entra se QUALQUER um dos dois
+    integrantes for uma delas. A lista suspensa e atalho, nao trava: busca parcial funciona.
+    - A busca em `people` NAO filtra por cargo: quem esta na ordem comercial ja e eletricista
+      por construcao, e repetir o casamento `ILIKE %ELETRICISTA%` aqui so criaria mais uma copia
+      dessa regra fragil.
+    - Tambem NAO filtra por `ativo`: eletricista desligado depois continua sendo quem executou
+      as ordens antigas, e some-lo do filtro esconderia ordem que existe.
+    - Termo que casa com mais de 200 pessoas volta `400` pedindo mais caracteres. Todos os ids
+      iriam para a URL do filtro seguinte, que estoura muito antes disso -- recusar com mensagem
+      e melhor que cortar em silencio e devolver lista errada.
+  - Os dois sao aplicados NO BANCO, na mesma consulta paginada da listagem, entao o `total` da
+    paginacao conta certo. O de `Eletricista` usa join interno
+    (`project_commercial_measurement_order_members!inner`), que descarta a ordem sem integrante
+    correspondente e nao duplica a ordem em que os DOIS eletricistas casam: o PostgREST aninha os
+    filhos em vez de multiplicar o pai. O join so entra na consulta quando o filtro esta
+    preenchido, entao o caminho normal da listagem continua identico ao de antes.
+  - Os dois viajam na MESMA query string da exportacao, entao os dois CSVs saem filtrados junto.
+  - Caracteres de sintaxe do PostgREST sao removidos do termo antes da consulta (`%`, `_`, `*`,
+    virgula e parenteses): os tres primeiros sao curinga do `ilike` e os dois ultimos separam e
+    agrupam condicoes dentro de um `or(...)`, entao um nome com virgula quebraria a expressao.
 - A coluna que na `Medicao` mostra `Encarregado` aqui mostra `Integrantes` (`Eletricista 1 / Eletricista 2`).
 - Exportacao CSV usa o prefixo `ordens_medicao_comercial_`.
 - Nos CSVs de resumo e de detalhamento, as colunas `Composicao equipe`, `Encarregado`, `Programacao` e `Status execucao` dao lugar a `Processo`, `Hora inicio`, `Hora termino` e `Integrantes`.
@@ -159,6 +184,20 @@ Permissao
 
 Validacao manual
 ----------------
+- Filtro `Incidencia`: digitar um TRECHO de uma Incidencia existente e confirmar que a ordem
+  aparece; conferir que a busca ignora caixa; exportar os dois CSVs e conferir que sairam
+  filtrados junto.
+- Filtro `Eletricista`: buscar pela MATRICULA de um integrante e confirmar a ordem na lista;
+  repetir buscando por parte do NOME; conferir que a ordem aparece tanto quando a pessoa e o
+  `Eletricista 1` quanto quando e o `Eletricista 2`.
+- Filtro `Eletricista` com termo que nao casa com ninguem: a lista precisa vir VAZIA, nunca
+  completa -- ignorar o filtro seria devolver tudo como se ele nao existisse.
+- Filtro `Eletricista` com uma letra so, num tenant com muita gente: confirmar a mensagem
+  pedindo mais caracteres em vez de resultado cortado.
+- Combinar os dois filtros com `Data inicial`/`Data final` e `Equipe`, e conferir que o total da
+  paginacao bate com a lista.
+- `Limpar` precisa zerar os dois campos novos junto com os demais.
+- Abrir a `Medicao` tecnica e confirmar que NENHUM dos dois filtros aparece la.
 - Cadastrar equipe `COMERCIAL` em `Equipes` sem encarregado e com supervisor; confirmar que salva.
 - Abrir `Medicao Comercial` e confirmar que o select de `Equipe` lista somente equipes comerciais.
 - Salvar uma ordem com Processo e horarios; tentar salvar com `Hora termino` menor ou igual a `Hora inicio` e confirmar o bloqueio.

@@ -19,6 +19,7 @@ import {
   type CommercialElectricianOption,
   type CommercialMembersValue,
 } from "./CommercialMembersFields";
+import { CommercialFilterFields, EMPTY_COMMERCIAL_FILTERS, type CommercialFilterValue } from "./CommercialFilterFields";
 import {
   CommercialOrderRefField,
   IDLE_COMMERCIAL_ORDER_REF_CHECK,
@@ -400,7 +401,7 @@ type Filters = {
   programmingMatch: "TODOS" | ProgrammingMatchStatus;
   workCompletionStatus: "TODOS" | "NAO_INFORMADO" | string;
   completionAlert: "TODOS" | "SIM" | "NAO";
-};
+} & CommercialFilterValue;
 
 type FormState = {
   id: string | null;
@@ -455,6 +456,8 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   if (filters.serviceTypeId) params.set("serviceTypeId", filters.serviceTypeId);
   if (filters.activityId) params.set("activityId", filters.activityId);
   if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
+  if (filters.commercialOrderRef.trim()) params.set("commercialOrderRef", filters.commercialOrderRef.trim());
+  if (filters.commercialMember.trim()) params.set("commercialMember", filters.commercialMember.trim());
   return params.toString();
 }
 
@@ -684,6 +687,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
       programmingMatch: "TODOS" as const,
       workCompletionStatus: "TODOS" as const,
       completionAlert: "TODOS" as const,
+      ...EMPTY_COMMERCIAL_FILTERS,
     }),
     [today],
   );
@@ -2992,6 +2996,14 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
               {noProductionReasons.map((reason) => <option key={reason.id} value={reason.id}>{reason.name}</option>)}
             </select>
           </label>
+          {variant.commercial ? (
+            <CommercialFilterFields
+              value={filterDraft}
+              onChange={(next) => setFilterDraft((current) => ({ ...current, ...next }))}
+              fieldClassName={styles.field}
+              electricians={electricians}
+            />
+          ) : null}
           {/* Os tres filtros abaixo saem da Medicao Comercial: a tela nao trabalha
               com Programacao, entao filtrar por ela nao teria efeito util. */}
           {variant.commercial ? null : (

@@ -255,6 +255,19 @@ export function buildProgrammingProjectDateKey(projectId: string | null | undefi
 // 400. Extraido do handler GET para que a exportacao use EXATAMENTE o mesmo
 // parse -- antes ela repassava a query string crua para a propria rota por HTTP,
 // e qualquer divergencia de normalizacao passaria despercebida.
+// Termo livre de busca vindo da tela.
+//
+// Tira os caracteres que o PostgREST le como sintaxe, e nao como texto:
+// `%`, `_` e `*` sao curinga do `ilike` (o usuario montaria padrao sem querer),
+// e `,` `(` `)` separam e agrupam condicoes dentro de um `or(...)`, entao um
+// nome com virgula quebraria a expressao inteira. Mesmo tratamento que o filtro
+// de APR ja fazia para `%` e `_`.
+const SEARCH_TERM_MAX_LENGTH = 120;
+
+export function normalizeSearchTerm(value: unknown) {
+  return normalizeText(value).replace(/[%_*,()]/g, "").trim().slice(0, SEARCH_TERM_MAX_LENGTH);
+}
+
 export function parseMeasurementOrderListFilters(searchParams: URLSearchParams) {
   const startDate = normalizeIsoDate(searchParams.get("startDate"));
   const endDate = normalizeIsoDate(searchParams.get("endDate"));
@@ -273,6 +286,11 @@ export function parseMeasurementOrderListFilters(searchParams: URLSearchParams) 
     ? workCompletionStatusFilterRaw
     : resolveMeasurementWorkCompletionStatus(workCompletionStatusFilterRaw) ?? workCompletionStatusFilterRaw;
   const completionAlertFilter = normalizeText(searchParams.get("completionAlert")).toUpperCase();
+  // Os dois filtros abaixo so tem valor na Medicao Comercial: sao as unicas
+  // ordens com `commercial_order_ref` e com integrantes. Na tela tecnica os
+  // campos nem sao renderizados, entao chegam sempre vazios.
+  const commercialOrderRefFilter = normalizeSearchTerm(searchParams.get("commercialOrderRef"));
+  const commercialMemberFilter = normalizeSearchTerm(searchParams.get("commercialMember"));
 
   if (!startDate || !endDate) {
     return { ok: false as const, message: "startDate e endDate sao obrigatorios." };
@@ -301,6 +319,8 @@ export function parseMeasurementOrderListFilters(searchParams: URLSearchParams) 
       programmingMatchFilter,
       workCompletionStatusFilter,
       completionAlertFilter,
+      commercialOrderRefFilter,
+      commercialMemberFilter,
     },
   };
 }

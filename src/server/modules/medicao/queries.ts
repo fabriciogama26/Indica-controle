@@ -345,6 +345,57 @@ export async function fetchAppUserMap(params: {
   return new Map((data ?? []).map((item) => [item.id, item]));
 }
 
+type PersonSearchRow = {
+  id: string;
+};
+
+// Teto do resultado da busca de pessoa. Acima disso o termo e amplo demais e os
+// ids iriam TODOS para a URL do filtro seguinte, que estoura muito antes disso.
+// Recusar com mensagem e melhor que cortar em silencio e devolver lista errada.
+const PERSON_SEARCH_MAX_RESULTS = 200;
+
+// Pessoas que casam com o termo por MATRICULA ou por NOME.
+//
+// Nao filtra por cargo de proposito: quem entra numa ordem comercial ja e
+// eletricista por construcao (a RPC valida o cargo no salvamento), e repetir
+// aqui o casamento por texto `ILIKE %ELETRICISTA%` so criaria mais uma copia
+// dessa regra fragil.
+//
+// Nao filtra por `ativo` tambem de proposito: eletricista desligado depois
+// continua sendo quem executou as ordens antigas, e some-las do filtro
+// esconderia ordem que existe.
+export async function fetchPeopleIdsBySearchTerm(params: {
+  supabase: AuthenticatedAppUserContext["supabase"];
+  tenantId: string;
+  term: string;
+}) {
+  const term = normalizeText(params.term);
+  if (!term) {
+    return { ok: true as const, ids: [] as string[] };
+  }
+
+  const result = await fetchPagedSupabaseRows<PersonSearchRow>((from, to) =>
+    params.supabase
+      .from("people")
+      .select("id")
+      .eq("tenant_id", params.tenantId)
+      .or(`matriculation.ilike.%${term}%,nome.ilike.%${term}%`)
+      .range(from, to)
+      .returns<PersonSearchRow[]>(),
+  );
+
+  if (result.error) {
+    return { ok: false as const, ids: [] as string[], tooBroad: false };
+  }
+
+  const ids = (result.data ?? []).map((item) => item.id).filter(Boolean);
+  if (ids.length > PERSON_SEARCH_MAX_RESULTS) {
+    return { ok: false as const, ids: [] as string[], tooBroad: true };
+  }
+
+  return { ok: true as const, ids };
+}
+
 export async function fetchCommercialMemberMap(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
