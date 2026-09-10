@@ -208,6 +208,12 @@
   font-size: 0.8rem;
 }
 
+.fieldHelp {
+  margin: 0;
+  color: #5b6a85;
+  font-size: 0.8rem;
+}
+
 .actions {
   display: flex;
   gap: 10px;

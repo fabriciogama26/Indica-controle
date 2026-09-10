@@ -65,6 +65,8 @@ Cadastro
   - `Municipio`
   - `Logradouro`
   - `Bairro`
+  - `Latitude`
+  - `Longitude`
 - Campos opcionais:
   - `Nivel de Tensao`
   - `Porte`
@@ -76,6 +78,9 @@ Cadastro
 - `Centro de Servico` e preenchido automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
 - `Parceira` nao aparece no frontend; o backend preenche automaticamente com `contract.name` do tenant ativo.
 - `Valor estimado` aceita digitacao monetaria em formato brasileiro (`22.035,33`) e formatos compactos equivalentes (`22.03533`, `22035,33`), normalizando para numero decimal antes de salvar em `project.estimated_value numeric(14,2)`.
+- `Latitude` e `Longitude` sao gravadas em graus decimais (formato que o Google Maps aceita) em `project.latitude`/`project.longitude` `numeric(9,6)`, com CHECK de faixa no banco (-90..90 e -180..180).
+- Colar o par copiado do Google Maps (`-23.550520, -46.633308`) no campo `Latitude` preenche `Latitude` e `Longitude` de uma vez; o campo `Longitude` aceita somente um numero.
+- Virgula decimal (`-23,550520`) e aceita na digitacao de um campo isolado; a normalizacao acontece em `parseLatitude`/`parseLongitude` de `src/lib/utils/parsers.ts`, usadas pelo frontend, pelo parser do CSV e pela API.
 - Campos carregados de tabelas de dominio:
   - `Prioridade`
   - `Centro de Servico`
@@ -896,3 +901,43 @@ Atualizacao 2026-09-02 - Prioridade sem fallback global no frontend
 - Multi-tenant e permissao:
   - A API de metadados continua filtrando `project_priorities` por `appUser.tenant_id`.
   - Nenhum `tenant_id` e aceito do client.
+
+Atualizacao 2026-09-10 - Latitude e longitude obrigatorias no Cadastro de Projeto
+---------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/425_add_project_latitude_longitude.sql` (novo)
+  - `src/lib/utils/parsers.ts`
+  - `src/app/api/projects/route.ts`
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/massImport.ts`
+  - `file-size-baseline.json`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `parseDecimalDegrees`, `parseLatitude`, `parseLongitude`, `splitDecimalDegreesPair`, `formatDecimalDegrees` (novas em `src/lib/utils/parsers.ts`)
+  - `parseProjectInput`, `validateRequiredProjectFields`, `buildProjectWritePayload`, `buildProjectUpdateChanges`, `formatCoordinateChange`, `toCoordinateNumber`, `saveProjectViaRpc`, `isMissingOptionalProjectColumns`, `PROJECT_SELECT_WITH_LOCATION`
+  - `FormState`, `INITIAL_FORM`, `HISTORY_FIELD_LABELS`, `toFormState`, `updateLatitudeField`, `handleSubmit`, `buildProjectsCsv`, modal de detalhes
+  - `REQUIRED_HEADERS`, `PROJECT_MASS_IMPORT_COLUMNS_HINT`, `buildProjectMassImportTemplateCsv`, `parseProjectMassImportCsv`, `ProjectImportRow`
+  - RPC `save_project_record` (nova assinatura com `p_latitude`/`p_longitude`) e view `project_with_labels`
+- Comportamento antes/depois:
+  - Antes: o endereco do projeto tinha apenas `Municipio`, `Logradouro` e `Bairro`; nao havia coordenada em lugar nenhum do sistema.
+  - Depois: o bloco `Cadastro de Projeto` tem os campos `Latitude` e `Longitude`, os dois obrigatorios, em graus decimais (formato que o Google Maps aceita, ex.: -23.550520 e -46.633308).
+  - Depois: colar o par completo copiado do Google Maps (`-23.550520, -46.633308`) no campo `Latitude` preenche os dois campos; o campo `Longitude` aceita somente um numero.
+  - Depois: a validacao acontece no frontend (antes do fetch) e de novo no backend em `validateRequiredProjectFields`, valendo para POST, PUT e `BATCH_IMPORT` — inclusive ao editar projeto legado, que so salva depois de informar as coordenadas.
+  - Depois: o CSV de cadastro em massa passa a exigir as colunas `latitude` e `longitude`; linha sem coordenada valida vira erro por linha e nao e importada.
+  - Depois: coordenada entra no historico de alteracoes com 6 casas decimais (`formatCoordinateChange`), porque `formatComparableValue` arredondaria para 2 casas.
+  - Depois: a exportacao CSV da listagem e o modal de detalhes exibem `Latitude` e `Longitude`.
+- Banco:
+  - `public.project` ganhou `latitude numeric(9,6)` e `longitude numeric(9,6)`, com CHECK de faixa (-90..90 e -180..180).
+  - As colunas aceitam NULL de proposito: projeto ja cadastrado nao tem coordenada de origem real e backfill inventaria dado no historico. A obrigatoriedade vive na API, e a edicao pela tela vai preenchendo o legado.
+  - `project_with_labels` foi recriada com `security_invoker = true` projetando as duas colunas novas.
+  - `save_project_record` foi recriada com `p_latitude`/`p_longitude`; a assinatura anterior foi dropada e o EXECUTE ficou so com `service_role` (padrao das migrations 210/251/309).
+  - Sem indice novo: latitude/longitude nao sao filtro de listagem.
+  - `saveProjectViaRpc` mantem degradacao por assinatura: se o banco ainda nao aplicou a 425, a chamada e repetida sem `p_latitude`/`p_longitude` e, nesse caso, a coordenada nao e gravada.
+- Multi-tenant e permissao:
+  - `tenant_id` e usuario continuam derivados da sessao por `resolveAuthenticatedAppUser`; nenhuma coordenada altera o contrato de tenant.
+  - Permissao inalterada: `projetos/create` no cadastro unitario, `projetos/update` na edicao e `projetos/import` na importacao em massa. Nao ha permissao granular nova.
+- Plano de modularizacao (obrigatorio: os dois arquivos seguem acima do teto):
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx` (4.232 linhas, teto 1.000). Ordem proposta: (1) extrair as abas `Materiais previstos` e `Atividades previstas` para `components/ForecastTab.tsx` e `components/ActivityForecastTab.tsx`; (2) extrair os modais de detalhe, historico e cancelamento para `components/`; (3) mover `buildProjectsCsv`/`buildForecastCsv` e os normalizadores para `utils.ts`; (4) mover os tipos para `types.ts` e os fetchs para `hooks/`.
+  - `src/app/api/projects/route.ts` (1.862 linhas, teto 1.500). Ordem proposta: (1) criar `src/server/modules/projects/repository.ts` com os `*Compat` de leitura; (2) `validator.ts` com `parseProjectInput`, `validateRequiredProjectFields` e os normalizadores; (3) `service.ts` com `saveProjectViaRpc`, `importProjectBatch` e `setProjectStatusViaRpc`, deixando a rota so como delegacao.
+  - Enquanto o plano nao roda, o crescimento desta tarefa foi aceito arquivo a arquivo por `npm run lint:size:accept` (route.ts 1812 -> 1862, PageView.tsx 4148 -> 4232); o diff de `file-size-baseline.json` e a evidencia.

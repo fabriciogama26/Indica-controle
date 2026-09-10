@@ -16,6 +16,7 @@ import {
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
+import { parseLatitude, parseLongitude } from "@/lib/utils/parsers";
 
 type ProjectRow = {
   id: string;
@@ -45,6 +46,8 @@ type ProjectRow = {
   neighborhood: string;
   city: string;
   city_text: string | null;
+  latitude: number | null;
+  longitude: number | null;
   service_description: string | null;
   observation: string | null;
   is_active: boolean;
@@ -61,12 +64,17 @@ type ProjectRow = {
   updated_at: string;
 };
 
-type ProjectBaseRow = Omit<ProjectRow, "has_locacao" | "fob" | "is_test" | "is_withdrawn" | "is_third_party"> & {
+type ProjectBaseRow = Omit<
+  ProjectRow,
+  "has_locacao" | "fob" | "is_test" | "is_withdrawn" | "is_third_party" | "latitude" | "longitude"
+> & {
   has_locacao?: boolean | null;
   fob?: string | null;
   is_test?: boolean | null;
   is_withdrawn?: boolean | null;
   is_third_party?: boolean | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
 };
 
 type ProjectListSummary = {
@@ -116,6 +124,8 @@ type CreateProjectPayload = {
   street: string;
   neighborhood: string;
   city: string;
+  latitude: string | number;
+  longitude: string | number;
   serviceDescription?: string | null;
   observation?: string | null;
   isTest?: boolean;
@@ -172,6 +182,8 @@ type ProjectInput = {
   street: string;
   neighborhood: string;
   city: string;
+  latitude: number | null;
+  longitude: number | null;
   serviceDescription: string | null;
   observation: string | null;
   isTest: boolean;
@@ -384,6 +396,8 @@ function parseProjectInput(payload: Partial<CreateProjectPayload>): ProjectInput
     street: normalizeText(payload.street),
     neighborhood: normalizeText(payload.neighborhood),
     city: normalizeText(payload.city),
+    latitude: parseLatitude(payload.latitude),
+    longitude: parseLongitude(payload.longitude),
     serviceDescription: normalizeNullableText(payload.serviceDescription),
     observation: normalizeNullableText(payload.observation),
     isTest: normalizeBoolean(payload.isTest),
@@ -412,6 +426,14 @@ function validateRequiredProjectFields(input: ProjectInput) {
 
   if (!isIsoDate(input.executionDeadline)) {
     return "Data limite invalida.";
+  }
+
+  if (input.latitude === null) {
+    return "Latitude obrigatoria. Informe em graus decimais entre -90 e 90 (ex.: -23.550520).";
+  }
+
+  if (input.longitude === null) {
+    return "Longitude obrigatoria. Informe em graus decimais entre -180 e 180 (ex.: -46.633308).";
   }
 
   return null;
@@ -485,7 +507,7 @@ function buildUserLoginNameMap(users: ProjectUserRow[]) {
 }
 
 const PROJECT_SELECT_WITH_LOCATION =
-  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, is_withdrawn, is_third_party, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
+  "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, latitude, longitude, service_description, observation, is_active, is_test, is_withdrawn, is_third_party, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
 
 const PROJECT_SELECT_WITH_WITHDRAWN =
   "id, sob, fob, service_center, service_center_text, partner, partner_text, service_type, service_type_text, execution_deadline, priority, priority_text, estimated_value, voltage_level, voltage_level_text, project_size, project_size_text, contractor_responsible, contractor_responsible_text, utility_responsible, utility_responsible_text, utility_field_manager, utility_field_manager_text, street, neighborhood, city, city_text, service_description, observation, is_active, is_test, has_locacao, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at";
@@ -501,7 +523,19 @@ function isMissingOptionalProjectColumns(message: string) {
     || normalized.includes("is_test")
     || normalized.includes("is_withdrawn")
     || normalized.includes("is_third_party")
+    || normalized.includes("latitude")
+    || normalized.includes("longitude")
   );
+}
+
+// A view devolve numeric como numero ou string dependendo do driver; normaliza para numero.
+function toCoordinateNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string, projectId: string) {
@@ -521,6 +555,8 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
         is_withdrawn: Boolean(primary.data.is_withdrawn),
         is_third_party: Boolean(primary.data.is_third_party),
         has_locacao: Boolean(primary.data.has_locacao),
+        latitude: toCoordinateNumber(primary.data.latitude),
+        longitude: toCoordinateNumber(primary.data.longitude),
       } as ProjectRow,
       error: null,
     };
@@ -546,6 +582,8 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
         is_withdrawn: false,
         is_third_party: false,
         has_locacao: Boolean(withTest.data.has_locacao),
+        latitude: null,
+        longitude: null,
       } as ProjectRow,
       error: null,
     };
@@ -574,6 +612,8 @@ async function fetchProjectByIdCompat(supabase: SupabaseClient, tenantId: string
       is_withdrawn: false,
       is_third_party: false,
       has_locacao: false,
+      latitude: null,
+      longitude: null,
     } as ProjectRow,
     error: null,
   };
@@ -641,6 +681,8 @@ async function fetchProjectsPageCompat(params: {
         is_withdrawn: Boolean(item.is_withdrawn),
         is_third_party: Boolean(item.is_third_party),
         has_locacao: Boolean(item.has_locacao),
+        latitude: toCoordinateNumber(item.latitude),
+        longitude: toCoordinateNumber(item.longitude),
       })) as ProjectRow[],
       count: primary.count ?? 0,
       error: null,
@@ -662,6 +704,8 @@ async function fetchProjectsPageCompat(params: {
         is_withdrawn: false,
         is_third_party: false,
         has_locacao: Boolean(item.has_locacao),
+        latitude: null,
+        longitude: null,
       })) as ProjectRow[],
       count: withTest.count ?? 0,
       error: null,
@@ -686,6 +730,8 @@ async function fetchProjectsPageCompat(params: {
       is_withdrawn: false,
       is_third_party: false,
       has_locacao: false,
+      latitude: null,
+      longitude: null,
     })) as ProjectRow[],
     count: fallback.count ?? 0,
     error: null,
@@ -1105,12 +1151,20 @@ function buildProjectWritePayload(
     street: input.street,
     neighborhood: input.neighborhood,
     city: lookups.municipality.id,
+    latitude: input.latitude,
+    longitude: input.longitude,
     service_description: input.serviceDescription,
     observation: input.observation,
     is_test: input.isTest,
     is_withdrawn: input.isWithdrawn,
     is_third_party: input.isThirdParty,
   };
+}
+
+// Coordenada entra no historico como texto: `formatComparableValue` arredonda numero para
+// 2 casas e transformaria -23.550520 em -23.55.
+function formatCoordinateChange(value: number | null) {
+  return value === null ? null : value.toFixed(6);
 }
 
 function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, lookups: ResolvedProjectLookups) {
@@ -1130,6 +1184,8 @@ function buildProjectUpdateChanges(current: ProjectRow, input: ProjectInput, loo
   addChange(changes, "city", current.city_text, lookups.municipality.name);
   addChange(changes, "street", current.street, input.street);
   addChange(changes, "neighborhood", current.neighborhood, input.neighborhood);
+  addChange(changes, "latitude", formatCoordinateChange(current.latitude), formatCoordinateChange(input.latitude));
+  addChange(changes, "longitude", formatCoordinateChange(current.longitude), formatCoordinateChange(input.longitude));
   addChange(changes, "serviceDescription", current.service_description, input.serviceDescription);
   addChange(changes, "observation", current.observation, input.observation);
   addChange(changes, "partner", current.partner_text, lookups.partner.name);
@@ -1184,6 +1240,8 @@ async function saveProjectViaRpc(params: {
     p_is_test: params.payload.is_test,
     p_is_withdrawn: params.payload.is_withdrawn,
     p_is_third_party: params.payload.is_third_party,
+    p_latitude: params.payload.latitude,
+    p_longitude: params.payload.longitude,
     p_changes: params.changes ?? {},
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
   };
@@ -1191,37 +1249,27 @@ async function saveProjectViaRpc(params: {
   const executeSaveProjectRpc = async (payload: Record<string, unknown>) =>
     params.supabase.rpc("save_project_record", payload);
 
+  // Bancos que ainda nao aplicaram as migrations mais novas nao tem os parametros opcionais.
+  // Cada tentativa remove mais um bloco, da assinatura mais recente para a mais antiga.
+  const SAVE_PROJECT_FALLBACK_OMITTED_KEYS = [
+    ["p_latitude", "p_longitude"],
+    ["p_latitude", "p_longitude", "p_is_third_party"],
+    ["p_latitude", "p_longitude", "p_is_third_party", "p_is_withdrawn"],
+    ["p_latitude", "p_longitude", "p_is_third_party", "p_is_withdrawn", "p_is_test", "p_fob"],
+  ];
+
   let { data, error } = await executeSaveProjectRpc(rpcPayload);
   if (error && isMissingRpcSignatureError(error.message, "save_project_record")) {
-    const withoutThirdPartyPayload = Object.fromEntries(
-      Object.entries(rpcPayload).filter(([key]) => key !== "p_is_third_party"),
-    );
-
-    const withoutThirdPartyAttempt = await executeSaveProjectRpc(withoutThirdPartyPayload);
-    if (!withoutThirdPartyAttempt.error) {
-      data = withoutThirdPartyAttempt.data;
-      error = null;
-    } else {
-      const withoutWithdrawnPayload = Object.fromEntries(
-        Object.entries(rpcPayload).filter(([key]) => key !== "p_is_withdrawn" && key !== "p_is_third_party"),
+    for (const omittedKeys of SAVE_PROJECT_FALLBACK_OMITTED_KEYS) {
+      const fallbackPayload = Object.fromEntries(
+        Object.entries(rpcPayload).filter(([key]) => !omittedKeys.includes(key)),
       );
 
-      const withoutWithdrawnAttempt = await executeSaveProjectRpc(withoutWithdrawnPayload);
-      if (!withoutWithdrawnAttempt.error) {
-        data = withoutWithdrawnAttempt.data;
+      const attempt = await executeSaveProjectRpc(fallbackPayload);
+      if (!attempt.error) {
+        data = attempt.data;
         error = null;
-      } else {
-        const legacyPayload = Object.fromEntries(
-          Object.entries(rpcPayload).filter(
-            ([key]) => key !== "p_fob" && key !== "p_is_test" && key !== "p_is_withdrawn" && key !== "p_is_third_party",
-          ),
-        );
-
-        const legacyAttempt = await executeSaveProjectRpc(legacyPayload);
-        if (!legacyAttempt.error) {
-          data = legacyAttempt.data;
-          error = null;
-        }
+        break;
       }
     }
   }
@@ -1509,6 +1557,8 @@ export async function GET(request: NextRequest) {
         street: item.street,
         neighborhood: item.neighborhood,
         city: item.city_text ?? "Nao identificado",
+        latitude: item.latitude,
+        longitude: item.longitude,
         serviceDescription: item.service_description,
         observation: item.observation,
         isActive: Boolean(item.is_active),

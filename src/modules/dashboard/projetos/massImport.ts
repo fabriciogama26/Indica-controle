@@ -5,6 +5,7 @@ import {
   resolveCsvValue,
   type MassImportIssue,
 } from "@/lib/utils/massImport";
+import { parseLatitude, parseLongitude } from "@/lib/utils/parsers";
 
 export type ProjectImportRow = {
   rowNumber: number;
@@ -22,6 +23,8 @@ export type ProjectImportRow = {
   street: string;
   neighborhood: string;
   city: string;
+  latitude: string;
+  longitude: string;
   serviceDescription: string;
   observation: string;
   isTest: boolean;
@@ -54,10 +57,12 @@ const REQUIRED_HEADERS = [
   "municipio",
   "logradouro",
   "bairro",
+  "latitude",
+  "longitude",
 ];
 
 export const PROJECT_MASS_IMPORT_COLUMNS_HINT =
-  "Colunas obrigatorias: prioridade, projeto, centro_servico, tipo_servico, data_limite, valor_estimado, responsavel_contratada, responsavel_distribuidora, gestor_campo_distribuidora, municipio, logradouro e bairro. Use os mesmos nomes dos selects da tela.";
+  "Colunas obrigatorias: prioridade, projeto, centro_servico, tipo_servico, data_limite, valor_estimado, responsavel_contratada, responsavel_distribuidora, gestor_campo_distribuidora, municipio, logradouro, bairro, latitude e longitude. Use os mesmos nomes dos selects da tela. Latitude e longitude em graus decimais, como o Google Maps copia (ex.: -23.550520 e -46.633308).";
 
 function normalizeText(value: string) {
   return String(value ?? "").trim();
@@ -183,6 +188,8 @@ export function buildProjectMassImportTemplateCsv(catalogs: ProjectImportCatalog
       "municipio",
       "logradouro",
       "bairro",
+      "latitude",
+      "longitude",
       "nivel_tensao",
       "porte",
       "descricao_servico",
@@ -205,6 +212,8 @@ export function buildProjectMassImportTemplateCsv(catalogs: ProjectImportCatalog
         catalogs.cities[0] ?? "MUNICIPIO",
         "Rua exemplo",
         "Bairro exemplo",
+        "-23.550520",
+        "-46.633308",
         catalogs.voltageLevels[0] ?? "",
         catalogs.projectSizes[0] ?? "",
         "Descricao do servico",
@@ -246,6 +255,10 @@ export function parseProjectMassImportCsv(params: {
     const city = validateCatalog({ issues, rowNumber, column: "municipio", raw: resolveCsvValue(values, ["municipio", "cidade", "city"]), options: params.catalogs.cities, required: true, label: "Municipio" });
     const street = normalizeText(resolveCsvValue(values, ["logradouro", "rua", "street"]));
     const neighborhood = normalizeText(resolveCsvValue(values, ["bairro", "neighborhood"]));
+    const latitudeRaw = normalizeText(resolveCsvValue(values, ["latitude", "lat"]));
+    const longitudeRaw = normalizeText(resolveCsvValue(values, ["longitude", "long", "lng"]));
+    const latitude = parseLatitude(latitudeRaw);
+    const longitude = parseLongitude(longitudeRaw);
 
     if (!sob) {
       issues.push({ rowNumber, column: "projeto", value: sob, error: "Projeto (SOB) obrigatorio." });
@@ -263,6 +276,12 @@ export function parseProjectMassImportCsv(params: {
     }
     if (!neighborhood) {
       issues.push({ rowNumber, column: "bairro", value: neighborhood, error: "Bairro obrigatorio." });
+    }
+    if (latitude === null) {
+      issues.push({ rowNumber, column: "latitude", value: latitudeRaw, error: "Latitude obrigatoria. Use graus decimais entre -90 e 90 (ex.: -23.550520)." });
+    }
+    if (longitude === null) {
+      issues.push({ rowNumber, column: "longitude", value: longitudeRaw, error: "Longitude obrigatoria. Use graus decimais entre -180 e 180 (ex.: -46.633308)." });
     }
 
     if (sob) {
@@ -286,6 +305,8 @@ export function parseProjectMassImportCsv(params: {
         street,
         neighborhood,
         city,
+        latitude: String(latitude ?? ""),
+        longitude: String(longitude ?? ""),
         serviceDescription: normalizeText(resolveCsvValue(values, ["descricao_servico", "descricao", "service_description"])),
         observation: normalizeText(resolveCsvValue(values, ["observacao", "obs", "observation"])),
         isTest: parseBoolean(resolveCsvValue(values, ["obra_teste", "teste", "is_test"])),

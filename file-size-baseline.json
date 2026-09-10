@@ -2,7 +2,7 @@
   "description": "Baseline do ratchet de tamanho de arquivo (scripts/check-file-size.mjs). Cada entrada e um arquivo que ja estava acima do limite da secao 5 do CLAUDE.md. Arquivo legado so pode encolher: o valor aqui e o teto dele. REDUCOES (arquivo encolheu, foi removido ou voltou ao limite normal): rodar `npm run lint:size:update`, que nunca aumenta um baseline. AUMENTO EXCEPCIONAL: rodar `npm run lint:size:accept -- caminho/do/arquivo.tsx`, informando explicitamente cada arquivo; nao existe aceite em lote. Nao editar este arquivo a mao.",
   "files": {
     "src/app/api/dash-operacional-faturamento/route.ts": 2406,
-    "src/app/api/projects/route.ts": 1812,
+    "src/app/api/projects/route.ts": 1862,
     "src/modules/dashboard/atividades/ActivitiesPageView.tsx": 1242,
     "src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx": 1303,
     "src/modules/dashboard/dash-operacional-faturamento/OperationalBillingDashboardPageView.tsx": 2319,
@@ -16,7 +16,7 @@
     "src/modules/dashboard/medicao/MeasurementPageView.tsx": 3574,
     "src/modules/dashboard/pessoas/PeoplePageView.tsx": 1946,
     "src/modules/dashboard/posicao-trafo/TrafoPositionPageView.tsx": 1054,
-    "src/modules/dashboard/projetos/ProjectsPageView.tsx": 4148,
+    "src/modules/dashboard/projetos/ProjectsPageView.tsx": 4232,
     "src/modules/dashboard/saida/TeamStockOperationsPageView.tsx": 2671
   }
 }

@@ -15,6 +15,7 @@ import styles from "./ProjectsPageView.module.css";
 import type { MassImportRowResult } from "@/lib/utils/massImport";
 import { downloadBlobFile, downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { formatDecimalDegrees, parseLatitude, parseLongitude, splitDecimalDegreesPair } from "@/lib/utils/parsers";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import {
   PROJECT_MASS_IMPORT_COLUMNS_HINT,
@@ -41,6 +42,8 @@ type ProjectItem = {
   street: string;
   neighborhood: string;
   city: string;
+  latitude: number | null;
+  longitude: number | null;
   serviceDescription: string | null;
   observation: string | null;
   isActive: boolean;
@@ -80,6 +83,8 @@ type FormState = {
   street: string;
   neighborhood: string;
   city: string;
+  latitude: string;
+  longitude: string;
   serviceDescription: string;
   observation: string;
   isTest: boolean;
@@ -278,6 +283,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   city: "Municipio",
   street: "Logradouro",
   neighborhood: "Bairro",
+  latitude: "Latitude",
+  longitude: "Longitude",
   serviceDescription: "Descricao do servico",
   observation: "Observacao",
   partner: "Parceira",
@@ -305,6 +312,8 @@ const INITIAL_FORM: FormState = {
   street: "",
   neighborhood: "",
   city: "",
+  latitude: "",
+  longitude: "",
   serviceDescription: "",
   observation: "",
   isTest: false,
@@ -452,6 +461,8 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     "Municipio",
     "Logradouro",
     "Bairro",
+    "Latitude",
+    "Longitude",
     "Responsavel Contratada",
     "Responsavel Distribuidora",
     "Gestor de campo Distribuidora",
@@ -480,6 +491,8 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     project.city,
     project.street,
     project.neighborhood,
+    formatDecimalDegrees(project.latitude),
+    formatDecimalDegrees(project.longitude),
     project.contractorResponsible,
     project.utilityResponsible,
     project.utilityFieldManager,
@@ -736,6 +749,8 @@ function toFormState(project: ProjectItem): FormState {
     street: project.street,
     neighborhood: project.neighborhood,
     city: project.city,
+    latitude: formatDecimalDegrees(project.latitude),
+    longitude: formatDecimalDegrees(project.longitude),
     serviceDescription: project.serviceDescription ?? "",
     observation: project.observation ?? "",
     isTest: Boolean(project.isTest),
@@ -1205,6 +1220,22 @@ export function ProjectsPageView() {
     setForm((current) => ({
       ...current,
       [field]: value,
+    }));
+  }
+
+  // O Google Maps copia o par "latitude, longitude" num texto so; colar no campo Latitude
+  // preenche os dois campos em vez de recusar o valor.
+  function updateLatitudeField(value: string) {
+    const pair = splitDecimalDegreesPair(value);
+    if (!pair) {
+      updateFormField("latitude", value);
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      latitude: pair.latitude,
+      longitude: pair.longitude,
     }));
   }
 
@@ -2251,6 +2282,24 @@ export function ProjectsPageView() {
       return;
     }
 
+    const latitude = parseLatitude(form.latitude);
+    if (latitude === null) {
+      setFeedback({
+        type: "error",
+        message: "Latitude invalida. Informe em graus decimais entre -90 e 90 (ex.: -23.550520).",
+      });
+      return;
+    }
+
+    const longitude = parseLongitude(form.longitude);
+    if (longitude === null) {
+      setFeedback({
+        type: "error",
+        message: "Longitude invalida. Informe em graus decimais entre -180 e 180 (ex.: -46.633308).",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setFeedback(null);
 
@@ -2269,6 +2318,8 @@ export function ProjectsPageView() {
           sob: normalizeSob(form.sob),
           priority: normalizePriority(form.priority),
           estimatedValue: estimatedValue.toFixed(2),
+          latitude,
+          longitude,
         }),
       });
 
@@ -2818,6 +2869,37 @@ export function ProjectsPageView() {
                   value={form.neighborhood}
                   onChange={(event) => updateFormField("neighborhood", event.target.value)}
                   placeholder="Digite o bairro"
+                  required
+                />
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Latitude <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.latitude}
+                  onChange={(event) => updateLatitudeField(event.target.value)}
+                  placeholder="-23.550520"
+                  required
+                />
+                <small className={styles.fieldHelp}>
+                  Graus decimais, como o Google Maps copia. Colar o par completo aqui preenche tambem a longitude.
+                </small>
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Longitude <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.longitude}
+                  onChange={(event) => updateFormField("longitude", event.target.value)}
+                  placeholder="-46.633308"
                   required
                 />
               </label>
@@ -3969,6 +4051,8 @@ export function ProjectsPageView() {
                 <div><strong>Municipio:</strong> {detailProject.city}</div>
                 <div><strong>Logradouro:</strong> {detailProject.street}</div>
                 <div><strong>Bairro:</strong> {detailProject.neighborhood}</div>
+                <div><strong>Latitude:</strong> {formatDecimalDegrees(detailProject.latitude) || "-"}</div>
+                <div><strong>Longitude:</strong> {formatDecimalDegrees(detailProject.longitude) || "-"}</div>
                 <div><strong>Descricao do servico:</strong> {detailProject.serviceDescription ?? "-"}</div>
                 <div><strong>Observacao:</strong> {detailProject.observation ?? "-"}</div>
                 <div><strong>Registrado por:</strong> {formatAuditActor(detailProject.createdByName)}</div>
