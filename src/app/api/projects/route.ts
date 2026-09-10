@@ -623,6 +623,7 @@ async function fetchProjectsPageCompat(params: {
   supabase: SupabaseClient;
   tenantId: string;
   sob: string;
+  observation: string;
   executionDate: string;
   priority: string; serviceCenter: string; serviceType: string; city: string;
   portfolioStatus: ProjectPortfolioStatusFilter;
@@ -638,6 +639,9 @@ async function fetchProjectsPageCompat(params: {
 
     if (params.sob) {
       query = query.ilike("sob", `%${params.sob}%`);
+    }
+    if (params.observation) {
+      query = query.ilike("observation", `%${params.observation}%`);
     }
     if (params.executionDate && isIsoDate(params.executionDate)) {
       query = query.eq("execution_deadline", params.executionDate);
@@ -742,6 +746,7 @@ async function fetchProjectsSummaryCompat(params: {
   supabase: SupabaseClient;
   tenantId: string;
   sob: string;
+  observation: string;
   executionDate: string;
   priority: string; serviceCenter: string; serviceType: string; city: string;
   portfolioStatus: ProjectPortfolioStatusFilter;
@@ -764,6 +769,9 @@ async function fetchProjectsSummaryCompat(params: {
 
     if (params.sob) {
       projectIdsQuery = projectIdsQuery.ilike("sob", `%${params.sob}%`);
+    }
+    if (params.observation) {
+      projectIdsQuery = projectIdsQuery.ilike("observation", `%${params.observation}%`);
     }
     if (params.executionDate && isIsoDate(params.executionDate)) {
       projectIdsQuery = projectIdsQuery.eq("execution_deadline", params.executionDate);
@@ -804,6 +812,9 @@ async function fetchProjectsSummaryCompat(params: {
       if (params.sob) {
         withTestQuery = withTestQuery.ilike("sob", `%${params.sob}%`);
       }
+      if (params.observation) {
+        withTestQuery = withTestQuery.ilike("observation", `%${params.observation}%`);
+      }
       if (params.executionDate && isIsoDate(params.executionDate)) {
         withTestQuery = withTestQuery.eq("execution_deadline", params.executionDate);
       }
@@ -843,6 +854,9 @@ async function fetchProjectsSummaryCompat(params: {
 
       if (params.sob) {
         fallbackQuery = fallbackQuery.ilike("sob", `%${params.sob}%`);
+      }
+      if (params.observation) {
+        fallbackQuery = fallbackQuery.ilike("observation", `%${params.observation}%`);
       }
       if (params.executionDate && isIsoDate(params.executionDate)) {
         fallbackQuery = fallbackQuery.eq("execution_deadline", params.executionDate);
@@ -1477,6 +1491,7 @@ export async function GET(request: NextRequest) {
     }
 
     const sob = normalizeText(params.get("sob"));
+    const observation = normalizeText(params.get("observation"));
     const executionDate = normalizeText(params.get("executionDate"));
     const priority = normalizeText(params.get("priority"));
     const serviceCenter = normalizeText(params.get("serviceCenter"));
@@ -1501,6 +1516,7 @@ export async function GET(request: NextRequest) {
       supabase,
       tenantId: appUser.tenant_id,
       sob,
+      observation,
       executionDate,
       priority, serviceCenter, serviceType, city, portfolioStatus,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,
@@ -1516,6 +1532,7 @@ export async function GET(request: NextRequest) {
       supabase,
       tenantId: appUser.tenant_id,
       sob,
+      observation,
       executionDate,
       priority, serviceCenter, serviceType, city, portfolioStatus,
       programmingFilteredProjectIds: programmingFilteredProjectIdsResult.projectIds,

@@ -94,6 +94,7 @@ type FormState = {
 
 type FilterState = {
   sob: string;
+  observation: string;
   executionDate: string;
   priority: string;
   serviceCenter: string;
@@ -323,6 +324,7 @@ const INITIAL_FORM: FormState = {
 
 const INITIAL_FILTERS: FilterState = {
   sob: "",
+  observation: "",
   executionDate: "",
   priority: "",
   serviceCenter: "",
@@ -419,6 +421,9 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
 
   if (filters.sob.trim()) {
     params.set("sob", filters.sob.trim());
+  }
+  if (filters.observation.trim()) {
+    params.set("observation", filters.observation.trim());
   }
   if (filters.executionDate) {
     params.set("executionDate", filters.executionDate);
@@ -3282,6 +3287,16 @@ export function ProjectsPageView() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Observacao</span>
+            <input
+              type="text"
+              value={filterDraft.observation}
+              onChange={(event) => updateFilterField("observation", event.target.value)}
+              placeholder="Filtrar por Observacao"
+            />
           </label>
         </div>
 
