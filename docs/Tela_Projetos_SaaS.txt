@@ -152,6 +152,7 @@ Filtros, auto-complete e listagem
   - `Situacao da carteira` (select com `Todos`, `Cancelados`, `Retirados da carteira` e `Terceiros`)
   - `Estado Trabalho` (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
   - `Tipo SGD` (`Todos` + itens ativos do catalogo `programming_sgd_types`)
+  - `Observacao` (texto, busca parcial sem diferenciar maiuscula de minuscula)
 - Auto-complete implementado para:
   - `SOB`
   - `Prioridade`
@@ -941,3 +942,31 @@ Atualizacao 2026-09-10 - Latitude e longitude obrigatorias no Cadastro de Projet
   - `src/modules/dashboard/projetos/ProjectsPageView.tsx` (4.232 linhas, teto 1.000). Ordem proposta: (1) extrair as abas `Materiais previstos` e `Atividades previstas` para `components/ForecastTab.tsx` e `components/ActivityForecastTab.tsx`; (2) extrair os modais de detalhe, historico e cancelamento para `components/`; (3) mover `buildProjectsCsv`/`buildForecastCsv` e os normalizadores para `utils.ts`; (4) mover os tipos para `types.ts` e os fetchs para `hooks/`.
   - `src/app/api/projects/route.ts` (1.862 linhas, teto 1.500). Ordem proposta: (1) criar `src/server/modules/projects/repository.ts` com os `*Compat` de leitura; (2) `validator.ts` com `parseProjectInput`, `validateRequiredProjectFields` e os normalizadores; (3) `service.ts` com `saveProjectViaRpc`, `importProjectBatch` e `setProjectStatusViaRpc`, deixando a rota so como delegacao.
   - Enquanto o plano nao roda, o crescimento desta tarefa foi aceito arquivo a arquivo por `npm run lint:size:accept` (route.ts 1812 -> 1862, PageView.tsx 4148 -> 4232); o diff de `file-size-baseline.json` e a evidencia.
+
+Atualizacao 2026-09-10 (2) - Filtro por Observacao na listagem de Projetos
+--------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/projects/route.ts`
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `file-size-baseline.json`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `FilterState`, `INITIAL_FILTERS`, `buildQuery` e o bloco `Filtros` em `ProjectsPageView.tsx`
+  - `fetchProjectsPageCompat`, `fetchProjectsSummaryCompat` e a leitura de query params do `GET` em `route.ts`
+- Comportamento antes/depois:
+  - Antes: `Observacao` so aparecia como coluna da lista, no modal de detalhes e na exportacao CSV; nao havia como filtrar por ela.
+  - Depois: o bloco `Filtros` tem o campo texto `Observacao` (ultimo do grid), aplicado pelo botao `Aplicar` junto com os demais filtros e zerado pelo `Limpar`.
+  - Depois: o valor vai como `observation` na query string de `/api/projects` e o backend aplica `ilike` em `project_with_labels.observation`, sempre dentro do `tenant_id` da sessao.
+  - Depois: o filtro entra tambem no resumo `Status da Carteira de Projetos` (`Total de projetos` e `Concluidas`) e na exportacao CSV, que reutiliza `buildQuery` com os filtros ativos.
+  - Depois: os tres ramos de compatibilidade de `fetchProjectsSummaryCompat` (consulta principal, fallback sem colunas opcionais e fallback legado) receberam o mesmo `ilike`, para que lista e totais nunca divirjam.
+  - Projeto sem observacao (`NULL`) fica de fora quando o filtro esta preenchido, porque `ilike` sobre `NULL` nao casa. Filtro vazio nao restringe nada.
+- Banco:
+  - Nenhuma migration. A coluna `observation` ja existe em `public.project` e ja e projetada por `project_with_labels`.
+  - Sem indice novo: o filtro usa `ilike '%texto%'`, que nao aproveita btree, exatamente como o filtro `Projeto (SOB)` ja se comporta hoje. A varredura fica limitada ao tenant. Se o volume crescer a ponto de doer, o caminho e um indice `gin` com `pg_trgm` cobrindo `sob` e `observation` de uma vez, decidido em tarefa propria.
+- Multi-tenant e permissao:
+  - Filtro puramente de leitura; `tenant_id` continua vindo de `resolveAuthenticatedAppUser` e nenhum valor de tenant e aceito do client.
+  - Permissao inalterada: o `GET` continua exigindo `projetos`/`read` via `authorizeProjectsAction`, sem permissao granular nova.
+- Plano de modularizacao (obrigatorio: os dois arquivos seguem acima do teto):
+  - Plano inalterado em relacao ao registrado na `Atualizacao 2026-09-10`; nada foi extraido nesta tarefa.
+  - Crescimento aceito arquivo a arquivo por `npm run lint:size:accept` (route.ts 1862 -> 1879, PageView.tsx 4232 -> 4247); o diff de `file-size-baseline.json` e a evidencia.
