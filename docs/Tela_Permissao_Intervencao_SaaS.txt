@@ -4,7 +4,7 @@ Visao geral
 -----------
 - A Permissao de Intervencao (PI) e um documento operacional vinculado a Projeto + Data da etapa.
 - A tela e o CADASTRO da PI: listagem, nova PI a partir da Programacao ou sem Programacao, formulario completo, plano de execucao e emissao do documento.
-- EM CONSTRUCAO: hoje a rota exibe `ModulePlaceholder` com o roteiro. A entidade `permission_intervention` ainda nao existe, entao nao ha emissao de PI real.
+- EM CONSTRUCAO: hoje a rota exibe `ModulePlaceholder` com o roteiro. O schema da PI ja existe (migrations 428 e 429), mas ainda nao ha RPC de escrita nem formulario, entao nao ha emissao de PI real.
 - A camada do documento Word JA ESTA PRONTA e vive numa tela propria: `Cadastro Base > Modelo de PI` (`/modelo-pi`). Ver `Tela_Modelo_PI_SaaS.txt`.
 - Rota: `/permissao-intervencao`, secao `Operacao` do menu.
 
@@ -13,11 +13,24 @@ Arquitetura (estado atual)
 - Rota: `src/app/(dashboard)/permissao-intervencao/page.tsx` (placeholder)
 - Dominio server-side ja existente: `src/server/modules/permissao-intervencao/` — contrato de tags, mapper, storage e handlers do template.
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
-- Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql` e `supabase/migrations/427_split_pi_template_screen.sql`
+- Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql` e `429_create_permission_intervention.sql`
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
   - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Modelo de dados (migrations 428 e 429)
+--------------------------------------
+- `pi_settings`: configuracao por contrato — `code_prefix`, `company_code`, `sequence_digits` e o Plano de Emergencia vigente com sua versao. `PI-RJ` e `INDICA` vivem AQUI, nunca no codigo da aplicacao.
+- `pi_sequence_counter`: contador do sequencial, uma linha por contrato, incrementado sob lock de linha dentro da transacao da emissao. Tabela separada de `pi_settings` para nao disputar lock com quem edita o Plano de Emergencia. Nao e legivel por `authenticated`.
+- `pi_operation_areas` e `pi_voltage_levels`: catalogos de codigo fechado por contrato. `code` identifica e `code_token` e o pedaco que entra no codigo da PI — sao colunas diferentes porque `UT_AT` produziria `PI-RJ-MT-UT_AT-INDICA-0001`, com underscore no meio de um codigo de documento.
+- `pi_execution_step_template`: etapas padrao do Plano de Execucao. Nasce VAZIA; o seed entra quando a lista oficial for fornecida.
+- `permission_intervention`: a PI. Uma viva por projeto+data (indice parcial que ignora canceladas), codigo e sequencial unicos por contrato inclusive contra canceladas.
+- `pi_operation_area_link` e `pi_voltage_level_link`: N:N com `scope`, que separa as listas independentes do formulario — area da PI x area do contato, tensao da PI x tensao da instalacao interferente.
+- `pi_execution_step`: linhas do Plano de Execucao. `unique (pi_id, sort_order)` DEFERRABLE, porque reordenar passa por estado intermediario duplicado. O teto de 23 linhas NAO e constraint: quem recusa e a validacao de emissao, para nao dar erro cru no meio da edicao do rascunho.
+- `pi_history`: historico proprio. Nao usa `app_entity_history` porque o CHECK daquela tabela so aceita UPDATE/CANCEL/ACTIVATE, e a PI precisa de CREATE, LINK, UNLINK, ISSUE e GENERATE_DOCUMENT.
+- Todas com RLS de leitura por `user_can_access_tenant` e `revoke` de escrita para `public`/`anon`/`authenticated`.
+- Estados: `status` DRAFT / READY / ISSUED / CANCELLED; `link_status` LINKED / PENDING / ATTENTION. PENDING e exatamente "sem etapa vinculada"; ATTENTION e uma PI vinculada cuja etapa saiu do plano ativo, e o vinculo historico permanece.
 
 Contrato de permissao
 ---------------------
@@ -38,7 +51,8 @@ Decisoes de negocio ja travadas
 
 Fases pendentes
 ---------------
-- FASE 1: schema da PI (identificacao, areas e tensoes N:N, plano de execucao, historico), configuracao por contrato (`pi_settings` com prefixo, empresa, digitos e Plano de Emergencia), contador do sequencial e RPCs de escrita com snapshot da Programacao de origem.
+- FASE 1a (FEITA): schema completo — catalogos, configuracao por contrato, contador do sequencial, entidade e filhas. Migrations 428 e 429.
+- FASE 1b: RPCs de escrita (salvar, emitir gerando sequencial e codigo, vincular a Programacao) com snapshot da etapa de origem. Migration 430.
 - FASE 2: listagem com filtros e o fluxo Nova PI nos dois caminhos.
 - FASE 3: formulario completo com as oito secoes e os snapshots.
 - FASE 4: plano de execucao ordenavel, com etapas padrao vindas de modelo.
@@ -56,3 +70,4 @@ Atualizacao 2026-09
 -------------------
 - Rota criada com `ModulePlaceholder`; `page_key` registrado pela migration 426 e mantido pela 427.
 - A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
+- Migrations 428 e 429: schema da PI criado, tabelas vazias, sem nenhuma RPC de escrita ainda. A Programacao nao foi tocada.

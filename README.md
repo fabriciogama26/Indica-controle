@@ -587,6 +587,10 @@ vercel --prod
 - `supabase/migrations/240_merge_split_stock_transfer_import_batches.sql`: une os blocos históricos que a migration 239 separou por segundo, usando continuidade de ate 2 segundos sem alterar lotes novos.
 - `supabase/migrations/247_allow_pending_serial_identification.sql`: adiciona pendencia de identificacao de serial para Entrada/Transferencia de materiais rastreaveis sem LP quando permitido, mantendo `TRAFO` com `Serial + LP` obrigatorios e Operacoes de Equipe com serial obrigatorio.
 - `supabase/migrations/339_add_cmd_to_serial_stock_movements.sql`: adiciona `CMD` aos itens de Movimentacao de Estoque e ao estado atual de unidades serializadas, sincronizando a marcacao para Rastreio de SERIAL.
+- `supabase/migrations/426_create_pi_document_template_and_page.sql`: bucket privado `pi-templates`, tabela `pi_document_template` com uma unica versao ativa por contrato, RPCs de registro e ativacao, e a tela da Permissao de Intervencao em `app_pages`.
+- `supabase/migrations/427_split_pi_template_screen.sql`: separa a administracao do template na tela `Modelo de PI` (`/modelo-pi`, Cadastro Base), herdando o acesso de quem ja tinha `permissao-intervencao`.
+- `supabase/migrations/428_create_pi_catalogs_and_settings.sql`: configuracao da PI por contrato (`pi_settings`), catalogos de Area de Atuacao e Nivel de Tensao com codigo fechado, modelo de etapas padrao e o contador do sequencial.
+- `supabase/migrations/429_create_permission_intervention.sql`: entidade `permission_intervention` e filhas (areas, tensoes, plano de execucao e historico), com vinculo a Programacao por UUID da etapa, uma PI viva por projeto+data e RLS por tenant.
 
 ---
 
