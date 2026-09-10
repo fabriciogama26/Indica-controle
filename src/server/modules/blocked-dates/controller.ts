@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
 import {
@@ -66,7 +67,18 @@ type BlockedDateHistoryRow = {
   created_by: string | null;
 };
 
+type BlockedDateBatchImportRow = {
+  rowNumber?: number;
+  blockedDate?: string | null;
+  description?: string | null;
+  scope?: string | null;
+  municipalityId?: string | null;
+  kind?: string | null;
+};
+
 type SaveBlockedDatePayload = {
+  action?: "BATCH_IMPORT";
+  rows?: BlockedDateBatchImportRow[];
   id?: string | null;
   blockedDate?: string | null;
   description?: string | null;
@@ -596,6 +608,80 @@ function validateSavePayload(body: SaveBlockedDatePayload) {
   } as const;
 }
 
+
+/**
+ * Cadastro em massa. Percorre as linhas chamando a MESMA RPC do cadastro
+ * unitario, entao nao existe caminho de escrita alternativo: toda linha passa
+ * pelas mesmas validacoes, pelo mesmo historico e pelos mesmos indices unicos.
+ *
+ * Nao e transacao unica de proposito: uma linha ruim no meio do arquivo nao pode
+ * descartar as boas. O resultado volta linha a linha e a tela monta o CSV de
+ * erros com o numero da linha do arquivo original.
+ */
+async function importBlockedDateBatch(params: {
+  supabase: SupabaseClient;
+  tenantId: string;
+  actorUserId: string;
+  rows: BlockedDateBatchImportRow[];
+}) {
+  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
+  // Mesma chave dos indices unicos parciais da migration 424. O banco tambem
+  // barraria, mas ai a mensagem seria a de duplicidade no tenant, e o usuario
+  // procuraria o conflito no cadastro em vez de no proprio arquivo.
+  const seenKeys = new Set<string>();
+  let savedCount = 0;
+
+  for (const [index, row] of params.rows.entries()) {
+    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
+    const parsed = validateSavePayload(row);
+
+    if (parsed.error) {
+      results.push({ rowNumber, success: false, message: parsed.error, code: "INVALID_ROW" });
+      continue;
+    }
+
+    const key = `${parsed.blockedDate}|${parsed.scope}|${parsed.municipalityId ?? ""}`;
+    if (seenKeys.has(key)) {
+      results.push({
+        rowNumber,
+        success: false,
+        message: "Data duplicada no arquivo para a mesma abrangencia.",
+        code: "DUPLICATE_IN_FILE",
+      });
+      continue;
+    }
+    seenKeys.add(key);
+
+    const saveResult = await saveBlockedDateViaRpc({
+      supabase: params.supabase,
+      tenantId: params.tenantId,
+      actorUserId: params.actorUserId,
+      blockedDateId: null,
+      blockedDate: parsed.blockedDate,
+      description: parsed.description,
+      scope: parsed.scope,
+      municipalityId: parsed.municipalityId,
+      kind: parsed.kind,
+      expectedUpdatedAt: null,
+    });
+
+    if (!saveResult.ok) {
+      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
+      continue;
+    }
+
+    savedCount += 1;
+    results.push({ rowNumber, success: true, message: saveResult.message });
+  }
+
+  return {
+    success: true,
+    savedCount,
+    errorCount: results.filter((result) => !result.success).length,
+    results,
+  };
+}
+
 export async function handleCreateBlockedDate(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -607,13 +693,48 @@ export async function handleCreateBlockedDate(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const { supabase, appUser } = resolution;
+    const body = (await request.json().catch(() => ({}))) as SaveBlockedDatePayload;
+
+    if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
+      const importAuthorizationError = await authorizePageAction(resolution, BLOCKED_DATES_PAGE_KEY, "import");
+      if (importAuthorizationError) {
+        return importAuthorizationError;
+      }
+
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+      if (!rows.length) {
+        return NextResponse.json({ message: "Nenhuma linha valida enviada para cadastro em massa." }, { status: 400 });
+      }
+
+      if (rows.length > MASS_IMPORT_ROW_LIMIT) {
+        return NextResponse.json(
+          { message: `Cadastro em massa limitado a ${MASS_IMPORT_ROW_LIMIT} linhas por arquivo.` },
+          { status: 400 },
+        );
+      }
+
+      const batchResult = await importBlockedDateBatch({
+        supabase,
+        tenantId: appUser.tenant_id,
+        actorUserId: appUser.id,
+        rows,
+      });
+
+      return NextResponse.json({
+        ...batchResult,
+        message:
+          batchResult.errorCount > 0
+            ? `Cadastro em massa processado com ${batchResult.savedCount} datas bloqueadas salvas e ${batchResult.errorCount} linhas com erro.`
+            : `Cadastro em massa concluido com ${batchResult.savedCount} datas bloqueadas salvas.`,
+      });
+    }
+
     const authorizationError = await authorizePageAction(resolution, BLOCKED_DATES_PAGE_KEY, "create");
     if (authorizationError) {
       return authorizationError;
     }
 
-    const { supabase, appUser } = resolution;
-    const body = (await request.json().catch(() => ({}))) as SaveBlockedDatePayload;
     const parsed = validateSavePayload(body);
 
     if (parsed.error) {

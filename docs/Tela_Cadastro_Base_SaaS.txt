@@ -174,3 +174,6 @@ Atualizacao 2026-09-10 - Datas Bloqueadas
   `Visualizacao Programacao` apenas como AVISO: nenhuma RPC de programacao
   recusa a data.
 - Detalhe completo em `docs/Tela_Datas_Bloqueadas_SaaS.txt`.
+
+- Cadastro em massa por CSV disponivel desde 2026-09-10, no padrao das demais
+  telas de Cadastros. Colunas: data, descricao, abrangencia, municipio e tipo.

@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ActionIcon } from "@/components/ui/ActionIcon";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
@@ -15,6 +16,8 @@ import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import styles from "../pessoas/PeoplePageView.module.css";
 import { formatBlockedDateShort } from "./blockedDates";
 import { buildBlockedDatesCsv } from "./csv";
+import { BLOCKED_DATE_MASS_IMPORT_COLUMNS_HINT } from "./massImport";
+import { useBlockedDatesMassImport } from "./useBlockedDatesMassImport";
 import {
   BLOCKED_DATE_KIND_LABELS,
   BLOCKED_DATE_SCOPE_LABELS,
@@ -281,6 +284,19 @@ export function BlockedDatesPageView() {
   useEffect(() => {
     void loadBlockedDates(page, activeFilters);
   }, [activeFilters, loadBlockedDates, page]);
+
+  // As opcoes de municipio saem da propria listagem, entao o import so resolve
+  // nome -> id depois da primeira carga da tela.
+  const massImport = useBlockedDatesMassImport({
+    accessToken: session?.accessToken ?? null,
+    municipalities,
+    onImported: async () => {
+      await loadBlockedDates(1, activeFilters);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+    onError: (error) => logError("Falha ao importar datas bloqueadas em massa.", error),
+  });
 
   function resetForm() {
     setForm(INITIAL_FORM);
@@ -605,6 +621,11 @@ export function BlockedDatesPageView() {
             <button type="submit" className={styles.primaryButton} disabled={isSaving}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={massImport.open}>
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -947,6 +968,12 @@ export function BlockedDatesPageView() {
           </article>
         </div>
       ) : null}
+
+      <MassImportModal
+        controller={massImport}
+        entityLabel="datas bloqueadas"
+        columnsHint={BLOCKED_DATE_MASS_IMPORT_COLUMNS_HINT}
+      />
     </section>
   );
 }
