@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { useActiveBlockedDates } from "@/modules/dashboard/datas-bloqueadas";
 
+import { BlockedDateNotice } from "./components/BlockedDateNotice";
 import { StageCard, StageFormPanel } from "./components";
 import {
   AddTeamModal,
@@ -29,7 +31,7 @@ import {
 } from "./hooks";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { buildReasonText, isFormReadyToSave, isTimeRangeValid } from "./validators";
-import { findActiveCompletedStage, isOnHoldStage, sortStagesByDate, toIsoDate } from "./utils";
+import { addDaysIso, findActiveCompletedStage, isOnHoldStage, sortStagesByDate, toIsoDate } from "./utils";
 import type { FeedbackState, ProgrammingStage, StageDocument, StageTeam } from "./types";
 
 function findDocumentEntry(documents: StageDocument[], documentType: StageDocument["documentType"]) {
@@ -168,6 +170,23 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
     const blankAllowed = new Set(allowBlankForemanTeamIds);
     return form.teamIds.every((teamId) => Boolean(form.teamForemanIds[teamId]) || blankAllowed.has(teamId));
   }, [allowBlankForemanTeamIds, form.teamForemanIds, form.teamIds]);
+  // Janela das datas bloqueadas: um mes para tras (corrigir data aceita passado)
+  // e um ano para frente. Fica dentro do teto de 400 dias do endpoint.
+  const blockedDatesWindow = useMemo(
+    () => ({ from: addDaysIso(today, -30), to: addDaysIso(today, 365) }),
+    [today],
+  );
+  const { blockedDates } = useActiveBlockedDates({
+    accessToken,
+    from: blockedDatesWindow.from,
+    to: blockedDatesWindow.to,
+  });
+  // Municipio do projeto: e ele que decide se uma data MUNICIPAL avisa aqui.
+  const projectCity = useMemo(
+    () => meta?.projects.find((item) => item.id === projectId)?.city ?? null,
+    [meta?.projects, projectId],
+  );
+
   const addTeamAvailableTeams = addTeamTarget
     ? teams.filter((team) => !addTeamTarget.teams.some((active) => active.teamId === team.id && active.status === "ATIVA"))
     : [];
@@ -459,6 +478,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         </div>
       ) : null}
 
+      <BlockedDateNotice blockedDates={blockedDates} isoDate={form.executionDate} cityName={projectCity} />
+
       <div className={styles.board}>
         <StageFormPanel
           form={form}
@@ -531,6 +552,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         reasonNotes={postponeReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice blockedDates={blockedDates} isoDate={postponeDate} cityName={projectCity} />
+        }
         onClose={() => setPostponeTarget(null)}
         onConfirm={confirmPostpone}
         onModeChange={setPostponeMode}
@@ -560,6 +584,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         reasonNotes={postponeTeamReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice blockedDates={blockedDates} isoDate={postponeTeamDate} cityName={projectCity} />
+        }
         onClose={() => setPostponeTeamTarget(null)}
         onConfirm={confirmPostponeTeam}
         onNewDateChange={setPostponeTeamDate}
@@ -596,6 +623,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         newDate={correctDateValue}
         reason={correctDateReason}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice blockedDates={blockedDates} isoDate={correctDateValue} cityName={projectCity} />
+        }
         onClose={() => setCorrectDateTarget(null)}
         onConfirm={confirmCorrectDate}
         onNewDateChange={setCorrectDateValue}

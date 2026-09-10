@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import styles from "../../ProgrammingNormalizedPageView.module.css";
 import { isReasonSelectionValid } from "../../validators";
 import type { ReasonOptionItem } from "../../types";
@@ -19,6 +21,9 @@ export function PostponeModal(props: {
   reasonNotes: string;
   reasonOptions: ReasonOptionItem[];
   isSubmitting: boolean;
+  // Aviso de data bloqueada, montado pelo chamador (que conhece o municipio do
+  // projeto). Fica null quando a data escolhida nao esta bloqueada.
+  blockedDateNotice?: ReactNode;
   onClose: () => void;
   onConfirm: () => void;
   onModeChange: (value: "DATE" | "HOLD") => void;
@@ -26,7 +31,7 @@ export function PostponeModal(props: {
   onReasonCodeChange: (value: string) => void;
   onReasonNotesChange: (value: string) => void;
 }) {
-  const { isOpen, mode, isResumeFromHold = false, newDate, reasonCode, reasonNotes, reasonOptions, isSubmitting, onClose, onConfirm, onModeChange, onNewDateChange, onReasonCodeChange, onReasonNotesChange } = props;
+  const { isOpen, mode, isResumeFromHold = false, newDate, reasonCode, reasonNotes, reasonOptions, isSubmitting, blockedDateNotice = null, onClose, onConfirm, onModeChange, onNewDateChange, onReasonCodeChange, onReasonNotesChange } = props;
   if (!isOpen) return null;
 
   const selectedReason = reasonOptions.find((item) => item.code === reasonCode);
@@ -67,6 +72,7 @@ export function PostponeModal(props: {
               <input type="date" value={newDate} onChange={(event) => onNewDateChange(event.target.value)} disabled={isSubmitting} />
             </label>
           ) : null}
+          {mode === "DATE" ? blockedDateNotice : null}
           <label className={styles.field}>
             <span>Motivo</span>
             <select value={reasonCode} onChange={(event) => onReasonCodeChange(event.target.value)} disabled={isSubmitting}>

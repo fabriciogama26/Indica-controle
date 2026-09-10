@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { downloadCsvFile } from "@/lib/utils/csv";
+import { getMonthWindow, useActiveBlockedDates } from "@/modules/dashboard/datas-bloqueadas";
 import {
   buildDeadlineCsvContent,
   DEADLINE_CAROUSEL_PAGE_SIZE,
@@ -20,6 +21,7 @@ import {
   type DeadlineStatus,
   type DeadlineViewMode,
 } from "./deadline";
+import { BlockedDatesMonthPanel } from "./components/BlockedDatesMonthPanel";
 import { ProgrammingDeadlineModal } from "./components/ProgrammingDeadlineModal";
 import { ProgrammingDeadlinePanel } from "./components/ProgrammingDeadlinePanel";
 import { ProjectMiniCard } from "./components/ProjectMiniCard";
@@ -109,6 +111,14 @@ export function MapProgrammingPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("mapa_programacao");
   const today = useMemo(() => toIsoDate(new Date()), []);
+  // Mes VIGENTE, nao o periodo filtrado: o pedido e avisar o que nao se pode
+  // programar neste mes, independente da janela que o usuario esta olhando.
+  const currentMonthWindow = useMemo(() => getMonthWindow(today), [today]);
+  const { blockedDates: monthBlockedDates, isLoading: isLoadingBlockedDates } = useActiveBlockedDates({
+    accessToken: session?.accessToken ?? null,
+    from: currentMonthWindow.from,
+    to: currentMonthWindow.to,
+  });
   const [draftFilters, setDraftFilters] = useState<FilterState>({
     startDate: "",
     endDate: "",
@@ -583,6 +593,12 @@ export function MapProgrammingPageView() {
           </button>
         </div>
       </article>
+
+      <BlockedDatesMonthPanel
+        blockedDates={monthBlockedDates}
+        monthStartDate={currentMonthWindow.from}
+        isLoading={isLoadingBlockedDates}
+      />
 
       <article className={styles.card}>
         <div className={styles.filterGrid}>

@@ -7,6 +7,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatWorksheetDateColumn } from "@/lib/utils/xlsx";
+import { useActiveBlockedDates } from "@/modules/dashboard/datas-bloqueadas";
 
 import {
   AddTeamModal,
@@ -29,6 +30,7 @@ import {
   useProgrammingStageActions,
   useProgrammingStageList,
 } from "./hooks";
+import { BlockedDateNotice } from "./components/BlockedDateNotice";
 import { ListFiltersBar, SobEntryBar, StageListTable } from "./listComponents";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { ProgrammingWeeklyCalendarPanel } from "./components/ProgrammingWeeklyCalendarPanel";
@@ -184,6 +186,24 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
 
     return map;
   }, [isConsultaMode, weekStages, weekDates]);
+  // Duas janelas, cada uma so onde e usada.
+  // Modais de data (modo cadastro): um mes atras ate um ano a frente.
+  // Calendario Semanal (modo consulta): a semana EXIBIDA, que o usuario navega
+  // livremente — uma janela fixa em torno de hoje deixaria de avisar assim que
+  // ele passasse do intervalo.
+  const { blockedDates } = useActiveBlockedDates({
+    accessToken,
+    from: addDaysIso(today, -30),
+    to: addDaysIso(today, 365),
+    enabled: !isConsultaMode,
+  });
+  const { blockedDates: weekBlockedDates } = useActiveBlockedDates({
+    accessToken,
+    from: weekStartDate,
+    to: addDaysIso(weekStartDate, 6),
+    enabled: isConsultaMode,
+  });
+
   const calendarTeams = useMemo(
     () => [...teams].sort((left, right) => left.name.localeCompare(right.name)),
     [teams],
@@ -529,6 +549,7 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
           weekDates={weekDates}
           calendarTeams={calendarTeams}
           weeklyStageMap={weeklyStageMap}
+          blockedDates={weekBlockedDates}
           sgdTypes={sgdTypes}
           isLoading={isLoadingWeek}
           onPreviousWeek={() => setWeekStartDate((current) => addDaysIso(current, -7))}
@@ -607,6 +628,13 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
         reasonNotes={postponeReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice
+            blockedDates={blockedDates}
+            isoDate={postponeDate}
+            cityName={postponeTarget?.city ?? null}
+          />
+        }
         onClose={() => setPostponeTarget(null)}
         onConfirm={confirmPostpone}
         onModeChange={setPostponeMode}
@@ -648,6 +676,13 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
         reasonNotes={postponeTeamReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice
+            blockedDates={blockedDates}
+            isoDate={postponeTeamDate}
+            cityName={postponeTeamTarget?.stage.city ?? null}
+          />
+        }
         onClose={() => setPostponeTeamTarget(null)}
         onConfirm={confirmPostponeTeam}
         onNewDateChange={setPostponeTeamDate}

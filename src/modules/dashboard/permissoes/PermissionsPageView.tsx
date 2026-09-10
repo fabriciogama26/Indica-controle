@@ -167,6 +167,12 @@ const permissionCatalog = [
     path: "/motivo-sem-producao",
     section: "Cadastro Base",
   },
+  {
+    pageKey: "datas-bloqueadas",
+    label: "Datas Bloqueadas",
+    path: "/datas-bloqueadas",
+    section: "Cadastro Base",
+  },
   { pageKey: "tipo-equipe", label: "Tipo de Equipe", path: "/tipo-equipe", section: "Cadastro Base" },
   { pageKey: "imei", label: "Imei", path: "/imei", section: "Cadastro Base" },
   { pageKey: "tipo-servico", label: "Tipo de Servico", path: "/tipo-servico", section: "Cadastro Base" },

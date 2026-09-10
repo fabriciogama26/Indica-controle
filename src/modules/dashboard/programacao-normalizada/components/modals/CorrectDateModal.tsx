@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import styles from "../../ProgrammingNormalizedPageView.module.css";
 import { formatDate } from "../../utils";
 import type { ProgrammingStage } from "../../types";
@@ -9,12 +11,14 @@ export function CorrectDateModal(props: {
   newDate: string;
   reason: string;
   isSubmitting: boolean;
+  // Ver PostponeModal: aviso montado pelo chamador, sem travar a confirmacao.
+  blockedDateNotice?: ReactNode;
   onClose: () => void;
   onConfirm: () => void;
   onNewDateChange: (value: string) => void;
   onReasonChange: (value: string) => void;
 }) {
-  const { target, newDate, reason, isSubmitting, onClose, onConfirm, onNewDateChange, onReasonChange } = props;
+  const { target, newDate, reason, isSubmitting, blockedDateNotice = null, onClose, onConfirm, onNewDateChange, onReasonChange } = props;
   if (!target) return null;
 
   return (
@@ -37,6 +41,7 @@ export function CorrectDateModal(props: {
             <span>Data correta <span className="requiredMark">*</span></span>
             <input type="date" value={newDate} onChange={(event) => onNewDateChange(event.target.value)} disabled={isSubmitting} />
           </label>
+          {blockedDateNotice}
           <label className={styles.field}>
             <span>Motivo <span className="requiredMark">*</span></span>
             <textarea value={reason} onChange={(event) => onReasonChange(event.target.value)} disabled={isSubmitting} />

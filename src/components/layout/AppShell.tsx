@@ -85,6 +85,7 @@ const menuSections = [
       { href: "/categoria-atividade", label: "Categoria de Atividade", icon: "settings" },
       { href: "/grupo-atividade", label: "Grupo de Atividade", icon: "settings" },
       { href: "/motivo-sem-producao", label: "Motivo sem producao", icon: "settings" },
+      { href: "/datas-bloqueadas", label: "Datas Bloqueadas", icon: "calendar" },
       { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
@@ -280,6 +281,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/motivo-sem-producao": {
     title: "Motivo sem producao",
     subtitle: "Cadastro base dos motivos usados em ordens sem producao.",
+  },
+  "/datas-bloqueadas": {
+    title: "Datas Bloqueadas",
+    subtitle: "Cadastro base das datas em que a operacao nao deve programar.",
   },
   "/tipo-equipe": {
     title: "Tipo de Equipe",

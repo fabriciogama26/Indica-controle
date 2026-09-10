@@ -1811,3 +1811,36 @@ Atualizacao 2026-09-09 - Filtro por Tipo de equipe no bloco Equipes
   COMERCIAL e conferir que a marcada continua visivel e que `Marcar visiveis` so pega
   as comerciais; no modal `Adicionar equipe`, escolher uma equipe e trocar o filtro
   para a outra categoria, conferindo que a escolha limpa e o `Concluir` fica travado.
+
+Atualizacao 2026-09-10 - Aviso de data bloqueada nos campos de data
+-------------------------------------------------------------------
+- Origem: tela nova `Datas Bloqueadas` (`/datas-bloqueadas`, migration 424).
+  Detalhe completo em `docs/Tela_Datas_Bloqueadas_SaaS.txt`.
+- AVISO, NAO TRAVA. Nenhuma RPC mudou: `save_project_programming_stage`,
+  `postpone_project_programming_stage`, `postpone_project_programming_team` e
+  `correct_project_programming_stage_date` continuam aceitando qualquer data.
+  O componente novo nao desabilita botao nem invalida formulario.
+- `BlockedDateNotice` (`components/BlockedDateNotice.tsx`) aparece em quatro
+  campos de data:
+  - formulario de etapa, no `ProjectPlanView`, logo acima do quadro;
+  - `Adiar etapa` (`PostponeModal`), somente no modo `Nova data`;
+  - `Adiar equipe` (`PostponeTeamModal`);
+  - `Corrigir data` (`CorrectDateModal`).
+- Os tres modais ganharam a prop opcional `blockedDateNotice?: ReactNode`. Quem
+  monta o aviso e o CHAMADOR, porque so ele conhece o municipio do projeto: o
+  `ProjectPlanView` tira de `meta.projects`, e a listagem tira do `city` do
+  `StageListItem`. Os modais continuam sem regra de negocio.
+- Regra de exibicao: data `NACIONAL` sempre avisa; `MUNICIPAL` so avisa quando o
+  municipio do projeto casa. O casamento e por NOME normalizado, nao por id, e
+  os dois lados leem `project_municipalities.name` ao vivo -- renomear um
+  municipio move os dois juntos, e `unique (tenant_id, name_normalized)` impede
+  homonimos no tenant.
+- Fonte do dado: `useActiveBlockedDates` sobre `GET /api/blocked-dates/vigentes`,
+  janela de hoje menos 30 dias ate hoje mais 365 dias. Data escolhida fora dessa
+  janela nao recebe aviso -- limitacao conhecida e aceita, porque o endpoint tem
+  teto de 400 dias por consulta.
+- Permissao inalterada: a leitura das datas bloqueadas aceita o `page_key` desta
+  tela via `authorizeAnyPageAction`, entao quem programa nao precisa de acesso ao
+  cadastro `datas-bloqueadas`.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros, 2 warnings
+  legados) e `npm run build`.

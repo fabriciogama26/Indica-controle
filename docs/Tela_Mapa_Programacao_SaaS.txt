@@ -782,3 +782,30 @@ Atualizacao 2026-09-02 - Estado Trabalho da obra ignora etapa de pendencia
   encarregado, rotulo de etapa, `interrupted` e `hasFutureActiveProgramming`.
 - Sem migration, RLS, grant ou permissao nova. Rota segue sob `mapa-programacao/read`
   e `tenant_id` derivado da sessao.
+
+Atualizacao 2026-09-10 - Painel de datas bloqueadas do mes vigente
+------------------------------------------------------------------
+- Origem: tela nova `Datas Bloqueadas` (`/datas-bloqueadas`, migration 424).
+  Detalhe completo em `docs/Tela_Datas_Bloqueadas_SaaS.txt`.
+- `BlockedDatesMonthPanel` (`components/BlockedDatesMonthPanel.tsx`) entra logo
+  abaixo da barra de acoes rapidas, antes do card de filtros, listando as datas
+  bloqueadas do MES VIGENTE.
+- Mes vigente, NAO o periodo filtrado: o pedido e avisar o que nao se pode
+  programar neste mes, independente da janela que o usuario esta olhando. A
+  janela sai de `getMonthWindow(today)`.
+- Aqui as datas `MUNICIPAL` aparecem TODAS, com o municipio no rotulo, e nao
+  filtradas pelo municipio do projeto como na Programacao. Motivo: o Mapa e visao
+  de carteira, com obras de varios municipios na mesma tela, entao nao existe um
+  municipio unico contra o qual filtrar.
+- O painel e informativo. Nada no Mapa depende dele e nenhuma escrita mudou.
+- `src/app/api/mapa-programacao/route.ts` NAO foi tocado. Ele tem 722 linhas e
+  concentra regra de negocio, o que ja contraria a regra 5 do CLAUDE.md (rota
+  delega, nao decide); o painel consome o endpoint proprio
+  `GET /api/blocked-dates/vigentes` em vez de fazer aquele arquivo crescer.
+- Permissao: a leitura aceita o `page_key` `mapa-programacao` via
+  `authorizeAnyPageAction`, entao quem abre o Mapa ve o painel sem precisar de
+  acesso ao cadastro `datas-bloqueadas`.
+- Estilos novos em `MapProgrammingPageView.module.css`: `.blockedDatesList`,
+  `.blockedDateItem` e a variante para telas ate 720px.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros, 2 warnings
+  legados) e `npm run build`.

@@ -465,3 +465,52 @@
     align-items: stretch;
   }
 }
+
+/* Painel de datas bloqueadas do mes (migration 424). Vermelho de aviso: a data
+   continua gravavel na Programacao, o painel apenas sinaliza. */
+.blockedDatesList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.blockedDateItem {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(179, 38, 30, 0.28);
+  background: rgba(179, 38, 30, 0.08);
+}
+
+.blockedDateItem strong {
+  color: #8c1d18;
+  font-size: 0.9rem;
+}
+
+.blockedDateItem span {
+  color: #4a2320;
+  font-size: 0.86rem;
+}
+
+.blockedDateItem small {
+  color: #8c1d18;
+  font-size: 0.76rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .blockedDateItem {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .blockedDateItem small {
+    text-align: left;
+  }
+}

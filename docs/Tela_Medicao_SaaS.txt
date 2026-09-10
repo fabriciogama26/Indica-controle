@@ -45,6 +45,7 @@ Arquitetura
   - `supabase/migrations/204_preserve_measurement_work_completion_snapshot.sql`
   - `supabase/migrations/293_create_measurement_project_activity_indicators.sql`
   - `supabase/migrations/331_prevent_duplicate_active_measurement_items.sql`
+  - `supabase/migrations/423_backfill_measurement_project_activity_indicators.sql`
 
 Cadastro
 --------
@@ -1824,3 +1825,28 @@ Atualizacao 2026-09-09 - Autor do historico em usuario multi-tenant
 - `fetchAppUserMap` em `src/server/modules/medicao/queries.ts` passou a resolver autores de historico/lista/detalhe pelo helper compartilhado `fetchTenantLinkedAppUsers`, que tambem cobre outras telas editaveis com historico/autoria.
 - Causa: usuario/admin multi-tenant opera no tenant ativo, mas o `created_by`/`updated_by` gravado e o `app_users.id` home do usuario. A leitura antiga buscava esse id somente em `app_users.tenant_id = tenant ativo`, entao exibia `Nao identificado`.
 - O fallback so aceita ids que tenham vinculo ativo em `app_user_tenants` para o tenant da tela. Sem mudanca de schema, RLS, permissao ou contrato de API.
+
+Atualizacao 2026-09-10 - Chips de codigo sumidos no cadastro por tenant sem seed
+--------------------------------------------------------------------------------
+- Sintoma: no cadastro da Medicao, ao selecionar um projeto valido, nenhum chip de
+  codigo aparecia embaixo do campo `Projeto`. So o espaco reservado do bloco
+  (`min-height: 22px`) continuava la, empurrando o campo `Projeto` alguns pixels acima
+  dos demais campos da linha.
+- Causa: o seed da migration 293 usou `cross join public.tenants` e alcancou apenas os
+  tenants existentes naquela data. Tenant criado depois ficou com zero linhas em
+  `measurement_project_activity_indicators`, entao
+  `GET /api/medicao/project-activity-usage` respondia 200 com `items: []` e o `.map()`
+  do `MeasurementPageView` nao tinha o que renderizar. Como a resposta era 200, nao
+  havia mensagem de erro na tela.
+- Correcao: `supabase/migrations/423_backfill_measurement_project_activity_indicators.sql`
+  semeia `AHO717` e `AHO720` para todo tenant sem nenhuma linha na tabela, com
+  `not exists` por tenant e `on conflict do nothing`. Tenant que ja configurou os
+  proprios codigos, inclusive quem desativou algum de proposito, nao e alterado.
+- Sem alteracao de frontend, rota, RPC, RLS ou permissao. A tela ja lia a tabela
+  corretamente; o que faltava era o dado de configuracao do tenant.
+- Risco residual conhecido: o backfill corrige os tenants atuais, mas nao existe rotina
+  de provisionamento que semeie a tabela para um tenant novo. Tenant criado depois desta
+  migration volta a abrir a Medicao sem chip ate receber as linhas.
+- Arquivos alterados:
+  `supabase/migrations/423_backfill_measurement_project_activity_indicators.sql`,
+  `supabase/migrations/README.txt` e `docs/Tela_Medicao_SaaS.txt`.
