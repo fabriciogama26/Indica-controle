@@ -158,6 +158,8 @@ vercel --prod
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, checkbox `CMD` para `RELIGADOR`, importacao CSV em massa, pendencia de identificacao para materiais rastreaveis sem LP quando permitido e estorno individual ou atomico em lote.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por um ou mais projetos/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, filtros por periodo/projeto/equipe/situacao, acao `Fazer medicao`, detalhes, historico e CSV.
   - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
+  - `(dashboard)/permissao-intervencao/page.tsx`: rota do cadastro da Permissao de Intervencao. Em construcao: exibe o roteiro do modulo enquanto a entidade `permission_intervention` nao existe.
+  - `(dashboard)/modelo-pi/page.tsx`: rota de Cadastro Base com as versoes do template Word da PI: upload com conferencia das 129 tags, ativacao de uma unica versao por contrato e geracao de documento de demonstracao para conferir o layout no Word.
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
   - `(dashboard)/requisicao-solicitacao/page.tsx`: rota de Solicitacao de Requisicao para abertura de pedidos de material ao almoxarifado.
   - `(dashboard)/requisicao-atendimento/page.tsx`: rota de Atendimento de Requisicoes para aceitar, reduzir ou recusar itens solicitados.
@@ -197,6 +199,8 @@ vercel --prod
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/medicao/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa ordens de medicao, incluindo os modos `Com producao` e `Sem producao`, filtros por Tipo de Servico e Atividade, exclusao de obras de teste das consolidacoes de ordens/valor e cruzamento ativo com a Composicao de Equipe por tenant, projeto principal legado, equipe e data de execucao.
   - `api/controle-apr/route.ts`: carrega projetos/equipes, lista APRs do tenant, salva por RPC, vincula a Programacao do dia, confere, marca divergencia, cancela e fornece os dados para extracao Excel.
+  - `api/permissao-intervencao/templates/route.ts`: lista as versoes do template da PI, recebe upload `.docx` com conferencia de tags antes de gravar no Storage e ativa uma versao por RPC.
+  - `api/permissao-intervencao/templates/preview/route.ts`: gera o DOCX de demonstracao a partir do template ativo do tenant, com dados montados no servidor.
   - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao`, tipos de servico ativos dos projetos e catalogo de Estado Trabalho por tenant; com `?includeSources=1` devolve tambem projetos e equipes ativos para os filtros da tela Visualizacao Medicao.
   - `api/medicao/export/route.ts`: gera server-side os CSVs `summary`, `details` e `score` da Medicao a partir dos filtros da tela, aceitando a permissao `medicao/export` ou `medicao-visualizacao/export`.
   - `api/medicao/activities/catalog/route.ts`: pesquisa atividades ativas para inclusao manual ou importacao da Medicao.
@@ -325,6 +329,10 @@ vercel --prod
 - `src/modules/dashboard/controle-apr/`
   - `AprControlPageView.tsx`: cadastro, filtros, lista, validacao, divergencia, cancelamento e extracao `.xlsx` do Controle de APR.
   - `AprControlPageView.module.css`: estilos da tela no padrao visual da Medicao.
+- `src/modules/dashboard/modelo-pi/`
+  - `PiTemplatePageView.tsx`: painel de versoes do template Word da PI, com upload, relatorio de conferencia das tags, ativacao e geracao do documento de demonstracao.
+  - `PiTemplatePageView.module.css`: estilos da tela.
+  - `api.ts`, `types.ts` e `index.ts`: cliente HTTP, contratos e fachada publica do modulo.
 - `src/modules/dashboard/composicao-equipe/`
   - `TeamCompositionPageView.tsx`: composicao diaria de equipes por data, projeto, integrantes, presenca, historico, exportacao e atalho para Medicao.
   - `TeamCompositionPageView.module.css`: estilos da tela de Composicao de Equipe.
@@ -462,6 +470,10 @@ vercel --prod
   - `piTemplateTags.ts`: contrato das 129 tags do template Word da Permissao de Intervencao, lista de tags obrigatorias e regra de ativacao de versao.
   - `types.ts`: `PiDocumentData`, modelo de dominio do documento — fronteira entre o banco e o Word.
   - `piTemplateMapper.ts`: traduz `PiDocumentData` nas 129 tags, com helper de caixa de selecao, formatacao de data/hora e distribuicao das 23 linhas do Plano de Execucao.
+  - `piTemplateStorage.ts`: acesso ao bucket privado `pi-templates`, com o caminho derivado no servidor a partir do tenant, upload com `contentType` explicito, download e limpeza de objeto orfao.
+  - `piDemoDocument.ts`: conjunto de demonstracao usado pela rota de preview e por `scripts/pi-docx-verify.mjs`.
+  - `templates.ts`: listagem, upload com conferencia de tags, ativacao de versao e geracao do DOCX de demonstracao.
+  - `index.ts`: fachada publica do modulo server-side.
 - `src/server/modules/warehouse-addressing/`
   - `handlers.ts` e `types.ts`: backend compartilhado do Mapa do Almoxarifado e da Configuracao do mapa.
 - `src/services/auth/`
@@ -517,6 +529,8 @@ vercel --prod
   - `Tela_Visualizacao_Programacao_SaaS.txt`: documentacao da visualizacao semanal da Programacao.
   - `Tela_Mapa_Programacao_SaaS.txt`: documentacao do Mapa de Programacao.
   - `Tela_Cronograma_Solicitacoes_SaaS.txt`: documentacao do Cronograma de Solicitacoes.
+  - `Tela_Permissao_Intervencao_SaaS.txt`: documentacao do cadastro da Permissao de Intervencao, com as decisoes de negocio travadas e as fases pendentes.
+  - `Tela_Modelo_PI_SaaS.txt`: documentacao do Modelo de PI (template Word, conferencia de tags e geracao do documento).
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Tela_Medicao_Asbuilt_SaaS.txt`: documentacao da Medicao Asbuilt.
   - `Tela_Faturamento_SaaS.txt`: documentacao da tela de Faturamento.

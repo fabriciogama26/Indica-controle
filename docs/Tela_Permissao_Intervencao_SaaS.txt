@@ -1,0 +1,58 @@
+Tela: Permissao de Intervencao
+
+Visao geral
+-----------
+- A Permissao de Intervencao (PI) e um documento operacional vinculado a Projeto + Data da etapa.
+- A tela e o CADASTRO da PI: listagem, nova PI a partir da Programacao ou sem Programacao, formulario completo, plano de execucao e emissao do documento.
+- EM CONSTRUCAO: hoje a rota exibe `ModulePlaceholder` com o roteiro. A entidade `permission_intervention` ainda nao existe, entao nao ha emissao de PI real.
+- A camada do documento Word JA ESTA PRONTA e vive numa tela propria: `Cadastro Base > Modelo de PI` (`/modelo-pi`). Ver `Tela_Modelo_PI_SaaS.txt`.
+- Rota: `/permissao-intervencao`, secao `Operacao` do menu.
+
+Arquitetura (estado atual)
+--------------------------
+- Rota: `src/app/(dashboard)/permissao-intervencao/page.tsx` (placeholder)
+- Dominio server-side ja existente: `src/server/modules/permissao-intervencao/` — contrato de tags, mapper, storage e handlers do template.
+- Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
+- Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql` e `supabase/migrations/427_split_pi_template_screen.sql`
+- Navegacao/autorizacao:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Contrato de permissao
+---------------------
+- `page_key`: `permissao-intervencao`, com `default_user_access = false`.
+- Quando a tela existir, esse unico `page_key` deve liberar menu, listagem, detalhe, historico, formulario e emissao do documento.
+- A geracao do documento le o template ativo, que pertence a tela `modelo-pi`. O endpoint NAO pode exigir `modelo-pi`: precisa aceitar as duas chaves via `authorizeAnyPageAction`, senao a tela abre e a propria acao dela toma 403 — o caso que o "Padrao de permissao por tela" do CLAUDE.md proibe.
+
+Decisoes de negocio ja travadas
+-------------------------------
+- IDENTIDADE: UUID nativo. O vinculo com a Programacao e sempre pelo UUID da linha da etapa, nunca pelo rotulo calculado (`Etapa 2`, `Final`, `Unica`), que e derivado e muda quando outra etapa e cancelada ou adiada.
+- VINCULO: a busca e por `tenant_id + project_id + work_date`, filtrando etapa ATIVA (`PROGRAMADA`/`REPROGRAMADA`). O indice parcial `programming_active_project_date_key` (migration 346) garante no maximo UMA etapa ativa por projeto+data, entao a busca nunca e ambigua. Etapa CANCELADA ou ADIADA nao serve para vincular, e um vinculo historico nunca e trocado em silencio.
+- PI SEM PROGRAMACAO: nasce `PENDING`, e a RPC reconsulta a Programacao no momento de salvar (fecha a janela de corrida). Quando a etapa daquela data for criada depois, o vinculo e feito SEM sobrescrever os dados ja preenchidos na PI.
+- CODIGO: `PI-RJ-[TENSAO]-[AREA]-INDICA-[SEQUENCIAL]`, com prefixo e empresa vindos de configuracao por contrato, nunca hardcoded. Sequencial gerado no Postgres com lock, e atribuido NA EMISSAO, nao no rascunho — rascunho abandonado nao pode queimar numero de documento oficial.
+- NIVEL DE TENSAO: catalogo proprio com codigo fechado (AT/MT/BT), separado de `project_voltage_levels`, que e texto livre por tenant e nao serve para marcar as caixas do Word.
+- ELEMENTOS BLOQUEADOS / DE CORTE: passam a existir na Programacao e sao HERDADOS pela PI. Editaveis na PI, e a edicao de um lado nao altera o outro.
+- DOCUMENTO PI DA PROGRAMACAO: `programming_document` do tipo `PI` e o MESMO documento. Ao emitir, a PI passa a alimentar aquele registro, e o campo deixa de ser editavel na Programacao — vira herdado.
+- INDEPENDENCIA: alterar a Programacao depois NAO altera uma PI ja criada, e editar a PI NUNCA altera a Programacao. A divergencia vira warning, nunca bloqueio.
+
+Fases pendentes
+---------------
+- FASE 1: schema da PI (identificacao, areas e tensoes N:N, plano de execucao, historico), configuracao por contrato (`pi_settings` com prefixo, empresa, digitos e Plano de Emergencia), contador do sequencial e RPCs de escrita com snapshot da Programacao de origem.
+- FASE 2: listagem com filtros e o fluxo Nova PI nos dois caminhos.
+- FASE 3: formulario completo com as oito secoes e os snapshots.
+- FASE 4: plano de execucao ordenavel, com etapas padrao vindas de modelo.
+- FASE 5: emissao real, substituindo o preview de demonstracao da tela `Modelo de PI`.
+- FASE 6: historico na UI e comparacao Programacao x PI.
+- FASE 7 (toca a Programacao, migration isolada): campos de elementos bloqueados e de corte na etapa, e o campo PI da etapa virando herdado e nao editavel.
+
+Areas que NAO sao digitalizadas
+-------------------------------
+- Recursos Envolvidos na Intervencao (Equipes e Veiculos), Protocolo de Autorizacao de Criacao e Desativacao de Area/Zona de Trabalho e Controle de Alteracoes de Responsabilidades continuam em branco no documento, para preenchimento em campo.
+- Nao ha upload de croqui, diagrama ou imagem.
+- O "Controle de Alteracoes de Responsabilidades" fisico do documento NAO substitui o historico digital da PI, que continua obrigatorio.
+
+Atualizacao 2026-09
+-------------------
+- Rota criada com `ModulePlaceholder`; `page_key` registrado pela migration 426 e mantido pela 427.
+- A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
