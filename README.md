@@ -21,8 +21,10 @@ Aplicacao web multi-tenant para operacao, almoxarifado, medicao, faturamento, pr
 - Vercel Speed Insights (`@vercel/speed-insights`)
 - Supabase JS
 - Supabase Edge Functions
+- Supabase Storage
 - TanStack React Query
 - SheetJS (XLSX)
+- Docxtemplater + PizZip (DOCX)
 - ESLint
 
 ---
@@ -431,6 +433,7 @@ vercel --prod
   - `appUsersAdmin.ts`: resolve sessao autenticada, usuario e tenant ativo nas rotas server-side.
   - `apiHelpers.ts`: helpers de resposta e autenticacao usados por Route Handlers.
   - `concurrency.ts`: normaliza `expectedUpdatedAt` e padroniza respostas `409` para conflitos de concorrencia.
+  - `docxTemplate.ts`: copia um `.docx` e preenche as tags, lista as tags declaradas e varre o resultado atras de tag nao resolvida. Infraestrutura pura, sem regra de dominio.
   - `idempotency.ts`: controle server-side de idempotencia por tenant, usuario, rota e hash do payload.
   - `locationPlanning.ts`: consolida bootstrap, leitura, apoio de execucao, riscos, wrappers das RPCs e historico tecnico da locacao.
   - `materialCatalog.ts`: consultas server-side do catalogo de materiais.
@@ -455,6 +458,10 @@ vercel --prod
   - `authorization.ts`: autorizacao compartilhada de leitura/extracao da Medicao, aceitando a permissao `medicao` ou `medicao-visualizacao`.
 - `src/server/modules/cronograma-solicitacoes/`
   - `handlers.ts`, `queries.ts`, `normalizers.ts`, `authorization.ts` e `types.ts`: backend do Cronograma de Solicitacoes.
+- `src/server/modules/permissao-intervencao/`
+  - `piTemplateTags.ts`: contrato das 129 tags do template Word da Permissao de Intervencao, lista de tags obrigatorias e regra de ativacao de versao.
+  - `types.ts`: `PiDocumentData`, modelo de dominio do documento — fronteira entre o banco e o Word.
+  - `piTemplateMapper.ts`: traduz `PiDocumentData` nas 129 tags, com helper de caixa de selecao, formatacao de data/hora e distribuicao das 23 linhas do Plano de Execucao.
 - `src/server/modules/warehouse-addressing/`
   - `handlers.ts` e `types.ts`: backend compartilhado do Mapa do Almoxarifado e da Configuracao do mapa.
 - `src/services/auth/`
@@ -481,6 +488,7 @@ vercel --prod
   - `xlsx.d.ts`: declaracao local para destravar type-check do pacote `xlsx`.
 - `public/`
   - `indica.png`: logo da tela de login.
+  - `Modelo_PI_Template_Tags.docx`: template Word da Permissao de Intervencao, mantido no repositorio como fixture da verificacao local. O template oficial em uso fica no bucket privado `pi-templates` do Supabase Storage.
   - demais `.svg`: assets padrao do scaffold.
 - `docs/`
   - `00_Indice_SaaS.txt`: indice do material de handoff.
