@@ -1654,3 +1654,15 @@ Observacao
   `EXECUTE` revogado de `public`/`anon`/`authenticated` e concedido apenas a `service_role`.
 - Valida no fim: definicao contem `commercialOrderRef` e `commercialFieldsIncluded`, e a RPC nao
   esta executavel por `anon`/`authenticated`.
+
+423_backfill_measurement_project_activity_indicators.sql
+- Semeia `AHO717` e `AHO720` em `measurement_project_activity_indicators` para todo tenant que
+  esta sem nenhuma linha na tabela.
+- Motivo: o seed da 293 usou `cross join public.tenants` e so alcancou os tenants existentes
+  naquela data. Tenant criado depois ficava com zero codigos, entao
+  `GET /api/medicao/project-activity-usage` respondia 200 com `items: []` e o cadastro da
+  Medicao nao exibia chip algum embaixo do campo `Projeto` -- sem erro na tela.
+- O insert e condicionado a `not exists` por tenant e usa `on conflict do nothing`: tenant que
+  ja configurou os proprios codigos (ou desativou algum de proposito) nao e alterado.
+- Sem nova tabela, coluna, policy, indice, RPC ou rota.
+- Valida no fim: nenhum tenant fica sem linha em `measurement_project_activity_indicators`.
