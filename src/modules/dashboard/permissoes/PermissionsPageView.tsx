@@ -120,6 +120,12 @@ const permissionCatalog = [
   { pageKey: "mapa-programacao", label: "Mapa de Programacao", path: "/mapa-programacao", section: "Operacao" },
   { pageKey: "composicao-equipe", label: "Composicao de Equipe", path: "/composicao-equipe", section: "Operacao" },
   { pageKey: "controle-apr", label: "Controle de APR", path: "/controle-apr", section: "Operacao" },
+  {
+    pageKey: "permissao-intervencao",
+    label: "Permissao de Intervencao",
+    path: "/permissao-intervencao",
+    section: "Operacao",
+  },
   { pageKey: "apuracao-fator-minimo", label: "Apuracao de Fator Minimo", path: "/apuracao-fator-minimo", section: "Operacao" },
   { pageKey: "medicao-asbuilt", label: "Medicao Asbuilt", path: "/medicao-asbuilt", section: "Operacao" },
   { pageKey: "medicao", label: "Medicao", path: "/medicao", section: "Operacao" },
@@ -167,6 +173,7 @@ const permissionCatalog = [
     path: "/motivo-sem-producao",
     section: "Cadastro Base",
   },
+  { pageKey: "modelo-pi", label: "Modelo de PI", path: "/modelo-pi", section: "Cadastro Base" },
   {
     pageKey: "datas-bloqueadas",
     label: "Datas Bloqueadas",

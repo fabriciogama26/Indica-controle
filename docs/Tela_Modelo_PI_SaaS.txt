@@ -1,0 +1,162 @@
+Tela: Modelo de PI
+
+Visao geral
+-----------
+- Cadastro base das versoes do template Word da Permissao de Intervencao (PI).
+- O documento Word NAO e a fonte dos dados: o banco e. O sistema copia o template oficial guardado no Supabase Storage e preenche as tags.
+- A tela cobre subir versao, conferir as 129 tags, ativar a versao que vale para o contrato e gerar um documento de demonstracao para conferencia visual no Word.
+- SEPARADA da tela `Permissao de Intervencao` de proposito (migration 427): trocar o modelo oficial e ato de administracao do contrato, acontece raramente e vale para o tenant inteiro; preencher a PI e rotina da operacao, por projeto e data. Juntas, seria preciso liberar a troca do modelo para todo mundo que emite PI.
+- O cadastro da PI (listagem, formulario, vinculo com a Programacao, snapshot, emissao) depende da entidade `permission_intervention`, que ainda nao existe. Ver `Tela_Permissao_Intervencao_SaaS.txt`.
+- Rota: `/modelo-pi`, secao `Cadastro Base` do menu.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/modelo-pi/page.tsx`
+- View: `src/modules/dashboard/modelo-pi/PiTemplatePageView.tsx`
+- Estilo: `src/modules/dashboard/modelo-pi/PiTemplatePageView.module.css`
+- Fachada do modulo de tela: `src/modules/dashboard/modelo-pi/index.ts`
+- Chamadas HTTP da tela: `src/modules/dashboard/modelo-pi/api.ts`
+- API: `src/app/api/permissao-intervencao/templates/route.ts` (GET/POST/PUT) e `src/app/api/permissao-intervencao/templates/preview/route.ts` (POST)
+- Backend: `src/server/modules/permissao-intervencao/` (`templates.ts`, `piTemplateStorage.ts`, `piTemplateMapper.ts`, `piTemplateTags.ts`, `piDemoDocument.ts`, `types.ts`, `index.ts`)
+- Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
+- Banco/RLS/RPC/permissao: `supabase/migrations/426_create_pi_document_template_and_page.sql` e `supabase/migrations/427_split_pi_template_screen.sql`
+- Verificacao: `scripts/pi-docx-verify.mjs`
+- Navegacao/autorizacao:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Contrato de permissao
+---------------------
+- `page_key` unico: `modelo-pi`. Cobre menu, listagem de versoes, upload, ativacao e geracao do documento de demonstracao.
+- Acoes por operacao, todas sob o MESMO `page_key`: `read` (listar versoes), `import` (enviar versao), `update` (ativar versao), `export` (gerar demonstracao).
+- NAO existe permissao granular por operacao nesta tela. Quem abre a tela usa todas as funcoes dela, conforme o "Padrao de permissao por tela" do CLAUDE.md.
+- `default_user_access = false`: a tela nasce liberada apenas para perfil admin, e a liberacao para os demais e feita na tela de Permissoes.
+- A migration 427 herdou o acesso de quem ja tinha `permissao-intervencao` quando o painel de template vivia dentro dela, para ninguem perder acesso na separacao.
+- ATENCAO PARA A FASE 1: o endpoint que gerar o documento de uma PI real pertence a tela da PI e NAO pode exigir `modelo-pi`. Precisa aceitar as duas chaves via `authorizeAnyPageAction`, senao a tela da PI abre e a geracao toma 403 — exatamente o caso que o "Padrao de permissao por tela" proibe.
+
+Template do documento
+---------------------
+- O arquivo oficial fica no bucket privado `pi-templates` do Supabase Storage.
+- Caminho do objeto: `{tenant_id}/{template_id}.docx`. O caminho e derivado NO SERVIDOR e nunca aceito do cliente.
+- A versao nao entra no caminho de proposito: ela so pode ser atribuida com seguranca dentro da transacao que insere a linha, e o caminho precisa existir antes disso.
+- O bucket e privado e nasce SEM policy em `storage.objects`. Com RLS ativa e zero policy, `anon`/`authenticated` nao alcancam o arquivo; so o `service_role` le.
+- Conferido no projeto: `service_role` baixa, `anon` lista 0 itens, `anon` nao baixa, e a URL publica direta responde 400.
+- Cada envio cria uma versao nova, que nasce INATIVA. Somente a versao ativa e usada na geracao.
+- Um unico template ativo por tenant, garantido pelo indice parcial `pi_document_template_active_per_tenant`.
+- Voltar para uma versao anterior e apenas ativa-la de novo. Versao nao e apagada.
+- `checksum_sha256` guarda o SHA-256 do arquivo gravado, para o historico apontar para o byte exato usado.
+
+Conferencia de tags
+-------------------
+- O contrato tem 129 tags, extraidas do proprio `Modelo_PI_Template_Tags.docx`.
+- `{pi_code}` e `{project_code}` aparecem nos tres cabecalhos de secao; `{validation_date}` no corpo e no cabecalho da primeira secao. Todas as ocorrencias recebem o mesmo valor.
+- 69 das 129 tags sao do Plano de Execucao: `z01..z23`, `eq01..eq23` e `at01..at23`.
+- 14 tags sao obrigatorias: `pi_code`, `project_code`, `manager_name`, `company_name`, `contract_number`, `activity_description`, `work_plan`, `live_work_authorization`, `pre_apr`, `feeder`, `address`, `sup`, `enc`, `emergency_plan`.
+- O upload recusa o arquivo ANTES de gravar quando falta tag obrigatoria ou existe tag desconhecida (erro de digitacao como `{maneger_name}`). Template invalido nao ocupa o bucket nem aparece na lista.
+- A RPC de ativacao repete a checagem lendo `tag_report`, para que uma chamada direta nao ponha em producao um template incompleto.
+- As 8 tags de Responsavel Tecnico e Validador (`rt_name`, `rt_mat`, `rt_unit`, `rt_role`, `val_name`, `val_mat`, `val_unit`, `val_role`) NAO existem no template e ficaram fora do contrato por decisao do usuario: naquele espaco entra a imagem da assinatura.
+- No corpo do documento as tags estao intactas dentro de um unico `<w:t>`; nos cabecalhos elas estao partidas em varios `<w:r>` com `<w:proofErr>` no meio. O docxtemplater normaliza os runs do paragrafo, e a extracao propria de `docxTemplate.ts` remonta o texto pelo mesmo caminho.
+
+Caixas de selecao e formatacao
+------------------------------
+- Nenhum booleano chega ao Word. O helper `checkbox()` devolve caixa marcada ou caixa vazia.
+- 20 tags de caixa: 6 da area de atuacao da PI (`a_*`), 6 da area do contato da distribuidora (`e_*`), 3 do nivel de tensao (`v_*`), 2 do interferente (`int_yes`/`int_no`) e 3 do nivel do interferente (`iv_*`).
+- Area do contato e area da PI sao independentes. O nivel do interferente NAO compoe o codigo da PI.
+- `interference.present` nulo deixa as duas caixas vazias, que e o estado "nao informado".
+- Data sai em `DD/MM/AAAA` e hora em `HH:mm`, por conversao textual, sem `Date` e sem `toLocaleDateString`, para o resultado nao depender do fuso do servidor.
+- Campo em branco vira string vazia, nunca "-". Por isso o modulo nao reusa `formatDate` de `lib/utils/formatters`.
+- Campos multilinha (atividade, plano de emergencia, transito, observacoes) usam `linebreaks: true` no render.
+
+Plano de Execucao
+-----------------
+- O template tem 23 linhas fisicas, para preservar o layout oficial.
+- As 69 tags sao SEMPRE emitidas. Slot sem etapa recebe string vazia, para nao imprimir `{z18}` no documento.
+- Acima de 23 etapas a emissao para com ERROR `EXECUTION_PLAN_OVERFLOW`. Nunca truncar em silencio. Quando existir regra oficial de pagina adicional, ela substitui esse erro.
+
+Geracao do documento
+--------------------
+- Fluxo: validar acesso e tenant -> localizar template ativo -> conferir que o caminho pertence ao tenant -> baixar do Storage -> validar os dados -> montar as 129 tags -> renderizar -> varrer o resultado atras de tag nao resolvida -> entregar o DOCX.
+- A varredura pos-render e a ultima barreira: se sobrar qualquer `{...}`, o arquivo NAO e entregue.
+- Nesta entrega a geracao usa um conjunto de DEMONSTRACAO montado no servidor (`buildPiDemoDocumentData`), nunca dados vindos do cliente. Serve para conferir o template, nao para emitir PI.
+- O mesmo conjunto alimenta `scripts/pi-docx-verify.mjs`, para conferir e publicar nao divergirem.
+- Variante `full` preenche as 23 linhas do plano, para conferir o pior caso de layout.
+
+Boas praticas
+-------------
+- Leituras usam o `tenant_id` autenticado; nenhuma rota confia em tenant vindo do corpo.
+- `pi_document_template` tem RLS ativa. `authenticated` possui somente leitura; escrita passa por RPC `SECURITY DEFINER` liberada apenas ao `service_role`.
+- Upload tem rate limit, teto de 5MB na aplicacao (menor que o teto de 10MB do bucket, para o usuario receber a mensagem em portugues) e checagem da assinatura de ZIP, porque extensao mente.
+- O `contentType` do upload e declarado explicitamente: o cliente do Supabase nao deduz o tipo de um `Buffer`, e o bucket restringe MIME.
+- Upload gravado com registro recusado dispara remocao do objeto orfao.
+- Ativacao usa `expectedUpdatedAt` para concorrencia otimista.
+- Erros de tela usam `useErrorLogger('modelo-pi')`.
+
+Validacao
+---------
+- `npx tsc --noEmit`
+- `npm run lint`
+- `npm run build`
+- `node scripts/pi-docx-verify.mjs` (usa `public/Modelo_PI_Template_Tags.docx`)
+- `node scripts/pi-docx-verify.mjs --storage` (baixa do bucket; exige `.env` com `SUPABASE_SERVICE_ROLE_KEY`)
+- Conferencia visual no Word: caixas de selecao, quebras de linha, layout do Plano de Execucao com 23 etapas e as tres secoes de preenchimento fisico.
+
+Troubleshooting
+---------------
+- "Nenhum template ativo neste contrato": nao ha versao ativa para o tenant. Envie um arquivo e ative a versao.
+- "O template enviado nao passou na conferencia de tags": o relatorio na tela lista as obrigatorias ausentes e as desconhecidas. Corrija o `.docx` e reenvie.
+- Upload recusado pelo Storage com mensagem de MIME: o arquivo nao e um `.docx` real ou foi enviado sem `contentType`.
+- Tag aparece impressa como `{alguma_coisa}` no documento: nao deveria acontecer, porque a varredura pos-render bloqueia a entrega. Se ocorrer, o mapper deixou de alimentar uma chave do contrato — rode `scripts/pi-docx-verify.mjs`, que compara mapper e contrato.
+
+Pendencias conhecidas
+---------------------
+- Cosmeticas do TEMPLATE, a corrigir no Word (nao sao defeito de codigo): falta espaco antes de `{enc}` e de `{validation_date}`; `Nao` sublinhado no bloco de instalacao interferente; logotipo presente so no cabecalho da primeira secao.
+- `{secondary_date}` e `{secondary_start_time}` ficam mapeadas e vazias: o template nao traz rotulo para elas e a regra de negocio nao foi definida.
+- A tabela do Plano de Execucao parte entre paginas e deixa a linha 23 sozinha no topo da pagina seguinte. E a paginacao natural do template, com 5 ou com 23 etapas.
+- Assinatura por responsavel puxada do Storage e melhoria futura. Nao esta travada por licenca: inserir imagem sem o modulo pago do docxtemplater e possivel mexendo na midia e nos relacionamentos do pacote.
+- Nao existe runner de teste no repositorio; a verificacao e o script `.mjs` mais a conferencia visual.
+
+Atualizacao 2026-09
+-------------------
+- Tela criada com o painel de versoes do template.
+- Migration 426: bucket declarado de forma idempotente, `pi_document_template`, RPCs `register_pi_document_template` e `activate_pi_document_template`, e a tela em `app_pages`.
+- Dependencias novas: `docxtemplater` 3.69.3 e `pizzip` 3.2.0, ambas MIT.
+- CORRECAO DE PREMISSA: `Folha X de Y` no cabecalho NAO e texto estatico, sao campos `PAGE`/`NUMPAGES` do Word. O valor lido no XML era cache antigo, e o Word recalcula ao abrir.
+- A validacao de tags nao usa o `InspectModule` do docxtemplater: aquele arquivo faz `require("lodash")` e `lodash` nao esta declarado nas dependencias do pacote.
+
+Mapa de Codigo
+--------------
+- `src/lib/server/docxTemplate.ts`
+  - `isZipBuffer`: confere a assinatura `PK\x03\x04`.
+  - `listDocxTemplateTags`: tags declaradas no arquivo, sem as chaves.
+  - `renderDocxTemplate`: copia o template e preenche, com `linebreaks: true` e `nullGetter` devolvendo string vazia.
+  - `findUnresolvedDocxTags`: varre o resultado e devolve o que sobrou.
+- `src/server/modules/permissao-intervencao/piTemplateTags.ts`
+  - `PI_TEMPLATE_TAGS`, `PI_REQUIRED_TEMPLATE_TAGS`, `PI_EXECUTION_PLAN_SLOTS`.
+  - `buildPiTemplateTagReport`, `isPiTemplateActivatable`.
+- `src/server/modules/permissao-intervencao/types.ts`
+  - `PiDocumentData`, `PiExecutionStep`, `PiOperationAreaCode`, `PiVoltageLevelCode`, `PiDocumentIssue`.
+- `src/server/modules/permissao-intervencao/piTemplateMapper.ts`
+  - `checkbox`, `validatePiDocumentData`, `buildPiTemplateData`, `findPiTemplateDataGaps`.
+- `src/server/modules/permissao-intervencao/piTemplateStorage.ts`
+  - `PI_TEMPLATE_BUCKET`, `PI_TEMPLATE_MAX_BYTES`, `buildPiTemplateStoragePath`, `isPiTemplatePathOwnedByTenant`, `sha256Hex`, `uploadPiTemplateObject`, `downloadPiTemplateObject`, `removePiTemplateObject`.
+- `src/server/modules/permissao-intervencao/piDemoDocument.ts`
+  - `buildPiDemoDocumentData`, `buildPiDemoFullPlanData`, `buildPiDemoExecutionStep`, `buildPiDemoExecutionSteps`.
+- `src/server/modules/permissao-intervencao/templates.ts`
+  - `PI_PAGE_KEY`, `listPiTemplates`, `uploadPiTemplate`, `activatePiTemplate`, `generatePiTemplatePreview`.
+- `src/modules/dashboard/modelo-pi/api.ts`
+  - `fetchPiTemplates`, `uploadPiTemplate`, `activatePiTemplate`, `downloadPiTemplatePreview`.
+- `src/modules/dashboard/modelo-pi/PiTemplatePageView.tsx`
+  - `PiTemplatePageView`: painel de versoes, upload, ativacao e geracao de demonstracao.
+- `supabase/migrations/426_create_pi_document_template_and_page.sql` e `supabase/migrations/427_split_pi_template_screen.sql`
+  - Bucket, tabela, indices, RLS, RPCs, tela em `app_pages` e bloco de verificacao.
+- `scripts/pi-docx-verify.mjs`
+  - 40 verificacoes sobre contrato, mapper, render, varredura, estouro do plano, campos nulos e template invalido.
+
+Atualizacao 2026-09 (separacao da tela)
+---------------------------------------
+- Migration 427: a administracao do template saiu de `/permissao-intervencao` e virou a tela propria `/modelo-pi`, em Cadastro Base, com `page_key` `modelo-pi`.
+- `/permissao-intervencao` ficou reservada para o cadastro da PI e hoje exibe `ModulePlaceholder` com o roteiro do modulo.
+- Arquivos renomeados: `PermissionInterventionPageView` virou `PiTemplatePageView`, e o modulo de tela saiu de `src/modules/dashboard/permissao-intervencao/` para `src/modules/dashboard/modelo-pi/`.
+- O modulo server-side continua em `src/server/modules/permissao-intervencao/`: ele e do DOMINIO da PI, e o template e parte desse dominio. Só a `page_key` mudou.
+- As rotas de API continuam em `/api/permissao-intervencao/templates`, pelo mesmo motivo.
