@@ -339,3 +339,46 @@
       flex: 1 1 auto;
     }
 }
+
+/* Data bloqueada (migration 424). Vermelho e o sinal combinado com a operacao:
+   a data continua gravavel, entao a cor avisa sem impedir. NACIONAL pinta a
+   coluna inteira; MUNICIPAL pinta o cabecalho e as celulas do municipio. */
+.weekLegendBlocked {
+  background: #b3261e;
+}
+
+.weekCalendarDayHeaderBlocked {
+  background: rgba(179, 38, 30, 0.12);
+  box-shadow: inset 0 -3px 0 #b3261e;
+}
+
+.weekCalendarDayHeaderBlocked strong,
+.weekCalendarDayHeaderBlocked small {
+  color: #8c1d18;
+}
+
+.weekBlockedTag {
+  font-weight: 800;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  /* O nome do feriado pode ser longo; a celula do cabecalho e estreita. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekCalendarDayCellBlocked {
+  background: rgba(179, 38, 30, 0.06);
+}
+
+.weekBlockedCard {
+  border-radius: 12px;
+  border: 1px solid rgba(179, 38, 30, 0.35);
+  background: linear-gradient(180deg, #f7c5c2 0%, #ef9b95 100%);
+  color: #7f1d1a;
+  padding: 8px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-align: center;
+}

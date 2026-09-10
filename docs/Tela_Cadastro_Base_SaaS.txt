@@ -160,3 +160,17 @@ Ajuda contextual
 - Atualizacao 2026-09: `/motivo-sem-producao` criada como tela real, administrando o catalogo `measurement_no_production_reasons` usado por `Medicao`, `Medicao Asbuilt` e `Faturamento`. Page_key novo `motivo-sem-producao`, com `default_user_access = false` pela migration `407`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS` e deve ser liberada em `Permissoes`. Detalhe completo em `docs/Tela_Motivo_Sem_Producao_SaaS.txt`.
 - Atualizacao 2026-09: `/contrato` criada como tela real de registro e controle sobre `contract`, com campos `telefone_corporativo`, `email`, `nome_gestor` e `empresa`, historico em `app_entity_history` e RPC `save_contract_control_record`. Detalhe completo em `docs/Tela_Contrato_SaaS.txt`.
 - Atualizacao 2026-09: `/responsavel-distribuidora` criada como tela real unica para `project_utility_responsibles` e `project_utility_field_managers`, os catalogos dos campos `Responsavel Distribuidora` e `Gestor de campo Distribuidora` em Projetos. Como a rota existia como placeholder, a migration `410` preserva leitura ja concedida, mas revoga escrita/exportacao de nao-admin ate liberacao explicita em `Permissoes`. Detalhe completo em `docs/Tela_Responsavel_Distribuidora_SaaS.txt`.
+
+Atualizacao 2026-09-10 - Datas Bloqueadas
+------------------------------------------
+- `/datas-bloqueadas` criada como tela real do Cadastro Base, administrando
+  `programming_blocked_dates`: as datas em que a operacao nao deve programar.
+- Campos: `Data`, `Descricao`, `Abrangencia` (NACIONAL/MUNICIPAL), `Municipio`
+  (obrigatorio quando MUNICIPAL) e `Tipo` (FERIADO/PONTO_FACULTATIVO/OUTRO).
+- Page_key novo `datas-bloqueadas`, com `default_user_access = false` pela
+  migration `424`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS` e deve ser
+  liberada em `Permissoes`.
+- O catalogo e consumido por `Programacao`, `Mapa de Programacao` e
+  `Visualizacao Programacao` apenas como AVISO: nenhuma RPC de programacao
+  recusa a data.
+- Detalhe completo em `docs/Tela_Datas_Bloqueadas_SaaS.txt`.

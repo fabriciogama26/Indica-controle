@@ -1666,3 +1666,28 @@ Observacao
   ja configurou os proprios codigos (ou desativou algum de proposito) nao e alterado.
 - Sem nova tabela, coluna, policy, indice, RPC ou rota.
 - Valida no fim: nenhum tenant fica sem linha em `measurement_project_activity_indicators`.
+
+424_create_blocked_dates_page_and_rpcs.sql
+- Cria `programming_blocked_dates` (data, descricao, abrangencia NACIONAL/MUNICIPAL, municipio
+  opcional, tipo FERIADO/PONTO_FACULTATIVO/OUTRO, `is_active`) e a tela de Cadastro Base
+  `/datas-bloqueadas`.
+- ESCOPO: AVISO, NAO TRAVA. Nenhuma RPC de escrita da Programacao foi alterada --
+  `save_project_programming_stage`, `postpone_project_programming_stage`,
+  `postpone_project_programming_team` e `correct_project_programming_stage_date` continuam
+  aceitando qualquer data. O catalogo alimenta so sinalizacao visual em tres telas.
+- Adiciona `unique (id, tenant_id)` em `project_municipalities`, que faltava desde a 031. Sem
+  ela a FK do municipio nao poderia ser composta e uma data do tenant A poderia apontar para um
+  municipio do tenant B.
+- Unicidade por dois indices PARCIAIS, nao por constraint unica: `municipality_id` e nulo em
+  NACIONAL e um unique comum trataria cada nulo como distinto, deixando a mesma data nacional
+  entrar N vezes. Os indices nao filtram por `is_active` de proposito -- data inativada mantem o
+  lugar e recadastrar se faz reativando, o que preserva o historico daquela data numa linha so.
+- RPCs `save_blocked_date_record` e `set_blocked_date_record_status`, ambas `SECURITY DEFINER`,
+  com `EXECUTE` revogado de `public`/`anon`/`authenticated` e concedido apenas a `service_role`.
+  Historico em `app_entity_history` sob `module_key = datas-bloqueadas`, na mesma transacao.
+- `set_blocked_date_record_status` nao checa uso: nenhuma tabela referencia
+  `programming_blocked_dates` e inativar so faz o aviso sumir.
+- RLS ativa com SELECT para `authenticated` via `user_can_access_tenant`; escrita revogada.
+- Valida no fim: as duas RPCs nao executaveis por `anon`/`authenticated`, a tabela sem
+  insert/update/delete para `anon`/`authenticated`, e a pagina cadastrada em `app_pages` com
+  `ativo = true` e `default_user_access = false`.

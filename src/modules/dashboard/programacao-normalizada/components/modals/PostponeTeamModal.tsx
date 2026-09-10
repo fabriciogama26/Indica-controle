@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+
 import styles from "../../ProgrammingNormalizedPageView.module.css";
 import { isReasonSelectionValid } from "../../validators";
 import type { ReasonOptionItem } from "../../types";
@@ -10,6 +12,8 @@ export function PostponeTeamModal(props: {
   reasonNotes: string;
   reasonOptions: ReasonOptionItem[];
   isSubmitting: boolean;
+  // Ver PostponeModal: aviso montado pelo chamador, sem travar a confirmacao.
+  blockedDateNotice?: ReactNode;
   onClose: () => void;
   onConfirm: () => void;
   onNewDateChange: (value: string) => void;
@@ -17,7 +21,7 @@ export function PostponeTeamModal(props: {
   onReasonNotesChange: (value: string) => void;
 }) {
   const {
-    isOpen, teamName, newDate, reasonCode, reasonNotes, reasonOptions, isSubmitting,
+    isOpen, teamName, newDate, reasonCode, reasonNotes, reasonOptions, isSubmitting, blockedDateNotice = null,
     onClose, onConfirm, onNewDateChange, onReasonCodeChange, onReasonNotesChange,
   } = props;
   if (!isOpen) return null;
@@ -37,6 +41,7 @@ export function PostponeTeamModal(props: {
             <span>Nova data</span>
             <input type="date" value={newDate} onChange={(event) => onNewDateChange(event.target.value)} disabled={isSubmitting} />
           </label>
+          {blockedDateNotice}
           <label className={styles.field}>
             <span>Motivo</span>
             <select value={reasonCode} onChange={(event) => onReasonCodeChange(event.target.value)} disabled={isSubmitting}>

@@ -16,6 +16,12 @@
 // mais o `projectMap` que o legado precisava.
 
 import {
+  findBlockedDatesFor,
+  formatBlockedDateLabel,
+  type ActiveBlockedDate,
+} from "@/modules/dashboard/datas-bloqueadas";
+
+import {
   getStageDisplayClassification,
   isAreaLivreSgd,
 } from "../utils";
@@ -49,6 +55,24 @@ function formatWeekRangeLabel(weekStartDate: string) {
   return `${formatDate(iso(start))} a ${formatDate(iso(end))}`;
 }
 
+// DATA BLOQUEADA NO CALENDARIO
+// ---------------------------------------------------------------------------
+// A grade e equipe x dia e nao carrega municipio: uma celula VAZIA nao tem
+// projeto, logo nao da para saber se um feriado municipal a atinge. Por isso a
+// marcacao tem dois niveis.
+//
+// NACIONAL pinta a coluna inteira, celula vazia inclusive — vale para qualquer
+// projeto do tenant. MUNICIPAL marca o cabecalho do dia (com o nome do
+// municipio) e so pinta as celulas cujo projeto e daquele municipio, que sao as
+// unicas em que a informacao existe.
+function splitBlockedDates(blockedDates: ActiveBlockedDate[], date: string) {
+  const ofDay = blockedDates.filter((item) => item.blockedDate === date);
+  return {
+    all: ofDay,
+    national: ofDay.filter((item) => item.scope === "NACIONAL"),
+  };
+}
+
 // Mesma prioridade de cor do calendario legado: concluido vence status, e o
 // restante segue a agenda da etapa.
 function getStageCardClassName(stage: StageListItem) {
@@ -80,6 +104,7 @@ export function ProgrammingWeeklyCalendarPanel(props: {
   weekDates: string[];
   calendarTeams: TeamItem[];
   weeklyStageMap: Map<string, StageListItem[]>;
+  blockedDates: ActiveBlockedDate[];
   sgdTypes: SgdTypeItem[];
   isLoading: boolean;
   onPreviousWeek: () => void;
@@ -94,6 +119,7 @@ export function ProgrammingWeeklyCalendarPanel(props: {
     weekDates,
     calendarTeams,
     weeklyStageMap,
+    blockedDates,
     sgdTypes,
     isLoading,
     onPreviousWeek,
@@ -105,6 +131,7 @@ export function ProgrammingWeeklyCalendarPanel(props: {
   } = props;
 
   const sgdTypeById = new Map(sgdTypes.map((item) => [item.id, item]));
+  const blockedByDate = new Map(weekDates.map((date) => [date, splitBlockedDates(blockedDates, date)]));
 
   return (
     <article className={`${styles.card} ${styles.calendarTopCard}`}>
@@ -137,17 +164,31 @@ export function ProgrammingWeeklyCalendarPanel(props: {
         <span className={`${styles.weekLegendItem} ${styles.weekLegendAnticipated}`}>Antecipado</span>
         <span className={`${styles.weekLegendItem} ${styles.weekLegendPostponed}`}>Adiado</span>
         <span className={`${styles.weekLegendItem} ${styles.weekLegendCancelled}`}>Cancelado</span>
+        <span className={`${styles.weekLegendItem} ${styles.weekLegendBlocked}`}>Data bloqueada</span>
       </div>
 
       <div className={styles.weekCalendarWrapper}>
         <div className={styles.weekCalendarHeader}>
           <div className={styles.weekCalendarTeamHeader}>Equipe</div>
-          {weekDates.map((date) => (
-            <div key={date} className={styles.weekCalendarDayHeader}>
-              <strong>{formatWeekdayShort(date)}</strong>
-              <small>{formatDate(date)}</small>
-            </div>
-          ))}
+          {weekDates.map((date) => {
+            const blocked = blockedByDate.get(date);
+            const hasBlock = Boolean(blocked?.all.length);
+
+            return (
+              <div
+                key={date}
+                className={`${styles.weekCalendarDayHeader} ${hasBlock ? styles.weekCalendarDayHeaderBlocked : ""}`}
+              >
+                <strong>{formatWeekdayShort(date)}</strong>
+                <small>{formatDate(date)}</small>
+                {hasBlock ? (
+                  <small className={styles.weekBlockedTag} title={blocked?.all.map(formatBlockedDateLabel).join(" | ")}>
+                    {blocked?.all.map((item) => item.description).join(" | ")}
+                  </small>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
 
         {calendarTeams.length ? (
@@ -161,9 +202,28 @@ export function ProgrammingWeeklyCalendarPanel(props: {
 
               {weekDates.map((date) => {
                 const dayStages = weeklyStageMap.get(`${team.id}__${date}`) ?? [];
+                const blocked = blockedByDate.get(date);
+                // Celula vazia so pode afirmar bloqueio NACIONAL: sem etapa nao
+                // existe projeto e, portanto, nao existe municipio para casar.
+                const cellBlocks = dayStages.length
+                  ? dayStages.flatMap((stage) => findBlockedDatesFor(blockedDates, date, stage.city))
+                  : blocked?.national ?? [];
+                const isCellBlocked = cellBlocks.length > 0;
+                const cellBlockLabel = Array.from(new Set(cellBlocks.map((item) => item.description))).join(" | ");
 
                 return (
-                  <div key={`${team.id}-${date}`} className={styles.weekCalendarDayCell}>
+                  <div
+                    key={`${team.id}-${date}`}
+                    className={`${styles.weekCalendarDayCell} ${isCellBlocked ? styles.weekCalendarDayCellBlocked : ""}`}
+                  >
+                    {isCellBlocked ? (
+                      <div
+                        className={styles.weekBlockedCard}
+                        title={Array.from(new Set(cellBlocks.map(formatBlockedDateLabel))).join(" | ")}
+                      >
+                        {cellBlockLabel}
+                      </div>
+                    ) : null}
                     {dayStages.length ? (
                       dayStages.map((stage) => {
                         const sgdType = stage.sgdTypeId ? sgdTypeById.get(stage.sgdTypeId) ?? null : null;
@@ -236,7 +296,7 @@ export function ProgrammingWeeklyCalendarPanel(props: {
                           </article>
                         );
                       })
-                    ) : (
+                    ) : isCellBlocked ? null : (
                       <div className={styles.weekEmptyCell}>Sem programacao</div>
                     )}
                   </div>
