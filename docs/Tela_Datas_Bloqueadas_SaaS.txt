@@ -70,8 +70,31 @@ Cadastro
     novo. Decisao tomada na abertura da tarefa.
   - Edicao de registro inativo e bloqueada ate reativacao.
   - Edicao e troca de status exigem `expectedUpdatedAt`.
+- Cadastro em massa:
+  - Botao `Cadastro em massa` ao lado de `Cadastrar`, escondido durante a edicao.
+  - CSV separado por ponto e virgula. Colunas: `data`, `descricao`, `abrangencia`
+    (obrigatorias) e `municipio`, `tipo` (opcionais conforme a abrangencia).
+  - `data` aceita `DD/MM/AAAA` e `AAAA-MM-DD`; o calendario e conferido, entao
+    `31/02/2027` e recusado em vez de rolar para marco.
+  - `municipio` e informado pelo NOME e resolvido no CLIENTE contra a lista de
+    municipios ativos que a propria listagem devolve, mesmo padrao do import de
+    Equipes. O backend recebe o id ja resolvido e nunca busca por nome.
+  - `tipo` vazio assume FERIADO; valor preenchido e invalido vira erro de linha.
+  - Abrangencia NACIONAL ignora o `municipio` preenchido em vez de recusar a
+    linha, igual ao formulario, que limpa o campo ao trocar a abrangencia.
+  - Duplicidade e checada por `data + abrangencia + municipio`, a mesma chave dos
+    dois indices unicos parciais: a mesma data pode entrar como NACIONAL e como
+    MUNICIPAL de dois municipios distintos no mesmo arquivo.
+  - Teto de `MASS_IMPORT_ROW_LIMIT` (500) linhas por arquivo.
+  - Linha invalida NAO derruba o arquivo: o lote nao e transacao unica e o
+    resultado volta linha a linha, virando o CSV de erros com o numero da linha
+    original.
+  - Exige a acao `import` do page_key `datas-bloqueadas`.
 - Fluxos:
   - `POST /api/blocked-dates` para cadastro.
+  - `POST /api/blocked-dates` com `action: "BATCH_IMPORT"` e `rows` para o
+    cadastro em massa; cada linha passa pela MESMA RPC do cadastro unitario,
+    entao nao existe caminho de escrita alternativo.
   - `PUT /api/blocked-dates` para edicao.
   - `PATCH /api/blocked-dates` para cancelamento/ativacao com motivo obrigatorio.
   - `POST` e `PUT` chamam `save_blocked_date_record`.
@@ -242,6 +265,16 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/modules/dashboard/datas-bloqueadas/csv.ts`
   - Responsavel por: montar o CSV de datas bloqueadas.
+- Caminho: `src/modules/dashboard/datas-bloqueadas/massImport.ts`
+  - Responsavel por: `buildBlockedDateMassImportTemplateCsv`, `parseImportDate` e
+    `parseBlockedDateMassImportCsv` (validacao de data, abrangencia, municipio,
+    tipo e duplicidade dentro do arquivo).
+- Caminho: `src/modules/dashboard/datas-bloqueadas/useBlockedDatesMassImport.ts`
+  - Responsavel por: fiacao do `useMassImport`, envio do lote e traducao do codigo
+    de erro do backend para a coluna do CSV de erros.
+- Caminho: `src/lib/utils/massImport.ts` e `src/hooks/useMassImport.ts`
+  - Responsavel por: leitura do CSV, modelo, relatorio de erros e o controlador do
+    modal, compartilhados com os demais cadastros.
 - Caminho: `src/lib/server/apiHelpers.ts`
   - Responsavel por: `loadAllRows`, `parsePagination`, `normalizeHistoryChanges`.
 - Caminho: `src/lib/server/concurrency.ts`
@@ -262,6 +295,8 @@ Ajuda contextual
   - `src/modules/dashboard/datas-bloqueadas/blockedDates.ts`
   - `src/modules/dashboard/datas-bloqueadas/csv.ts`
   - `src/modules/dashboard/datas-bloqueadas/index.ts`
+  - `src/modules/dashboard/datas-bloqueadas/massImport.ts`
+  - `src/modules/dashboard/datas-bloqueadas/useBlockedDatesMassImport.ts`
   - `src/modules/dashboard/datas-bloqueadas/types.ts`
   - `src/modules/dashboard/datas-bloqueadas/useActiveBlockedDates.ts`
   - `src/modules/dashboard/mapa-programacao/components/BlockedDatesMonthPanel.tsx`
@@ -294,3 +329,29 @@ Ajuda contextual
   - Antes: nenhuma data era sinalizada; feriado so existia na cabeca de quem programa.
   - Depois: catalogo proprio, com aviso na Programacao, painel do mes no Mapa e cartao
     vermelho no Calendario Semanal da Visualizacao. A gravacao continua permitida.
+
+Atualizacao 2026-09-10 - Cadastro em massa
+-------------------------------------------
+- A tela ganhou `Cadastro em massa` por CSV, no mesmo padrao ja usado em Cargo,
+  Categoria de Atividade, Atividades, Equipes e Projetos.
+- Nada de infraestrutura nova: reusa `src/lib/utils/massImport.ts`,
+  `src/hooks/useMassImport.ts` e `src/components/ui/MassImportModal.tsx`.
+- Backend: `POST /api/blocked-dates` passou a aceitar `action: "BATCH_IMPORT"`
+  com `rows`, sob a acao `import` do page_key `datas-bloqueadas` e teto de 500
+  linhas (`MASS_IMPORT_ROW_LIMIT`). Nenhuma migration: a RPC
+  `save_blocked_date_record` ja existia e e a MESMA usada pelo cadastro unitario.
+- `save_user_permissions` (migration 386) grava as sete flags granulares a partir
+  do `enabled` da tela, entao liberar `Datas Bloqueadas` em `Permissoes` ja libera
+  o import junto. Administrador passa direto por `role.isAdmin`.
+- O lote NAO e transacao unica de proposito: uma linha ruim no meio do arquivo nao
+  pode descartar as boas. O resultado volta linha a linha e vira o CSV de erros.
+- A fiacao ficou em `useBlockedDatesMassImport.ts`, fora do `BlockedDatesPageView`,
+  porque a tela estava em 952 linhas e o teto do `lint:size` e 1.000.
+- Validacao do parser executada com o modulo transpilado, cobrindo: o proprio
+  modelo gerado, data em ISO e em DD/MM/AAAA, cabecalho com acento, tipo em caixa
+  baixa e com espaco, tipo vazio, data inexistente (31/02), mes 13, descricao
+  vazia, municipio ausente/inexistente, tipo e abrangencia invalidos, duplicidade
+  no arquivo, a mesma data valendo em abrangencias diferentes, NACIONAL com
+  municipio preenchido e arquivo sem coluna obrigatoria.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros, 2 warnings
+  legados) e `npm run build`.
