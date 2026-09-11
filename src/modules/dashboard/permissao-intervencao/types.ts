@@ -80,6 +80,9 @@ export type PiMetaResponse = {
     contractNumber: string | null;
   } | null;
   readiness?: PiReadiness;
+  /** Se o contrato configurou cargo para cada papel. Sem configuracao, a tela nao filtra. */
+  roleFilterConfigured?: { foreman: boolean; supervisor: boolean };
+  supervisorRequiredTeamCount?: number;
   message?: string;
 };
 
@@ -123,7 +126,13 @@ export type PiListFilterState = {
 // Detalhe e formulario
 // ---------------------------------------------------------------------------
 
-export type PiPersonOption = { id: string; name: string; registration: string | null };
+export type PiPersonOption = {
+  id: string;
+  name: string;
+  registration: string | null;
+  /** Papeis que o cargo da pessoa habilita. Vazio = contrato sem cargo configurado. */
+  roles: Array<"FOREMAN" | "SUPERVISOR">;
+};
 export type PiTeamOption = { id: string; name: string };
 
 export type PiExecutionStepRow = {

@@ -21,6 +21,12 @@ type Props = {
   operationAreas: PiCatalogOption[];
   voltageLevels: PiCatalogOption[];
   people: PiPersonOption[];
+  /**
+   * Se o contrato configurou cargo para cada papel. Quando NAO configurou, a
+   * tela nao filtra: melhor oferecer todo mundo do que deixar o select vazio e
+   * a PI inutilizavel ate alguem mexer na configuracao.
+   */
+  roleFilter: { foreman: boolean; supervisor: boolean };
   disabled: boolean;
   emergencyPlan: string | null;
   onField: <K extends keyof PiFormState>(key: K, value: PiFormState[K]) => void;
@@ -124,6 +130,7 @@ export function PiFormFields({
   operationAreas,
   voltageLevels,
   people,
+  roleFilter,
   disabled,
   emergencyPlan,
   onField,
@@ -131,6 +138,19 @@ export function PiFormFields({
 }: Props) {
   const needsPrimaryArea = form.operationAreas.length > 1;
   const needsPrimaryVoltage = form.voltageLevels.length > 1;
+
+  /**
+   * Pessoas oferecidas para um papel.
+   *
+   * A pessoa ja escolhida continua na lista mesmo que perca o papel depois,
+   * senao o select mostraria vazio numa PI que tem valor gravado, e salvar
+   * apagaria a escolha sem o usuario perceber.
+   */
+  function peopleForRole(role: "FOREMAN" | "SUPERVISOR", selectedId: string): PiPersonOption[] {
+    const configured = role === "FOREMAN" ? roleFilter.foreman : roleFilter.supervisor;
+    if (!configured) return people;
+    return people.filter((person) => person.roles.includes(role) || person.id === selectedId);
+  }
 
   return (
     <>
@@ -398,28 +418,28 @@ export function PiFormFields({
         <PersonSelect
           label="Responsavel pela Intervencao (Supervisor)"
           value={form.supervisorPersonId}
-          people={people}
+          people={peopleForRole("SUPERVISOR", form.supervisorPersonId)}
           disabled={disabled}
           onChange={(value) => onField("supervisorPersonId", value)}
         />
         <PersonSelect
           label="Suplente do Supervisor"
           value={form.supervisorAlternatePersonId}
-          people={people}
+          people={peopleForRole("SUPERVISOR", form.supervisorAlternatePersonId)}
           disabled={disabled}
           onChange={(value) => onField("supervisorAlternatePersonId", value)}
         />
         <PersonSelect
           label="Encarregado de Trabalhos"
           value={form.foremanPersonId}
-          people={people}
+          people={peopleForRole("FOREMAN", form.foremanPersonId)}
           disabled={disabled}
           onChange={(value) => onField("foremanPersonId", value)}
         />
         <PersonSelect
           label="Suplente do Encarregado"
           value={form.foremanAlternatePersonId}
-          people={people}
+          people={peopleForRole("FOREMAN", form.foremanAlternatePersonId)}
           disabled={disabled}
           onChange={(value) => onField("foremanAlternatePersonId", value)}
         />

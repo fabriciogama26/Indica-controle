@@ -12,6 +12,7 @@ import {
   fetchPiTemplates,
   uploadPiTemplate,
 } from "./api";
+import { PiConfigurationCard } from "./components/PiConfigurationCard";
 import styles from "./PiTemplatePageView.module.css";
 import type { PiPreviewVariant, PiTemplateItem, PiTemplateMutationResponse } from "./types";
 
@@ -284,6 +285,7 @@ export function PiTemplatePageView() {
           </div>
         ) : null}
       </section>
+      {accessToken ? <PiConfigurationCard accessToken={accessToken} /> : null}
     </div>
   );
 }

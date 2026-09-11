@@ -88,6 +88,15 @@ export function PiFormPageView({ piId }: { piId: string }) {
           </span>
         </div>
 
+        {/* Aviso da regra do Supervisor. A contagem que vale e a da etapa no
+            momento da emissao, medida no servidor; aqui e so orientacao. */}
+        {header.linkStatus !== "PENDING" && !pi.form.supervisorPersonId ? (
+          <p className={styles.mutedText}>
+            O Responsavel pela Intervencao vira obrigatorio se a etapa vinculada tiver mais de{" "}
+            {pi.supervisorTeamLimit} equipes.
+          </p>
+        ) : null}
+
         {header.linkStatus === "PENDING" ? (
           <p className={styles.warning}>
             PI criada sem Programacao. Aguardando a programacao do projeto {header.projectCode} em{" "}
@@ -158,6 +167,7 @@ export function PiFormPageView({ piId }: { piId: string }) {
         operationAreas={pi.operationAreas}
         voltageLevels={pi.voltageLevels}
         people={pi.people}
+        roleFilter={pi.roleFilter}
         disabled={!pi.isEditable || pi.isSaving}
         emergencyPlan={header.emergencyPlanSnapshot}
         onField={pi.setField}

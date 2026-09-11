@@ -170,6 +170,8 @@ export function usePiForm(accessToken: string | null, piId: string) {
   const [people, setPeople] = useState<PiPersonOption[]>([]);
   const [teams, setTeams] = useState<PiTeamOption[]>([]);
   const [stepTemplates, setStepTemplates] = useState<Array<{ code: string; description: string }>>([]);
+  const [roleFilter, setRoleFilter] = useState({ foreman: false, supervisor: false });
+  const [supervisorTeamLimit, setSupervisorTeamLimit] = useState(3);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -209,6 +211,8 @@ export function usePiForm(accessToken: string | null, piId: string) {
       setPeople(meta.people ?? []);
       setTeams(meta.teams ?? []);
       setStepTemplates(meta.executionStepTemplates ?? []);
+      setRoleFilter(meta.roleFilterConfigured ?? { foreman: false, supervisor: false });
+      setSupervisorTeamLimit(meta.supervisorRequiredTeamCount ?? 3);
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao carregar a PI." });
     } finally {
@@ -315,6 +319,8 @@ export function usePiForm(accessToken: string | null, piId: string) {
     people,
     teams,
     stepTemplates,
+    roleFilter,
+    supervisorTeamLimit,
     isLoading,
     isSaving,
     isDirty,

@@ -1,12 +1,12 @@
-Tela: Modelo de PI
+Tela: Modelo e Configuracao da PI
 
 Visao geral
 -----------
-- Cadastro base das versoes do template Word da Permissao de Intervencao (PI).
+- Cadastro base do template Word da Permissao de Intervencao (PI) e da configuracao do modulo por contrato.
 - O documento Word NAO e a fonte dos dados: o banco e. O sistema copia o template oficial guardado no Supabase Storage e preenche as tags.
 - A tela cobre subir versao, conferir as 129 tags, ativar a versao que vale para o contrato e gerar um documento de demonstracao para conferencia visual no Word.
 - SEPARADA da tela `Permissao de Intervencao` de proposito (migration 427): trocar o modelo oficial e ato de administracao do contrato, acontece raramente e vale para o tenant inteiro; preencher a PI e rotina da operacao, por projeto e data. Juntas, seria preciso liberar a troca do modelo para todo mundo que emite PI.
-- O cadastro da PI (listagem, formulario, vinculo com a Programacao, snapshot, emissao) depende da entidade `permission_intervention`, que ainda nao existe. Ver `Tela_Permissao_Intervencao_SaaS.txt`.
+- O cadastro da PI em si (listagem, formulario, vinculo com a Programacao, emissao) vive em `/permissao-intervencao`. Ver `Tela_Permissao_Intervencao_SaaS.txt`.
 - Rota: `/modelo-pi`, secao `Cadastro Base` do menu.
 
 Arquitetura
@@ -16,10 +16,10 @@ Arquitetura
 - Estilo: `src/modules/dashboard/modelo-pi/PiTemplatePageView.module.css`
 - Fachada do modulo de tela: `src/modules/dashboard/modelo-pi/index.ts`
 - Chamadas HTTP da tela: `src/modules/dashboard/modelo-pi/api.ts`
-- API: `src/app/api/permissao-intervencao/templates/route.ts` (GET/POST/PUT) e `src/app/api/permissao-intervencao/templates/preview/route.ts` (POST)
+- API: `src/app/api/permissao-intervencao/templates/route.ts` (GET/POST/PUT), `templates/preview/route.ts` (POST) e `configuracao/route.ts` (GET/PUT)
 - Backend: `src/server/modules/permissao-intervencao/` (`templates.ts`, `piTemplateStorage.ts`, `piTemplateMapper.ts`, `piTemplateTags.ts`, `piDemoDocument.ts`, `types.ts`, `index.ts`)
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
-- Banco/RLS/RPC/permissao: `supabase/migrations/426_create_pi_document_template_and_page.sql` e `supabase/migrations/427_split_pi_template_screen.sql`
+- Banco/RLS/RPC/permissao: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql` e `431_pi_settings_roles_and_contact_source.sql`
 - Verificacao: `scripts/pi-docx-verify.mjs`
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
@@ -28,12 +28,22 @@ Arquitetura
 
 Contrato de permissao
 ---------------------
-- `page_key` unico: `modelo-pi`. Cobre menu, listagem de versoes, upload, ativacao e geracao do documento de demonstracao.
+- `page_key` unico: `modelo-pi`. Cobre menu, listagem de versoes, upload, ativacao, geracao do documento de demonstracao e a configuracao do modulo.
 - Acoes por operacao, todas sob o MESMO `page_key`: `read` (listar versoes), `import` (enviar versao), `update` (ativar versao), `export` (gerar demonstracao).
 - NAO existe permissao granular por operacao nesta tela. Quem abre a tela usa todas as funcoes dela, conforme o "Padrao de permissao por tela" do CLAUDE.md.
 - `default_user_access = false`: a tela nasce liberada apenas para perfil admin, e a liberacao para os demais e feita na tela de Permissoes.
 - A migration 427 herdou o acesso de quem ja tinha `permissao-intervencao` quando o painel de template vivia dentro dela, para ninguem perder acesso na separacao.
 - ATENCAO PARA A FASE 1: o endpoint que gerar o documento de uma PI real pertence a tela da PI e NAO pode exigir `modelo-pi`. Precisa aceitar as duas chaves via `authorizeAnyPageAction`, senao a tela da PI abre e a geracao toma 403 — exatamente o caso que o "Padrao de permissao por tela" proibe.
+
+Configuracao da PI
+------------------
+- A tela tem, alem das versoes do template, a configuracao do contrato: prefixo e codigo da empresa que compoem o `pi_code`, digitos do sequencial, Plano de Emergencia, origem do contato da distribuidora e o limite de equipes que torna o Supervisor obrigatorio.
+- Tambem define os CARGOS que habilitam cada papel da PI: quem pode ser Encarregado de Trabalhos e quem pode ser Responsavel pela Intervencao. Vive em configuracao porque `job_titles.name` e texto livre por contrato, e casar o nome no codigo seria hardcode que quebraria no primeiro contrato que nomear diferente.
+- O Plano de Emergencia NAO e editavel dentro da PI. Cada PI emitida guarda o texto usado, entao mudar aqui nao altera documento ja emitido: so sobe `emergency_plan_version` para os proximos.
+- Fica nesta tela, e nao na da PI, porque e ato de administracao do contrato: acontece raramente e vale para todo mundo. Quem emite PI nao deve poder trocar o prefixo do codigo nem o Plano de Emergencia.
+- Backend: `src/server/modules/permissao-intervencao/configuration.ts`, rota `GET/PUT /api/permissao-intervencao/configuracao`, sob a `page_key` `modelo-pi`.
+- Tela: `src/modules/dashboard/modelo-pi/components/PiConfigurationCard.tsx`.
+- Banco: `supabase/migrations/431_pi_settings_roles_and_contact_source.sql`.
 
 Template do documento
 ---------------------

@@ -92,15 +92,17 @@ export function NewPiModal({ accessToken, projects, onClose, onCreated, onError 
         creationSource: mode === "MANUAL" ? "MANUAL" : "FROM_PROGRAMMING",
         // Campos herdados da etapa. Nascem preenchidos e continuam editaveis na
         // PI; alterar a PI depois nao mexe na Programacao.
+        //
+        // `activityDescription` herda a DESCRICAO DO SERVICO da etapa, e nao a
+        // lista de atividades: as atividades da etapa sao outra coisa e viram
+        // linhas do Plano de Execucao. Divergencia consciente com a
+        // especificacao inicial, confirmada pelo usuario.
         inherited: selectedStage
           ? {
               feeder: selectedStage.feeder,
-              installationDescription: selectedStage.serviceDescription,
+              activityDescription: selectedStage.serviceDescription,
               startTime: selectedStage.startTime,
               endTime: selectedStage.endTime,
-              activityDescription: selectedStage.activities
-                .map((activity) => [activity.code, activity.description].filter(Boolean).join(" - "))
-                .join("\n"),
             }
           : undefined,
       });
