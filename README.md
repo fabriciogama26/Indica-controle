@@ -609,6 +609,9 @@ vercel --prod
 - `supabase/migrations/427_split_pi_template_screen.sql`: separa a administracao do template na tela `Modelo de PI` (`/modelo-pi`, Cadastro Base), herdando o acesso de quem ja tinha `permissao-intervencao`.
 - `supabase/migrations/428_create_pi_catalogs_and_settings.sql`: configuracao da PI por contrato (`pi_settings`), catalogos de Area de Atuacao e Nivel de Tensao com codigo fechado, modelo de etapas padrao e o contador do sequencial.
 - `supabase/migrations/429_create_permission_intervention.sql`: entidade `permission_intervention` e filhas (areas, tensoes, plano de execucao e historico), com vinculo a Programacao por UUID da etapa, uma PI viva por projeto+data e RLS por tenant.
+- `supabase/migrations/431_pi_settings_roles_and_contact_source.sql`: configuracao da PI por contrato (origem do contato da distribuidora, limite de equipes que torna o Supervisor obrigatorio) e os cargos que habilitam cada papel, com as RPCs de escrita.
+- `supabase/migrations/432_pi_prefill_and_supervisor_rule.sql`: PI nasce com contrato e contato preenchidos, `Descricao das atividades` herda a descricao do servico da etapa, e o Supervisor vira condicional ao numero de equipes.
+- `supabase/migrations/433_fix_pi_prefill_column_types.sql`: cast para `text` no pre-preenchimento; `contract.telefone_corporativo` e numeric e quebrava a criacao da PI.
 - `supabase/migrations/430_create_permission_intervention_rpcs.sql`: RPCs de escrita da PI (salvar, plano de execucao, status/emissao com sequencial sob lock e vinculo explicito com a Programacao), todas `SECURITY DEFINER` liberadas apenas ao `service_role` e sem nenhuma escrita na Programacao.
 
 ---
