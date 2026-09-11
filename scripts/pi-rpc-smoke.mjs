@@ -406,6 +406,10 @@ async function main() {
     check("vincular sem etapa ativa e recusado", noStage.success === false && noStage.reason === "NO_ACTIVE_PROGRAMMING", noStage.reason);
 
     // -----------------------------------------------------------------------
+    section("Contrato do formulario");
+    updatedAt = (await runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt })) ?? updatedAt;
+
+    // -----------------------------------------------------------------------
     section("Camada de leitura (queries.ts)");
     await runReadLayerChecks(sb, { tenantId, piId, projectId: project.data.id });
 
@@ -435,6 +439,133 @@ async function main() {
     console.log(`Falhas: ${failures.join(" | ")}`);
     process.exitCode = 1;
   }
+}
+
+/**
+ * Envia o payload EXATO que o formulario monta.
+ *
+ * O contrato e "conjunto completo dos campos editaveis, chave ausente vale como
+ * nulo". Estes casos provam os dois lados: campo preenchido persiste, e campo
+ * omitido na chamada seguinte e LIMPO em vez de preservado. Sem isso, a tela
+ * nao conseguiria apagar um valor.
+ */
+async function runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt }) {
+  const person = await sb.from("people").select("id").eq("tenant_id", tenantId).eq("ativo", true).limit(1).maybeSingle();
+
+  const full = {
+    primaryOperationAreaCode: "PM",
+    primaryVoltageLevelCode: "MT",
+    operationAreas: ["PM", "CE"],
+    contactOperationAreas: ["OM"],
+    voltageLevels: ["MT", "BT"],
+    interferingVoltageLevels: ["AT"],
+    managerName: "GESTOR TESTE",
+    companyName: "EMPRESA TESTE",
+    contractNumber: "CT-001",
+    managerPhone: "(21) 90000-0000",
+    managerEmail: "gestor@teste.com",
+    utilityContactName: "CONTATO TESTE",
+    utilityContactPhone: "(21) 91111-1111",
+    utilityContactEmail: "contato@teste.com",
+    activityDescription: "Linha 1\nLinha 2",
+    workPlan: "PT-1",
+    liveWorkAuthorization: "AT-1",
+    preApr: "APR-1",
+    emergencyAuthorization: "EM-1",
+    startTime: "07:30",
+    endDate: "2099-12-31",
+    endTime: "17:00",
+    secondaryDate: "",
+    secondaryStartTime: "",
+    installationDescription: "Instalacao de teste",
+    feeder: "SMOKE01",
+    address: "Rua de Teste, 1",
+    coordX: "-44.1",
+    coordY: "-22.9",
+    blockedElements: "CH-1",
+    cutElements: "CD-1",
+    hasInterferingInstallation: true,
+    interferingDescription: "Proximidade",
+    trafficInstructions: "Cones",
+    supervisorPersonId: person.data?.id ?? "",
+    supervisorAlternatePersonId: "",
+    foremanPersonId: person.data?.id ?? "",
+    foremanAlternatePersonId: "",
+    authorPersonId: "",
+    validatorPersonId: "",
+    observations: "Observacao de teste",
+  };
+
+  const saved = await callRpc(sb, "save_permission_intervention", {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: full,
+    p_expected_updated_at: updatedAt,
+  });
+  if (!check("salva o payload completo do formulario", saved.success === true, saved.message)) return updatedAt;
+
+  const row = await sb
+    .from("permission_intervention")
+    .select(
+      "manager_name, contract_number, start_time, end_time, coord_x, has_interfering_installation, supervisor_person_id, supervisor_name_snapshot, observations, secondary_date",
+    )
+    .eq("id", piId)
+    .maybeSingle();
+
+  const data = row.data ?? {};
+  check("texto persistido", data.manager_name === "GESTOR TESTE", String(data.manager_name));
+  check("hora `HH:mm` aceita e normalizada", String(data.start_time).startsWith("07:30"), String(data.start_time));
+  check("booleano do interferente persistido", data.has_interfering_installation === true, String(data.has_interfering_installation));
+  check("uuid de pessoa persistido", Boolean(data.supervisor_person_id), String(data.supervisor_person_id));
+  check("snapshot do nome preenchido pela RPC", Boolean(data.supervisor_name_snapshot), String(data.supervisor_name_snapshot));
+  check("string vazia vira nulo", data.secondary_date === null, String(data.secondary_date));
+
+  // Chave ausente tem de LIMPAR, nao preservar.
+  const cleared = await callRpc(sb, "save_permission_intervention", {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: { feeder: "SO ISSO" },
+    p_expected_updated_at: saved.updated_at,
+  });
+  if (!check("salva payload parcial", cleared.success === true, cleared.message)) return saved.updated_at;
+
+  const after = await sb
+    .from("permission_intervention")
+    .select("feeder, manager_name, has_interfering_installation, supervisor_person_id")
+    .eq("id", piId)
+    .maybeSingle();
+
+  check("chave enviada e gravada", after.data?.feeder === "SO ISSO", String(after.data?.feeder));
+  check("chave ausente e limpa, nao preservada", after.data?.manager_name === null, String(after.data?.manager_name));
+  check("booleano ausente volta a nulo", after.data?.has_interfering_installation === null, String(after.data?.has_interfering_installation));
+  check("uuid ausente volta a nulo", after.data?.supervisor_person_id === null, String(after.data?.supervisor_person_id));
+
+  // O payload parcial acima LIMPOU areas e tensoes, que e o comportamento
+  // correto do contrato. As secoes seguintes contam com a PI no estado que a
+  // criacao deixou, entao a fixture e reposta aqui.
+  const restored = await callRpc(sb, "save_permission_intervention", {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: {
+      managerName: "SMOKE TEST EDITADO",
+      companyName: "SMOKE",
+      contractNumber: "SMOKE-001",
+      activityDescription: "Linha 1\nLinha 2",
+      feeder: "SMOKE01",
+      address: "Rua de Teste, 1",
+      operationAreas: ["PM"],
+      contactOperationAreas: ["OM"],
+      voltageLevels: ["MT"],
+      interferingVoltageLevels: ["AT"],
+    },
+    p_expected_updated_at: cleared.updated_at,
+  });
+  check("fixture reposta para as secoes seguintes", restored.success === true, restored.message);
+
+  return restored.updated_at ?? cleared.updated_at;
 }
 
 /**

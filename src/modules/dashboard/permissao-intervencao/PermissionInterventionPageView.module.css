@@ -370,3 +370,88 @@
 .rowDisabled {
   opacity: 0.55;
 }
+
+/* --- Formulario ---------------------------------------------------------- */
+
+.formGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.fieldWide {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  font-size: 0.86rem;
+  color: #5b6a85;
+}
+
+.fieldLabel {
+  font-size: 0.86rem;
+  color: #5b6a85;
+}
+
+.textarea {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(23, 52, 122, 0.18);
+  background: #ffffff;
+  color: #17347a;
+  font-size: 0.92rem;
+  font-family: inherit;
+  resize: vertical;
+  width: 100%;
+}
+
+.checkboxRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #17347a;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+/* Plano de Emergencia: configuracao do contrato, nunca editavel na PI. */
+.readOnlyBox {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(23, 52, 122, 0.22);
+  background: #f8faff;
+  color: #43506b;
+  font-size: 0.9rem;
+  white-space: pre-wrap;
+}
+
+.rowActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.historyEntry {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(23, 52, 122, 0.1);
+  background: #f8faff;
+}
+
+.historyHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #17347a;
+}

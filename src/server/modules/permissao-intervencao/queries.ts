@@ -539,6 +539,41 @@ export async function fetchActiveProjectOptions(supabase: SupabaseClient, tenant
   return data ?? [];
 }
 
+/**
+ * Pessoas e equipes ativas para os selects do formulario.
+ *
+ * Lista completa em vez de busca por digitacao, mesmo padrao dos projetos: sao
+ * catalogos pequenos e o formulario precisa deles todos de uma vez. As duas
+ * usam `loadAllRows` porque o teto de 1.000 linhas do PostgREST corta sem
+ * sinalizar.
+ */
+export async function fetchPiPeopleAndTeams(supabase: SupabaseClient, tenantId: string) {
+  const [people, teams] = await Promise.all([
+    loadAllRows<{ id: string; nome: string; matriculation: string | null }>((from, to) =>
+      supabase
+        .from("people")
+        .select("id, nome, matriculation")
+        .eq("tenant_id", tenantId)
+        .eq("ativo", true)
+        .order("nome", { ascending: true })
+        .range(from, to)
+        .returns<{ id: string; nome: string; matriculation: string | null }[]>(),
+    ),
+    loadAllRows<{ id: string; name: string }>((from, to) =>
+      supabase
+        .from("teams")
+        .select("id, name")
+        .eq("tenant_id", tenantId)
+        .eq("ativo", true)
+        .order("name", { ascending: true })
+        .range(from, to)
+        .returns<{ id: string; name: string }[]>(),
+    ),
+  ]);
+
+  return { people: people.data ?? [], teams: teams.data ?? [] };
+}
+
 export async function fetchPiMeta(supabase: SupabaseClient, tenantId: string) {
   const [areas, voltages, contract, stepTemplates, settings, hasTemplate] = await Promise.all([
     supabase

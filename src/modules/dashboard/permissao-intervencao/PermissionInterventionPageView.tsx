@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Pagination } from "@/components/ui/Pagination";
@@ -29,8 +31,8 @@ import type {
 /**
  * Tela da Permissao de Intervencao: listagem e criacao.
  *
- * O formulario completo da PI e o passo seguinte. Esta entrega cobre ver as
- * PIs, filtrar e criar nos dois caminhos.
+ * O formulario de cada PI vive em `PiFormPageView`, na rota
+ * `/permissao-intervencao/[id]`.
  */
 
 type Feedback = { type: "success" | "error"; message: string };
@@ -52,6 +54,7 @@ export function PermissionInterventionPageView() {
   const { session } = useAuth();
   const accessToken = session?.accessToken ?? null;
   const logError = useErrorLogger("permissao-intervencao");
+  const router = useRouter();
 
   const [filters, setFilters] = useState<PiListFilterState>(EMPTY_PI_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<PiListFilterState>(EMPTY_PI_FILTERS);
@@ -291,6 +294,7 @@ export function PermissionInterventionPageView() {
                   <th>Responsavel</th>
                   <th>Encarregado</th>
                   <th>Criada em</th>
+                  <th>Acoes</th>
                 </tr>
               </thead>
               <tbody>
@@ -313,6 +317,11 @@ export function PermissionInterventionPageView() {
                     <td>{item.supervisorName ?? "-"}</td>
                     <td>{item.foremanName ?? "-"}</td>
                     <td>{formatDateTime(item.createdAt)}</td>
+                    <td>
+                      <Link href={`/permissao-intervencao/${item.id}`} className={styles.linkButton}>
+                        Abrir
+                      </Link>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -337,10 +346,13 @@ export function PermissionInterventionPageView() {
           accessToken={accessToken}
           projects={projects}
           onClose={() => setIsModalOpen(false)}
-          onCreated={(_piId, message) => {
+          onCreated={(newPiId, message) => {
             setIsModalOpen(false);
             setFeedback({ type: "success", message });
-            void loadList();
+            // Abre o formulario direto: a PI nasce como rascunho quase vazio e
+            // o proximo passo do usuario e sempre preenche-la.
+            if (newPiId) router.push(`/permissao-intervencao/${newPiId}`);
+            else void loadList();
           }}
           onError={(message) => setFeedback({ type: "error", message })}
         />

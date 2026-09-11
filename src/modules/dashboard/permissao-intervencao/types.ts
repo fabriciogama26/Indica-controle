@@ -69,6 +69,8 @@ export type PiMetaResponse = {
   operationAreas?: PiCatalogOption[];
   voltageLevels?: PiCatalogOption[];
   executionStepTemplates?: Array<{ code: string; description: string; sortOrder?: number }>;
+  people?: PiPersonOption[];
+  teams?: PiTeamOption[];
   projects?: PiProjectOption[];
   contractDefaults?: {
     companyName: string | null;
@@ -115,4 +117,103 @@ export type PiListFilterState = {
   voltageLevel: string;
   dateFrom: string;
   dateTo: string;
+};
+
+// ---------------------------------------------------------------------------
+// Detalhe e formulario
+// ---------------------------------------------------------------------------
+
+export type PiPersonOption = { id: string; name: string; registration: string | null };
+export type PiTeamOption = { id: string; name: string };
+
+export type PiExecutionStepRow = {
+  id?: string;
+  sortOrder?: number;
+  workZone: string | null;
+  teamId: string | null;
+  teamName: string | null;
+  activity: string | null;
+  origin: "TEMPLATE" | "PROGRAMMING" | "MANUAL";
+};
+
+export type PiComparisonRow = {
+  field: string;
+  label: string;
+  programmingValue: string;
+  piValue: string;
+  divergent: boolean;
+};
+
+/**
+ * Campos editaveis da PI, no formato que a tela mantem em estado.
+ *
+ * Tudo string para o formulario nao ter de lidar com nulo em `<input>`; a
+ * conversao para nulo acontece no envio. `hasInterferingInstallation` e a
+ * excecao: `null` e um estado real ("nao informado") e deixa as duas caixas do
+ * documento vazias.
+ */
+export type PiFormState = {
+  primaryOperationAreaCode: string;
+  primaryVoltageLevelCode: string;
+  operationAreas: string[];
+  contactOperationAreas: string[];
+  voltageLevels: string[];
+  interferingVoltageLevels: string[];
+  managerName: string;
+  companyName: string;
+  contractNumber: string;
+  managerPhone: string;
+  managerEmail: string;
+  utilityContactName: string;
+  utilityContactPhone: string;
+  utilityContactEmail: string;
+  activityDescription: string;
+  workPlan: string;
+  liveWorkAuthorization: string;
+  preApr: string;
+  emergencyAuthorization: string;
+  startTime: string;
+  endDate: string;
+  endTime: string;
+  secondaryDate: string;
+  secondaryStartTime: string;
+  installationDescription: string;
+  feeder: string;
+  address: string;
+  coordX: string;
+  coordY: string;
+  blockedElements: string;
+  cutElements: string;
+  hasInterferingInstallation: boolean | null;
+  interferingDescription: string;
+  trafficInstructions: string;
+  supervisorPersonId: string;
+  supervisorAlternatePersonId: string;
+  foremanPersonId: string;
+  foremanAlternatePersonId: string;
+  authorPersonId: string;
+  validatorPersonId: string;
+  observations: string;
+};
+
+export type PiDetailResponse = {
+  pi?: Record<string, unknown>;
+  project?: { id: string; code: string; city: string | null; address: string; serviceDescription: string | null } | null;
+  operationAreas?: string[];
+  contactOperationAreas?: string[];
+  voltageLevels?: string[];
+  interferingVoltageLevels?: string[];
+  executionSteps?: PiExecutionStepRow[];
+  comparison?: PiComparisonRow[];
+  message?: string;
+};
+
+export type PiHistoryEntry = {
+  id: string;
+  actionType: string;
+  reason: string | null;
+  changes: Record<string, { from: unknown; to: unknown }>;
+  metadata: Record<string, unknown>;
+  createdByName: string;
+  createdAt: string;
 };

@@ -1,4 +1,6 @@
 import type {
+  PiDetailResponse,
+  PiHistoryEntry,
   PiListFilterState,
   PiListResponse,
   PiMetaResponse,
@@ -134,4 +136,56 @@ export async function linkPiToProgramming(
     body: JSON.stringify({ programmingId: programmingId ?? null, reason: reason ?? null, expectedUpdatedAt }),
   });
   return parseOrThrow(response, "Falha ao vincular a PI a Programacao.");
+}
+
+export async function fetchPiDetail(accessToken: string, piId: string): Promise<PiDetailResponse> {
+  const response = await fetch(`${BASE_URL}/${piId}`, { cache: "no-store", headers: authHeaders(accessToken) });
+  const data = (await response.json().catch(() => ({}))) as PiDetailResponse;
+  if (!response.ok) throw new Error(data.message ?? "Falha ao carregar a PI.");
+  return data;
+}
+
+export async function fetchPiHistory(accessToken: string, piId: string): Promise<PiHistoryEntry[]> {
+  const response = await fetch(`${BASE_URL}/${piId}/historico`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+  const data = (await response.json().catch(() => ({}))) as { items?: PiHistoryEntry[]; message?: string };
+  if (!response.ok) throw new Error(data.message ?? "Falha ao carregar o historico.");
+  return data.items ?? [];
+}
+
+/**
+ * Salva a PI.
+ *
+ * O payload e o conjunto COMPLETO dos campos editaveis: o backend trata chave
+ * ausente como nulo, e nao como "nao mexer". Enviar o objeto inteiro e o que
+ * torna possivel limpar um campo.
+ */
+export async function savePi(
+  accessToken: string,
+  piId: string,
+  expectedUpdatedAt: string,
+  data: Record<string, unknown>,
+): Promise<PiMutationResponse> {
+  const response = await fetch(BASE_URL, {
+    method: "POST",
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify({ piId, expectedUpdatedAt, data }),
+  });
+  return parseOrThrow(response, "Falha ao salvar a PI.");
+}
+
+export async function savePiExecutionPlan(
+  accessToken: string,
+  piId: string,
+  expectedUpdatedAt: string,
+  steps: unknown[],
+): Promise<PiMutationResponse> {
+  const response = await fetch(`${BASE_URL}/${piId}/plano`, {
+    method: "PUT",
+    headers: jsonHeaders(accessToken),
+    body: JSON.stringify({ expectedUpdatedAt, steps }),
+  });
+  return parseOrThrow(response, "Falha ao salvar o Plano de Execucao.");
 }
