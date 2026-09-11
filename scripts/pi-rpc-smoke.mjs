@@ -386,8 +386,15 @@ async function main() {
       p_expected_updated_at: updatedAt,
     });
     const codes = (missingFields.errors ?? []).map((e) => e.code);
-    check("supervisor ausente bloqueia", codes.includes("SUPERVISOR_REQUIRED"), codes.join(","));
     check("encarregado ausente bloqueia", codes.includes("FOREMAN_REQUIRED"), codes.join(","));
+    // Desde a migration 432 o Supervisor NAO e mais obrigatorio sempre: so
+    // quando a etapa VINCULADA passa do limite de equipes. Esta PI e PENDING
+    // (sem etapa), entao a regra nao pode disparar de jeito nenhum.
+    check(
+      "supervisor NAO e exigido em PI sem Programacao",
+      !codes.includes("SUPERVISOR_REQUIRED") && !codes.includes("SUPERVISOR_REQUIRED_FOR_TEAM_COUNT"),
+      codes.join(","),
+    );
     if (!settings.data.emergency_plan_text) {
       check("Plano de Emergencia nao configurado bloqueia", codes.includes("EMERGENCY_PLAN_MISSING"), codes.join(","));
     }
@@ -754,8 +761,23 @@ async function runIssueFlow(sb, ctx) {
       .eq("tenant_id", tenantId);
   }
 
-  const person = await sb.from("people").select("id").eq("tenant_id", tenantId).eq("ativo", true).limit(1).maybeSingle();
-  if (!check("ha pessoa ativa para responsavel", Boolean(person.data), person.error?.message)) return;
+  // Desde a migration 432, a emissao recusa quem nao tem cargo habilitado para
+  // o papel. A pessoa do teste precisa vir dos cargos configurados, e nao ser a
+  // primeira ativa qualquer.
+  const roleTitles = await sb.from("pi_role_job_titles").select("role, job_title_id").eq("tenant_id", tenantId);
+  const foremanTitles = (roleTitles.data ?? []).filter((r) => r.role === "FOREMAN").map((r) => r.job_title_id);
+  const supervisorTitles = (roleTitles.data ?? []).filter((r) => r.role === "SUPERVISOR").map((r) => r.job_title_id);
+
+  const people = await sb.from("people").select("id, job_title_id").eq("tenant_id", tenantId).eq("ativo", true);
+  const qualified = (people.data ?? []).find(
+    (p) => foremanTitles.includes(p.job_title_id) && supervisorTitles.includes(p.job_title_id),
+  );
+  const unqualified = (people.data ?? []).find(
+    (p) => !foremanTitles.includes(p.job_title_id) && !supervisorTitles.includes(p.job_title_id),
+  );
+
+  const person = { data: qualified ?? null };
+  if (!check("ha pessoa com cargo habilitado para os dois papeis", Boolean(person.data), "nenhuma encontrada")) return;
 
   const filled = await callRpc(sb, "save_permission_intervention", {
     p_tenant_id: tenantId,
@@ -777,6 +799,68 @@ async function runIssueFlow(sb, ctx) {
   });
   if (!check("completa os obrigatorios", filled.success === true, filled.message)) return;
   updatedAt = filled.updated_at;
+
+  // Guarda de cargo: quem nao tem o cargo habilitado nao passa, mesmo chamando
+  // a RPC direto. A tela ja filtra o select; isto impede o desvio pela API.
+  if (unqualified) {
+    const wrongRole = await callRpc(sb, "save_permission_intervention", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: piId,
+      p_payload: {
+        managerName: "SMOKE TEST",
+        companyName: "SMOKE",
+        contractNumber: "SMOKE-001",
+        activityDescription: "Atividade de teste",
+        feeder: "SMOKE01",
+        address: "Rua de Teste, 1",
+        operationAreas: ["PM"],
+        voltageLevels: ["MT"],
+        supervisorPersonId: unqualified.id,
+        foremanPersonId: unqualified.id,
+      },
+      p_expected_updated_at: updatedAt,
+    });
+
+    if (wrongRole.success === true) {
+      updatedAt = wrongRole.updated_at;
+      const blocked = await callRpc(sb, "set_permission_intervention_status", {
+        p_tenant_id: tenantId,
+        p_actor_user_id: actorId,
+        p_pi_id: piId,
+        p_action: "READY",
+        p_reason: null,
+        p_expected_updated_at: updatedAt,
+      });
+      const blockedCodes = (blocked.errors ?? []).map((e) => e.code);
+      check(
+        "cargo nao habilitado bloqueia a emissao",
+        blockedCodes.includes("FOREMAN_ROLE_INVALID") || blockedCodes.includes("SUPERVISOR_ROLE_INVALID"),
+        blockedCodes.join(","),
+      );
+
+      // Repoe a pessoa correta para o resto do fluxo.
+      const restore = await callRpc(sb, "save_permission_intervention", {
+        p_tenant_id: tenantId,
+        p_actor_user_id: actorId,
+        p_pi_id: piId,
+        p_payload: {
+          managerName: "SMOKE TEST",
+          companyName: "SMOKE",
+          contractNumber: "SMOKE-001",
+          activityDescription: "Atividade de teste",
+          feeder: "SMOKE01",
+          address: "Rua de Teste, 1",
+          operationAreas: ["PM"],
+          voltageLevels: ["MT"],
+          supervisorPersonId: person.data.id,
+          foremanPersonId: person.data.id,
+        },
+        p_expected_updated_at: updatedAt,
+      });
+      if (restore.success === true) updatedAt = restore.updated_at;
+    }
+  }
 
   const issueBeforeReady = await callRpc(sb, "set_permission_intervention_status", {
     p_tenant_id: tenantId,
