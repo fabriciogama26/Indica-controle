@@ -208,6 +208,8 @@ vercel --prod
   - `api/permissao-intervencao/[id]/status/route.ts`: transicoes READY, REOPEN, ISSUE e CANCEL.
   - `api/permissao-intervencao/[id]/vinculo/route.ts`: vinculo explicito com uma etapa da Programacao.
   - `api/permissao-intervencao/[id]/plano/route.ts`: substitui o Plano de Execucao inteiro.
+  - `api/permissao-intervencao/[id]/documento/route.ts`: gera o DOCX oficial de uma PI emitida, a partir do template registrado na emissao.
+  - `api/permissao-intervencao/configuracao/route.ts`: le e grava a configuracao da PI do contrato.
   - `api/permissao-intervencao/templates/route.ts`: lista as versoes do template da PI, recebe upload `.docx` com conferencia de tags antes de gravar no Storage e ativa uma versao por RPC.
   - `api/permissao-intervencao/templates/preview/route.ts`: gera o DOCX de demonstracao a partir do template ativo do tenant, com dados montados no servidor.
   - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao`, tipos de servico ativos dos projetos e catalogo de Estado Trabalho por tenant; com `?includeSources=1` devolve tambem projetos e equipes ativos para os filtros da tela Visualizacao Medicao.
@@ -491,6 +493,8 @@ vercel --prod
   - `templates.ts`: listagem, upload com conferencia de tags, ativacao de versao e geracao do DOCX de demonstracao.
   - `queries.ts`: leituras da PI (listagem com filtros, detalhe, historico, etapas da Programacao oferecidas na criacao, catalogos) e a comparacao Programacao x PI contra o snapshot.
   - `handlers.ts`: handlers da tela da PI — listagem, detalhe, historico, meta, etapas, cadastro, plano de execucao, status e vinculo.
+  - `document.ts`: geracao do DOCX oficial de uma PI emitida, com o template da versao registrada na emissao.
+  - `configuration.ts`: leitura e gravacao da configuracao da PI por contrato.
   - `index.ts`: fachada publica do modulo server-side.
 - `src/server/modules/warehouse-addressing/`
   - `handlers.ts` e `types.ts`: backend compartilhado do Mapa do Almoxarifado e da Configuracao do mapa.

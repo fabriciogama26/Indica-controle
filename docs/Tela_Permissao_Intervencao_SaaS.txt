@@ -4,7 +4,7 @@ Visao geral
 -----------
 - A Permissao de Intervencao (PI) e um documento operacional vinculado a Projeto + Data da etapa.
 - A tela e o CADASTRO da PI: listagem, nova PI a partir da Programacao ou sem Programacao, formulario completo, plano de execucao e emissao do documento.
-- PARCIALMENTE ENTREGUE: listagem com filtros, criacao nos dois caminhos, formulario completo das oito secoes, plano de execucao ordenavel, historico, painel de comparacao e as acoes de status (pronta, reabrir, emitir, cancelar). Falta APENAS a geracao do documento real, que ainda usa o preview de demonstracao da tela Modelo de PI.
+- FLUXO COMPLETO: listagem com filtros, criacao nos dois caminhos, formulario das oito secoes, plano de execucao ordenavel, historico, comparacao, acoes de status e a GERACAO DO DOCUMENTO oficial. O que resta sao pendencias de conteudo, nao de codigo.
 - A camada do documento Word JA ESTA PRONTA e vive numa tela propria: `Cadastro Base > Modelo de PI` (`/modelo-pi`). Ver `Tela_Modelo_PI_SaaS.txt`.
 - Rota: `/permissao-intervencao`, secao `Operacao` do menu.
 
@@ -18,7 +18,7 @@ Arquitetura (estado atual)
 - Fluxo Nova PI: `src/modules/dashboard/permissao-intervencao/components/NewPiModal.tsx`
 - Estilo, cliente HTTP, contratos e fachada: `PermissionInterventionPageView.module.css`, `api.ts`, `types.ts`, `constants.ts`, `index.ts`
 - Backend: `src/server/modules/permissao-intervencao/` (`queries.ts`, `handlers.ts`, `templates.ts`, `piTemplateTags.ts`, `piTemplateMapper.ts`, `piTemplateStorage.ts`, `piDemoDocument.ts`, `types.ts`, `index.ts`)
-- API: `src/app/api/permissao-intervencao/` — `route.ts` (GET lista, POST cria/edita), `meta`, `programacoes`, `[id]`, `[id]/historico`, `[id]/status`, `[id]/vinculo` e `[id]/plano`
+- API: `src/app/api/permissao-intervencao/` — `route.ts` (GET lista, POST cria/edita), `meta`, `programacoes`, `configuracao`, `[id]`, `[id]/historico`, `[id]/status`, `[id]/vinculo`, `[id]/plano` e `[id]/documento`
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
 - Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql`, `429_create_permission_intervention.sql` e `430_create_permission_intervention_rpcs.sql`
 - Verificacao das RPCs: `scripts/pi-rpc-smoke.mjs` (ESCREVE no banco ligado; cria uma PI de teste e a remove no fim)
@@ -95,9 +95,19 @@ Fases pendentes
 - FASE 2b (FEITA): tela de listagem com filtros e paginacao, e o fluxo Nova PI nos dois caminhos.
 - FASE 3 (FEITA): formulario completo com as oito secoes.
 - FASE 4 (FEITA): plano de execucao ordenavel, com etapas padrao vindas de modelo.
-- FASE 5: emissao real, substituindo o preview de demonstracao da tela `Modelo de PI`.
+- FASE 5 (FEITA): geracao do documento oficial a partir da PI emitida.
 - FASE 6 (FEITA): historico na UI e comparacao Programacao x PI.
 - FASE 7 (toca a Programacao, migration isolada): campos de elementos bloqueados e de corte na etapa, e o campo PI da etapa virando herdado e nao editavel.
+
+Geracao do documento
+--------------------
+- Endpoint `GET /api/permissao-intervencao/[id]/documento`, com botao no formulario e na listagem.
+- SOMENTE PI EMITIDA. O documento carrega o codigo oficial e a assinatura do template usado; gerar de rascunho produziria um arquivo com cara de valido e sem numero. Para conferir layout existe o preview de demonstracao em Modelo e Configuracao da PI.
+- Usa o template da VERSAO REGISTRADA NA EMISSAO (`issued_template_id`), nunca o ativo de hoje. E o que torna o documento reconstruivel depois de o contrato trocar de modelo.
+- Os nomes dos responsaveis saem do SNAPSHOT gravado na PI, e o Plano de Emergencia do snapshot da emissao: renomear alguem ou mudar o plano depois nao pode reescrever documento ja emitido.
+- PERMISSAO: usa `authorizeAnyPageAction` com `permissao-intervencao` E `modelo-pi`. O template pertence a outra tela, mas o endpoint e desta; exigir so `modelo-pi` faria a tela abrir e o proprio botao dela tomar 403.
+- Varredura pos-render antes de entregar: se sobrar qualquer `{...}`, o arquivo NAO e entregue.
+- A geracao e registrada em `pi_history` como `GENERATE_DOCUMENT`, com versao e checksum do template. O insert e direto, e nao pela RPC `pi_append_history`, que e helper interno sem grant para `service_role`; dar esse grant alargaria a superficie sem beneficio. Falha de log nao derruba a entrega do arquivo.
 
 Areas que NAO sao digitalizadas
 -------------------------------
@@ -119,4 +129,4 @@ Atualizacao 2026-09
 - A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
 - Migrations 428 e 429: schema da PI criado, tabelas vazias. A Programacao nao foi tocada.
 - Migration 430: RPCs de escrita da PI. Nenhuma delas escreve na Programacao — `programming` e suas filhas sao apenas lidas, para montar snapshot e resolver vinculo.
-- `scripts/pi-rpc-smoke.mjs`: 86 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.
+- `scripts/pi-rpc-smoke.mjs`: 91 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.

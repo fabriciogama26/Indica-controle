@@ -27,7 +27,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire, registerHooks } from "node:module";
 import { dirname, join, resolve as resolvePath } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repoRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(repoRoot, "package.json"));
@@ -57,6 +57,14 @@ registerHooks({
         const candidate = new URL(base.href + extension);
         if (existsSync(fileURLToPath(candidate))) return { url: candidate.href, shortCircuit: true };
       }
+    }
+
+    // Pacote sem mapa de `exports` que so expoe o arquivo com extensao, como
+    // `next/server`. O bundler do Next resolve por alias proprio; o resolver do
+    // Node, nao. Vale so para este script.
+    if (!target.startsWith(".") && !target.startsWith("node:") && !/\.[a-z]+$/i.test(target)) {
+      const direct = join(repoRoot, "node_modules", `${target}.js`);
+      if (existsSync(direct)) return { url: pathToFileURL(direct).href, shortCircuit: true };
     }
 
     return nextResolve(specifier, context);
@@ -920,6 +928,61 @@ async function runIssueFlow(sb, ctx) {
     p_expected_updated_at: issued.updated_at,
   });
   check("PI emitida nao aceita edicao", editAfter.success === false && editAfter.reason === "PI_NOT_EDITABLE", editAfter.reason);
+
+  // ---------------------------------------------------------------------------
+  // Geracao do documento, com o handler REAL.
+  // ---------------------------------------------------------------------------
+  // `requirePageAction` libera de imediato quando o contexto e admin, entao um
+  // contexto minimo basta para exercitar o caminho inteiro sem subir servidor.
+  try {
+    const { generatePiDocument } = await import(
+      `${new URL("../src/server/modules/permissao-intervencao/document.ts", import.meta.url)}`
+    );
+
+    const response = await generatePiDocument(
+      { supabase: sb, appUser: { id: actorId, tenant_id: tenantId }, role: { isAdmin: true } },
+      piId,
+    );
+
+    if (!check("gera o documento da PI emitida", response.status === 200, `status ${response.status}`)) {
+      const body = await response.json().catch(() => ({}));
+      console.log("     resposta:", JSON.stringify(body).slice(0, 300));
+    } else {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      check("documento e um .docx valido", buffer.subarray(0, 4).toString("hex") === "504b0304", String(buffer.length));
+      check(
+        "nome do arquivo usa o codigo da PI",
+        (response.headers.get("content-disposition") ?? "").includes(String(issued.pi_code)),
+        response.headers.get("content-disposition") ?? "",
+      );
+
+      const PizZip = createRequire(join(repoRoot, "package.json"))("pizzip");
+      const zip = new PizZip(buffer);
+      const corpo = zip.file("word/document.xml").asText();
+
+      // `{pi_code}` vive SO nos tres cabecalhos de secao, nunca no corpo. E por
+      // isso que a leitura precisa juntar os nos `<w:t>`: no cabecalho a tag
+      // nasce partida em varios runs, e o texto so fecha depois de concatenar.
+      const cabecalhos = Object.keys(zip.files).filter((name) => /^word\/header\d*\.xml$/.test(name));
+      const textoCabecalho = cabecalhos
+        .map((name) =>
+          [...zip.file(name).asText().matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map((m) => m[1]).join(""),
+        )
+        .join(" ");
+
+      check("codigo da PI impresso nos cabecalhos", textoCabecalho.includes(String(issued.pi_code)), `${cabecalhos.length} cabecalho(s)`);
+      check("plano de emergencia do snapshot impresso", corpo.includes("PLANO TEMPORARIO") || !planWasEmpty);
+
+      const historico = await sb.from("pi_history").select("action_type").eq("pi_id", piId);
+      check(
+        "geracao registrada no historico",
+        (historico.data ?? []).some((h) => h.action_type === "GENERATE_DOCUMENT"),
+        (historico.data ?? []).map((h) => h.action_type).join(","),
+      );
+    }
+  } catch (error) {
+    check("gera o documento da PI emitida", false, error instanceof Error ? error.message : String(error));
+  }
 
   // Restauracao. O contador so volta se ninguem mais tiver emitido no meio.
   const counterAfter = await sb.from("pi_sequence_counter").select("last_value").eq("tenant_id", tenantId).maybeSingle();
