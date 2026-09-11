@@ -158,7 +158,7 @@ vercel --prod
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, checkbox `CMD` para `RELIGADOR`, importacao CSV em massa, pendencia de identificacao para materiais rastreaveis sem LP quando permitido e estorno individual ou atomico em lote.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por um ou mais projetos/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, filtros por periodo/projeto/equipe/situacao, acao `Fazer medicao`, detalhes, historico e CSV.
   - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
-  - `(dashboard)/permissao-intervencao/page.tsx`: rota do cadastro da Permissao de Intervencao. Em construcao: exibe o roteiro do modulo enquanto a entidade `permission_intervention` nao existe.
+  - `(dashboard)/permissao-intervencao/page.tsx`: rota do cadastro da Permissao de Intervencao, com listagem filtrada e paginada e o fluxo Nova PI nos dois caminhos (a partir de uma etapa da Programacao ou sem Programacao).
   - `(dashboard)/modelo-pi/page.tsx`: rota de Cadastro Base com as versoes do template Word da PI: upload com conferencia das 129 tags, ativacao de uma unica versao por contrato e geracao de documento de demonstracao para conferir o layout no Word.
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
   - `(dashboard)/requisicao-solicitacao/page.tsx`: rota de Solicitacao de Requisicao para abertura de pedidos de material ao almoxarifado.
@@ -337,6 +337,10 @@ vercel --prod
 - `src/modules/dashboard/controle-apr/`
   - `AprControlPageView.tsx`: cadastro, filtros, lista, validacao, divergencia, cancelamento e extracao `.xlsx` do Controle de APR.
   - `AprControlPageView.module.css`: estilos da tela no padrao visual da Medicao.
+- `src/modules/dashboard/permissao-intervencao/`
+  - `PermissionInterventionPageView.tsx`: listagem das PIs com filtros, paginacao e avisos de pendencia de configuracao.
+  - `components/NewPiModal.tsx`: fluxo Nova PI em dois passos, com a lista de etapas da Programacao.
+  - `PermissionInterventionPageView.module.css`, `api.ts`, `types.ts`, `constants.ts` e `index.ts`: estilos, cliente HTTP, contratos, rotulos e fachada publica.
 - `src/modules/dashboard/modelo-pi/`
   - `PiTemplatePageView.tsx`: painel de versoes do template Word da PI, com upload, relatorio de conferencia das tags, ativacao e geracao do documento de demonstracao.
   - `PiTemplatePageView.module.css`: estilos da tela.

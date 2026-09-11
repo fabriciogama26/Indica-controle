@@ -12,6 +12,7 @@ import { authorizePageAction } from "@/lib/server/routeAuthorization";
 
 import {
   buildPiComparison,
+  fetchActiveProjectOptions,
   fetchPiById,
   fetchPiExecutionSteps,
   fetchPiHistory,
@@ -287,11 +288,21 @@ export async function getPermissionInterventionMeta(context: AuthenticatedAppUse
   const { supabase, appUser } = context;
 
   try {
-    const meta = await fetchPiMeta(supabase, appUser.tenant_id);
+    const [meta, projects] = await Promise.all([
+      fetchPiMeta(supabase, appUser.tenant_id),
+      fetchActiveProjectOptions(supabase, appUser.tenant_id),
+    ]);
+
     return NextResponse.json({
       operationAreas: meta.operationAreas,
       voltageLevels: meta.voltageLevels,
       executionStepTemplates: meta.executionStepTemplates,
+      projects: projects.map((project) => ({
+        id: project.id,
+        code: project.sob,
+        city: project.city_text ?? "",
+        address: [project.street, project.neighborhood].filter(Boolean).join(", "),
+      })),
       // Valores iniciais da secao de identificacao. Pre-preenchem a PI e
       // continuam editaveis nela.
       contractDefaults: meta.contract

@@ -24,14 +24,48 @@
  *     abortando a devolucao se outra emissao tiver acontecido no meio.
  */
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire, registerHooks } from "node:module";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(repoRoot, "package.json"));
 const { createClient } = require("@supabase/supabase-js");
+
+/**
+ * O repositorio importa sem extensao (`moduleResolution: bundler`) e usa o
+ * alias `@/*` do tsconfig. O resolver do Node nao entende nem um nem outro.
+ * Este hook espelha as duas regras so para o script, permitindo exercitar
+ * `queries.ts` DE VERDADE em vez de reimplementar as consultas aqui.
+ */
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    let target = specifier;
+    let parent = context.parentURL;
+
+    // `@/x` aponta para `src/x`, conforme `paths` do tsconfig.
+    if (target.startsWith("@/")) {
+      parent = new URL("src/", `file:///${repoRoot.replace(/\\/g, "/")}/`).href;
+      target = `./${target.slice(2)}`;
+    }
+
+    if (target.startsWith(".")) {
+      const base = new URL(target, parent);
+      const candidates = /\.[a-z]+$/i.test(target) ? [""] : [".ts", ".tsx", "/index.ts"];
+      for (const extension of candidates) {
+        const candidate = new URL(base.href + extension);
+        if (existsSync(fileURLToPath(candidate))) return { url: candidate.href, shortCircuit: true };
+      }
+    }
+
+    return nextResolve(specifier, context);
+  },
+});
+
+const piQueries = await import(
+  `${new URL("../src/server/modules/permissao-intervencao/queries.ts", import.meta.url)}`
+);
 
 const WITH_ISSUE = process.argv.includes("--issue");
 
@@ -372,6 +406,10 @@ async function main() {
     check("vincular sem etapa ativa e recusado", noStage.success === false && noStage.reason === "NO_ACTIVE_PROGRAMMING", noStage.reason);
 
     // -----------------------------------------------------------------------
+    section("Camada de leitura (queries.ts)");
+    await runReadLayerChecks(sb, { tenantId, piId, projectId: project.data.id });
+
+    // -----------------------------------------------------------------------
     section("Criacao a partir de uma etapa da Programacao");
     await runFromProgrammingFlow(sb, { tenantId, actorId });
 
@@ -397,6 +435,78 @@ async function main() {
     console.log(`Falhas: ${failures.join(" | ")}`);
     process.exitCode = 1;
   }
+}
+
+/**
+ * Exercita `queries.ts` com o codigo REAL do modulo, e nao uma copia.
+ *
+ * Cobre o que as RPCs nao cobrem: os embeds do PostgREST, a paginacao com
+ * contagem exata, o mapa de tags por escopo e a comparacao contra o snapshot.
+ * Sao justamente as partes que falham em runtime e passam no typecheck.
+ */
+async function runReadLayerChecks(sb, { tenantId, piId, projectId }) {
+  const baseFilters = {
+    search: "",
+    status: "",
+    linkStatus: "",
+    projectId: "",
+    operationAreaCode: "",
+    voltageLevelCode: "",
+    dateFrom: "",
+    dateTo: "",
+    page: 1,
+    pageSize: 20,
+  };
+
+  const list = await piQueries.fetchPiList(sb, tenantId, baseFilters);
+  check("fetchPiList responde", Array.isArray(list.items), typeof list.items);
+  check("a PI de teste aparece na lista", list.items.some((row) => row.id === piId));
+  check("mapa de projetos preenchido", list.projectMap.size > 0, String(list.projectMap.size));
+
+  const filtered = await piQueries.fetchPiList(sb, tenantId, { ...baseFilters, operationAreaCode: "PM" });
+  check("filtro por area encontra a PI", filtered.items.some((row) => row.id === piId));
+
+  const noMatch = await piQueries.fetchPiList(sb, tenantId, { ...baseFilters, operationAreaCode: "EC" });
+  check("filtro por area sem correspondencia devolve vazio", noMatch.items.length === 0, String(noMatch.items.length));
+
+  const byDate = await piQueries.fetchPiList(sb, tenantId, { ...baseFilters, dateFrom: "2099-01-01" });
+  check("filtro por periodo encontra a PI", byDate.items.some((row) => row.id === piId));
+
+  const detail = await piQueries.fetchPiById(sb, tenantId, piId);
+  check("fetchPiById responde", Boolean(detail?.id));
+
+  const tags = await piQueries.fetchPiTagsByPi(sb, tenantId, [piId]);
+  check("tags separadas por escopo", Array.isArray(tags.areas.get(piId)?.PI), JSON.stringify(tags.areas.get(piId)));
+
+  const steps = await piQueries.fetchPiExecutionSteps(sb, tenantId, piId);
+  check("fetchPiExecutionSteps responde", Array.isArray(steps));
+
+  const history = await piQueries.fetchPiHistory(sb, tenantId, piId);
+  check("historico lido pela query", history.length > 0, String(history.length));
+
+  const meta = await piQueries.fetchPiMeta(sb, tenantId);
+  check("meta traz areas e tensoes", meta.operationAreas.length >= 6 && meta.voltageLevels.length >= 3);
+  check("meta traz a configuracao do contrato", Boolean(meta.settings));
+
+  const projectOptions = await piQueries.fetchActiveProjectOptions(sb, tenantId);
+  check("projetos ativos carregados", projectOptions.length > 0, String(projectOptions.length));
+
+  const stageOptions = await piQueries.fetchProgrammingStageOptions(sb, tenantId, projectId);
+  check("etapas do projeto carregadas sem erro", Array.isArray(stageOptions), typeof stageOptions);
+
+  // Sem snapshot nao ha origem contra a qual medir: a lista tem de vir vazia.
+  const noComparison = piQueries.buildPiComparison(null, detail, steps);
+  check("PI sem snapshot nao gera comparacao", noComparison.length === 0, String(noComparison.length));
+
+  const comparison = piQueries.buildPiComparison(
+    { feeder: "OUTRO", teams: [{ teamName: "MK-01", foremanName: "JOAO" }], activities: [] },
+    { ...detail, feeder: "SMOKE01", foreman_name_snapshot: "CARLOS" },
+    steps,
+  );
+  const feederRow = comparison.find((row) => row.field === "feeder");
+  const foremanRow = comparison.find((row) => row.field === "foreman");
+  check("comparacao aponta alimentador divergente", feederRow?.divergent === true, JSON.stringify(feederRow));
+  check("comparacao aponta encarregado fora dos programados", foremanRow?.divergent === true, JSON.stringify(foremanRow));
 }
 
 /**
