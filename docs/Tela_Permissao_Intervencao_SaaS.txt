@@ -4,17 +4,19 @@ Visao geral
 -----------
 - A Permissao de Intervencao (PI) e um documento operacional vinculado a Projeto + Data da etapa.
 - A tela e o CADASTRO da PI: listagem, nova PI a partir da Programacao ou sem Programacao, formulario completo, plano de execucao e emissao do documento.
-- EM CONSTRUCAO: hoje a rota exibe `ModulePlaceholder` com o roteiro. O schema da PI ja existe (migrations 428 e 429), mas ainda nao ha RPC de escrita nem formulario, entao nao ha emissao de PI real.
+- EM CONSTRUCAO: a rota ainda exibe `ModulePlaceholder`. Banco, RPCs e a camada Node (leitura e escrita, com as rotas de API) ja existem e estao verificados; falta a INTERFACE — listagem, fluxo Nova PI e formulario.
 - A camada do documento Word JA ESTA PRONTA e vive numa tela propria: `Cadastro Base > Modelo de PI` (`/modelo-pi`). Ver `Tela_Modelo_PI_SaaS.txt`.
 - Rota: `/permissao-intervencao`, secao `Operacao` do menu.
 
 Arquitetura (estado atual)
 --------------------------
 - Rota: `src/app/(dashboard)/permissao-intervencao/page.tsx` (placeholder)
-- Dominio server-side ja existente: `src/server/modules/permissao-intervencao/` — contrato de tags, mapper, storage e handlers do template.
+- Backend: `src/server/modules/permissao-intervencao/` (`queries.ts`, `handlers.ts`, `templates.ts`, `piTemplateTags.ts`, `piTemplateMapper.ts`, `piTemplateStorage.ts`, `piDemoDocument.ts`, `types.ts`, `index.ts`)
+- API: `src/app/api/permissao-intervencao/` — `route.ts` (GET lista, POST cria/edita), `meta`, `programacoes`, `[id]`, `[id]/historico`, `[id]/status`, `[id]/vinculo` e `[id]/plano`
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
 - Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql`, `429_create_permission_intervention.sql` e `430_create_permission_intervention_rpcs.sql`
 - Verificacao das RPCs: `scripts/pi-rpc-smoke.mjs` (ESCREVE no banco ligado; cria uma PI de teste e a remove no fim)
+- Rotulo da etapa vinculada: `getStageDisplayClassification`, importado da FACHADA de `programacao-normalizada`. O servidor devolve a classificacao crua e quem formata e aquela funcao — fonte unica da regra.
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -66,7 +68,8 @@ Fases pendentes
 ---------------
 - FASE 1a (FEITA): schema completo — catalogos, configuracao por contrato, contador do sequencial, entidade e filhas. Migrations 428 e 429.
 - FASE 1b (FEITA): RPCs de escrita. Migration 430.
-- FASE 2: listagem com filtros e o fluxo Nova PI nos dois caminhos.
+- FASE 2a (FEITA): camada Node completa — leituras, comparacao Programacao x PI, handlers e as 8 rotas de API.
+- FASE 2b: tela de listagem com filtros e o fluxo Nova PI nos dois caminhos.
 - FASE 3: formulario completo com as oito secoes e os snapshots.
 - FASE 4: plano de execucao ordenavel, com etapas padrao vindas de modelo.
 - FASE 5: emissao real, substituindo o preview de demonstracao da tela `Modelo de PI`.
@@ -81,8 +84,11 @@ Areas que NAO sao digitalizadas
 
 Atualizacao 2026-09
 -------------------
+- Camada Node da tela: `queries.ts` com listagem filtrada e paginada, detalhe, historico, etapas oferecidas na criacao e catalogos; `handlers.ts` com os nove handlers; e 8 rotas de API. Nenhuma escrita na Programacao.
+- O rotulo da etapa vinculada vem de `getStageDisplayClassification`, exposto na fachada de `programacao-normalizada`: o servidor devolve a classificacao crua e a formatacao continua com fonte unica.
+- O filtro por area e por tensao resolve os ids numa consulta propria, e nao por `!inner` no embed, porque com `!inner` filtrado o embed voltaria so com a tag filtrada e a coluna da tela mentiria.
 - Rota criada com `ModulePlaceholder`; `page_key` registrado pela migration 426 e mantido pela 427.
 - A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
 - Migrations 428 e 429: schema da PI criado, tabelas vazias. A Programacao nao foi tocada.
 - Migration 430: RPCs de escrita da PI. Nenhuma delas escreve na Programacao — `programming` e suas filhas sao apenas lidas, para montar snapshot e resolver vinculo.
-- `scripts/pi-rpc-smoke.mjs`: 44 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.
+- `scripts/pi-rpc-smoke.mjs`: 56 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.
