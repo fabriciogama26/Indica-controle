@@ -198,7 +198,7 @@ export const metaColors: Record<MetaMode | "value", string> = {
   value: "#4b77c7",
   cycle: "#f07f2f",
   standard: "#17a884",
-  worked: "#7b61ff",
+  worked: "#f2c94c",
 };
 
 export const completionChartColors: Record<string, string> = {

@@ -1057,3 +1057,13 @@ Atualizacao 2026-09-09 - Icone de informe nos cards de indicador
 - Ratchet: `DashboardMeasurementPageView.tsx` caiu de 1.508 para 1.469 linhas, porque os
   cards de 4 linhas viraram uma chamada de `MetricTile` por card. Baseline reduzido com
   `npm run lint:size:update`, sem `lint:size:accept`.
+
+Atualizacao 2026-09-11 - Cor da Meta ciclo trabalhado
+-----------------------------------------------------
+- Motivo: manter a legenda `Meta ciclo trabalhado` em amarelo, alinhada ao Dashboard
+  Equipes e mais distinta dos demais modos de meta.
+- Frontend:
+  - `src/modules/dashboard/dashboard-medicao/presentation.ts` trocou
+    `metaColors.worked` para `#f2c94c`.
+  - A cor roxa de `Garantia de faturamento minimo` foi preservada.
+- Sem mudanca de calculo, filtro, API, schema, RLS, grants ou permissao.
