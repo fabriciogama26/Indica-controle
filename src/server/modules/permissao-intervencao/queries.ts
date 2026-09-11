@@ -549,15 +549,15 @@ export async function fetchActiveProjectOptions(supabase: SupabaseClient, tenant
  */
 export async function fetchPiPeopleAndTeams(supabase: SupabaseClient, tenantId: string) {
   const [people, teams] = await Promise.all([
-    loadAllRows<{ id: string; nome: string; matriculation: string | null }>((from, to) =>
+    loadAllRows<{ id: string; nome: string; matriculation: string | null; job_title_id: string | null }>((from, to) =>
       supabase
         .from("people")
-        .select("id, nome, matriculation")
+        .select("id, nome, matriculation, job_title_id")
         .eq("tenant_id", tenantId)
         .eq("ativo", true)
         .order("nome", { ascending: true })
         .range(from, to)
-        .returns<{ id: string; nome: string; matriculation: string | null }[]>(),
+        .returns<{ id: string; nome: string; matriculation: string | null; job_title_id: string | null }[]>(),
     ),
     loadAllRows<{ id: string; name: string }>((from, to) =>
       supabase
@@ -572,6 +572,57 @@ export async function fetchPiPeopleAndTeams(supabase: SupabaseClient, tenantId: 
   ]);
 
   return { people: people.data ?? [], teams: teams.data ?? [] };
+}
+
+/**
+ * Cargos que habilitam cada papel da PI.
+ *
+ * Vive em configuracao (`pi_role_job_titles`) e nao no codigo porque
+ * `job_titles.name` e texto livre por contrato: casar `'Encarregado'` aqui
+ * seria hardcode disfarcado e quebraria no contrato que nomear diferente.
+ */
+export async function fetchPiRoleJobTitles(supabase: SupabaseClient, tenantId: string) {
+  const { data } = await supabase
+    .from("pi_role_job_titles")
+    .select("role, job_title_id")
+    .eq("tenant_id", tenantId)
+    .returns<{ role: "FOREMAN" | "SUPERVISOR"; job_title_id: string }[]>();
+
+  const foreman = new Set<string>();
+  const supervisor = new Set<string>();
+  for (const row of data ?? []) {
+    if (row.role === "FOREMAN") foreman.add(row.job_title_id);
+    else supervisor.add(row.job_title_id);
+  }
+  return { foreman, supervisor };
+}
+
+/** Equipes ATIVAS da etapa. Alimenta a regra de Supervisor obrigatorio. */
+export async function countActiveTeamsOnStage(
+  supabase: SupabaseClient,
+  tenantId: string,
+  programmingId: string,
+): Promise<number> {
+  const { count } = await supabase
+    .from("programming_team")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("programming_id", programmingId)
+    .eq("status", "ATIVA");
+
+  return count ?? 0;
+}
+
+export async function fetchJobTitleOptions(supabase: SupabaseClient, tenantId: string) {
+  const { data } = await supabase
+    .from("job_titles")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .eq("ativo", true)
+    .order("name", { ascending: true })
+    .returns<{ id: string; name: string }[]>();
+
+  return data ?? [];
 }
 
 export async function fetchPiMeta(supabase: SupabaseClient, tenantId: string) {
@@ -612,7 +663,9 @@ export async function fetchPiMeta(supabase: SupabaseClient, tenantId: string) {
       .returns<{ code: string; description: string; sort_order: number }[]>(),
     supabase
       .from("pi_settings")
-      .select("code_prefix, company_code, sequence_digits, emergency_plan_text, emergency_plan_version")
+      .select(
+        "code_prefix, company_code, sequence_digits, emergency_plan_text, emergency_plan_version, supervisor_required_team_count, utility_contact_source",
+      )
       .eq("tenant_id", tenantId)
       .maybeSingle<{
         code_prefix: string;
@@ -620,6 +673,8 @@ export async function fetchPiMeta(supabase: SupabaseClient, tenantId: string) {
         sequence_digits: number;
         emergency_plan_text: string | null;
         emergency_plan_version: number;
+        supervisor_required_team_count: number;
+        utility_contact_source: string;
       }>(),
     supabase
       .from("pi_document_template")

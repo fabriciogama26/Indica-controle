@@ -19,6 +19,11 @@ export {
   type SavePiPayload,
 } from "./handlers";
 export { buildPiComparison } from "./queries";
+export {
+  getPiConfiguration,
+  savePiConfiguration,
+  type SavePiConfigurationPayload,
+} from "./configuration";
 export type {
   PiComparisonRow,
   PiCreationSource,
