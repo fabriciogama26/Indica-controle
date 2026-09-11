@@ -135,3 +135,94 @@ export type PiDocumentIssue = {
   severity: "ERROR" | "WARNING";
   message: string;
 };
+
+// ---------------------------------------------------------------------------
+// Leitura da tela (listagem, detalhe e vinculo)
+// ---------------------------------------------------------------------------
+
+export type PiStatus = "DRAFT" | "READY" | "ISSUED" | "CANCELLED";
+export type PiLinkStatus = "LINKED" | "PENDING" | "ATTENTION";
+export type PiCreationSource = "FROM_PROGRAMMING" | "MANUAL";
+
+/**
+ * Campos de classificacao da etapa vinculada, repassados CRUS para a tela.
+ *
+ * O rotulo (`Etapa 2`, `Final`, `Unica`, `Era ...`) NAO e montado aqui: quem
+ * monta e `getStageDisplayClassification`, da fachada da Programacao, que e a
+ * fonte unica dessa regra. Calcular no servidor criaria uma segunda
+ * implementacao, que e exatamente como lista, plano e export ja divergiram
+ * antes no proprio modulo da Programacao.
+ */
+export type PiLinkedStageClassification = {
+  status: string;
+  executionDate: string | null;
+  etapaNumber: number | null;
+  etapaUnica: boolean;
+  etapaFinal: boolean;
+  classificationSnapshotNumber: number | null;
+  classificationSnapshotUnica: boolean | null;
+  classificationSnapshotFinal: boolean | null;
+  classificationSnapshotExecutionDate: string | null;
+  classificationSnapshotAt: string | null;
+};
+
+export type PiListItem = {
+  id: string;
+  piCode: string | null;
+  projectId: string;
+  projectCode: string;
+  projectCity: string;
+  workDate: string;
+  status: PiStatus;
+  linkStatus: PiLinkStatus;
+  creationSource: PiCreationSource;
+  programmingId: string | null;
+  linkedStage: PiLinkedStageClassification | null;
+  operationAreaCodes: string[];
+  voltageLevelCodes: string[];
+  primaryOperationAreaCode: string | null;
+  primaryVoltageLevelCode: string | null;
+  supervisorName: string | null;
+  foremanName: string | null;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PiListFilters = {
+  search: string;
+  status: string;
+  linkStatus: string;
+  projectId: string;
+  operationAreaCode: string;
+  voltageLevelCode: string;
+  dateFrom: string;
+  dateTo: string;
+  page: number;
+  pageSize: number;
+};
+
+/** Etapa da Programacao oferecida no fluxo `Criar a partir da Programacao`. */
+export type PiProgrammingStageOption = {
+  programmingId: string;
+  executionDate: string | null;
+  classification: PiLinkedStageClassification;
+  teams: Array<{ teamId: string; teamName: string; foremanName: string | null }>;
+  activities: Array<{ code: string; description: string; quantity: string }>;
+  feeder: string | null;
+  serviceDescription: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  /** PI ja existente para esta etapa. A tela mostra em vez de deixar duplicar. */
+  existingPiId: string | null;
+  existingPiCode: string | null;
+};
+
+/** Uma linha da comparacao Programacao x PI. */
+export type PiComparisonRow = {
+  field: string;
+  label: string;
+  programmingValue: string;
+  piValue: string;
+  divergent: boolean;
+};

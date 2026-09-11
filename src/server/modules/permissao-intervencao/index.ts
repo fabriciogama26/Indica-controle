@@ -1,5 +1,35 @@
 // Fachada publica do modulo server-side da Permissao de Intervencao.
 // As Route Handlers consomem SOMENTE o que sai daqui.
+
+// Cadastro da PI (tela `permissao-intervencao`).
+export {
+  PI_PAGE_KEY,
+  changePermissionInterventionStatus,
+  getPermissionIntervention,
+  getPermissionInterventionHistory,
+  getPermissionInterventionMeta,
+  getProgrammingStageOptions,
+  linkPermissionInterventionToProgramming,
+  listPermissionInterventions,
+  savePermissionIntervention,
+  savePermissionInterventionExecutionPlan,
+  type ChangePiStatusPayload,
+  type LinkPiPayload,
+  type SavePiExecutionPlanPayload,
+  type SavePiPayload,
+} from "./handlers";
+export { buildPiComparison } from "./queries";
+export type {
+  PiComparisonRow,
+  PiCreationSource,
+  PiLinkedStageClassification,
+  PiLinkStatus,
+  PiListItem,
+  PiProgrammingStageOption,
+  PiStatus,
+} from "./types";
+
+// Template do documento (tela `modelo-pi`).
 export {
   activatePiTemplate,
   generatePiTemplatePreview,

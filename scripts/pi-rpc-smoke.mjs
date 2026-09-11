@@ -70,6 +70,39 @@ function loadEnv() {
   );
 }
 
+/**
+ * Escolhe o contrato do teste.
+ *
+ * NAO pode ser `limit(1)` solto: sem ordem, o Postgres devolve qualquer linha, e
+ * cair num contrato sem Programacao faz a secao `Criar a partir da Programacao`
+ * ser pulada em silencio — foi exatamente o que aconteceu na primeira execucao
+ * depois que um segundo contrato ganhou configuracao. A preferencia e pelo
+ * contrato com etapa ATIVA, que e o unico onde aquele caminho roda de verdade.
+ *
+ * `--tenant <uuid>` força a escolha, para reproduzir um caso especifico.
+ */
+async function pickTenantSettings(sb) {
+  const forcedIndex = process.argv.indexOf("--tenant");
+  const forced = forcedIndex >= 0 ? process.argv[forcedIndex + 1] : null;
+
+  const columns = "tenant_id, code_prefix, company_code, sequence_digits, emergency_plan_text, emergency_plan_version";
+  const { data } = await sb.from("pi_settings").select(columns).order("tenant_id");
+  const rows = data ?? [];
+  if (rows.length === 0) return null;
+  if (forced) return rows.find((row) => row.tenant_id === forced) ?? null;
+
+  for (const row of rows) {
+    const stage = await sb
+      .from("programming")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", row.tenant_id)
+      .in("status", ["PROGRAMADA", "REPROGRAMADA"]);
+    if ((stage.count ?? 0) > 0) return row;
+  }
+
+  return rows[0];
+}
+
 /** Toda RPC do modulo devolve `{ success, status, reason, message, ... }`. */
 async function callRpc(sb, name, args) {
   const { data, error } = await sb.rpc(name, args);
@@ -95,12 +128,8 @@ async function main() {
   // -------------------------------------------------------------------------
   section("Contexto");
 
-  const settings = await sb
-    .from("pi_settings")
-    .select("tenant_id, code_prefix, company_code, sequence_digits, emergency_plan_text, emergency_plan_version")
-    .limit(1)
-    .maybeSingle();
-  if (!check("ha contrato com configuracao da PI", Boolean(settings.data), settings.error?.message)) return;
+  const settings = { data: await pickTenantSettings(sb), error: null };
+  if (!check("ha contrato com configuracao da PI", Boolean(settings.data), "nenhum contrato com pi_settings")) return;
 
   const tenantId = settings.data.tenant_id;
 
@@ -343,6 +372,10 @@ async function main() {
     check("vincular sem etapa ativa e recusado", noStage.success === false && noStage.reason === "NO_ACTIVE_PROGRAMMING", noStage.reason);
 
     // -----------------------------------------------------------------------
+    section("Criacao a partir de uma etapa da Programacao");
+    await runFromProgrammingFlow(sb, { tenantId, actorId });
+
+    // -----------------------------------------------------------------------
     if (WITH_ISSUE) {
       section("Emissao");
       await runIssueFlow(sb, { tenantId, actorId, piId, updatedAt, settings: settings.data });
@@ -363,6 +396,101 @@ async function main() {
   if (failures.length > 0) {
     console.log(`Falhas: ${failures.join(" | ")}`);
     process.exitCode = 1;
+  }
+}
+
+/**
+ * Caminho `Criar a partir da Programacao`, com etapa ATIVA de verdade.
+ *
+ * E o unico caminho que exercita o snapshot e o vinculo automatico na criacao.
+ * Procura uma etapa ativa que ainda nao tenha PI; se o banco nao tiver
+ * nenhuma, a secao e pulada com aviso em vez de falhar — a ausencia de dado
+ * nao e defeito de codigo.
+ */
+async function runFromProgrammingFlow(sb, { tenantId, actorId }) {
+  const stages = await sb
+    .from("programming")
+    .select("id, project_id, execution_date, status, feeder, start_time, programming_team(team_id, status)")
+    .eq("tenant_id", tenantId)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .not("execution_date", "is", null)
+    .order("execution_date", { ascending: false })
+    .limit(25);
+
+  const taken = await sb
+    .from("permission_intervention")
+    .select("programming_id")
+    .eq("tenant_id", tenantId)
+    .neq("status", "CANCELLED");
+  const usedStages = new Set((taken.data ?? []).map((row) => row.programming_id).filter(Boolean));
+
+  const stage = (stages.data ?? []).find((row) => !usedStages.has(row.id));
+  if (!stage) {
+    console.log("  aviso: nenhuma etapa ativa livre no banco; secao pulada.");
+    return;
+  }
+
+  let piId = null;
+  try {
+    const created = await callRpc(sb, "save_permission_intervention", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: null,
+      p_payload: {
+        projectId: stage.project_id,
+        workDate: stage.execution_date,
+        creationSource: "FROM_PROGRAMMING",
+        feeder: stage.feeder,
+        operationAreas: ["PM"],
+        voltageLevels: ["MT"],
+      },
+      p_expected_updated_at: null,
+    });
+    if (!check("cria a PI a partir da etapa", created.success === true, created.message)) return;
+    piId = created.pi_id;
+
+    check("nasce LINKED", created.link_status === "LINKED", String(created.link_status));
+    check("aponta para a etapa escolhida", created.programming_id === stage.id, String(created.programming_id));
+
+    const row = await sb
+      .from("permission_intervention")
+      .select("source_programming_snapshot, programming(id, status, etapa_number, etapa_unica, etapa_final)")
+      .eq("id", piId)
+      .maybeSingle();
+
+    const snapshot = row.data?.source_programming_snapshot;
+    check("snapshot da etapa gravado", Boolean(snapshot));
+    check("snapshot aponta para a etapa certa", snapshot?.programmingId === stage.id, String(snapshot?.programmingId));
+    check("snapshot traz equipes", Array.isArray(snapshot?.teams), typeof snapshot?.teams);
+    check("snapshot traz atividades", Array.isArray(snapshot?.activities), typeof snapshot?.activities);
+
+    // E o embed que a listagem usa para exibir o rotulo da etapa vinculada.
+    const embedded = Array.isArray(row.data?.programming) ? row.data.programming[0] : row.data?.programming;
+    check("embed da etapa resolve na leitura", Boolean(embedded?.id), JSON.stringify(embedded));
+    check("embed traz a classificacao crua", embedded?.status === stage.status, String(embedded?.status));
+
+    const history = await sb.from("pi_history").select("action_type, metadata").eq("pi_id", piId);
+    const createRow = (history.data ?? []).find((h) => h.action_type === "CREATE");
+    check("historico registra a origem", createRow?.metadata?.creationSource === "FROM_PROGRAMMING", JSON.stringify(createRow?.metadata));
+
+    // Segunda PI na mesma etapa/data tem de esbarrar na unicidade.
+    const duplicate = await callRpc(sb, "save_permission_intervention", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: null,
+      p_payload: {
+        projectId: stage.project_id,
+        workDate: stage.execution_date,
+        creationSource: "MANUAL",
+      },
+      p_expected_updated_at: null,
+    });
+    check("segunda PI viva na mesma data e recusada", duplicate.success === false && duplicate.reason === "DUPLICATE_PI", duplicate.reason);
+  } finally {
+    if (piId) {
+      const del = await sb.from("permission_intervention").delete().eq("tenant_id", tenantId).eq("id", piId);
+      check("PI vinculada removida", !del.error, del.error?.message);
+    }
   }
 }
 
