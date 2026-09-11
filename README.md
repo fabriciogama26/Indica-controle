@@ -612,6 +612,7 @@ vercel --prod
 - `supabase/migrations/431_pi_settings_roles_and_contact_source.sql`: configuracao da PI por contrato (origem do contato da distribuidora, limite de equipes que torna o Supervisor obrigatorio) e os cargos que habilitam cada papel, com as RPCs de escrita.
 - `supabase/migrations/432_pi_prefill_and_supervisor_rule.sql`: PI nasce com contrato e contato preenchidos, `Descricao das atividades` herda a descricao do servico da etapa, e o Supervisor vira condicional ao numero de equipes.
 - `supabase/migrations/433_fix_pi_prefill_column_types.sql`: cast para `text` no pre-preenchimento; `contract.telefone_corporativo` e numeric e quebrava a criacao da PI.
+- `supabase/migrations/434_fix_pi_prefill_unassigned_record.sql`: troca os `record` do pre-preenchimento por escalares; `record` nao atribuido estourava ao editar a PI.
 - `supabase/migrations/430_create_permission_intervention_rpcs.sql`: RPCs de escrita da PI (salvar, plano de execucao, status/emissao com sequencial sob lock e vinculo explicito com a Programacao), todas `SECURITY DEFINER` liberadas apenas ao `service_role` e sem nenhuma escrita na Programacao.
 
 ---
