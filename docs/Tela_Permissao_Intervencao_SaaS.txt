@@ -13,7 +13,7 @@ Arquitetura (estado atual)
 - Rota: `src/app/(dashboard)/permissao-intervencao/page.tsx` (placeholder)
 - Dominio server-side ja existente: `src/server/modules/permissao-intervencao/` — contrato de tags, mapper, storage e handlers do template.
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
-- Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql` e `429_create_permission_intervention.sql`
+- Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql`, `429_create_permission_intervention.sql` e `430_create_permission_intervention_rpcs.sql`
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -31,6 +31,18 @@ Modelo de dados (migrations 428 e 429)
 - `pi_history`: historico proprio. Nao usa `app_entity_history` porque o CHECK daquela tabela so aceita UPDATE/CANCEL/ACTIVATE, e a PI precisa de CREATE, LINK, UNLINK, ISSUE e GENERATE_DOCUMENT.
 - Todas com RLS de leitura por `user_can_access_tenant` e `revoke` de escrita para `public`/`anon`/`authenticated`.
 - Estados: `status` DRAFT / READY / ISSUED / CANCELLED; `link_status` LINKED / PENDING / ATTENTION. PENDING e exatamente "sem etapa vinculada"; ATTENTION e uma PI vinculada cuja etapa saiu do plano ativo, e o vinculo historico permanece.
+
+RPCs de escrita (migration 430)
+-------------------------------
+- Todas sao `SECURITY DEFINER`, com `revoke` de `public`/`anon`/`authenticated`. So as quatro publicas recebem `grant execute` para `service_role`; os quatro helpers internos nao recebem grant nenhum.
+- NENHUMA escreve na Programacao. `programming` e suas filhas sao lidas para montar snapshot e resolver vinculo.
+- `save_permission_intervention(tenant, ator, pi_id, payload jsonb, expected_updated_at)`: cria e edita. Recebe `jsonb` em vez de 40 parametros porque acrescentar campo com parametro explicito exige DROP + CREATE da funcao, problema que `save_project_programming_stage` ja acumulou. CONTRATO: o payload e o conjunto COMPLETO dos campos editaveis — chave ausente vale como NULO, nao como "nao mexer". Na criacao, reconsulta a etapa ativa DENTRO da transacao, fechando a janela de corrida da PI manual. Historico com diff generico: compara `to_jsonb` do antes e do depois, ignorando `updated_at`/`updated_by`, em vez de 40 comparacoes a mao que ficariam desatualizadas na primeira coluna nova.
+- `save_pi_execution_steps(tenant, ator, pi_id, steps jsonb, expected_updated_at)`: substitui o plano inteiro. Substituicao completa em vez de diff linha a linha porque casar linha existente com linha nova exigiria um id estavel que a tela nao tem enquanto o usuario arrasta. A unique DEFERRABLE permite o estado intermediario duplicado.
+- `set_permission_intervention_status(tenant, ator, pi_id, acao, motivo, expected_updated_at)`: acoes `READY`, `REOPEN`, `ISSUE` e `CANCEL`. Transicoes: DRAFT <-> READY, READY -> ISSUED, qualquer -> CANCELLED. ISSUE exige READY de proposito: e o unico ponto que queima numero de documento oficial, e um passo explicito de "revisada" vale mais que a economia de um clique. Na emissao gera o sequencial sob lock de linha, monta o `pi_code` a partir de `pi_settings` e dos `code_token`, e tira snapshot do Plano de Emergencia e do template (versao e checksum), para o documento continuar reconstruivel depois de qualquer um dos dois mudar.
+- `link_permission_intervention_to_programming(tenant, ator, pi_id, programming_id, motivo, expected_updated_at)`: cria APENAS o relacionamento, nunca sobrescreve dado da PI. Sem etapa informada, procura a ativa daquela data. Recusa etapa de outro projeto ou de outra data. Trocar um vinculo ja existente EXIGE motivo e fica registrado — o sistema nunca troca sozinho, nem quando a etapa sai do plano ativo.
+- `pi_validate_for_issue(tenant, pi_id)`: devolve o array de ERROS que impedem a emissao. Area e tensao principais so sao exigidas quando ha MAIS DE UMA marcada; com uma so, a emissao resolve sozinha. O teto de 23 etapas e cobrado aqui, nao por constraint.
+- Os AVISOS de divergencia (encarregado, equipe, atividade, alimentador, horario diferentes da Programacao) NAO ficam nas RPCs: sao de leitura, calculados na camada Node comparando `source_programming_snapshot` com o estado atual. Divergir nunca bloqueia.
+- Todas usam `expectedUpdatedAt` para concorrencia otimista e recusam edicao de PI emitida ou cancelada.
 
 Contrato de permissao
 ---------------------
@@ -52,7 +64,7 @@ Decisoes de negocio ja travadas
 Fases pendentes
 ---------------
 - FASE 1a (FEITA): schema completo — catalogos, configuracao por contrato, contador do sequencial, entidade e filhas. Migrations 428 e 429.
-- FASE 1b: RPCs de escrita (salvar, emitir gerando sequencial e codigo, vincular a Programacao) com snapshot da etapa de origem. Migration 430.
+- FASE 1b (FEITA): RPCs de escrita. Migration 430.
 - FASE 2: listagem com filtros e o fluxo Nova PI nos dois caminhos.
 - FASE 3: formulario completo com as oito secoes e os snapshots.
 - FASE 4: plano de execucao ordenavel, com etapas padrao vindas de modelo.
@@ -70,4 +82,5 @@ Atualizacao 2026-09
 -------------------
 - Rota criada com `ModulePlaceholder`; `page_key` registrado pela migration 426 e mantido pela 427.
 - A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
-- Migrations 428 e 429: schema da PI criado, tabelas vazias, sem nenhuma RPC de escrita ainda. A Programacao nao foi tocada.
+- Migrations 428 e 429: schema da PI criado, tabelas vazias. A Programacao nao foi tocada.
+- Migration 430: RPCs de escrita da PI. Nenhuma delas escreve na Programacao — `programming` e suas filhas sao apenas lidas, para montar snapshot e resolver vinculo.

@@ -594,3 +594,41 @@ de projetos sem projeto vinculado
 - Ratchet: nenhum arquivo do modulo passou do teto. Sem `lint:size:accept`.
 - Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants. A leitura de
   `commercial_order_ref` e uma coluna a mais em `select` que ja filtra por `tenant_id`.
+
+Atualizacao 2026-09-11 - Rotulos EQUIPE na visao Comercial
+-------------------------------------------------------------------------
+- Motivo: na visao `Comercial`, o usuario espera que textos visiveis nao usem mais a
+  nomenclatura `MK`; quando o filtro `Tipo operacional` aplicado for `COMERCIAL`, a
+  unidade exibida deve ser `EQUIPE`.
+- Frontend:
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx` passou a
+    derivar labels de `isCommercialView`, baseado em `appliedTeamCategoryCode`.
+  - Graficos oficiais, filtro de equipe, subtitulos, modal de detalhe e rodape total
+    mostram `EQUIPE` na visao Comercial e preservam `MK` na visao tecnica.
+  - O subtitulo do shell em `src/components/layout/AppShell.tsx` ficou generico:
+    `Desempenho por equipes, profissionais e supervisores no ciclo.`, cobrindo a
+    leitura tecnica e comercial antes de a tela carregar o filtro aplicado.
+  - A troca usa a resposta aplicada, nao o rascunho do filtro, para evitar renomear a
+    tela antes de os dados mudarem.
+- CSV:
+  - `src/modules/dashboard/dashboard-equipes/utils.ts` passou a emitir `EQUIPE`,
+    `Participacao na EQUIPE (%)` e `TOTAL EQUIPE` nas exportacoes comerciais.
+  - Exportacoes tecnicas continuam com `MK / Equipe`, `Participacao no MK (%)` e
+    `TOTAL MK`.
+- Dashboard Medicao:
+  - Conferido o codigo vivo em `src/modules/dashboard/dashboard-medicao`: nao ha
+    ocorrencia textual de `MK` para trocar quando o `Tipo operacional` muda para
+    `COMERCIAL`; as ocorrencias restantes estao em documentacao historica ou em outros
+    modulos fora desta tela.
+- Permissao: nenhuma nova. Tudo dentro de `dashboard-equipes/read`, coberto pelo
+  `page_key` da tela visivel.
+- Impacto multi-tenant: sem alteracao de API, schema, migration, RLS ou grants.
+
+Atualizacao 2026-09-11 - Cor da Meta ciclo trabalhado
+-------------------------------------------------------------------------
+- Motivo: no bullet de meta, `Meta ciclo trabalhado` precisava ser exibida em amarelo
+  para diferenciar melhor dos demais modos selecionados.
+- Frontend:
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx` trocou
+    `metaColors.worked` para `#f2c94c`.
+- Sem mudanca de calculo, filtro, API, schema, RLS, grants ou permissao.

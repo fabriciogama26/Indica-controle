@@ -113,11 +113,14 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
     projects?: DashboardProjectSummaryRow[];
   }>;
 }) {
+  const teamFilterLabel = params.commercial ? "EQUIPE" : "MK / Equipe";
+  const teamParticipationLabel = params.commercial ? "Participacao na EQUIPE (%)" : "Participacao no MK (%)";
+  const teamTotalLabel = params.commercial ? "TOTAL EQUIPE" : "TOTAL MK";
   const header = [
-    "MK / Equipe",
+    teamFilterLabel,
     ...(params.commercial ? ["Eletricista 1", "Eletricista 2"] : ["Encarregado"]),
     "Valor produzido",
-    "Participacao no MK (%)",
+    teamParticipationLabel,
     `Contribuicao sobre ${params.metaLabel} (%)`,
     "Dias com producao",
     "Ordens",
@@ -139,7 +142,7 @@ export function exportDashboardTeamContributionsCsv(filename: string, params: {
   ]);
   dataRows.push([
     params.teamName,
-    ...(params.commercial ? ["TOTAL MK", ""] : ["TOTAL MK"]),
+    ...(params.commercial ? [teamTotalLabel, ""] : [teamTotalLabel]),
     params.totalValue.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
     "100",
     (params.metaValue > 0 ? (params.totalValue / params.metaValue) * 100 : 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 }),
@@ -158,11 +161,13 @@ export function exportDashboardTeamForemenCsv(filename: string, params: {
   commercial: boolean;
   rows: DashboardContributionCsvRow[];
 }) {
+  const teamFilterLabel = params.commercial ? "EQUIPE" : "MK / Equipe";
+  const teamParticipationLabel = params.commercial ? "Participacao na EQUIPE (%)" : "Participacao no MK (%)";
   const header = [
-    "MK / Equipe",
+    teamFilterLabel,
     ...(params.commercial ? ["Eletricista 1", "Eletricista 2"] : ["Encarregado"]),
     "Valor produzido",
-    "Participacao no MK (%)",
+    teamParticipationLabel,
     "Dias com producao",
     "Ordens",
     "Projetos",

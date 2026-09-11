@@ -112,7 +112,7 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/dashboard-equipes": {
     title: "Dashboard Equipes",
-    subtitle: "Desempenho por MK, encarregado e supervisor no ciclo.",
+    subtitle: "Desempenho por equipes, profissionais e supervisores no ciclo.",
   },
   "/dashboard-carteira-operacional": {
     title: "Dashboard Carteira Operacional",
