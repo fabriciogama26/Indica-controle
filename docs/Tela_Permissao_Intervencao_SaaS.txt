@@ -4,13 +4,19 @@ Visao geral
 -----------
 - A Permissao de Intervencao (PI) e um documento operacional vinculado a Projeto + Data da etapa.
 - A tela e o CADASTRO da PI: listagem, nova PI a partir da Programacao ou sem Programacao, formulario completo, plano de execucao e emissao do documento.
-- EM CONSTRUCAO: a rota ainda exibe `ModulePlaceholder`. Banco, RPCs e a camada Node (leitura e escrita, com as rotas de API) ja existem e estao verificados; falta a INTERFACE — listagem, fluxo Nova PI e formulario.
+- PARCIALMENTE ENTREGUE: listagem com filtros, criacao nos dois caminhos, formulario completo das oito secoes, plano de execucao ordenavel, historico, painel de comparacao e as acoes de status (pronta, reabrir, emitir, cancelar). Falta APENAS a geracao do documento real, que ainda usa o preview de demonstracao da tela Modelo de PI.
 - A camada do documento Word JA ESTA PRONTA e vive numa tela propria: `Cadastro Base > Modelo de PI` (`/modelo-pi`). Ver `Tela_Modelo_PI_SaaS.txt`.
 - Rota: `/permissao-intervencao`, secao `Operacao` do menu.
 
 Arquitetura (estado atual)
 --------------------------
-- Rota: `src/app/(dashboard)/permissao-intervencao/page.tsx` (placeholder)
+- Rota: `src/app/(dashboard)/permissao-intervencao/page.tsx`
+- View da listagem: `src/modules/dashboard/permissao-intervencao/PermissionInterventionPageView.tsx`
+- View do formulario: `src/modules/dashboard/permissao-intervencao/PiFormPageView.tsx`, na rota `/permissao-intervencao/[id]`
+- Estado do formulario: `usePiForm.ts`
+- Secoes: `components/PiFormFields.tsx` (1 a 6 e 8), `components/PiExecutionPlan.tsx` (7), `components/PiSidePanels.tsx` (comparacao e historico)
+- Fluxo Nova PI: `src/modules/dashboard/permissao-intervencao/components/NewPiModal.tsx`
+- Estilo, cliente HTTP, contratos e fachada: `PermissionInterventionPageView.module.css`, `api.ts`, `types.ts`, `constants.ts`, `index.ts`
 - Backend: `src/server/modules/permissao-intervencao/` (`queries.ts`, `handlers.ts`, `templates.ts`, `piTemplateTags.ts`, `piTemplateMapper.ts`, `piTemplateStorage.ts`, `piDemoDocument.ts`, `types.ts`, `index.ts`)
 - API: `src/app/api/permissao-intervencao/` — `route.ts` (GET lista, POST cria/edita), `meta`, `programacoes`, `[id]`, `[id]/historico`, `[id]/status`, `[id]/vinculo` e `[id]/plano`
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
@@ -47,6 +53,19 @@ RPCs de escrita (migration 430)
 - Os AVISOS de divergencia (encarregado, equipe, atividade, alimentador, horario diferentes da Programacao) NAO ficam nas RPCs: sao de leitura, calculados na camada Node comparando `source_programming_snapshot` com o estado atual. Divergir nunca bloqueia.
 - Todas usam `expectedUpdatedAt` para concorrencia otimista e recusam edicao de PI emitida ou cancelada.
 
+Formulario da PI
+----------------
+- Rota `/permissao-intervencao/[id]`. As oito secoes seguem a ordem do documento oficial.
+- SALVAR e EMITIR sao acoes separadas. A PI vive como rascunho e so a emissao cobra os campos obrigatorios do documento e queima numero. Emitir exige passar por `Marcar como pronta` antes.
+- NENHUM campo trazido da Programacao fica bloqueado. A PI e independente, e a divergencia aparece no painel de comparacao como aviso.
+- `Plano de Emergencia` aparece somente leitura, com a origem explicada: e configuracao do contrato, e a PI guarda o texto usado no momento da emissao.
+- `Area que compoe o codigo` e `Tensao que compoe o codigo` so aparecem quando ha MAIS DE UMA marcada. Desmarcar a que era principal limpa a escolha, para o estado nao guardar um valor que a tela nao mostra e que a emissao recusaria.
+- `Instalacao eletrica interferente` tem tres estados: Sim, Nao e nao informado. O botao `Limpar` volta ao terceiro, que deixa as duas caixas do documento vazias.
+- Plano de Execucao: reordenacao por botoes de subir e descer, e nao por arrastar — drag-and-drop exigiria dependencia nova e nao funciona por teclado. O teto de 23 linhas NAO trava a edicao: o aviso aparece e a emissao e que recusa.
+- PI emitida ou cancelada abre em somente leitura; o backend recusa a escrita de qualquer forma.
+- Salvar envia o plano ANTES do cadastro: as duas escritas tocam `updated_at`, e nessa ordem o `expectedUpdatedAt` devolvido no fim e o mais recente.
+- Criar uma PI leva direto ao formulario: ela nasce como rascunho quase vazio e o proximo passo e sempre preenche-la.
+
 Contrato de permissao
 ---------------------
 - `page_key`: `permissao-intervencao`, com `default_user_access = false`.
@@ -69,11 +88,11 @@ Fases pendentes
 - FASE 1a (FEITA): schema completo — catalogos, configuracao por contrato, contador do sequencial, entidade e filhas. Migrations 428 e 429.
 - FASE 1b (FEITA): RPCs de escrita. Migration 430.
 - FASE 2a (FEITA): camada Node completa — leituras, comparacao Programacao x PI, handlers e as 8 rotas de API.
-- FASE 2b: tela de listagem com filtros e o fluxo Nova PI nos dois caminhos.
-- FASE 3: formulario completo com as oito secoes e os snapshots.
-- FASE 4: plano de execucao ordenavel, com etapas padrao vindas de modelo.
+- FASE 2b (FEITA): tela de listagem com filtros e paginacao, e o fluxo Nova PI nos dois caminhos.
+- FASE 3 (FEITA): formulario completo com as oito secoes.
+- FASE 4 (FEITA): plano de execucao ordenavel, com etapas padrao vindas de modelo.
 - FASE 5: emissao real, substituindo o preview de demonstracao da tela `Modelo de PI`.
-- FASE 6: historico na UI e comparacao Programacao x PI.
+- FASE 6 (FEITA): historico na UI e comparacao Programacao x PI.
 - FASE 7 (toca a Programacao, migration isolada): campos de elementos bloqueados e de corte na etapa, e o campo PI da etapa virando herdado e nao editavel.
 
 Areas que NAO sao digitalizadas
@@ -84,6 +103,11 @@ Areas que NAO sao digitalizadas
 
 Atualizacao 2026-09
 -------------------
+- Formulario da PI entregue: oito secoes, plano de execucao ordenavel, painel de comparacao, historico e as acoes de status. Falta so a geracao do documento real.
+- `scripts/pi-rpc-smoke.mjs` ganhou a secao `Contrato do formulario`, que envia o payload EXATO da tela e prova os dois lados do contrato: campo preenchido persiste, e chave ausente LIMPA o valor em vez de preserva-lo. Sem isso a tela nao conseguiria apagar um campo.
+- Tela de listagem e fluxo Nova PI entregues. O passo 1 escolhe o projeto por autocomplete; o passo 2 escolhe entre `A partir da Programacao` (lista de etapas com o rotulo correto e as que ja tem PI marcadas como indisponiveis) e `Sem Programacao` (projeto + data).
+- A tela avisa sobre pendencias de configuracao (contrato, Plano de Emergencia, template ativo e etapas padrao) logo no topo, para o usuario nao descobrir a falta so na emissao.
+- DEFEITO ENCONTRADO E CORRIGIDO pelo teste de fumaca: `fetchProjectLookupMap` lia da tabela `project`, mas `city_text` e coluna da VIEW `project_with_labels` (a tabela base guarda so o id do municipio). O erro do PostgREST estava sendo descartado, entao a listagem mostraria "Nao identificado" em TODO projeto, sem nenhum sintoma no log. Passou a ler da view e o erro agora sobe.
 - Camada Node da tela: `queries.ts` com listagem filtrada e paginada, detalhe, historico, etapas oferecidas na criacao e catalogos; `handlers.ts` com os nove handlers; e 8 rotas de API. Nenhuma escrita na Programacao.
 - O rotulo da etapa vinculada vem de `getStageDisplayClassification`, exposto na fachada de `programacao-normalizada`: o servidor devolve a classificacao crua e a formatacao continua com fonte unica.
 - O filtro por area e por tensao resolve os ids numa consulta propria, e nao por `!inner` no embed, porque com `!inner` filtrado o embed voltaria so com a tag filtrada e a coluna da tela mentiria.
@@ -91,4 +115,4 @@ Atualizacao 2026-09
 - A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
 - Migrations 428 e 429: schema da PI criado, tabelas vazias. A Programacao nao foi tocada.
 - Migration 430: RPCs de escrita da PI. Nenhuma delas escreve na Programacao — `programming` e suas filhas sao apenas lidas, para montar snapshot e resolver vinculo.
-- `scripts/pi-rpc-smoke.mjs`: 56 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.
+- `scripts/pi-rpc-smoke.mjs`: 86 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.

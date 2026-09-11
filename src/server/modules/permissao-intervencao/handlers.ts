@@ -12,11 +12,13 @@ import { authorizePageAction } from "@/lib/server/routeAuthorization";
 
 import {
   buildPiComparison,
+  fetchActiveProjectOptions,
   fetchPiById,
   fetchPiExecutionSteps,
   fetchPiHistory,
   fetchPiList,
   fetchPiMeta,
+  fetchPiPeopleAndTeams,
   fetchPiTagsByPi,
   fetchProgrammingStageOptions,
   fetchProjectLookupMap,
@@ -287,11 +289,28 @@ export async function getPermissionInterventionMeta(context: AuthenticatedAppUse
   const { supabase, appUser } = context;
 
   try {
-    const meta = await fetchPiMeta(supabase, appUser.tenant_id);
+    const [meta, projects, peopleAndTeams] = await Promise.all([
+      fetchPiMeta(supabase, appUser.tenant_id),
+      fetchActiveProjectOptions(supabase, appUser.tenant_id),
+      fetchPiPeopleAndTeams(supabase, appUser.tenant_id),
+    ]);
+
     return NextResponse.json({
       operationAreas: meta.operationAreas,
       voltageLevels: meta.voltageLevels,
       executionStepTemplates: meta.executionStepTemplates,
+      people: peopleAndTeams.people.map((person) => ({
+        id: person.id,
+        name: person.nome,
+        registration: person.matriculation,
+      })),
+      teams: peopleAndTeams.teams.map((team) => ({ id: team.id, name: team.name })),
+      projects: projects.map((project) => ({
+        id: project.id,
+        code: project.sob,
+        city: project.city_text ?? "",
+        address: [project.street, project.neighborhood].filter(Boolean).join(", "),
+      })),
       // Valores iniciais da secao de identificacao. Pre-preenchem a PI e
       // continuam editaveis nela.
       contractDefaults: meta.contract

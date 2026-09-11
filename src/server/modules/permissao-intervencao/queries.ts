@@ -234,6 +234,18 @@ export async function fetchPiList(
   return { items: rows, total: count ?? 0, projectMap };
 }
 
+/**
+ * Le de `project_with_labels`, NAO da tabela `project`.
+ *
+ * `city_text` e uma coluna da VIEW, resolvida a partir do lookup de municipio;
+ * a tabela base guarda so o id. Apontar para `project` devolve erro de coluna
+ * inexistente, e como o erro era descartado a listagem mostraria
+ * "Nao identificado" em todo projeto, sem nenhum sintoma no log. O erro agora
+ * sobe, e quem chama transforma em 500.
+ *
+ * A view tem `security_invoker = true`, entao a RLS das tabelas base continua
+ * valendo; o filtro por tenant e explicito mesmo assim.
+ */
 export async function fetchProjectLookupMap(
   supabase: SupabaseClient,
   tenantId: string,
@@ -242,13 +254,14 @@ export async function fetchProjectLookupMap(
   const ids = Array.from(new Set(projectIds.filter(Boolean)));
   if (ids.length === 0) return new Map();
 
-  const { data } = await supabase
-    .from("project")
+  const { data, error } = await supabase
+    .from("project_with_labels")
     .select(PROJECT_LOOKUP_SELECT)
     .eq("tenant_id", tenantId)
     .in("id", ids)
     .returns<ProjectLookupRow[]>();
 
+  if (error) throw error;
   return new Map((data ?? []).map((row) => [row.id, row]));
 }
 
@@ -494,6 +507,72 @@ export async function fetchProgrammingStageOptions(
 // ---------------------------------------------------------------------------
 // Catalogos e valores iniciais
 // ---------------------------------------------------------------------------
+
+export type PiProjectOption = {
+  id: string;
+  sob: string;
+  city_text: string | null;
+  street: string | null;
+  neighborhood: string | null;
+};
+
+/**
+ * Projetos ativos para o autocomplete do fluxo `Nova PI`.
+ *
+ * Lista completa em vez de busca por digitacao, no mesmo padrao do Cronograma
+ * de Solicitacoes: a escolha do projeto e o primeiro passo e precisa responder
+ * na hora. `loadAllRows` porque o teto de 1.000 linhas do PostgREST corta sem
+ * sinalizar, e a carteira ja passa disso.
+ */
+export async function fetchActiveProjectOptions(supabase: SupabaseClient, tenantId: string) {
+  const { data } = await loadAllRows<PiProjectOption>((from, to) =>
+    supabase
+      .from("project_with_labels")
+      .select("id, sob, city_text, street, neighborhood")
+      .eq("tenant_id", tenantId)
+      .eq("is_active", true)
+      .order("sob", { ascending: true })
+      .range(from, to)
+      .returns<PiProjectOption[]>(),
+  );
+
+  return data ?? [];
+}
+
+/**
+ * Pessoas e equipes ativas para os selects do formulario.
+ *
+ * Lista completa em vez de busca por digitacao, mesmo padrao dos projetos: sao
+ * catalogos pequenos e o formulario precisa deles todos de uma vez. As duas
+ * usam `loadAllRows` porque o teto de 1.000 linhas do PostgREST corta sem
+ * sinalizar.
+ */
+export async function fetchPiPeopleAndTeams(supabase: SupabaseClient, tenantId: string) {
+  const [people, teams] = await Promise.all([
+    loadAllRows<{ id: string; nome: string; matriculation: string | null }>((from, to) =>
+      supabase
+        .from("people")
+        .select("id, nome, matriculation")
+        .eq("tenant_id", tenantId)
+        .eq("ativo", true)
+        .order("nome", { ascending: true })
+        .range(from, to)
+        .returns<{ id: string; nome: string; matriculation: string | null }[]>(),
+    ),
+    loadAllRows<{ id: string; name: string }>((from, to) =>
+      supabase
+        .from("teams")
+        .select("id, name")
+        .eq("tenant_id", tenantId)
+        .eq("ativo", true)
+        .order("name", { ascending: true })
+        .range(from, to)
+        .returns<{ id: string; name: string }[]>(),
+    ),
+  ]);
+
+  return { people: people.data ?? [], teams: teams.data ?? [] };
+}
 
 export async function fetchPiMeta(supabase: SupabaseClient, tenantId: string) {
   const [areas, voltages, contract, stepTemplates, settings, hasTemplate] = await Promise.all([

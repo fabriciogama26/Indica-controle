@@ -24,14 +24,48 @@
  *     abortando a devolucao se outra emissao tiver acontecido no meio.
  */
 
-import { readFileSync } from "node:fs";
-import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire, registerHooks } from "node:module";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(join(repoRoot, "package.json"));
 const { createClient } = require("@supabase/supabase-js");
+
+/**
+ * O repositorio importa sem extensao (`moduleResolution: bundler`) e usa o
+ * alias `@/*` do tsconfig. O resolver do Node nao entende nem um nem outro.
+ * Este hook espelha as duas regras so para o script, permitindo exercitar
+ * `queries.ts` DE VERDADE em vez de reimplementar as consultas aqui.
+ */
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    let target = specifier;
+    let parent = context.parentURL;
+
+    // `@/x` aponta para `src/x`, conforme `paths` do tsconfig.
+    if (target.startsWith("@/")) {
+      parent = new URL("src/", `file:///${repoRoot.replace(/\\/g, "/")}/`).href;
+      target = `./${target.slice(2)}`;
+    }
+
+    if (target.startsWith(".")) {
+      const base = new URL(target, parent);
+      const candidates = /\.[a-z]+$/i.test(target) ? [""] : [".ts", ".tsx", "/index.ts"];
+      for (const extension of candidates) {
+        const candidate = new URL(base.href + extension);
+        if (existsSync(fileURLToPath(candidate))) return { url: candidate.href, shortCircuit: true };
+      }
+    }
+
+    return nextResolve(specifier, context);
+  },
+});
+
+const piQueries = await import(
+  `${new URL("../src/server/modules/permissao-intervencao/queries.ts", import.meta.url)}`
+);
 
 const WITH_ISSUE = process.argv.includes("--issue");
 
@@ -372,6 +406,14 @@ async function main() {
     check("vincular sem etapa ativa e recusado", noStage.success === false && noStage.reason === "NO_ACTIVE_PROGRAMMING", noStage.reason);
 
     // -----------------------------------------------------------------------
+    section("Contrato do formulario");
+    updatedAt = (await runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt })) ?? updatedAt;
+
+    // -----------------------------------------------------------------------
+    section("Camada de leitura (queries.ts)");
+    await runReadLayerChecks(sb, { tenantId, piId, projectId: project.data.id });
+
+    // -----------------------------------------------------------------------
     section("Criacao a partir de uma etapa da Programacao");
     await runFromProgrammingFlow(sb, { tenantId, actorId });
 
@@ -397,6 +439,205 @@ async function main() {
     console.log(`Falhas: ${failures.join(" | ")}`);
     process.exitCode = 1;
   }
+}
+
+/**
+ * Envia o payload EXATO que o formulario monta.
+ *
+ * O contrato e "conjunto completo dos campos editaveis, chave ausente vale como
+ * nulo". Estes casos provam os dois lados: campo preenchido persiste, e campo
+ * omitido na chamada seguinte e LIMPO em vez de preservado. Sem isso, a tela
+ * nao conseguiria apagar um valor.
+ */
+async function runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt }) {
+  const person = await sb.from("people").select("id").eq("tenant_id", tenantId).eq("ativo", true).limit(1).maybeSingle();
+
+  const full = {
+    primaryOperationAreaCode: "PM",
+    primaryVoltageLevelCode: "MT",
+    operationAreas: ["PM", "CE"],
+    contactOperationAreas: ["OM"],
+    voltageLevels: ["MT", "BT"],
+    interferingVoltageLevels: ["AT"],
+    managerName: "GESTOR TESTE",
+    companyName: "EMPRESA TESTE",
+    contractNumber: "CT-001",
+    managerPhone: "(21) 90000-0000",
+    managerEmail: "gestor@teste.com",
+    utilityContactName: "CONTATO TESTE",
+    utilityContactPhone: "(21) 91111-1111",
+    utilityContactEmail: "contato@teste.com",
+    activityDescription: "Linha 1\nLinha 2",
+    workPlan: "PT-1",
+    liveWorkAuthorization: "AT-1",
+    preApr: "APR-1",
+    emergencyAuthorization: "EM-1",
+    startTime: "07:30",
+    endDate: "2099-12-31",
+    endTime: "17:00",
+    secondaryDate: "",
+    secondaryStartTime: "",
+    installationDescription: "Instalacao de teste",
+    feeder: "SMOKE01",
+    address: "Rua de Teste, 1",
+    coordX: "-44.1",
+    coordY: "-22.9",
+    blockedElements: "CH-1",
+    cutElements: "CD-1",
+    hasInterferingInstallation: true,
+    interferingDescription: "Proximidade",
+    trafficInstructions: "Cones",
+    supervisorPersonId: person.data?.id ?? "",
+    supervisorAlternatePersonId: "",
+    foremanPersonId: person.data?.id ?? "",
+    foremanAlternatePersonId: "",
+    authorPersonId: "",
+    validatorPersonId: "",
+    observations: "Observacao de teste",
+  };
+
+  const saved = await callRpc(sb, "save_permission_intervention", {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: full,
+    p_expected_updated_at: updatedAt,
+  });
+  if (!check("salva o payload completo do formulario", saved.success === true, saved.message)) return updatedAt;
+
+  const row = await sb
+    .from("permission_intervention")
+    .select(
+      "manager_name, contract_number, start_time, end_time, coord_x, has_interfering_installation, supervisor_person_id, supervisor_name_snapshot, observations, secondary_date",
+    )
+    .eq("id", piId)
+    .maybeSingle();
+
+  const data = row.data ?? {};
+  check("texto persistido", data.manager_name === "GESTOR TESTE", String(data.manager_name));
+  check("hora `HH:mm` aceita e normalizada", String(data.start_time).startsWith("07:30"), String(data.start_time));
+  check("booleano do interferente persistido", data.has_interfering_installation === true, String(data.has_interfering_installation));
+  check("uuid de pessoa persistido", Boolean(data.supervisor_person_id), String(data.supervisor_person_id));
+  check("snapshot do nome preenchido pela RPC", Boolean(data.supervisor_name_snapshot), String(data.supervisor_name_snapshot));
+  check("string vazia vira nulo", data.secondary_date === null, String(data.secondary_date));
+
+  // Chave ausente tem de LIMPAR, nao preservar.
+  const cleared = await callRpc(sb, "save_permission_intervention", {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: { feeder: "SO ISSO" },
+    p_expected_updated_at: saved.updated_at,
+  });
+  if (!check("salva payload parcial", cleared.success === true, cleared.message)) return saved.updated_at;
+
+  const after = await sb
+    .from("permission_intervention")
+    .select("feeder, manager_name, has_interfering_installation, supervisor_person_id")
+    .eq("id", piId)
+    .maybeSingle();
+
+  check("chave enviada e gravada", after.data?.feeder === "SO ISSO", String(after.data?.feeder));
+  check("chave ausente e limpa, nao preservada", after.data?.manager_name === null, String(after.data?.manager_name));
+  check("booleano ausente volta a nulo", after.data?.has_interfering_installation === null, String(after.data?.has_interfering_installation));
+  check("uuid ausente volta a nulo", after.data?.supervisor_person_id === null, String(after.data?.supervisor_person_id));
+
+  // O payload parcial acima LIMPOU areas e tensoes, que e o comportamento
+  // correto do contrato. As secoes seguintes contam com a PI no estado que a
+  // criacao deixou, entao a fixture e reposta aqui.
+  const restored = await callRpc(sb, "save_permission_intervention", {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: {
+      managerName: "SMOKE TEST EDITADO",
+      companyName: "SMOKE",
+      contractNumber: "SMOKE-001",
+      activityDescription: "Linha 1\nLinha 2",
+      feeder: "SMOKE01",
+      address: "Rua de Teste, 1",
+      operationAreas: ["PM"],
+      contactOperationAreas: ["OM"],
+      voltageLevels: ["MT"],
+      interferingVoltageLevels: ["AT"],
+    },
+    p_expected_updated_at: cleared.updated_at,
+  });
+  check("fixture reposta para as secoes seguintes", restored.success === true, restored.message);
+
+  return restored.updated_at ?? cleared.updated_at;
+}
+
+/**
+ * Exercita `queries.ts` com o codigo REAL do modulo, e nao uma copia.
+ *
+ * Cobre o que as RPCs nao cobrem: os embeds do PostgREST, a paginacao com
+ * contagem exata, o mapa de tags por escopo e a comparacao contra o snapshot.
+ * Sao justamente as partes que falham em runtime e passam no typecheck.
+ */
+async function runReadLayerChecks(sb, { tenantId, piId, projectId }) {
+  const baseFilters = {
+    search: "",
+    status: "",
+    linkStatus: "",
+    projectId: "",
+    operationAreaCode: "",
+    voltageLevelCode: "",
+    dateFrom: "",
+    dateTo: "",
+    page: 1,
+    pageSize: 20,
+  };
+
+  const list = await piQueries.fetchPiList(sb, tenantId, baseFilters);
+  check("fetchPiList responde", Array.isArray(list.items), typeof list.items);
+  check("a PI de teste aparece na lista", list.items.some((row) => row.id === piId));
+  check("mapa de projetos preenchido", list.projectMap.size > 0, String(list.projectMap.size));
+
+  const filtered = await piQueries.fetchPiList(sb, tenantId, { ...baseFilters, operationAreaCode: "PM" });
+  check("filtro por area encontra a PI", filtered.items.some((row) => row.id === piId));
+
+  const noMatch = await piQueries.fetchPiList(sb, tenantId, { ...baseFilters, operationAreaCode: "EC" });
+  check("filtro por area sem correspondencia devolve vazio", noMatch.items.length === 0, String(noMatch.items.length));
+
+  const byDate = await piQueries.fetchPiList(sb, tenantId, { ...baseFilters, dateFrom: "2099-01-01" });
+  check("filtro por periodo encontra a PI", byDate.items.some((row) => row.id === piId));
+
+  const detail = await piQueries.fetchPiById(sb, tenantId, piId);
+  check("fetchPiById responde", Boolean(detail?.id));
+
+  const tags = await piQueries.fetchPiTagsByPi(sb, tenantId, [piId]);
+  check("tags separadas por escopo", Array.isArray(tags.areas.get(piId)?.PI), JSON.stringify(tags.areas.get(piId)));
+
+  const steps = await piQueries.fetchPiExecutionSteps(sb, tenantId, piId);
+  check("fetchPiExecutionSteps responde", Array.isArray(steps));
+
+  const history = await piQueries.fetchPiHistory(sb, tenantId, piId);
+  check("historico lido pela query", history.length > 0, String(history.length));
+
+  const meta = await piQueries.fetchPiMeta(sb, tenantId);
+  check("meta traz areas e tensoes", meta.operationAreas.length >= 6 && meta.voltageLevels.length >= 3);
+  check("meta traz a configuracao do contrato", Boolean(meta.settings));
+
+  const projectOptions = await piQueries.fetchActiveProjectOptions(sb, tenantId);
+  check("projetos ativos carregados", projectOptions.length > 0, String(projectOptions.length));
+
+  const stageOptions = await piQueries.fetchProgrammingStageOptions(sb, tenantId, projectId);
+  check("etapas do projeto carregadas sem erro", Array.isArray(stageOptions), typeof stageOptions);
+
+  // Sem snapshot nao ha origem contra a qual medir: a lista tem de vir vazia.
+  const noComparison = piQueries.buildPiComparison(null, detail, steps);
+  check("PI sem snapshot nao gera comparacao", noComparison.length === 0, String(noComparison.length));
+
+  const comparison = piQueries.buildPiComparison(
+    { feeder: "OUTRO", teams: [{ teamName: "MK-01", foremanName: "JOAO" }], activities: [] },
+    { ...detail, feeder: "SMOKE01", foreman_name_snapshot: "CARLOS" },
+    steps,
+  );
+  const feederRow = comparison.find((row) => row.field === "feeder");
+  const foremanRow = comparison.find((row) => row.field === "foreman");
+  check("comparacao aponta alimentador divergente", feederRow?.divergent === true, JSON.stringify(feederRow));
+  check("comparacao aponta encarregado fora dos programados", foremanRow?.divergent === true, JSON.stringify(foremanRow));
 }
 
 /**
