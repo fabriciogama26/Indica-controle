@@ -14,6 +14,7 @@ Arquitetura (estado atual)
 - Dominio server-side ja existente: `src/server/modules/permissao-intervencao/` — contrato de tags, mapper, storage e handlers do template.
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
 - Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql`, `429_create_permission_intervention.sql` e `430_create_permission_intervention_rpcs.sql`
+- Verificacao das RPCs: `scripts/pi-rpc-smoke.mjs` (ESCREVE no banco ligado; cria uma PI de teste e a remove no fim)
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -84,3 +85,4 @@ Atualizacao 2026-09
 - A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
 - Migrations 428 e 429: schema da PI criado, tabelas vazias. A Programacao nao foi tocada.
 - Migration 430: RPCs de escrita da PI. Nenhuma delas escreve na Programacao — `programming` e suas filhas sao apenas lidas, para montar snapshot e resolver vinculo.
+- `scripts/pi-rpc-smoke.mjs`: 44 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.

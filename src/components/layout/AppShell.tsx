@@ -39,8 +39,6 @@ const menuSections = [
       { href: "/composicao-equipe", label: "Composicao de Equipe", icon: "users" },
       { href: "/controle-apr", label: "Controle de APR", icon: "calendar" },
       { href: "/permissao-intervencao", label: "Permissao de Intervencao", icon: "folder" },
-      // `Modelo de PI` fica em Cadastro Base: trocar o modelo oficial e ato de
-      // administracao do contrato, nao rotina de quem emite a PI.
       { href: "/medicao", label: "Medicao", icon: "calendar" },
       { href: "/medicao-comercial", label: "Medicao Comercial", icon: "calendar" },
       { href: "/medicao-visualizacao", label: "Visualizacao Medicao", icon: "calendar" },
@@ -89,6 +87,8 @@ const menuSections = [
       { href: "/grupo-atividade", label: "Grupo de Atividade", icon: "settings" },
       { href: "/motivo-sem-producao", label: "Motivo sem producao", icon: "settings" },
       { href: "/datas-bloqueadas", label: "Datas Bloqueadas", icon: "calendar" },
+      // `Modelo de PI` fica aqui, e nao junto da PI em Operacao: trocar o modelo
+      // oficial e ato de administracao do contrato, nao rotina de quem emite PI.
       { href: "/modelo-pi", label: "Modelo de PI", icon: "settings" },
       { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },

@@ -687,6 +687,16 @@ npm run lint
 npx tsc --noEmit
 npm run build
 ```
+- Verificacoes da Permissao de Intervencao, no padrao dos demais `scripts/*.mjs`:
+```bash
+# Template DOCX: contrato de tags, mapper, render e varredura. Puro em memoria.
+node scripts/pi-docx-verify.mjs
+node scripts/pi-docx-verify.mjs --storage   # usa o template ativo do bucket
+
+# RPCs da PI. ESCREVE no banco ligado: cria uma PI de teste e a remove no fim.
+node scripts/pi-rpc-smoke.mjs
+node scripts/pi-rpc-smoke.mjs --issue       # inclui a emissao e restaura o estado
+```
 - `npm run lint` executa ESLint (`npm run lint:eslint`) e o ratchet de tamanho de arquivo (`npm run lint:size`).
 - O ratchet compara cada `.ts`/`.tsx` de `src/` contra os limites da secao 5 do `CLAUDE.md` (1.500 linhas para `route.ts`/`controller.ts`/`handlers.ts`, 1.000 para os demais) e contra `file-size-baseline.json`, que registra os arquivos legados que ja estavam acima do limite. Falha com exit code 1.
 - Quando um arquivo do baseline encolhe, e removido ou volta a respeitar o limite, rodar `npm run lint:size:update`. Esse comando **so reduz** o baseline: se houver crescimento pendente ele recusa e nao escreve nada.
