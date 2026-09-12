@@ -38,11 +38,11 @@ src/modules/dashboard/**         PageViews, hooks, paginação, refetch
 src/lib/react-query/**           staleTime, refetchInterval, refetchOnWindowFocus
 supabase/migrations/*.sql        índices, RLS, funções, views, triggers
 supabase/functions/**            Edge Functions
-scripts/supabase-monitoring-readonly.sql          ← já existe, NÃO reescrever (saúde do banco)
-scripts/perf-baseline-capture.sql                 ← já existe, NÃO reescrever (baseline diffável, via CLI)
-scripts/perf-baseline-onequery.sql                ← já existe, NÃO reescrever (mesma coleta num resultado só, para o SQL Editor)
-scripts/supabase-report-*.txt                     ← relatório para Supabase Reports
-scripts/supabase-log-explorer-monitoring.sql      ← PostgREST / Edge Functions
+scripts/performance/supabase-monitoring-readonly.sql          ← já existe, NÃO reescrever (saúde do banco)
+scripts/performance/perf-baseline-capture.sql                 ← já existe, NÃO reescrever (baseline diffável, via CLI)
+scripts/performance/perf-baseline-onequery.sql                ← já existe, NÃO reescrever (mesma coleta num resultado só, para o SQL Editor)
+scripts/performance/supabase-report-*.txt         ← relatório para Supabase Reports
+scripts/performance/supabase-log-explorer-monitoring.sql      ← PostgREST / Edge Functions
 Auditoria/*.md                                    ← auditoria anterior, se houver
 Auditoria/baseline/*.txt                          ← capturas T0/T1 anteriores
 ```
@@ -79,11 +79,11 @@ Para cada achado informar: arquivo e linha (ou objeto de banco); categoria; padr
 - Propor materialized view quando o filtro do usuário é livre (datas arbitrárias, equipe, projeto) — matview não parametriza; nesse caso é RPC.
 - Recomendar upgrade de instância antes de esgotar índice, agregação no banco e redução de linhas trafegadas.
 - Executar comando de escrita em produção. `EXPLAIN ANALYZE` de `INSERT`/`UPDATE`/`DELETE` só dentro de `begin; … rollback;`.
-- Reescrever `scripts/supabase-monitoring-readonly.sql` — ele já cobre o Nível B. Usar e estender.
+- Reescrever `scripts/performance/supabase-monitoring-readonly.sql` — ele já cobre o Nível B. Usar e estender.
 </restricoes>
 
 <plano_de_execucao>
-**Etapa 0 — Reconhecimento.** Confirmar versões em `package.json`. Identificar qual cliente Supabase as rotas usam (`service_role` vs. token do usuário) — isso define se RLS entra na auditoria. Verificar se `Auditoria/` já existe com auditoria anterior a atualizar em vez de duplicar. Verificar se `scripts/supabase-monitoring-readonly.sql` existe.
+**Etapa 0 — Reconhecimento.** Confirmar versões em `package.json`. Identificar qual cliente Supabase as rotas usam (`service_role` vs. token do usuário) — isso define se RLS entra na auditoria. Verificar se `Auditoria/` já existe com auditoria anterior a atualizar em vez de duplicar. Verificar se `scripts/performance/supabase-monitoring-readonly.sql` existe.
 
 **Etapa 1 — Nível A, análise estática.** Sem tocar produção. Percorrer a checklist obrigatória de 21 itens (abaixo). Extrair de `supabase/migrations/` o estado **vivo** dos índices, aplicando `CREATE INDEX` e `DROP INDEX` em ordem de migration — não o acumulado histórico, que superconta. Produzir o mapa `página → API → tabela → filtros → índice atual → recomendado → risco`.
 
@@ -147,7 +147,7 @@ Ao propor um índice, sempre indicar: quais consultas exatas ele atende (arquivo
 </criterios_de_aceite>
 
 <validacoes>
-`npx tsc --noEmit`; `npm run lint`; `npm run build` (se afetar rota/build); `npm run db:check-link` antes de qualquer comando linked; `npm run db:migration-list`; `npm run db:lint`. Para coleta: `npx supabase db query --file scripts/supabase-monitoring-readonly.sql --linked`. Front/UI é manual: caminho feliz, estado vazio, estado de erro — e, em dashboard, conferência de que os números dos cards batem antes e depois.
+`npx tsc --noEmit`; `npm run lint`; `npm run build` (se afetar rota/build); `npm run db:check-link` antes de qualquer comando linked; `npm run db:migration-list`; `npm run db:lint`. Para coleta: `npx supabase db query --file scripts/performance/supabase-monitoring-readonly.sql --linked`. Front/UI é manual: caminho feliz, estado vazio, estado de erro — e, em dashboard, conferência de que os números dos cards batem antes e depois.
 </validacoes>
 
 <documentacao>

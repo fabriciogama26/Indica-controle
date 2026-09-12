@@ -21,7 +21,7 @@ Arquitetura (estado atual)
 - API: `src/app/api/permissao-intervencao/` — `route.ts` (GET lista, POST cria/edita), `meta`, `programacoes`, `[id]`, `[id]/historico`, `[id]/status`, `[id]/vinculo` e `[id]/plano`
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
 - Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql`, `429_create_permission_intervention.sql` e `430_create_permission_intervention_rpcs.sql`
-- Verificacao das RPCs: `scripts/pi-rpc-smoke.mjs` (ESCREVE no banco ligado; cria uma PI de teste e a remove no fim)
+- Verificacao das RPCs: `scripts/diagnosticos/pi-rpc-smoke.mjs` (ESCREVE no banco ligado; cria uma PI de teste e a remove no fim)
 - Rotulo da etapa vinculada: `getStageDisplayClassification`, importado da FACHADA de `programacao-normalizada`. O servidor devolve a classificacao crua e quem formata e aquela funcao — fonte unica da regra.
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
@@ -108,7 +108,7 @@ Areas que NAO sao digitalizadas
 Atualizacao 2026-09
 -------------------
 - Formulario da PI entregue: oito secoes, plano de execucao ordenavel, painel de comparacao, historico e as acoes de status. Falta so a geracao do documento real.
-- `scripts/pi-rpc-smoke.mjs` ganhou a secao `Contrato do formulario`, que envia o payload EXATO da tela e prova os dois lados do contrato: campo preenchido persiste, e chave ausente LIMPA o valor em vez de preserva-lo. Sem isso a tela nao conseguiria apagar um campo.
+- `scripts/diagnosticos/pi-rpc-smoke.mjs` ganhou a secao `Contrato do formulario`, que envia o payload EXATO da tela e prova os dois lados do contrato: campo preenchido persiste, e chave ausente LIMPA o valor em vez de preserva-lo. Sem isso a tela nao conseguiria apagar um campo.
 - Tela de listagem e fluxo Nova PI entregues. O passo 1 escolhe o projeto por autocomplete; o passo 2 escolhe entre `A partir da Programacao` (lista de etapas com o rotulo correto e as que ja tem PI marcadas como indisponiveis) e `Sem Programacao` (projeto + data).
 - A tela avisa sobre pendencias de configuracao (contrato, Plano de Emergencia, template ativo e etapas padrao) logo no topo, para o usuario nao descobrir a falta so na emissao.
 - DEFEITO ENCONTRADO E CORRIGIDO pelo teste de fumaca: `fetchProjectLookupMap` lia da tabela `project`, mas `city_text` e coluna da VIEW `project_with_labels` (a tabela base guarda so o id do municipio). O erro do PostgREST estava sendo descartado, entao a listagem mostraria "Nao identificado" em TODO projeto, sem nenhum sintoma no log. Passou a ler da view e o erro agora sobe.
@@ -119,4 +119,4 @@ Atualizacao 2026-09
 - A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
 - Migrations 428 e 429: schema da PI criado, tabelas vazias. A Programacao nao foi tocada.
 - Migration 430: RPCs de escrita da PI. Nenhuma delas escreve na Programacao — `programming` e suas filhas sao apenas lidas, para montar snapshot e resolver vinculo.
-- `scripts/pi-rpc-smoke.mjs`: 86 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.
+- `scripts/diagnosticos/pi-rpc-smoke.mjs`: 86 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.

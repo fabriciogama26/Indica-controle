@@ -7,7 +7,7 @@
 # ambiente reconstruido das migrations nasce vulneravel -- foi exatamente o caso
 # de v_stock_conflicts / v_stock_conflict_items (007 -> removidas pela 377).
 
-$migrationsDir = Join-Path $PSScriptRoot "..\supabase\migrations"
+$migrationsDir = Join-Path $PSScriptRoot "..\..\supabase\migrations"
 $errors        = [System.Collections.Generic.List[string]]::new()
 $checked       = 0
 

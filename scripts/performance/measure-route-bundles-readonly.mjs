@@ -14,8 +14,8 @@
 //
 // Uso:
 //   npm run build
-//   node scripts/measure-route-bundles-readonly.mjs
-//   node scripts/measure-route-bundles-readonly.mjs --baseline   (composicao do tronco comum)
+//   node scripts/performance/measure-route-bundles-readonly.mjs
+//   node scripts/performance/measure-route-bundles-readonly.mjs --baseline   (composicao do tronco comum)
 
 import fs from "node:fs";
 import path from "node:path";

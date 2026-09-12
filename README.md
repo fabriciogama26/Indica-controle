@@ -116,7 +116,7 @@ vercel --prod
 - `supabase`: migrations, Edge Functions, SQL avulso e documentacao das functions.
 - `docs`: handoff, documentos de tela, auditorias e planejamento.
 - `guias`: regras obrigatorias de engenharia, validacao, SQL, Supabase, frontend, backend, documentacao e git.
-- `scripts`: scripts locais de validacao, ratchet de tamanho e checks Supabase.
+- `scripts`: scripts locais organizados por tema (`automacoes`, `qualidade`, `supabase`, `auditoria`, `performance`, `migracoes`, `diagnosticos`).
 - `.github/workflows`: CI de lint, ratchet de tamanho e typecheck.
 - `vercel.json`: configuracao minima do deploy web no Vercel.
 
@@ -487,7 +487,7 @@ vercel --prod
   - `types.ts`: `PiDocumentData`, modelo de dominio do documento — fronteira entre o banco e o Word.
   - `piTemplateMapper.ts`: traduz `PiDocumentData` nas 129 tags, com helper de caixa de selecao, formatacao de data/hora e distribuicao das 23 linhas do Plano de Execucao.
   - `piTemplateStorage.ts`: acesso ao bucket privado `pi-templates`, com o caminho derivado no servidor a partir do tenant, upload com `contentType` explicito, download e limpeza de objeto orfao.
-  - `piDemoDocument.ts`: conjunto de demonstracao usado pela rota de preview e por `scripts/pi-docx-verify.mjs`.
+  - `piDemoDocument.ts`: conjunto de demonstracao usado pela rota de preview e por `scripts/diagnosticos/pi-docx-verify.mjs`.
   - `templates.ts`: listagem, upload com conferencia de tags, ativacao de versao e geracao do DOCX de demonstracao.
   - `queries.ts`: leituras da PI (listagem com filtros, detalhe, historico, etapas da Programacao oferecidas na criacao, catalogos) e a comparacao Programacao x PI contra o snapshot.
   - `handlers.ts`: handlers da tela da PI — listagem, detalhe, historico, meta, etapas, cadastro, plano de execucao, status e vinculo.
@@ -712,12 +712,12 @@ npm run build
 - Verificacoes da Permissao de Intervencao, no padrao dos demais `scripts/*.mjs`:
 ```bash
 # Template DOCX: contrato de tags, mapper, render e varredura. Puro em memoria.
-node scripts/pi-docx-verify.mjs
-node scripts/pi-docx-verify.mjs --storage   # usa o template ativo do bucket
+node scripts/diagnosticos/pi-docx-verify.mjs
+node scripts/diagnosticos/pi-docx-verify.mjs --storage   # usa o template ativo do bucket
 
 # RPCs da PI. ESCREVE no banco ligado: cria uma PI de teste e a remove no fim.
-node scripts/pi-rpc-smoke.mjs
-node scripts/pi-rpc-smoke.mjs --issue       # inclui a emissao e restaura o estado
+node scripts/diagnosticos/pi-rpc-smoke.mjs
+node scripts/diagnosticos/pi-rpc-smoke.mjs --issue       # inclui a emissao e restaura o estado
 ```
 - `npm run lint` executa ESLint (`npm run lint:eslint`) e o ratchet de tamanho de arquivo (`npm run lint:size`).
 - O ratchet compara cada `.ts`/`.tsx` de `src/` contra os limites da secao 5 do `CLAUDE.md` (1.500 linhas para `route.ts`/`controller.ts`/`handlers.ts`, 1.000 para os demais) e contra `file-size-baseline.json`, que registra os arquivos legados que ja estavam acima do limite. Falha com exit code 1.

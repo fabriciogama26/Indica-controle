@@ -51,7 +51,7 @@
 //   - INSERTs usam ON CONFLICT DO NOTHING nas mesmas chaves da 315.
 //   - project_programming (fonte) NAO e alterado nem apagado — so leitura.
 //
-// Rodar: node scripts/generate-migration-335-programming-delta.mjs
+// Rodar: node scripts/migracoes/generate-migration-335-programming-delta.mjs
 // Saida: supabase/migrations/335_migrate_legacy_programming_delta.sql (nao aplica nada)
 //        docs/planejamento/Revisao_Delta_Programacao_335.txt (conflitos manuais)
 
@@ -62,7 +62,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.join(__dirname, "..");
+const REPO_ROOT = path.join(__dirname, "..", "..");
 
 function loadEnv(filePath) {
   const text = readFileSync(filePath, "utf8");
@@ -623,7 +623,7 @@ async function main() {
   lines.push("-- Carga de CORTE da tela programacao-simples (project_programming) para o modelo");
   lines.push("-- normalizado (programming/programming_team/programming_document). Complementa a");
   lines.push("-- migration 315, que migrou a foto de 2026-07-19 e ja esta aplicada em producao.");
-  lines.push("-- Gerado por scripts/generate-migration-335-programming-delta.mjs a partir do banco");
+  lines.push("-- Gerado por scripts/migracoes/generate-migration-335-programming-delta.mjs a partir do banco");
   lines.push("-- em producao — NAO editar valores a mao aqui; reexecutar o gerador se a fonte mudar.");
   lines.push("--");
   lines.push(`-- Gerado em: ${new Date().toISOString()}`);

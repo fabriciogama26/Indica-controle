@@ -307,7 +307,7 @@ E vale registrar: o `dash-estoque`, que a auditoria de banco tirou da fila, **n�
 ## 6. W2.1 — o JS por rota, medido
 
 Coleta de **2026-09-08**, sobre `npm run build` do commit `6afcc1b`.
-Reexecutável: [`scripts/measure-route-bundles-readonly.mjs`](../scripts/measure-route-bundles-readonly.mjs).
+Reexecutável: [`scripts/performance/measure-route-bundles-readonly.mjs`](../scripts/performance/measure-route-bundles-readonly.mjs).
 
 > **Ponteiros de linha atualizados nesta revisão.** O gate de sessão descrito em 2.2 continua existindo e inalterado
 > na forma, mas o arquivo cresceu desde agosto: `AppShell.tsx` foi de 474 para **511** (o `if (isLoading || !session)`)

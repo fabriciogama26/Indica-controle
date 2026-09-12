@@ -8,7 +8,7 @@ import type { PiDocumentData, PiExecutionStep } from "./types";
  * Vive aqui, e nao dentro do script de verificacao, porque dois consumidores
  * precisam exatamente do mesmo conjunto: a rota de preview (que devolve o DOCX
  * para o usuario abrir no Word depois de subir uma versao nova) e
- * `scripts/pi-docx-verify.mjs`. Duplicar levaria a conferir uma coisa e
+ * `scripts/diagnosticos/pi-docx-verify.mjs`. Duplicar levaria a conferir uma coisa e
  * publicar outra.
  *
  * O conteudo e propositalmente adversarial: acentuacao, cedilha, texto em

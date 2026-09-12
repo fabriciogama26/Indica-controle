@@ -33,7 +33,7 @@
 // - Historico (project_programming_history) NAO migrado — o novo historico
 //   comeca vazio a partir da migracao.
 //
-// Rodar: node scripts/generate-migration-315-programming-data.mjs
+// Rodar: node scripts/migracoes/generate-migration-315-programming-data.mjs
 // Saida: supabase/migrations/315_migrate_legacy_programming_data.sql (NAO aplica nada)
 
 import { createClient } from "@supabase/supabase-js";
@@ -43,7 +43,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.join(__dirname, "..");
+const REPO_ROOT = path.join(__dirname, "..", "..");
 
 function loadEnv(filePath) {
   const text = readFileSync(filePath, "utf8");
@@ -243,7 +243,7 @@ async function main() {
   lines.push("-- 315_migrate_legacy_programming_data.sql");
   lines.push("-- Migra dados reais de project_programming (modelo antigo, flat/por-equipe) para");
   lines.push("-- programming/programming_team/programming_document (modelo normalizado). Gerado por");
-  lines.push("-- scripts/generate-migration-315-programming-data.mjs a partir do banco em producao —");
+  lines.push("-- scripts/migracoes/generate-migration-315-programming-data.mjs a partir do banco em producao —");
   lines.push("-- NAO editar valores a mao aqui; reexecutar o gerador se os dados de origem mudarem.");
   lines.push("--");
   lines.push(`-- Gerado em: ${new Date().toISOString()}`);

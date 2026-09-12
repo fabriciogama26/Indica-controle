@@ -11,12 +11,12 @@
  * teste e a REMOVE no final, junto com as filhas (cascade) e o historico.
  *
  * Modos:
- *   node scripts/pi-rpc-smoke.mjs
+ *   node scripts/diagnosticos/pi-rpc-smoke.mjs
  *     Cria, edita, salva o Plano de Execucao, confere a validacao de emissao e
  *     limpa. NAO emite, entao NAO consome numero de PI e NAO altera nenhuma
  *     configuracao do contrato.
  *
- *   node scripts/pi-rpc-smoke.mjs --issue
+ *   node scripts/diagnosticos/pi-rpc-smoke.mjs --issue
  *     Faz tambem o caminho de emissao. Para isso precisa que o Plano de
  *     Emergencia esteja configurado: se estiver vazio, o script grava um texto
  *     temporario e RESTAURA o valor anterior no final. Consome um numero do
@@ -29,7 +29,7 @@ import { createRequire, registerHooks } from "node:module";
 import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = resolvePath(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const require = createRequire(join(repoRoot, "package.json"));
 const { createClient } = require("@supabase/supabase-js");
 
@@ -64,7 +64,7 @@ registerHooks({
 });
 
 const piQueries = await import(
-  `${new URL("../src/server/modules/permissao-intervencao/queries.ts", import.meta.url)}`
+  `${new URL("../../src/server/modules/permissao-intervencao/queries.ts", import.meta.url)}`
 );
 
 const WITH_ISSUE = process.argv.includes("--issue");

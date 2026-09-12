@@ -1,0 +1,24 @@
+Arquivos para automacoes locais de Git e VS Code.
+
+Modelos nesta pasta:
+- scripts/automacoes/tasks.json
+- scripts/automacoes/sync-main.ps1
+- scripts/automacoes/sync-preservando-alteracoes.ps1
+
+Para ativar no VS Code, copie `scripts/automacoes/tasks.json` para `.vscode/tasks.json`.
+
+Sincronizacao segura da main:
+1. O VS Code dispara a tarefa ao abrir a pasta.
+2. O PowerShell pergunta antes de executar qualquer reset.
+3. Se voce estiver em uma branch diferente de main, o script NAO reseta essa branch.
+4. Se houver alteracoes nao commitadas na main, o script mostra um aviso explicito.
+5. So executa o reset se voce digitar exatamente: SIM
+
+Sincronizacao preservando alteracoes locais:
+1. O script `sync-preservando-alteracoes.ps1` cria um stash com arquivos rastreados e nao rastreados.
+2. Executa `git fetch --prune origin` e `git pull --ff-only` na branch atual.
+3. Reaplica o stash com `git stash apply --index`.
+4. Mantem o stash como backup; remova manualmente com `git stash drop <stash>` depois de conferir.
+
+Na primeira vez, o VS Code pode pedir autorizacao para Automatic Tasks.
+Permita somente se este workspace for confiavel.

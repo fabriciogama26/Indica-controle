@@ -10,15 +10,15 @@ Fonte da verdade da auditoria. O Nível A diz onde o I/O **provavelmente** está
 
 | Arquivo | O que faz |
 |---|---|
-| [`scripts/supabase-monitoring-readonly.sql`](../scripts/supabase-monitoring-readonly.sql) | 493 linhas, 18 blocos. Cobre Disk I/O por database e por tabela, pressão de CPU/memória, cache hit rate, top queries por tempo total, top queries por leitura de disco, tabelas por tamanho, índices não usados, `Seq Scan` por tabela, locks e conexões. |
-| [`scripts/supabase-report-indica-controle-saude-io-performance.txt`](../scripts/supabase-report-indica-controle-saude-io-performance.txt) | Versão do mesmo conteúdo para colar no Supabase Reports |
-| [`scripts/supabase-log-explorer-monitoring.sql`](../scripts/supabase-log-explorer-monitoring.sql) | Consultas para o Logs Explorer (PostgREST / Edge Functions) |
+| [`scripts/performance/supabase-monitoring-readonly.sql`](../scripts/performance/supabase-monitoring-readonly.sql) | 493 linhas, 18 blocos. Cobre Disk I/O por database e por tabela, pressão de CPU/memória, cache hit rate, top queries por tempo total, top queries por leitura de disco, tabelas por tamanho, índices não usados, `Seq Scan` por tabela, locks e conexões. |
+| [`scripts/performance/supabase-report-indica-controle-saude-io-performance.txt`](../scripts/performance/supabase-report-indica-controle-saude-io-performance.txt) | Versão do mesmo conteúdo para colar no Supabase Reports |
+| [`scripts/performance/supabase-log-explorer-monitoring.sql`](../scripts/performance/supabase-log-explorer-monitoring.sql) | Consultas para o Logs Explorer (PostgREST / Edge Functions) |
 
 Como rodar:
 
 ```bash
 npm run db:check-link
-npx supabase db query --file scripts/supabase-monitoring-readonly.sql --linked
+npx supabase db query --file scripts/performance/supabase-monitoring-readonly.sql --linked
 ```
 
 O bloco `04_top_expensive_queries` já devolve exatamente as 8 métricas exigidas por esta auditoria: `calls`, `total_exec_time`, `mean_exec_time`, `rows`, `shared_blks_hit`, `shared_blks_read`, `temp_blks_read`, `temp_blks_written` — ordenado por `total_exec_time desc`, que é o critério correto (custo acumulado, não pico isolado).

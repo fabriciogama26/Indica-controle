@@ -27,7 +27,7 @@ Todo artefato `.md` de auditoria de performance vive aqui. Nada nesta pasta alte
 | [`12-nivel-b-ranking-custo.md`](12-nivel-b-ranking-custo.md) | B | **Ranking por custo — fecha o Nível B.** ~32% do banco é introspecção do Supabase Studio; o dash-estoque custa ~1% |
 | [`13-web-vitals.md`](13-web-vitals.md) | — | **Tempo de tela** (Vercel Speed Insights), duas janelas: 12-18/ago e 1-7/set. CLS corrigido e confirmado em campo (0,14 -> 0,06, fase W1). LCP: causa no gate de sessao do `AppShell`, e o W2.1 finalmente medido (2026-09-08) — o tronco comum e 84% do payload de toda rota, entao o bundle por rota nao explica o LCP |
 | [`16-unused-index-supabase-advisor.md`](16-unused-index-supabase-advisor.md) | B | Runbook pos-399 para auditar `unused_index`: 438 alertas INFO, 366 `idx_fk_*`, sem remocao automatica |
-| [`baseline/`](baseline/) | B | Capturas brutas de `scripts/perf-baseline-capture.sql`, uma por arquivo |
+| [`baseline/`](baseline/) | B | Capturas brutas de `scripts/performance/perf-baseline-capture.sql`, uma por arquivo |
 
 ### Auditorias anteriores nesta pasta
 
@@ -66,8 +66,8 @@ A dimensão de **tempo de tela** ([`13`](13-web-vitals.md)) não roda pelo coman
 
 ```
 npm run build
-node scripts/measure-route-bundles-readonly.mjs
-node scripts/measure-route-bundles-readonly.mjs --baseline
+node scripts/performance/measure-route-bundles-readonly.mjs
+node scripts/performance/measure-route-bundles-readonly.mjs --baseline
 ```
 
 Somente leitura, sobre o build já gerado — não toca banco, rede nem `src/`.

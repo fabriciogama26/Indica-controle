@@ -12,7 +12,7 @@
 -- ou colar este arquivo inteiro no SQL editor do Dashboard.
 --
 -- PARA QUE SERVE: lista toda tabela BASE de `public` que tem `tenant_id` e diz se
--- ela esta coberta por scripts/check-tenant-cardinality-live.sql. Serve para pegar
+-- ela esta coberta por scripts/performance/check-tenant-cardinality-live.sql. Serve para pegar
 -- tabela nova que entrou no schema depois da auditoria e ficou fora da medicao —
 -- sem isto, a auditoria envelhece sem ninguem notar.
 --

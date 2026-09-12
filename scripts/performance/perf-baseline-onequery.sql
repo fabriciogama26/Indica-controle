@@ -1,5 +1,5 @@
 -- perf-baseline-onequery.sql
--- MESMA coleta de scripts/perf-baseline-capture.sql, porem devolvendo TUDO em
+-- MESMA coleta de scripts/performance/perf-baseline-capture.sql, porem devolvendo TUDO em
 -- UM UNICO resultado.
 --
 -- POR QUE ESTE ARQUIVO EXISTE

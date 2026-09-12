@@ -20,7 +20,7 @@ Arquitetura
 - Backend: `src/server/modules/permissao-intervencao/` (`templates.ts`, `piTemplateStorage.ts`, `piTemplateMapper.ts`, `piTemplateTags.ts`, `piDemoDocument.ts`, `types.ts`, `index.ts`)
 - Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
 - Banco/RLS/RPC/permissao: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql` e `431_pi_settings_roles_and_contact_source.sql`
-- Verificacao: `scripts/pi-docx-verify.mjs`
+- Verificacao: `scripts/diagnosticos/pi-docx-verify.mjs`
 - Navegacao/autorizacao:
   - `src/components/layout/AppShell.tsx`
   - `src/lib/auth/authorization.ts`
@@ -89,7 +89,7 @@ Geracao do documento
 - Fluxo: validar acesso e tenant -> localizar template ativo -> conferir que o caminho pertence ao tenant -> baixar do Storage -> validar os dados -> montar as 129 tags -> renderizar -> varrer o resultado atras de tag nao resolvida -> entregar o DOCX.
 - A varredura pos-render e a ultima barreira: se sobrar qualquer `{...}`, o arquivo NAO e entregue.
 - Nesta entrega a geracao usa um conjunto de DEMONSTRACAO montado no servidor (`buildPiDemoDocumentData`), nunca dados vindos do cliente. Serve para conferir o template, nao para emitir PI.
-- O mesmo conjunto alimenta `scripts/pi-docx-verify.mjs`, para conferir e publicar nao divergirem.
+- O mesmo conjunto alimenta `scripts/diagnosticos/pi-docx-verify.mjs`, para conferir e publicar nao divergirem.
 - Variante `full` preenche as 23 linhas do plano, para conferir o pior caso de layout.
 
 Boas praticas
@@ -107,8 +107,8 @@ Validacao
 - `npx tsc --noEmit`
 - `npm run lint`
 - `npm run build`
-- `node scripts/pi-docx-verify.mjs` (usa `public/Modelo_PI_Template_Tags.docx`)
-- `node scripts/pi-docx-verify.mjs --storage` (baixa do bucket; exige `.env` com `SUPABASE_SERVICE_ROLE_KEY`)
+- `node scripts/diagnosticos/pi-docx-verify.mjs` (usa `public/Modelo_PI_Template_Tags.docx`)
+- `node scripts/diagnosticos/pi-docx-verify.mjs --storage` (baixa do bucket; exige `.env` com `SUPABASE_SERVICE_ROLE_KEY`)
 - Conferencia visual no Word: caixas de selecao, quebras de linha, layout do Plano de Execucao com 23 etapas e as tres secoes de preenchimento fisico.
 
 Troubleshooting
@@ -116,7 +116,7 @@ Troubleshooting
 - "Nenhum template ativo neste contrato": nao ha versao ativa para o tenant. Envie um arquivo e ative a versao.
 - "O template enviado nao passou na conferencia de tags": o relatorio na tela lista as obrigatorias ausentes e as desconhecidas. Corrija o `.docx` e reenvie.
 - Upload recusado pelo Storage com mensagem de MIME: o arquivo nao e um `.docx` real ou foi enviado sem `contentType`.
-- Tag aparece impressa como `{alguma_coisa}` no documento: nao deveria acontecer, porque a varredura pos-render bloqueia a entrega. Se ocorrer, o mapper deixou de alimentar uma chave do contrato — rode `scripts/pi-docx-verify.mjs`, que compara mapper e contrato.
+- Tag aparece impressa como `{alguma_coisa}` no documento: nao deveria acontecer, porque a varredura pos-render bloqueia a entrega. Se ocorrer, o mapper deixou de alimentar uma chave do contrato — rode `scripts/diagnosticos/pi-docx-verify.mjs`, que compara mapper e contrato.
 
 Pendencias conhecidas
 ---------------------
@@ -160,7 +160,7 @@ Mapa de Codigo
   - `PiTemplatePageView`: painel de versoes, upload, ativacao e geracao de demonstracao.
 - `supabase/migrations/426_create_pi_document_template_and_page.sql` e `supabase/migrations/427_split_pi_template_screen.sql`
   - Bucket, tabela, indices, RLS, RPCs, tela em `app_pages` e bloco de verificacao.
-- `scripts/pi-docx-verify.mjs`
+- `scripts/diagnosticos/pi-docx-verify.mjs`
   - 40 verificacoes sobre contrato, mapper, render, varredura, estouro do plano, campos nulos e template invalido.
 
 Atualizacao 2026-09 (separacao da tela)

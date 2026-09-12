@@ -10,7 +10,7 @@
 // Le via service_role (mesma credencial de src/lib/server/*), porque
 // `npx supabase db query --linked` 403 para o token de CLI atual.
 //
-// Rodar (raiz do repo): node scripts/audit-programming-delta-readonly.mjs
+// Rodar (raiz do repo): node scripts/auditoria/audit-programming-delta-readonly.mjs
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.join(__dirname, "..");
+const REPO_ROOT = path.join(__dirname, "..", "..");
 
 function loadEnv(filePath) {
   const text = readFileSync(filePath, "utf8");

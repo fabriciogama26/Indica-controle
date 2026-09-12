@@ -10,9 +10,9 @@
  * de tags mudarem, a verificacao acompanha.
  *
  * Uso:
- *   node scripts/pi-docx-verify.mjs                 # usa public/Modelo_PI_Template_Tags.docx
- *   node scripts/pi-docx-verify.mjs --storage       # baixa o template ativo do Supabase Storage
- *   node scripts/pi-docx-verify.mjs --out <pasta>   # onde gravar os DOCX gerados
+ *   node scripts/diagnosticos/pi-docx-verify.mjs                 # usa public/Modelo_PI_Template_Tags.docx
+ *   node scripts/diagnosticos/pi-docx-verify.mjs --storage       # baixa o template ativo do Supabase Storage
+ *   node scripts/diagnosticos/pi-docx-verify.mjs --out <pasta>   # onde gravar os DOCX gerados
  *
  * Os DOCX gerados existem para conferencia VISUAL no Word. Nenhuma verificacao
  * automatica substitui abrir o arquivo e olhar o layout: o risco conhecido do
@@ -26,7 +26,7 @@ import { dirname, join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolvePath(scriptDir, "..");
+const repoRoot = resolvePath(scriptDir, "..", "..");
 
 /**
  * O repositorio importa sem extensao (`moduleResolution: bundler` no
@@ -53,13 +53,13 @@ registerHooks({
 });
 
 const { findUnresolvedDocxTags, listDocxTemplateTags, renderDocxTemplate } = await import(
-  `${new URL("../src/lib/server/docxTemplate.ts", import.meta.url)}`
+  `${new URL("../../src/lib/server/docxTemplate.ts", import.meta.url)}`
 );
 const { buildPiTemplateTagReport, isPiTemplateActivatable, PI_EXECUTION_PLAN_SLOTS, PI_TEMPLATE_TAGS } = await import(
-  `${new URL("../src/server/modules/permissao-intervencao/piTemplateTags.ts", import.meta.url)}`
+  `${new URL("../../src/server/modules/permissao-intervencao/piTemplateTags.ts", import.meta.url)}`
 );
 const { buildPiTemplateData, findPiTemplateDataGaps, validatePiDocumentData } = await import(
-  `${new URL("../src/server/modules/permissao-intervencao/piTemplateMapper.ts", import.meta.url)}`
+  `${new URL("../../src/server/modules/permissao-intervencao/piTemplateMapper.ts", import.meta.url)}`
 );
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ function section(title) {
 // `buildPiDemoDocumentData`. Duplicar levaria a conferir uma coisa neste script
 // e publicar outra na tela.
 const { buildPiDemoDocumentData: buildDemoData, buildPiDemoExecutionStep: demoStep } = await import(
-  `${new URL("../src/server/modules/permissao-intervencao/piDemoDocument.ts", import.meta.url)}`
+  `${new URL("../../src/server/modules/permissao-intervencao/piDemoDocument.ts", import.meta.url)}`
 );
 
 // ---------------------------------------------------------------------------

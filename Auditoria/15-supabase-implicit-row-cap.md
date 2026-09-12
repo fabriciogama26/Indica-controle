@@ -54,7 +54,7 @@ Necessaria porque a base ja errou isto tres vezes de forma independente:
 
 Historico: a exportacao de `/saida` parava comparando com o limite pedido; em `/estornos` o
 aviso de "resultado parcial" era codigo morto porque comparava com valor inalcancavel (ambos
-citados no cabecalho de `scripts/check-row-limit.mjs`); e o terceiro exemplar continua VIVO,
+citados no cabecalho de `scripts/qualidade/check-row-limit.mjs`); e o terceiro exemplar continua VIVO,
 descrito abaixo.
 
 ## Inventario bruto (passo 3)
@@ -203,7 +203,7 @@ Somar a estas os dois padroes de helper enganoso que a base produziu sozinha: `l
 
 ## Medicao no banco vivo — 2026-08-21 (PARCIAL)
 
-Executada por `scripts/check-tenant-cardinality-live.sql`. Data carimbada de proposito:
+Executada por `scripts/performance/check-tenant-cardinality-live.sql`. Data carimbada de proposito:
 contagem de linha envelhece, e sem data ninguem sabe daqui a seis meses qual era o
 tamanho quando a prioridade foi definida.
 
@@ -279,7 +279,7 @@ caminhos: o vies de quem escolhe (priorizei entidade de negocio, e entidade de n
 e justamente o que nao cresce) e a entropia do schema (tabela nova entra e fica fora em
 silencio).
 
-`scripts/check-tenant-cardinality-live.sql` foi reescrito para DESCOBRIR as tabelas em
+`scripts/performance/check-tenant-cardinality-live.sql` foi reescrito para DESCOBRIR as tabelas em
 `information_schema` e medir todas. Nao ha mais lista para manter nem para esquecer, e
 o preflight deixa de ser necessario: a cobertura passou a ser 100% por construcao.
 
@@ -463,7 +463,7 @@ devolve, porque a consulta tem filtro. Os dois erros possiveis aparecem juntos a
   devolver mais de 1.000 numa unica resposta mesmo com media de ~2 itens por
   transferencia. **Filtro presente, sem protecao nenhuma.**
 
-Medicao criada para decidir: `scripts/check-postfilter-cardinality-live.sql`
+Medicao criada para decidir: `scripts/performance/check-postfilter-cardinality-live.sql`
 (`npm run db:postfilter-live`). Executada em 2026-08-21.
 
 ## Triagem: `material_history` (P0, 10.803 linhas, 3 cadeias)
@@ -551,7 +551,7 @@ media. **CORRIGIDO PELA MEDICAO — ver secao seguinte: o teto real de um lote d
 
 ## Medicao pos-filtro — 2026-08-21
 
-`scripts/check-postfilter-cardinality-live.sql`.
+`scripts/performance/check-postfilter-cardinality-live.sql`.
 
 | Medida | max | media | pior lote 100 | pior lote 500 |
 |---|---|---|---|---|
@@ -715,7 +715,7 @@ impedir o segundo, nao o primeiro.
 ## Criterio de aceite
 
 Nao e "nao deu erro". E **contagem retornada = contagem esperada medida no banco**.
-`scripts/check-chunk-fix-acceptance-live.sql` (`npm run db:chunk-acceptance-live`) devolve:
+`scripts/performance/check-chunk-fix-acceptance-live.sql` (`npm run db:chunk-acceptance-live`) devolve:
 
 - `itens_reais` — total verdadeiro de itens das transferencias de operacoes de equipe;
 - `itens_entregues_antes` — o que o codigo antigo entregava, com o teto de 1.000 por lote;
@@ -741,7 +741,7 @@ solucao baseada em "hoje cabe em 1.000".
 
 ## Medicao de aceite — 2026-08-21
 
-`scripts/check-chunk-fix-acceptance-live.sql`.
+`scripts/performance/check-chunk-fix-acceptance-live.sql`.
 
 | Medida | Valor |
 |---|---|
@@ -808,7 +808,7 @@ Corrigido: os tres call sites passaram a usar `loadAllRows`, e `loadAllPages` fo
 
 ### Sexta: o criterio de aceite que este documento propos nao servia
 
-`scripts/check-chunk-fix-acceptance-live.sql` conta TODOS os itens das transferencias com
+`scripts/performance/check-chunk-fix-acceptance-live.sql` conta TODOS os itens das transferencias com
 operacao de equipe, sem reproduzir os filtros de negocio de nenhum dos dois caminhos da
 aplicacao. E um superconjunto dos dois, e portanto **nao valida nem a listagem nem a
 exportacao**. Foi apresentado como criterio de aceite por engano.

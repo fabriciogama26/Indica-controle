@@ -50,7 +50,7 @@
 -- logica do item 1 acima, adaptada ao loop da importacao (erro por linha, nao
 -- return direto).
 --
--- MEDICAO EM PRODUCAO (2026-07-31, scripts/audit-medicao-programming-match-readonly.mjs)
+-- MEDICAO EM PRODUCAO (2026-07-31, scripts/auditoria/audit-medicao-programming-match-readonly.mjs)
 -- ---------------------------------------------------------------------------
 -- - 717 ordens; 181 com `programming_id` preenchido (536 nunca vinculadas, fora
 --   do escopo deste remap).
@@ -107,7 +107,7 @@ begin
 
   if v_sem_par > 0 then
     raise exception
-      'Migration 351 abortada: % ordem(ns) de medicao apontam para programacao legada sem par em programming_legacy_map. Rode scripts/audit-medicao-programming-match-readonly.mjs e trate os casos antes de repontar a FK.',
+      'Migration 351 abortada: % ordem(ns) de medicao apontam para programacao legada sem par em programming_legacy_map. Rode scripts/auditoria/audit-medicao-programming-match-readonly.mjs e trate os casos antes de repontar a FK.',
       v_sem_par
       using errcode = 'P0001';
   end if;

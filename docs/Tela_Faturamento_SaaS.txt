@@ -378,7 +378,7 @@ CRITICO - RPC SECURITY DEFINER executavel por `authenticated`
     qualquer erro SQL de verdade abortava a transacao inteira e o lote virava um 500
     opaco - o caso real e a colisao de `project_billing_orders_unique_number`, ja que
     `now()` e constante na transacao e as 500 linhas compartilham o timestamp do numero.
-- `scripts/check-security-definer.ps1`: as notas de `$knownNoRevoke` para as migrations
+- `scripts/supabase/check-security-definer.ps1`: as notas de `$knownNoRevoke` para as migrations
   259-262 diziam "Corrigida pelas migrations 278/298", o que era so parcialmente verdade
   e foi o que silenciou este achado. Passam a citar a 388 para status/batch.
 
@@ -476,7 +476,7 @@ NAO ALTERADO (decisao consciente)
   - `src/app/api/faturamento/meta/route.ts`
   - `src/app/api/faturamento/activities/catalog/route.ts`
   - `src/modules/dashboard/faturamento/BillingPageView.tsx`
-  - `scripts/check-security-definer.ps1`
+  - `scripts/supabase/check-security-definer.ps1`
   - `file-size-baseline.json`
 - Validado com `npx tsc --noEmit`, `npm run lint` (0 erros; `BillingPageView.tsx` encolheu
   8 linhas liquidas e o baseline foi reduzido com `npm run lint:size:update`),

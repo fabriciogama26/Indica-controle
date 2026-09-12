@@ -8,8 +8,8 @@ Obrigatório sempre que a tarefa cria ou altera: migration, função PL/pgSQL, t
 
 - `supabase/migrations/*` — histórico real aplicado (numeração sequencial).
 - `docs/arquitetura/plpgsql-null-boolean-armadilha.md` — este guia resume a regra; o arquivo mantém o incidente completo (migrations 279-282) e o script de diagnóstico.
-- `scripts/check-security-definer.ps1` / `npm run db:security-check` — validação de grants de RPC `SECURITY DEFINER`.
-- `scripts/check-view-security-invoker.ps1` / `npm run db:view-check` — validação estática de `security_invoker` nas views declaradas em migrations.
+- `scripts/supabase/check-security-definer.ps1` / `npm run db:security-check` — validação de grants de RPC `SECURITY DEFINER`.
+- `scripts/supabase/check-view-security-invoker.ps1` / `npm run db:view-check` — validação estática de `security_invoker` nas views declaradas em migrations.
 
 ## 3. Regras obrigatórias
 

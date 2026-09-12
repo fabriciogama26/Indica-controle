@@ -3,7 +3,7 @@
 # tem REVOKE de public/anon/authenticated explicito.
 # Nao requer conexao com o banco. Roda sem link.
 
-$migrationsDir = Join-Path $PSScriptRoot "..\supabase\migrations"
+$migrationsDir = Join-Path $PSScriptRoot "..\..\supabase\migrations"
 $hardenedFrom  = 210
 $errors        = [System.Collections.Generic.List[string]]::new()
 $checked       = 0

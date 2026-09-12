@@ -8,7 +8,7 @@
 -- ("historico legado NAO migrado"), revista com o usuario em 2026-07-29.
 --
 -- LEVANTAMENTO QUE ORIGINOU ESTE ARQUIVO (producao, 2026-07-29, via
--- scripts/audit-programming-legacy-map-readonly.mjs)
+-- scripts/auditoria/audit-programming-legacy-map-readonly.mjs)
 -- ---------------------------------------------------------------------------
 --   linhas de historico legado ...... 2594
 --   sem etapa correspondente ........    0

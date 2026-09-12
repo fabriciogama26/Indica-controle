@@ -3,7 +3,7 @@
 # Executar antes de: migration list, db lint, db push.
 
 $expectedRef = "lcusxnhhrjosxqgiphgp"
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $legacyStateFile = Join-Path $repoRoot ".supabase\state.toml"
 $projectRefFile = Join-Path $repoRoot "supabase\.temp\project-ref"
 $linkedProjectFile = Join-Path $repoRoot "supabase\.temp\linked-project.json"

@@ -39,6 +39,10 @@ Lista completa de gatilhos e exemplo de combinação: `CLAUDE.md`, seção 7.
 
 `npx tsc --noEmit`, `npm run lint`, `npm run build` quando aplicável, `npm run db:check-link` antes de qualquer comando Supabase linked. Sem suíte de testes automatizada hoje — ver `guias/guia_validacao.md`.
 
+## Organização de scripts
+
+Não adicionar scripts soltos na raiz de `scripts/`. Usar sempre subpasta temática: `automacoes`, `qualidade`, `supabase`, `auditoria`, `performance`, `migracoes` ou `diagnosticos`. Ao mover/criar script, atualizar no mesmo PR os caminhos em `package.json`, tasks/workspace, `.claude`, prompts, docs, migrations e guias.
+
 ## Entrega
 
 Nunca executar `git add`/`commit`/`push`/`checkout -b` sem pedido explícito do usuário. Ao final: resumo do que mudou, validações, texto do commit (6 seções — ver `guias/guia_git.md`), e perguntar **"Confirma que posso aplicar/fechar essas mudanças?"** antes de encerrar.

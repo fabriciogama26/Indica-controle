@@ -26,9 +26,9 @@
  * Leitura completa se faz com `loadAllRows` de `src/lib/server/apiHelpers.ts`.
  *
  * Modos:
- *   node scripts/check-row-limit.mjs           -> verifica (exit 1 em qualquer violacao nova)
- *   node scripts/check-row-limit.mjs --update  -> SO reduz o baseline
- *   node scripts/check-row-limit.mjs --init    -> cria o baseline inicial (implantacao)
+ *   node scripts/qualidade/check-row-limit.mjs           -> verifica (exit 1 em qualquer violacao nova)
+ *   node scripts/qualidade/check-row-limit.mjs --update  -> SO reduz o baseline
+ *   node scripts/qualidade/check-row-limit.mjs --init    -> cria o baseline inicial (implantacao)
  *
  * Nao existe `--accept`. Um `.limit()` novo acima do teto nao tem justificativa possivel: o
  * servidor nao vai entregar. Se a intencao e um teto proposital, use `loadAllRows(..., { maxRows })`,
@@ -39,7 +39,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BASELINE_PATH = join(ROOT, "row-limit-baseline.json");
 const SCAN_DIRS = ["src"];
 const EXTENSIONS = [".ts", ".tsx"];
@@ -47,7 +47,7 @@ const IGNORED_DIRS = new Set(["node_modules", ".next", "dist", "build"]);
 const MAX_ROWS = 1000;
 
 const BASELINE_DESCRIPTION = [
-  "Baseline do ratchet de teto de linhas do PostgREST (scripts/check-row-limit.mjs).",
+  "Baseline do ratchet de teto de linhas do PostgREST (scripts/qualidade/check-row-limit.mjs).",
   `Cada entrada e a quantidade de chamadas .limit() acima de ${MAX_ROWS} que o arquivo ja tinha.`,
   "O numero so pode diminuir. Arquivo novo com violacao falha o lint direto.",
   "REDUCOES: rodar `npm run lint:rowlimit:update`, que nunca aumenta um baseline.",

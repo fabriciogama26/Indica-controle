@@ -42,7 +42,7 @@ begin
 
   if v_sem_par > 0 then
     raise exception
-      'Migration 344 abortada: % solicitacao(oes) apontam para programacao legada sem par em programming_legacy_map. Rode scripts/audit-programming-legacy-map-readonly.mjs e trate os casos antes de repontar a FK.',
+      'Migration 344 abortada: % solicitacao(oes) apontam para programacao legada sem par em programming_legacy_map. Rode scripts/auditoria/audit-programming-legacy-map-readonly.mjs e trate os casos antes de repontar a FK.',
       v_sem_par
       using errcode = 'P0001';
   end if;

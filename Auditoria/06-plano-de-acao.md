@@ -109,7 +109,7 @@ O **delta** vale mais que o cumulativo para priorizar, e não exige reset. É o 
 |---|---|---|
 | P1.0a | Confirmar/habilitar `pg_stat_statements` | Dashboard Supabase → Extensions |
 | P1.0b | `npm run db:link` (interativo, pede a senha) + `npm run db:check-link` | credencial |
-| P1.0c | Capturar `T0-pico` e `T0-fechamento` com `scripts/perf-baseline-capture.sql` | P1.0a, P1.0b |
+| P1.0c | Capturar `T0-pico` e `T0-fechamento` com `scripts/performance/perf-baseline-capture.sql` | P1.0a, P1.0b |
 | P1.0d | **Anotar o denominador**: contagem de `GET /api/dash-estoque` no log da hospedagem — **não sai do `pg_stat_statements`** | P1.0c |
 | P1.0e | Rodar as 3 consultas complementares ([`03` §6, §7, §8](03-nivel-b-pg-stat-statements.md)) — seletividade de booleanos, FK sem índice, bloat | P1.0a |
 
@@ -332,7 +332,7 @@ Aplica-se a `is_test`, `is_withdrawn`, `is_third_party`, `has_locacao`, `fob`. *
 - `dashboard-portfolio` já migrado para RPCs de agregação — é o modelo a seguir
 - Nenhuma chamada Supabase direta do cliente; todo acesso passa pela camada de API
 - Chunking de `IN (...)` implementado corretamente (não é N+1)
-- Já existe `scripts/supabase-monitoring-readonly.sql` cobrindo o Nível B
+- Já existe `scripts/performance/supabase-monitoring-readonly.sql` cobrindo o Nível B
 
 ---
 
