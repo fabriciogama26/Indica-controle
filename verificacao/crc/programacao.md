@@ -42,7 +42,7 @@
 | `supabase/migrations/275_harden_programming_stage_state_integrity.sql` | Garante que programacao ativa tenha exatamente uma classificacao valida de ETAPA |
 | `supabase/migrations/276_fix_anticipated_reopen_copy_and_group_ownership.sql` | Garante CONCLUIDO unico por projeto, encerra ANTECIPADO como ANTICIPADA, bloqueia copia retroativa e blinda programming_group_id |
 | `supabase/migrations/277_normalize_partial_and_completed_work_status.sql` | Normaliza PARCIAL legado, fecha catalogo canonico de Estado Trabalho e bloqueia CONCLUIDO com outra linha ativa no mesmo grupo |
-| `scripts/audit-programming-operational-groups-readonly.sql` | Auditoria read-only de Projeto + Data com múltiplas ETAPAs ativas |
+| `scripts/auditoria/audit-programming-operational-groups-readonly.sql` | Auditoria read-only de Projeto + Data com múltiplas ETAPAs ativas |
 
 **Hooks em `hooks.ts`:**
 

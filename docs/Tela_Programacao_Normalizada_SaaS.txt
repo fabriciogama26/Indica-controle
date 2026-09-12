@@ -686,9 +686,9 @@ Atualizacao 2026-07-28 - Migracao de dados: delta de corte da Programacao Simple
   - `project_programming` NAO e alterado nem apagado (so leitura). Historico legado e
     lineage (copied_from_id/copy_batch_id/anticipated_by_id) seguem fora, como na 315.
 - Mapa de Codigo:
-  - `scripts/audit-programming-delta-readonly.mjs`: auditoria somente-leitura do delta.
-  - `scripts/generate-migration-335-programming-delta.mjs`: gerador da migration.
-  - `scripts/verify-migration-335-delta-readonly.mjs`: confere o SQL gerado contra o banco.
+  - `scripts/auditoria/audit-programming-delta-readonly.mjs`: auditoria somente-leitura do delta.
+  - `scripts/migracoes/generate-migration-335-programming-delta.mjs`: gerador da migration.
+  - `scripts/migracoes/verify-migration-335-delta-readonly.mjs`: confere o SQL gerado contra o banco.
   - `supabase/migrations/335_migrate_legacy_programming_delta.sql`: a carga (gerada).
   - `docs/planejamento/Revisao_Delta_Programacao_335.txt`: casos de decisao humana.
 - Comportamento antes/depois:
@@ -716,10 +716,10 @@ Atualizacao 2026-07-28 - Migracao de dados: delta de corte da Programacao Simple
   - Se algo falhar, NENHUM arquivo e escrito e a geracao sai com erro — a migration roda
     como um bloco so, entao uma linha invalida custaria outra tentativa perdida.
 - Como validar:
-  1. `node scripts/audit-programming-delta-readonly.mjs` — delta atual.
-  2. `node scripts/generate-migration-335-programming-delta.mjs` — REGERAR (o pre-voo
+  1. `node scripts/auditoria/audit-programming-delta-readonly.mjs` — delta atual.
+  2. `node scripts/migracoes/generate-migration-335-programming-delta.mjs` — REGERAR (o pre-voo
      roda aqui; exit 0 = nenhuma FK/CHECK quebrada).
-  3. `node scripts/verify-migration-335-delta-readonly.mjs` — todas as linhas devem dar OK.
+  3. `node scripts/migracoes/verify-migration-335-delta-readonly.mjs` — todas as linhas devem dar OK.
   4. Aplicar e conferir na tela: projeto com etapa nova aparece com a numeracao correta;
      etapa concluida na tela nova continua CONCLUIDO; nenhuma etapa duplicada por data.
 - ATENCAO — o delta e alvo movel:
@@ -1196,7 +1196,7 @@ Atualizacao 2026-07-29 - Fase 2 do corte: historico legado migrado (migration 34
   migration 343 migra. As frases nas 315/335 valem so como registro do que era
   verdade quando foram escritas.
 - Levantamento em producao que originou o desenho (2026-07-29, via
-  `scripts/audit-programming-legacy-map-readonly.mjs`, somente leitura):
+  `scripts/auditoria/audit-programming-legacy-map-readonly.mjs`, somente leitura):
   * historico legado: 2594 linhas (o numero 2406 citado no TASKS.md era contagem
     antiga; a tela seguiu em uso ate o congelamento);
   * sem etapa correspondente: 0 — tudo e migravel;
@@ -1255,7 +1255,7 @@ Idempotencia e seguranca
   `action_type`.
 - Arquivos alterados:
   - `supabase/migrations/343_migrate_legacy_programming_history.sql` (novo)
-  - `scripts/audit-programming-legacy-map-readonly.mjs` (novo, somente leitura)
+  - `scripts/auditoria/audit-programming-legacy-map-readonly.mjs` (novo, somente leitura)
   - `src/modules/dashboard/programacao-normalizada/constants.ts`
   - `supabase/migrations/README.txt`
 

@@ -11,14 +11,14 @@
 //   2. select das etapas dos projetos da pagina
 // e ainda confere se as migrations 336/337 estao aplicadas.
 //
-// Rodar (raiz do repo): node scripts/diagnose-programming-list-readonly.mjs
+// Rodar (raiz do repo): node scripts/diagnosticos/diagnose-programming-list-readonly.mjs
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const env = {};
 for (const line of readFileSync(path.join(REPO, ".env"), "utf8").split(/\r?\n/)) {
   const t = line.trim();

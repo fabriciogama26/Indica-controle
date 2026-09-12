@@ -147,7 +147,7 @@ Atualizacao 2026-07-31 - Fase 5a do corte: match lendo Programacao Normalizada
   `programming_status_snapshot`) — quem fazia o match era so a RPC.
   `set_project_apr_control_status` tambem nao muda (nunca tocava
   `project_programming`).
-- Medido em producao antes de aplicar (`scripts/audit-apr-programming-match-readonly.mjs`,
+- Medido em producao antes de aplicar (`scripts/auditoria/audit-apr-programming-match-readonly.mjs`,
   novo, somente leitura): 172 APRs, 66 com `programming_id` preenchido (106 nunca
   vinculadas, fora do escopo), 0 orfaos em `programming_legacy_map`. Remap simples
   via o mapa concorda com o recalculo do novo match em 65/66 casos (98,5%); o
@@ -170,7 +170,7 @@ Atualizacao 2026-07-31 - Fase 5a do corte: match lendo Programacao Normalizada
   bloqueados pelo 403 conhecido do token de login (mesma limitacao ja registrada em
   outras entregas deste modulo). Migration 350 pendente de aplicacao no Supabase.
 - Arquivos: `supabase/migrations/350_apr_control_match_normalized_programming.sql`,
-  `supabase/migrations/README.txt`, `scripts/audit-apr-programming-match-readonly.mjs`
+  `supabase/migrations/README.txt`, `scripts/auditoria/audit-apr-programming-match-readonly.mjs`
   (novo), `docs/Controle_APR.txt`.
 - CORRECAO durante o teste do usuario: a primeira versao da migration rodava o
   UPDATE de remap antes de trocar a FK, violando a propria constraint (ainda

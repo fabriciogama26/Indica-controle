@@ -9,7 +9,7 @@ Obrigatório sempre que a tarefa envolve: sessão/autenticação (`resolveAuthen
 - Projeto Supabase: `indicadatesupabase`, project ref `lcusxnhhrjosxqgiphgp`.
 - `verificacao/crc/auth.md` — estado real do módulo de auth (68 rotas dependem de `resolveAuthenticatedAppUser`, 4-5 queries por request).
 - `verificacao/crc/edge_functions.md` — Edge Functions de importação XLSX (fluxo de auth, RPCs, atomicidade por projeto).
-- `scripts/supabase-check-link.ps1`, `scripts/check-security-definer.ps1`.
+- `scripts/supabase/supabase-check-link.ps1`, `scripts/supabase/check-security-definer.ps1`.
 
 ## 3. Regras obrigatórias
 

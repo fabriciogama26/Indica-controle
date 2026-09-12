@@ -12,14 +12,14 @@
 // tamanho sozinho (confirmado: duas execucoes com minutos de diferenca deram 37 e
 // 38 etapas). Uma migration gerada "ontem" ja nasce desatualizada.
 //
-// Rodar (raiz do repo): node scripts/verify-migration-335-delta-readonly.mjs
+// Rodar (raiz do repo): node scripts/migracoes/verify-migration-335-delta-readonly.mjs
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const env = {};
 for (const line of readFileSync(path.join(REPO, ".env"), "utf8").split(/\r?\n/)) {
   const t = line.trim();

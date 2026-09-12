@@ -240,7 +240,7 @@ Atualizacao 2026-08-12 (2) - Validacao de equipe ATIVA saiu do estado dormente
   vinculo pedido esta mesmo errado e a ordem precisa apontar para a etapa/equipe certa.
   NAO reverter para a fonte legada.
 - Dimensao do impacto, medida em producao pela propria migration 351 (2026-07-31,
-  `scripts/audit-medicao-programming-match-readonly.mjs`): a validacao rejeitaria 1 das
+  `scripts/auditoria/audit-medicao-programming-match-readonly.mjs`): a validacao rejeitaria 1 das
   181 ordens ja vinculadas, e somente se ela fosse REEDITADA pela tela. Ordens ja
   gravadas nao foram alteradas.
 - Ganho silencioso que vem junto: antes, o fallback re-resolvia por status
@@ -1288,7 +1288,7 @@ Atualizacao 2026-07-31 - Fase 5b do corte: match e leitura lendo Programacao Nor
     e lida de volta em nenhuma query — so gravada do payload e devolvida como
     rastro. `project_programming*` sao arquivos permanentes, entao a FK nunca
     fica orfa).
-  - Medido em producao ANTES de aplicar (`scripts/audit-medicao-programming-match-readonly.mjs`,
+  - Medido em producao ANTES de aplicar (`scripts/auditoria/audit-medicao-programming-match-readonly.mjs`,
     novo, somente leitura): 717 ordens, 181 com `programming_id` (536 nunca
     vinculadas), 0 orfaos no mapa. Remap simples concorda com o recalculo em
     167/181 (92,3%); 0 divergencias reais (nenhum caso aponta pra etapa
@@ -1334,7 +1334,7 @@ Atualizacao 2026-07-31 - Fase 5b do corte: match e leitura lendo Programacao Nor
 - Arquivos:
   - `supabase/migrations/351_medicao_match_normalized_programming.sql`
   - `supabase/migrations/README.txt`
-  - `scripts/audit-medicao-programming-match-readonly.mjs` (novo)
+  - `scripts/auditoria/audit-medicao-programming-match-readonly.mjs` (novo)
   - `src/app/api/medicao/route.ts`
   - `docs/Tela_Medicao_SaaS.txt`
   - `TASKS.md`

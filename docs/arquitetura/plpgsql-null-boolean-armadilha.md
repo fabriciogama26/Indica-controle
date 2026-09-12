@@ -126,4 +126,4 @@ O erro aparece no frontend com todos os valores exatos. Depois de identificar a 
 - `supabase/migrations/279_harden_completed_group_integrity_transition.sql` — introduziu o bug
 - `supabase/migrations/280_fix_completed_group_integrity_on_reprogram.sql` — bypass parcial (não corrigiu NULL)
 - `supabase/migrations/281_fix_completed_group_bypass_canonical_code.sql` — bypass canônico (não corrigiu NULL)
-- `scripts/debug-trigger-capture-281.sql` — script diagnóstico que revelou o NULL
+- `scripts/diagnosticos/debug-trigger-capture-281.sql` — script diagnóstico que revelou o NULL

@@ -1,7 +1,7 @@
 -- perf-baseline-capture.sql
 -- Captura de BASELINE de performance, read-only, para comparacao antes/depois.
 --
--- Diferenca para scripts/supabase-monitoring-readonly.sql: aquele e um retrato
+-- Diferenca para scripts/performance/supabase-monitoring-readonly.sql: aquele e um retrato
 -- amplo de SAUDE do banco (18 blocos heterogeneos, bom para diagnosticar). Este
 -- e estreito e ESTAVEL de proposito — mesmas colunas, uma linha por queryid,
 -- pensado para ser capturado duas vezes e DIFERENCIADO. Um nao substitui o
@@ -9,14 +9,14 @@
 --
 -- Como rodar (requer link configurado via npm run db:link):
 --   npm run db:check-link
---   npx supabase db query --file scripts/perf-baseline-capture.sql --linked > Auditoria/baseline/<AAAA-MM-DD>-<rotulo>.txt
+--   npx supabase db query --file scripts/performance/perf-baseline-capture.sql --linked > Auditoria/baseline/<AAAA-MM-DD>-<rotulo>.txt
 --
 -- ⚠️ NAO RODE ESTE ARQUIVO NO SQL EDITOR DO SUPABASE.
 --   O editor devolve apenas o resultado do ULTIMO `select`, e este script tem 10
 --   blocos separados — os outros nove somem sem erro nenhum. Foi o que aconteceu
 --   nas coletas de 2026-08-12: chegava so o bloco final, rodada apos rodada, e os
 --   blocos 00/02/03/04 nunca apareciam.
---   Para o SQL Editor use: scripts/perf-baseline-onequery.sql
+--   Para o SQL Editor use: scripts/performance/perf-baseline-onequery.sql
 --
 -- LEIA O BLOCO 02 (VEREDITO) ANTES DE QUALQUER OUTRO NUMERO.
 --   pg_stat_statements acumula TUDO que passou pelo banco: trafego da aplicacao,

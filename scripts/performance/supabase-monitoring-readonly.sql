@@ -2,11 +2,11 @@
 -- Monitoramento read-only do banco Supabase/Postgres.
 --
 -- Para criar o relatorio no Supabase Reports, use:
---   scripts/supabase-report-indica-controle-saude-io-performance.txt
+--   scripts/performance/supabase-report-indica-controle-saude-io-performance.txt
 --
 -- Como rodar (requer link configurado via npm run db:link):
 --   npm run db:check-link
---   npx supabase db query --file scripts/supabase-monitoring-readonly.sql --linked
+--   npx supabase db query --file scripts/performance/supabase-monitoring-readonly.sql --linked
 --
 -- Observacoes:
 -- - Os contadores de pg_stat_* sao acumulados desde o ultimo reset das estatisticas.
@@ -17,7 +17,7 @@
 --   sinais de banco que normalmente explicam consumo alto: sessoes ativas, waits,
 --   temp files, cache, queries caras e I/O por relacao.
 -- - API/PostgREST e Edge Functions ficam nos logs da plataforma. Use tambem:
---   scripts/supabase-log-explorer-monitoring.txt no Supabase Logs Explorer.
+--   scripts/performance/supabase-log-explorer-monitoring.txt no Supabase Logs Explorer.
 -- - Este script nao altera dados persistentes. Ele cria tabelas temporarias
 --   apenas para permitir blocos opcionais sem falhar quando uma extensao falta.
 
@@ -128,7 +128,7 @@ order by connections desc, longest_current_query desc nulls last;
 
 select
   '03_api_postgrest_note' as bloco,
-  'Historico de requests, rotas, 4xx/5xx e tempo medio fica no Logs Explorer; ver scripts/supabase-log-explorer-monitoring.txt.' as observacao;
+  'Historico de requests, rotas, 4xx/5xx e tempo medio fica no Logs Explorer; ver scripts/performance/supabase-log-explorer-monitoring.txt.' as observacao;
 
 drop table if exists pg_temp.monitor_top_expensive_queries;
 

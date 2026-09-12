@@ -112,7 +112,7 @@ vercel --prod
 - `supabase`: migrations, Edge Functions, SQL avulso e documentacao das functions.
 - `docs`: handoff, documentos de tela, auditorias e planejamento.
 - `guias`: regras obrigatorias de engenharia, validacao, SQL, Supabase, frontend, backend, documentacao e git.
-- `scripts`: scripts locais de validacao, ratchet de tamanho e checks Supabase.
+- `scripts`: scripts locais organizados por tema (`automacoes`, `qualidade`, `supabase`, `auditoria`, `performance`, `migracoes`, `diagnosticos`).
 - `.github/workflows`: CI de lint, ratchet de tamanho e typecheck.
 - `vercel.json`: configuracao minima do deploy web no Vercel.
 

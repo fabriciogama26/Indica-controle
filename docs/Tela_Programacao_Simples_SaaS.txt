@@ -2070,7 +2070,7 @@ Atualizacao 2026-06-22 - STATUS da Extracao ENEL NOVO sem Estado Trabalho
 Atualizacao 2026-06-23 - Backfill de Estado Trabalho em branco
 ---------------------------------------------------------------
 - Arquivos alterados:
-  - `scripts/audit-programming-work-completion-status-readonly.sql`
+  - `scripts/auditoria/audit-programming-work-completion-status-readonly.sql`
   - `supabase/migrations/256_backfill_programming_work_completion_status.sql`
   - `supabase/migrations/257_backfill_inactive_programming_work_completion_status.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
@@ -2096,7 +2096,7 @@ Atualizacao 2026-06-23 - Bloqueio de ADIADA/CANCELADA com Estado concluido
 - Arquivos alterados/criados:
   - `supabase/migrations/258_guard_interrupted_programming_completed_work_status.sql`
   - `supabase/migrations/257_backfill_inactive_programming_work_completion_status.sql`
-  - `scripts/audit-programming-work-completion-status-readonly.sql`
+  - `scripts/auditoria/audit-programming-work-completion-status-readonly.sql`
   - `src/app/api/mapa-programacao/route.ts`
   - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
@@ -2277,9 +2277,9 @@ Atualizacao 2026-06-26 - Blindagem do Estado Trabalho ANTECIPADO
 Atualizacao 2026-06-26 - Diagnostico de bloqueio da migration 272
 ------------------------------------------------------------------
 - Arquivos alterados/criados:
-  - `scripts/audit-programming-anticipated-migration-272-blockers-readonly.sql`
+  - `scripts/auditoria/audit-programming-anticipated-migration-272-blockers-readonly.sql`
   - `supabase/migrations/272_harden_anticipated_work_completion_status.sql`
-  - `scripts/fix-programming-anticipated-migration-272-canceled-stage1.sql`
+  - `scripts/migracoes/fix-programming-anticipated-migration-272-canceled-stage1.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt`
   - `TASKS.md`
 - Funcoes/hooks/constantes tocadas:
@@ -2366,7 +2366,7 @@ Atualizacao 2026-06-26 - Guarda diferida de ETAPA ativa
 Atualizacao 2026-06-27 - Grupo operacional persistido
 ------------------------------------------------------
 - Arquivos alterados/criados:
-  - `scripts/audit-programming-operational-groups-readonly.sql`
+  - `scripts/auditoria/audit-programming-operational-groups-readonly.sql`
   - `supabase/migrations/273_define_programming_group_id.sql`
   - `src/app/api/programacao/route.ts`
   - `src/server/modules/programacao/selects.ts`
@@ -2756,7 +2756,7 @@ Atualizacao 2026-06-29 - Correcao definitiva: boolean NULL em trigger de integri
   - O trigger seguia em frente ate o check EXISTS de irmaos ativos → excecao lancada incorretamente.
   - O mesmo problema afetava `v_old_is_completed` e `v_was_same_active_completed_group`.
 - Tecnica de diagnostico usada:
-  - `scripts/debug-trigger-capture-281.sql`: substituiu a mensagem de exception por template com todos os valores de estado:
+  - `scripts/diagnosticos/debug-trigger-capture-281.sql`: substituiu a mensagem de exception por template com todos os valores de estado:
       CONCLUIDO_DEBUG id=% status=% new_wcs=[%] new_wcs_id=[%] old_wcs=[%] old_wcs_id=[%] ...
   - O resultado revelou: `new_wcs=[NULL] new_wcs_id=[NULL] v_old_completed=<NULL>`, confirmando que o early-return nao disparou por causa do NULL boolean.
 - Correcao (migration 282):
@@ -2773,7 +2773,7 @@ Atualizacao 2026-06-29 - Correcao definitiva: boolean NULL em trigger de integri
   - Confirmar que tentar DEFINIR CONCLUIDO em linha com irmaos ativos ainda e bloqueado.
 - Arquivos:
   - `supabase/migrations/282_fix_completed_group_integrity_null_boolean.sql`
-  - `scripts/debug-trigger-capture-281.sql`
+  - `scripts/diagnosticos/debug-trigger-capture-281.sql`
   - `docs/arquitetura/plpgsql-null-boolean-armadilha.md`
   - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
   - `TASKS.md`
@@ -2791,12 +2791,12 @@ Atualizacao 2026-06 - Correcao de falso bloqueio ao REPROGRAMAR linha CONCLUIDO 
   - Adicionado Bypass 2: quando `v_old_is_completed = TRUE` E `new.work_completion_status is not distinct from old.work_completion_status` E `new.work_completion_status_id is not distinct from old.work_completion_status_id`, o trigger retorna sem excecao.
   - Logica: CONCLUIDO foi herdado (nao definido nesta atualizacao); a restricao ja foi aplicada quando CONCLUIDO foi originalmente gravado.
 - Script de diagnostico:
-  - `scripts/audit-completed-group-reprogram-280-readonly.sql`
+  - `scripts/auditoria/audit-completed-group-reprogram-280-readonly.sql`
   - Secao 01: lista registros CONCLUIDO ativos com irmaos que seriam bloqueados ao reprogramar.
   - Secao 02: verifica estado dos triggers e qual migration esta ativa (277/279/280).
   - Secao 03: resumo por tenant.
 - Como validar:
-  - Executar `scripts/audit-completed-group-reprogram-280-readonly.sql` antes da migration para verificar registros afetados.
+  - Executar `scripts/auditoria/audit-completed-group-reprogram-280-readonly.sql` antes da migration para verificar registros afetados.
   - Aplicar migration 280 e verificar `Secao 02` reportando `280_APLICADO`.
   - Abrir Reprogramar Individual em uma linha com Estado Trabalho `CONCLUIDO`.
   - Informar nova data que tenha irmaos ativos no mesmo grupo operacional e salvar.
@@ -2804,7 +2804,7 @@ Atualizacao 2026-06 - Correcao de falso bloqueio ao REPROGRAMAR linha CONCLUIDO 
   - Confirmar que tentar DEFINIR (nao apenas herdar) CONCLUIDO em linha com irmaos ainda e bloqueado.
 - Arquivos:
   - `supabase/migrations/280_fix_completed_group_integrity_on_reprogram.sql`
-  - `scripts/audit-completed-group-reprogram-280-readonly.sql`
+  - `scripts/auditoria/audit-completed-group-reprogram-280-readonly.sql`
   - `docs/Tela_Programacao_Simples_SaaS.txt` (este arquivo)
 
 Atualizacao 2026-06-30 (P3 - Limite de 50 registros em fetchProgrammingHistory)
@@ -3147,8 +3147,8 @@ Atualizacao 2026-07-28 - CORTE: tela congelada em somente leitura
 - ORDEM DE APLICACAO (importante):
   1. Publicar este congelamento PRIMEIRO.
   2. So depois REGERAR e aplicar a migration 335
-     (`node scripts/generate-migration-335-programming-delta.mjs` +
-      `node scripts/verify-migration-335-delta-readonly.mjs`).
+     (`node scripts/migracoes/generate-migration-335-programming-delta.mjs` +
+      `node scripts/migracoes/verify-migration-335-delta-readonly.mjs`).
   Invertendo a ordem, a carga nasce defasada de novo â€” foi exatamente o que se
   observou durante a geracao dela.
 - PARA REABRIR A ESCRITA: trocar as DUAS constantes para `false`. Nao ha outro ponto.

@@ -12,8 +12,8 @@ Há dois caminhos, e escolher o errado faz perder 90% do resultado **em silênci
 
 | Ferramenta | Script | Por quê |
 |---|---|---|
-| **SQL Editor do Supabase** | [`scripts/perf-baseline-onequery.sql`](../scripts/perf-baseline-onequery.sql) | o editor devolve **apenas o resultado do último `select`** do arquivo |
-| `npx supabase db query --file` | [`scripts/perf-baseline-capture.sql`](../scripts/perf-baseline-capture.sql) | o CLI imprime **todos** os result sets, e este script tem os recortes extras das causas raiz |
+| **SQL Editor do Supabase** | [`scripts/performance/perf-baseline-onequery.sql`](../scripts/performance/perf-baseline-onequery.sql) | o editor devolve **apenas o resultado do último `select`** do arquivo |
+| `npx supabase db query --file` | [`scripts/performance/perf-baseline-capture.sql`](../scripts/performance/perf-baseline-capture.sql) | o CLI imprime **todos** os result sets, e este script tem os recortes extras das causas raiz |
 
 > ### 🪤 A armadilha, medida na prática
 >
@@ -80,7 +80,7 @@ Antes do passo a passo, o ponto que decide se este baseline vai valer alguma coi
 | `rows` | `rows_per_call` |
 | `temp_blks_written` | `temp_written_per_call` |
 
-O script `scripts/perf-baseline-capture.sql` já calcula as quatro colunas normalizadas.
+O script `scripts/performance/perf-baseline-capture.sql` já calcula as quatro colunas normalizadas.
 
 ### O problema específico de comparar antes/depois de uma RPC
 
@@ -154,7 +154,7 @@ npm run db:check-link    # deve imprimir OK e o ref lcusxnhhrjosxqgiphgp
 
 ```bash
 mkdir -p Auditoria/baseline
-npx supabase db query --file scripts/perf-baseline-capture.sql --linked \
+npx supabase db query --file scripts/performance/perf-baseline-capture.sql --linked \
   > Auditoria/baseline/2026-08-__-T0-pre-p2.txt
 ```
 
@@ -231,7 +231,7 @@ Lembrete de ordem: **P2 pode invalidar P3.1 e P3.2.** Se as consultas repetidas 
 ## 4. Depois do P2.1 — capturar `T1` e comparar
 
 ```bash
-npx supabase db query --file scripts/perf-baseline-capture.sql --linked \
+npx supabase db query --file scripts/performance/perf-baseline-capture.sql --linked \
   > Auditoria/baseline/AAAA-MM-DD-T1-pos-p2-1.txt
 ```
 

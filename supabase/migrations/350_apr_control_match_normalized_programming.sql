@@ -11,7 +11,7 @@
 -- patches dinamicos aplicados sobre o corpo da 127) e fica para uma entrega
 -- propria.
 --
--- MEDICAO EM PRODUCAO (2026-07-31, scripts/audit-apr-programming-match-readonly.mjs)
+-- MEDICAO EM PRODUCAO (2026-07-31, scripts/auditoria/audit-apr-programming-match-readonly.mjs)
 -- ---------------------------------------------------------------------------
 -- - 172 linhas em `project_apr_controls`; 66 com `programming_id` preenchido, 106
 --   nunca vinculadas (nao afetadas por este remap).
@@ -61,7 +61,7 @@ begin
 
   if v_sem_par > 0 then
     raise exception
-      'Migration 350 abortada: % APR(s) apontam para programacao legada sem par em programming_legacy_map. Rode scripts/audit-apr-programming-match-readonly.mjs e trate os casos antes de repontar a FK.',
+      'Migration 350 abortada: % APR(s) apontam para programacao legada sem par em programming_legacy_map. Rode scripts/auditoria/audit-apr-programming-match-readonly.mjs e trate os casos antes de repontar a FK.',
       v_sem_par
       using errcode = 'P0001';
   end if;

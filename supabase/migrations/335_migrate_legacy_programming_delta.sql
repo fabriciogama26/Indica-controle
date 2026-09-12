@@ -2,7 +2,7 @@
 -- Carga de CORTE da tela programacao-simples (project_programming) para o modelo
 -- normalizado (programming/programming_team/programming_document). Complementa a
 -- migration 315, que migrou a foto de 2026-07-19 e ja esta aplicada em producao.
--- Gerado por scripts/generate-migration-335-programming-delta.mjs a partir do banco
+-- Gerado por scripts/migracoes/generate-migration-335-programming-delta.mjs a partir do banco
 -- em producao — NAO editar valores a mao aqui; reexecutar o gerador se a fonte mudar.
 --
 -- Gerado em: 2026-07-28T14:25:04.549Z

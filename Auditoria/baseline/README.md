@@ -1,6 +1,6 @@
 # Capturas de baseline
 
-Saída bruta de `scripts/perf-baseline-capture.sql`. Um arquivo por captura, nunca sobrescrever.
+Saída bruta de `scripts/performance/perf-baseline-capture.sql`. Um arquivo por captura, nunca sobrescrever.
 
 Convenção de nome:
 

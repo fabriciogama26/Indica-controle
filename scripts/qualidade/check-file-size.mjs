@@ -8,10 +8,10 @@
  * encolher.
  *
  * Modos:
- *   node scripts/check-file-size.mjs                 -> verifica (exit 1 em qualquer violacao)
- *   node scripts/check-file-size.mjs --update        -> SO afrouxa o baseline para baixo
- *   node scripts/check-file-size.mjs --accept <path> -> aceita crescimento de arquivos nomeados
- *   node scripts/check-file-size.mjs --init          -> cria o baseline inicial (implantacao)
+ *   node scripts/qualidade/check-file-size.mjs                 -> verifica (exit 1 em qualquer violacao)
+ *   node scripts/qualidade/check-file-size.mjs --update        -> SO afrouxa o baseline para baixo
+ *   node scripts/qualidade/check-file-size.mjs --accept <path> -> aceita crescimento de arquivos nomeados
+ *   node scripts/qualidade/check-file-size.mjs --init          -> cria o baseline inicial (implantacao)
  *
  * A separacao entre `--update` e `--accept` e deliberada: `--update` nunca aumenta um
  * baseline, entao rodar o comando depois de varias alteracoes jamais pode abencoar em
@@ -23,7 +23,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const BASELINE_PATH = join(ROOT, "file-size-baseline.json");
 const BASELINE_NAME = "file-size-baseline.json";
 const SCAN_DIRS = ["src"];
@@ -31,7 +31,7 @@ const EXTENSIONS = [".ts", ".tsx"];
 const IGNORED_DIRS = new Set(["node_modules", ".next", "dist", "build"]);
 
 const BASELINE_DESCRIPTION = [
-  "Baseline do ratchet de tamanho de arquivo (scripts/check-file-size.mjs).",
+  "Baseline do ratchet de tamanho de arquivo (scripts/qualidade/check-file-size.mjs).",
   "Cada entrada e um arquivo que ja estava acima do limite da secao 5 do CLAUDE.md.",
   "Arquivo legado so pode encolher: o valor aqui e o teto dele.",
   "REDUCOES (arquivo encolheu, foi removido ou voltou ao limite normal):",
@@ -338,7 +338,7 @@ function main() {
 
   const baseline = readBaseline();
   if (baseline === null) {
-    console.error(`${BASELINE_NAME} nao encontrado. Rode \`node scripts/check-file-size.mjs --init\`.`);
+    console.error(`${BASELINE_NAME} nao encontrado. Rode \`node scripts/qualidade/check-file-size.mjs --init\`.`);
     return 1;
   }
 

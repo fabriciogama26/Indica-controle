@@ -12,9 +12,9 @@ Regra do alvo: o alvo é o **custo acumulado** (`total_exec_time`), não a query
 
 Ordem obrigatória:
 
-1. **Etapa 0** — confirmar versões em `package.json`; identificar qual cliente Supabase as rotas usam (`service_role` vs. token do usuário, porque isso define se RLS entra na auditoria); verificar se `Auditoria/` já existe (atualizar, não duplicar) e se `scripts/supabase-monitoring-readonly.sql` já existe (usar, não reescrever).
+1. **Etapa 0** — confirmar versões em `package.json`; identificar qual cliente Supabase as rotas usam (`service_role` vs. token do usuário, porque isso define se RLS entra na auditoria); verificar se `Auditoria/` já existe (atualizar, não duplicar) e se `scripts/performance/supabase-monitoring-readonly.sql` já existe (usar, não reescrever).
 2. **Nível A** — análise estática de `src/` e `supabase/`, percorrendo a checklist de 21 itens e extraindo o estado **vivo** dos índices (create menos drop, em ordem de migration).
-3. **Nível B** — `pg_stat_statements` via `npm run db:check-link` + `npx supabase db query --file scripts/supabase-monitoring-readonly.sql --linked`.
+3. **Nível B** — `pg_stat_statements` via `npm run db:check-link` + `npx supabase db query --file scripts/performance/supabase-monitoring-readonly.sql --linked`.
 4. **Nível C** — `EXPLAIN (ANALYZE, BUFFERS)` só nas candidatas que o Nível B elegeu.
 5. **Nível D** — arquitetura: dashboards que fazem N consultas para N cards, RPC única, matview, imports em lote, refetch no frontend.
 6. **Relatório** em `Auditoria/*.md`.

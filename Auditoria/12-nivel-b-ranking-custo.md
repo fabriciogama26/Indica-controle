@@ -1,6 +1,6 @@
 # Nível B — Ranking por custo acumulado (fecha o Nível B)
 
-Captura completa de **2026-08-13** via `scripts/perf-baseline-onequery.sql`. É o bloco `04` que faltava desde o início da auditoria.
+Captura completa de **2026-08-13** via `scripts/performance/perf-baseline-onequery.sql`. É o bloco `04` que faltava desde o início da auditoria.
 
 **Janela dos contadores: `stats_reset = 2026-02-12` → 6 meses e 11 dias.** Banco de 82 MB. Veredito: `OK`, 1.305.042 chamadas de aplicação num total de 3.857.351.
 
@@ -168,7 +168,7 @@ O relatório de Query Performance do Supabase traz a coluna **`rolname`**, que r
 | `postgres` | **Supabase Studio**, migrations, comandos manuais |
 | `supabase_*` | rotinas da plataforma |
 
-`scripts/perf-baseline-onequery.sql` passou a fazer `left join pg_roles on oid = userid` e classificar por papel. O bucket `indefinido` deixa de existir.
+`scripts/performance/perf-baseline-onequery.sql` passou a fazer `left join pg_roles on oid = userid` e classificar por papel. O bucket `indefinido` deixa de existir.
 
 ## 3.5 A cauda longa que a média escondia
 

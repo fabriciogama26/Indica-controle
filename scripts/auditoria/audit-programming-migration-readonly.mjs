@@ -4,7 +4,7 @@
 // Existe porque `npx supabase db query --linked` 403 para o token de CLI atual
 // (falta de privilegio na Management API, nao relacionado ao acesso ao banco).
 //
-// Rodar (a partir da raiz do repo): node scripts/audit-programming-migration-readonly.mjs
+// Rodar (a partir da raiz do repo): node scripts/auditoria/audit-programming-migration-readonly.mjs
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
@@ -31,7 +31,7 @@ function loadEnv(filePath) {
   return env;
 }
 
-const env = loadEnv(path.join(__dirname, "..", ".env"));
+const env = loadEnv(path.join(__dirname, "..", "..", ".env"));
 const url = env.SUPABASE_URL;
 const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY;
 

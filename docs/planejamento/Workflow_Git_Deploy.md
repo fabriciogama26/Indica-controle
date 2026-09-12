@@ -205,7 +205,7 @@ PR
 ### 4.1 Migration ratchet — nasce com baseline, senão nasce vermelho
 
 Um check de duplicidade **reprova a árvore atual no primeiro run**: já existem 8 versões colididas.
-O contrato correto é o mesmo que o repositório já usa e entende em `scripts/check-file-size.mjs` —
+O contrato correto é o mesmo que o repositório já usa e entende em `scripts/qualidade/check-file-size.mjs` —
 legado registrado e congelado, novo bloqueado:
 
 - duplicação **nova** → falha;

@@ -1,7 +1,7 @@
 -- 315_migrate_legacy_programming_data.sql
 -- Migra dados reais de project_programming (modelo antigo, flat/por-equipe) para
 -- programming/programming_team/programming_document (modelo normalizado). Gerado por
--- scripts/generate-migration-315-programming-data.mjs a partir do banco em producao —
+-- scripts/migracoes/generate-migration-315-programming-data.mjs a partir do banco em producao —
 -- NAO editar valores a mao aqui; reexecutar o gerador se os dados de origem mudarem.
 --
 -- Gerado em: 2026-07-19T21:47:04.770Z

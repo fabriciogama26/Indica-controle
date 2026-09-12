@@ -460,7 +460,7 @@ $$;
 --     programming_list_project_page(... 9 args),
 --     programming_list_project_page(... 10 args)
 --
--- (confirmado em producao por scripts/diagnose-programming-list-readonly.mjs).
+-- (confirmado em producao por scripts/diagnosticos/diagnose-programming-list-readonly.mjs).
 -- Ou seja, a sobrecarga nao protege deploy nenhum — ela transforma o caminho
 -- antigo em erro garantido. O backend atual chama com os 10 argumentos por nome e
 -- por isso nao quebrou, mas a ambiguidade fica armada para qualquer outro
