@@ -1,0 +1,1 @@
+export { ContractsPageView } from "./ContractsPageView";

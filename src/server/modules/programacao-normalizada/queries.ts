@@ -1,5 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { fetchTenantLinkedAppUsers, loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAppUserName } from "./normalizers";
 import { PROGRAMMING_STAGE_SELECT_WITH_CHILDREN } from "./selects";
 import type {
@@ -18,16 +19,7 @@ export async function fetchAppUsersByIds(params: { supabase: SupabaseClient; ten
   const uniqueIds = Array.from(new Set(params.ids.filter((value): value is string => Boolean(value))));
   if (!uniqueIds.length) return [] as AppUserLookupRow[];
 
-  const { data, error } = await params.supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", params.tenantId)
-    .in("id", uniqueIds)
-    .returns<AppUserLookupRow[]>();
-
-  if (error) return [] as AppUserLookupRow[];
-
-  return data ?? [];
+  return fetchTenantLinkedAppUsers<AppUserLookupRow>(params.supabase, params.tenantId, uniqueIds);
 }
 
 // Filtro por equipe e derivado (cruza programming_team antes da query principal),
@@ -176,17 +168,27 @@ export async function fetchWorkCompletionByProject(params: {
   const uniqueIds = Array.from(new Set(params.projectIds.filter(Boolean)));
   if (!uniqueIds.length) return result;
 
-  const { data } = await params.supabase
-    .from("programming")
-    .select(PROJECT_WORK_COMPLETION_SELECT)
-    .eq("tenant_id", params.tenantId)
-    .in("project_id", uniqueIds)
-    .neq("status", "CANCELADA")
-    .order("project_id", { ascending: true })
-    .order("execution_date", { ascending: false })
-    .order("updated_at", { ascending: false })
-    .limit(PROJECT_WORK_COMPLETION_ROW_LIMIT)
-    .returns<ProjectWorkCompletionRow[]>();
+  // Truncar aqui nao some com linhas da tela: some com o Estado do Trabalho dos projetos que
+  // ficarem alem do corte, porque o Map abaixo simplesmente nao ganha entrada para eles. Por isso
+  // a leitura pagina ate o teto proposital em vez de pedir tudo numa resposta so.
+  const { data } = await loadAllRows<ProjectWorkCompletionRow>(
+    (from, to) =>
+      params.supabase
+        .from("programming")
+        .select(PROJECT_WORK_COMPLETION_SELECT)
+        .eq("tenant_id", params.tenantId)
+        .in("project_id", uniqueIds)
+        .neq("status", "CANCELADA")
+        .order("project_id", { ascending: true })
+        .order("execution_date", { ascending: false })
+        .order("updated_at", { ascending: false })
+        // Desempate obrigatorio: os tres campos acima repetem entre etapas do mesmo projeto, e sem
+        // ordem total a paginacao por offset embaralharia justamente a linha que vence o Map.
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<ProjectWorkCompletionRow[]>(),
+    { maxRows: PROJECT_WORK_COMPLETION_ROW_LIMIT },
+  );
 
   // Reordena em JS (o query builder do PostgREST nao expressa "status ativo
   // primeiro" num ORDER BY): mesma execution_date -> PROGRAMADA/REPROGRAMADA
@@ -312,6 +314,7 @@ export type ProgrammingCompletionTimelineRow = {
   execution_date: string;
   status: string;
   work_completion_status: string | null;
+  is_pendencia: boolean | null;
   updated_at: string;
 };
 
@@ -332,12 +335,12 @@ export async function fetchWorkCompletionTimelineByProject(params: {
     const chunk = uniqueIds.slice(index, index + TIMELINE_CHUNK_SIZE);
     const { data, error } = await params.supabase
       .from("programming")
-      .select("project_id, execution_date, status, work_completion_status, updated_at")
+      .select("project_id, execution_date, status, work_completion_status, is_pendencia, updated_at")
       .eq("tenant_id", params.tenantId)
       .in("project_id", chunk)
       .lte("execution_date", params.endDate)
       .neq("status", "CANCELADA")
-      .not("work_completion_status", "is", null)
+      .or("work_completion_status.not.is.null,is_pendencia.eq.true")
       .returns<ProgrammingCompletionTimelineRow[]>();
 
     if (error) return { rows: [], error };
@@ -492,46 +495,72 @@ export async function fetchProgrammingStageList(params: {
 
   // Export: consulta plana por ETAPA, com total exato de etapas e teto por etapa.
   if (forExport) {
-    let exportQuery = supabase
-      .from("programming")
-      .select(PROGRAMMING_STAGE_SELECT_WITH_CHILDREN, { count: "exact" })
-      .eq("tenant_id", filters.tenantId);
+    // `filters.pageSize` chega aqui como STAGE_LIST_EXPORT_MAX_ROWS (5000) vindo da rota. Um
+    // `.limit(5000)` unico nunca entregou isso: o PostgREST corta em 1.000 por resposta sem
+    // sinalizar, entao a exportacao saia com 1.000 etapas. O aviso de exportacao parcial na tela
+    // continuava correto (`total > list.length` compara com o count exato do banco), mas disparava
+    // a partir de 1.000 em vez dos 5.000 pretendidos.
+    const buildExportQuery = (withCount: boolean) => {
+      let exportQuery = supabase
+        .from("programming")
+        .select(
+          PROGRAMMING_STAGE_SELECT_WITH_CHILDREN,
+          withCount ? { count: "exact" } : undefined,
+        )
+        .eq("tenant_id", filters.tenantId);
 
-    if (projectIdsFromSearch !== null) {
-      exportQuery = exportQuery.in("project_id", projectIdsFromSearch);
-    }
+      if (projectIdsFromSearch !== null) {
+        exportQuery = exportQuery.in("project_id", projectIdsFromSearch);
+      }
 
-    if (stageIdsFromTeamFilter !== null) {
-      exportQuery = exportQuery.in("id", stageIdsFromTeamFilter);
-    }
+      if (stageIdsFromTeamFilter !== null) {
+        exportQuery = exportQuery.in("id", stageIdsFromTeamFilter);
+      }
 
-    if (isEmEsperaChip) {
-      exportQuery = exportQuery.eq("status", "ADIADA").is("execution_date", null);
-    } else if (isSemRetornoChip) {
-      exportQuery = exportQuery
-        .eq("is_pendencia", true)
-        .in("status", ["PROGRAMADA", "REPROGRAMADA"])
-        .lt("execution_date", todayIso)
-        .is("work_completion_status", null);
-    } else {
-      exportQuery = exportQuery.gte("execution_date", filters.dateFrom).lte("execution_date", filters.dateTo);
-      exportQuery = applyStatusChipToStageQuery(exportQuery, filters.statusChip, todayIso);
-    }
+      if (isEmEsperaChip) {
+        exportQuery = exportQuery.eq("status", "ADIADA").is("execution_date", null);
+      } else if (isSemRetornoChip) {
+        exportQuery = exportQuery
+          .eq("is_pendencia", true)
+          .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+          .lt("execution_date", todayIso)
+          .is("work_completion_status", null);
+      } else {
+        exportQuery = exportQuery.gte("execution_date", filters.dateFrom).lte("execution_date", filters.dateTo);
+        exportQuery = applyStatusChipToStageQuery(exportQuery, filters.statusChip, todayIso);
+      }
 
-    exportQuery = applyWorkCompletionFilterToStageQuery(exportQuery, filters.workCompletionStatuses);
+      return applyWorkCompletionFilterToStageQuery(exportQuery, filters.workCompletionStatuses);
+    };
 
-    const { data: exportRows, error: exportError, count: exportCount } = await exportQuery
-      .order("project_id", { ascending: true })
-      .order("execution_date", { ascending: true })
-      .limit(filters.pageSize)
-      .returns<ProgrammingStageRow[]>();
+    let exportCount = 0;
+
+    const { data: exportRows, error: exportError } = await loadAllRows<ProgrammingStageRow>(
+      (from, to) =>
+        buildExportQuery(from === 0)
+          .order("project_id", { ascending: true })
+          .order("execution_date", { ascending: true })
+          // `id` como desempate: sem ordem total, paginar por offset repete ou perde etapas na
+          // virada. Varias etapas do mesmo projeto compartilham `execution_date`.
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<ProgrammingStageRow[]>()
+          .then((result) => {
+            // O count exato so e pedido na primeira pagina — repetir a contagem a cada bloco
+            // custaria um count(*) por chamada sem mudar o resultado.
+            if (typeof result.count === "number") exportCount = result.count;
+            return result;
+          }),
+      { maxRows: filters.pageSize },
+    );
 
     if (exportError) {
       throw new Error(`Falha ao carregar etapas para exportacao: ${exportError.message}`);
     }
 
-    // total = total de ETAPAS que batem no filtro (nao so as devolvidas).
-    return { rows: exportRows ?? [], total: exportCount ?? 0 };
+    // total = total de ETAPAS que batem no filtro (nao so as devolvidas). E o que sustenta o aviso
+    // de exportacao parcial na tela quando o filtro rende mais que o teto.
+    return { rows: exportRows ?? [], total: exportCount };
   }
 
   // Passo 1: projetos distintos (paginados) + total de projetos.
@@ -648,7 +677,7 @@ export async function fetchProgrammingStagesForMeasurementSources(params: {
     .from("programming")
     .select(`
       id, project_id, execution_date, status, campo_eletrico, work_completion_status,
-      programming_team ( team_id, status ),
+      programming_team ( team_id, status, programmed_foreman_person_id, programmed_foreman_name_snapshot ),
       programming_activity ( id, service_activity_id, quantity, is_active )
     `)
     .eq("tenant_id", params.tenantId)
@@ -784,6 +813,8 @@ export async function fetchProgrammingWorkCompletionHistoryForMeasurement(params
 export type ProgrammingMapTeamRow = {
   team_id: string;
   status: string;
+  programmed_foreman_person_id: string | null;
+  programmed_foreman_name_snapshot: string | null;
 };
 
 export type ProgrammingMapStageRow = {
@@ -810,7 +841,7 @@ export type ProgrammingMapStageRow = {
 };
 
 const MAP_STAGE_SELECT =
-  "id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, classification_snapshot_execution_date, classification_snapshot_number, classification_snapshot_unica, classification_snapshot_final, programming_team(team_id, status)";
+  "id, project_id, status, execution_date, etapa_number, etapa_unica, etapa_final, work_completion_status, is_pendencia, cancellation_reason, note, created_at, updated_at, classification_snapshot_execution_date, classification_snapshot_number, classification_snapshot_unica, classification_snapshot_final, programming_team(team_id, status, programmed_foreman_person_id, programmed_foreman_name_snapshot)";
 const MAP_STAGE_ROW_LIMIT = 5000;
 
 export async function fetchProgrammingStagesForMap(params: {
@@ -823,13 +854,21 @@ export async function fetchProgrammingStagesForMap(params: {
   // via essas obras. Efeito colateral do bug: obra cuja UNICA etapa estava em
   // espera caia em "Nunca programadas". Sem data nao ha o que recortar por
   // periodo, entao elas vem sempre; o teto de MAP_STAGE_ROW_LIMIT segue valendo.
-  const { data, error } = await params.supabase
-    .from("programming")
-    .select(MAP_STAGE_SELECT)
-    .eq("tenant_id", params.tenantId)
-    .or(`execution_date.is.null,execution_date.gte.${params.sinceDate}`)
-    .limit(MAP_STAGE_ROW_LIMIT)
-    .returns<ProgrammingMapStageRow[]>();
+  const { data, error } = await loadAllRows<ProgrammingMapStageRow>(
+    (from, to) =>
+      params.supabase
+        .from("programming")
+        .select(MAP_STAGE_SELECT)
+        .eq("tenant_id", params.tenantId)
+        .or(`execution_date.is.null,execution_date.gte.${params.sinceDate}`)
+        // Antes desta correcao a consulta nao tinha ORDER BY nenhum e ainda era cortada em 1.000
+        // pelo servidor: alem de incompleta, ela era NAO DETERMINISTICA — quais 1.000 etapas o
+        // Mapa recebia podia mudar entre duas chamadas identicas.
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<ProgrammingMapStageRow[]>(),
+    { maxRows: MAP_STAGE_ROW_LIMIT },
+  );
 
   if (error) {
     throw new Error(`Falha ao carregar historico geral de Programacao: ${error.message}`);
@@ -838,30 +877,47 @@ export async function fetchProgrammingStagesForMap(params: {
   return data ?? [];
 }
 
-// Equipes com pelo menos uma etapa ativa (PROGRAMADA/REPROGRAMADA) no periodo —
-// usado pelo Mapa para achar equipes SEM programacao no periodo escolhido.
-export async function fetchTeamIdsProgrammedInPeriod(params: {
+// Pares equipe + data com pelo menos uma etapa ativa (PROGRAMADA/REPROGRAMADA)
+// no periodo — usado pelo Mapa para achar equipes SEM programacao em cada dia.
+export async function fetchProgrammedTeamDatesInPeriod(params: {
   supabase: SupabaseClient;
   tenantId: string;
   startDate: string;
   endDate: string;
 }): Promise<Set<string>> {
-  const { data, error } = await params.supabase
-    .from("programming_team")
-    .select("team_id, programming!inner(execution_date, status, tenant_id)")
-    .eq("tenant_id", params.tenantId)
-    .eq("status", "ATIVA")
-    .eq("programming.tenant_id", params.tenantId)
-    .gte("programming.execution_date", params.startDate)
-    .lte("programming.execution_date", params.endDate)
-    .in("programming.status", ["PROGRAMADA", "REPROGRAMADA"])
-    .returns<Array<{ team_id: string }>>();
+  const { data, error } = await loadAllRows<{
+    id: string;
+    team_id: string;
+    programming: { execution_date: string | null } | null;
+  }>(
+    (from, to) =>
+      params.supabase
+        .from("programming_team")
+        .select("id, team_id, programming!inner(execution_date, status, tenant_id)")
+        .eq("tenant_id", params.tenantId)
+        .eq("status", "ATIVA")
+        .eq("programming.tenant_id", params.tenantId)
+        .gte("programming.execution_date", params.startDate)
+        .lte("programming.execution_date", params.endDate)
+        .in("programming.status", ["PROGRAMADA", "REPROGRAMADA"])
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<Array<{ id: string; team_id: string; programming: { execution_date: string | null } | null }>>(),
+  );
 
   if (error) {
     throw new Error(`Falha ao carregar programacoes das equipes no periodo: ${error.message}`);
   }
 
-  return new Set((data ?? []).map((item) => item.team_id).filter(Boolean));
+  return new Set(
+    (data ?? [])
+      .map((item) => {
+        const teamId = item.team_id;
+        const executionDate = item.programming?.execution_date;
+        return teamId && executionDate ? `${teamId}|${executionDate}` : "";
+      })
+      .filter(Boolean),
+  );
 }
 
 // Historico exibido em modal: limit 50 (guia_backend regra 26).

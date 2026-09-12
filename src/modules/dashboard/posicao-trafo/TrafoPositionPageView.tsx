@@ -10,8 +10,11 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { usePagination } from "@/hooks/usePagination";
 import { serialTrackingLabel } from "@/lib/materialSerialTracking";
-import { EXPORT_COOLDOWN_MS, EXPORT_PAGE_SIZE, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
+import { EXPORT_COOLDOWN_MS, HISTORY_PAGE_SIZE, INITIAL_FILTERS, PAGE_SIZE } from "./constants";
+import { PendingSerialBalancePanel } from "./components/PendingSerialBalancePanel";
+import { TrafoPositionSummaryCards } from "./components/TrafoPositionSummaryCards";
 import type {
+  PendingSerialBalanceItem,
   StockCenterOption,
   TrafoPositionFilters,
   TrafoPositionHistoryEntry,
@@ -114,7 +117,9 @@ export function TrafoPositionPageView() {
     withTeamCount: 0,
     outsideCount: 0,
     retCount: 0,
+    pendingSerialCount: 0,
   });
+  const [pendingSerialBalances, setPendingSerialBalances] = useState<PendingSerialBalanceItem[]>([]);
   const { page, total, totalPages, setPage, setTotal } = usePagination({ pageSize: PAGE_SIZE });
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -206,7 +211,8 @@ export function TrafoPositionPageView() {
         if (!response.ok) {
           if (isMounted) {
             setItems([]);
-            setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
+            setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0, pendingSerialCount: 0 });
+            setPendingSerialBalances([]);
             setTotal(0);
             setFeedback({ type: "error", message: data.message ?? "Falha ao carregar o rastreio de serial." });
           }
@@ -223,13 +229,15 @@ export function TrafoPositionPageView() {
         if (isMounted) {
           setFeedback(null);
           setItems(data.items ?? []);
-          setSummary(data.summary ?? { inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
+          setSummary(data.summary ?? { inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0, pendingSerialCount: 0 });
+          setPendingSerialBalances(data.pendingSerialBalances ?? []);
           setTotal(data.pagination?.total ?? 0);
         }
       } catch (error) {
         if (isMounted) {
           setItems([]);
-          setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0 });
+          setSummary({ inOwnCount: 0, withTeamCount: 0, outsideCount: 0, retCount: 0, pendingSerialCount: 0 });
+          setPendingSerialBalances([]);
           setTotal(0);
           setFeedback({ type: "error", message: "Falha ao carregar o rastreio de serial." });
         }
@@ -455,40 +463,28 @@ export function TrafoPositionPageView() {
     setFeedback(null);
 
     try {
-      const exportedItems: TrafoPositionListItem[] = [];
-      let exportPage = 1;
-      let exportTotal = 0;
+      const params = new URLSearchParams(buildTrafoPositionQuery(filters, 1, PAGE_SIZE));
+      params.set("mode", "export");
+      params.delete("page");
+      params.delete("pageSize");
 
-      while (true) {
-        const response = await fetch(`/api/trafo-positions?${buildTrafoPositionQuery(filters, exportPage, EXPORT_PAGE_SIZE)}`, {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${accessToken}` },
+      const response = await fetch(`/api/trafo-positions?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      const data = (await response.json().catch(() => ({}))) as TrafoPositionListResponse;
+      if (!response.ok) {
+        setFeedback({ type: "error", message: data.message ?? "Falha ao exportar o rastreio de serial." });
+
+        await logError("Falha ao exportar o rastreio de serial.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          filters,
         });
-
-        const data = (await response.json().catch(() => ({}))) as TrafoPositionListResponse;
-        if (!response.ok) {
-          setFeedback({ type: "error", message: data.message ?? "Falha ao exportar o rastreio de serial." });
-
-          await logError("Falha ao exportar o rastreio de serial.", undefined, {
-            responseStatus: response.status,
-            responseMessage: data.message ?? null,
-            filters,
-            exportPage,
-          });
-          return;
-        }
-
-        const pageItems = data.items ?? [];
-        exportTotal = data.pagination?.total ?? exportTotal;
-        const responsePageSize = data.pagination?.pageSize ?? EXPORT_PAGE_SIZE;
-        exportedItems.push(...pageItems);
-
-        if (pageItems.length === 0 || exportedItems.length >= exportTotal || pageItems.length < responsePageSize) {
-          break;
-        }
-
-        exportPage += 1;
+        return;
       }
+      const exportedItems = data.items ?? [];
 
       if (exportedItems.length === 0) {
         setFeedback({ type: "error", message: "Nao ha registros para exportar com os filtros atuais." });
@@ -746,28 +742,9 @@ export function TrafoPositionPageView() {
           </div>
         </div>
 
-        <div className={styles.statsGrid}>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Registros filtrados</span>
-            <strong className={styles.statValue}>{total}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Em estoque proprio</span>
-            <strong className={styles.statValue}>{summary.inOwnCount}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Com equipe</span>
-            <strong className={styles.statValue}>{summary.withTeamCount}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>RET</span>
-            <strong className={styles.statValue}>{summary.retCount}</strong>
-          </div>
-          <div className={styles.statCard}>
-            <span className={styles.statLabel}>Fora do estoque proprio</span>
-            <strong className={styles.statValue}>{summary.outsideCount}</strong>
-          </div>
-        </div>
+        <TrafoPositionSummaryCards summary={summary} total={total} />
+
+        <PendingSerialBalancePanel items={pendingSerialBalances} isLoading={isLoadingList} />
 
         <div className={styles.tableWrapper}>
           <table className={styles.table}>

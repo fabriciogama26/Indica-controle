@@ -9,7 +9,8 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { isSerialTrackedMaterial, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
-import { HISTORY_EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { downloadBlobFile } from "@/lib/utils/csv";
+import { HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   FilterState,
   FormState,
@@ -34,8 +35,6 @@ import {
   downloadMassImportErrorReport,
   formatDate,
   formatDateTime,
-  formatHistoryActionLabel,
-  formatHistoryValue,
   isTransformerQuantityValid,
   normalizeDateInput,
   normalizeHeaderName,
@@ -47,11 +46,17 @@ import {
   parseCsvContent,
   parsePositiveNumber,
   readCsvField,
+  resolvePrimaryStockCenterName,
+  resolveSupportCenterName,
   rowStatusLabel,
   toIsoDate,
 } from "./utils";
 import styles from "../entrada/StockTransfersPageView.module.css";
 import localStyles from "./TeamStockOperationsPageView.module.css";
+import { OperationDetailModal } from "./components/OperationDetailModal";
+import { OperationHistoryModal } from "./components/OperationHistoryModal";
+import { TeamOperationFilters } from "./components/TeamOperationFilters";
+import type { DayForeman } from "@/server/modules/composicao-equipe";
 
 const LIST_PAGE_SIZE = 20;
 
@@ -94,14 +99,6 @@ function operationSignalClass(value: TeamOperationKind | string | null | undefin
   return styles.signalChipTransfer;
 }
 
-function resolvePrimaryStockCenterName(item: Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">) {
-  return item.operationKind === "REQUISITION" ? item.fromStockCenterName : item.toStockCenterName;
-}
-
-function resolveSupportCenterName(item: Pick<TeamOperationListItem, "operationKind" | "fromStockCenterName" | "toStockCenterName">) {
-  return item.operationKind === "REQUISITION" ? item.toStockCenterName : item.fromStockCenterName;
-}
-
 function createRowId() {
   return `team-operation-item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -116,6 +113,8 @@ function buildHistoryListParams(targetPage: number, pageSize: number, activeFilt
   if (activeFilters.teamId) params.set("teamId", activeFilters.teamId);
   if (activeFilters.projectId) params.set("projectId", activeFilters.projectId);
   if (activeFilters.materialCode) params.set("materialCode", activeFilters.materialCode);
+  if (activeFilters.categoryId) params.set("categoryId", activeFilters.categoryId);
+  if (activeFilters.subcategoryId) params.set("subcategoryId", activeFilters.subcategoryId);
   if (activeFilters.entryType !== "TODOS") params.set("entryType", activeFilters.entryType);
   if (activeFilters.reversalStatus !== "TODOS") params.set("reversalStatus", activeFilters.reversalStatus);
   return params;
@@ -163,6 +162,8 @@ function isPendingItemVisibleWithFilters(
   if (filters.teamId && context.teamId !== filters.teamId) return false;
   if (filters.projectId && context.projectId !== filters.projectId) return false;
   if (filters.materialCode && !item.materialCode.toUpperCase().includes(filters.materialCode.trim().toUpperCase())) return false;
+  if (filters.categoryId && item.categoryId !== filters.categoryId) return false;
+  if (filters.subcategoryId && item.subcategoryId !== filters.subcategoryId) return false;
   if (filters.entryType !== "TODOS" && item.entryType !== filters.entryType) return false;
   if (filters.reversalStatus === "ESTORNADAS" || filters.reversalStatus === "ESTORNOS") return false;
   return true;
@@ -185,8 +186,10 @@ export function TeamStockOperationsPageView() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [stockCenters, setStockCenters] = useState<MetaResponse["stockCenters"]>([]);
   const [teams, setTeams] = useState<MetaResponse["teams"]>([]);
+  const [dayForemen, setDayForemen] = useState<DayForeman[]>([]);
   const [projects, setProjects] = useState<MetaResponse["projects"]>([]);
   const [materials, setMaterials] = useState<MetaResponse["materials"]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<MetaResponse["categoryOptions"]>([]);
   const [serialOptions, setSerialOptions] = useState<SerialOption[]>([]);
   const [reversalReasons, setReversalReasons] = useState<MetaResponse["reversalReasons"]>([]);
   const [fieldReturnOriginName, setFieldReturnOriginName] = useState("CAMPO / INSTALADO");
@@ -245,6 +248,10 @@ export function TeamStockOperationsPageView() {
   const selectedReversalReason = useMemo(
     () => (reversalReasons ?? []).find((reason) => reason.code === reversalReasonCode) ?? null,
     [reversalReasonCode, reversalReasons],
+  );
+  const filterSubcategoryOptions = useMemo(
+    () => (categoryOptions ?? []).find((category) => category.id === filterDraft.categoryId)?.subcategories ?? [],
+    [categoryOptions, filterDraft.categoryId],
   );
 
   const historyTotalPages = Math.max(1, Math.ceil(historyTotal / LIST_PAGE_SIZE));
@@ -405,6 +412,7 @@ export function TeamStockOperationsPageView() {
     setTeams((data.teams ?? []).filter((team) => team.isActive));
     setProjects(data.projects ?? []);
     setMaterials(data.materials ?? []);
+    setCategoryOptions(data.categoryOptions ?? []);
     setReversalReasons(nextReversalReasons);
     setFieldReturnOriginName(String(data.fieldReturnOriginName ?? "CAMPO / INSTALADO"));
     const allowRequisition = data.canDirectRequisition !== false;
@@ -606,6 +614,14 @@ export function TeamStockOperationsPageView() {
     }));
   }
 
+  function updateFilterCategory(categoryId: string) {
+    setFilterDraft((current) => ({
+      ...current,
+      categoryId,
+      subcategoryId: "",
+    }));
+  }
+
   function resetForm() {
     setForm({
       ...INITIAL_FORM,
@@ -671,6 +687,55 @@ export function TeamStockOperationsPageView() {
       lotCode: "",
     }));
   }
+
+  const dayForemanTeamId = dayForemen.find((item) => item.teamId === form.teamId)?.foremanPersonId ?? "";
+
+  function handleForemanChange(foremanPersonId: string) {
+    if (!foremanPersonId) {
+      handleTeamChange("");
+      return;
+    }
+
+    const match = dayForemen.find((item) => item.foremanPersonId === foremanPersonId);
+    if (!match) return;
+
+    const isActiveTeam = activeTeams.some((team) => team.id === match.teamId);
+    if (!isActiveTeam) {
+      showError(`A equipe ${match.teamName} da composicao de ${form.entryDate} nao esta ativa.`);
+      return;
+    }
+
+    handleTeamChange(match.teamId);
+  }
+
+  useEffect(() => {
+    if (!accessToken || !form.entryDate) {
+      setDayForemen([]);
+      return;
+    }
+
+    let ignore = false;
+    async function loadDayForemen(entryDate: string) {
+      try {
+        const response = await fetch(`/api/team-stock-operations/day-foremen?date=${entryDate}`, {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const data = (await response.json().catch(() => ({}))) as { foremen?: DayForeman[] };
+        if (ignore) return;
+        setDayForemen(response.ok ? data.foremen ?? [] : []);
+      } catch (error) {
+        if (ignore) return;
+        setDayForemen([]);
+        await logError("Falha ao carregar encarregados do dia.", error, { entryDate });
+      }
+    }
+
+    void loadDayForemen(form.entryDate);
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, form.entryDate, logError]);
 
   function handleTeamChange(value: string) {
     if (form.items.length > 0) {
@@ -810,6 +875,8 @@ export function TeamStockOperationsPageView() {
           materialId: selectedMaterial.id,
           materialCode: selectedMaterial.materialCode,
           description: selectedMaterial.description,
+          categoryId: selectedMaterial.categoryId,
+          subcategoryId: selectedMaterial.subcategoryId,
           quantity,
           serialNumber: normalizedSerial,
           lotCode: normalizedLot,
@@ -1176,74 +1243,33 @@ export function TeamStockOperationsPageView() {
     setFeedback(null);
 
     try {
-      const exportedItems: TeamOperationListItem[] = [];
-      let page = 1;
-      let total = 0;
+      const params = buildHistoryListParams(1, LIST_PAGE_SIZE, filters);
+      params.set("mode", "export");
+      params.delete("page");
+      params.delete("pageSize");
 
-      while (true) {
-        const params = buildHistoryListParams(page, HISTORY_EXPORT_PAGE_SIZE, filters);
-        const response = await fetch(`/api/team-stock-operations?${params.toString()}`, {
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
+      const response = await fetch(`/api/team-stock-operations?${params.toString()}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      // A rota responde text/csv em stream: as linhas ja vem prontas da RPC, o navegador so
+      // salva o arquivo. Nao ha mais JSON completo trafegando nem montagem de CSV no cliente.
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { message?: string };
+        showError(data.message ?? "Falha ao exportar operacoes de equipe.");
+        await logError("Falha ao exportar operacoes de equipe.", undefined, {
+          responseStatus: response.status,
+          responseMessage: data.message ?? null,
+          filters,
         });
-
-        const data = (await response.json().catch(() => ({}))) as TeamOperationListResponse;
-        if (!response.ok) {
-          showError(data.message ?? "Falha ao exportar operacoes de equipe.");
-          await logError("Falha ao exportar operacoes de equipe.", undefined, {
-            responseStatus: response.status,
-            responseMessage: data.message ?? null,
-            filters,
-            page,
-          });
-          return;
-        }
-
-        const pageItems = data.history ?? [];
-        total = data.pagination?.total ?? total;
-        exportedItems.push(...pageItems);
-
-        if (pageItems.length === 0 || exportedItems.length >= total || pageItems.length < HISTORY_EXPORT_PAGE_SIZE) {
-          break;
-        }
-
-        page += 1;
-      }
-
-      if (exportedItems.length === 0) {
-        showError("Nao ha registros para exportar com os filtros atuais.");
         return;
       }
 
-      const lines = [
-        "operacao;centro_estoque;equipe;encarregado;origem_apoio;projeto;material_codigo;descricao;quantidade;serial;lp;data_operacao;tipo;status;observacao",
-        ...exportedItems.map((item) => {
-          const stockCenterName = resolvePrimaryStockCenterName(item);
-          const supportCenterName = resolveSupportCenterName(item);
-
-          return [
-            item.isReversal ? "ESTORNO" : operationKindLabel(item.operationKind),
-            stockCenterName,
-            item.teamName,
-            item.foremanName ?? "",
-            supportCenterName,
-            item.projectCode,
-            item.materialCode,
-            item.description,
-            item.quantity,
-            item.serialNumber ?? "",
-            item.lotCode ?? "",
-            item.entryDate,
-            item.entryType,
-            rowStatusLabel(item) ?? "Ativa",
-            item.notes ?? "",
-          ].map((value) => String(value ?? "").replace(/;/g, ",")).join(";");
-        }),
-      ];
-
-      downloadCsv(`\uFEFF${lines.join("\n")}\n`, `operacoes_equipe_${toIsoDate(new Date())}.csv`);
+      const blob = await response.blob();
+      downloadBlobFile(blob, `operacoes_equipe_${toIsoDate(new Date())}.csv`);
       setFeedback({ type: "success", message: "Exportacao concluida com sucesso." });
     } catch (error) {
       showError("Falha ao exportar operacoes de equipe.");
@@ -1418,12 +1444,12 @@ export function TeamStockOperationsPageView() {
       reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as {
         message?: string;
-        transferId?: string;
+        requestId?: string;
         reason?: string;
       };
       if (!response.ok) {
-        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar operacao de equipe." });
-        await logError("Falha ao estornar operacao de equipe.", undefined, {
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao solicitar estorno da operacao de equipe." });
+        await logError("Falha ao solicitar estorno da operacao de equipe.", undefined, {
           responseStatus: response.status,
           responseMessage: data.message ?? null,
           reason: data.reason ?? null,
@@ -1433,24 +1459,7 @@ export function TeamStockOperationsPageView() {
         return;
       }
 
-      const reversedAt = new Date().toISOString();
-      const reversalReason = selectedReversalReason
-        ? normalizedReasonNotes
-          ? `${selectedReversalReason.label}: ${normalizedReasonNotes}`
-          : selectedReversalReason.label
-        : normalizedReasonNotes;
-      setHistoryItems((current) => current.map((item) => (
-        item.id === reversalModalItem.id
-          ? {
-              ...item,
-              isReversed: true,
-              reversalTransferId: data.transferId ?? item.reversalTransferId,
-              reversalReason: reversalReason || item.reversalReason,
-              reversedAt,
-            }
-          : item
-      )));
-      setFeedback({ type: "success", message: data.message ?? "Operacao estornada com sucesso." });
+      setFeedback({ type: "success", message: data.message ?? "Pedido de estorno enviado para atendimento." });
       setReversalModalItem(null);
       setReversalFeedback(null);
       setReversalReasonCode((reversalReasons ?? [])[0]?.code ?? "");
@@ -1461,9 +1470,9 @@ export function TeamStockOperationsPageView() {
     } catch (error) {
       setReversalFeedback({
         type: "error",
-        message: "Falha de comunicacao ao estornar. Verifique a conexao e tente novamente.",
+        message: "Falha de comunicacao ao solicitar estorno. Verifique a conexao e tente novamente.",
       });
-      await logError("Falha ao estornar operacao de equipe.", error, {
+      await logError("Falha ao solicitar estorno da operacao de equipe.", error, {
         transferId: reversalModalItem.transferId,
         transferItemId: reversalModalItem.id,
       });
@@ -1474,7 +1483,7 @@ export function TeamStockOperationsPageView() {
 
   async function handleConfirmBatchReversal() {
     if (!accessToken || !reversalModalItem) {
-      setReversalFeedback({ type: "error", message: "Sessao invalida para estornar operacao de equipe." });
+      setReversalFeedback({ type: "error", message: "Sessao invalida para solicitar estorno da operacao de equipe." });
       return;
     }
 
@@ -1515,14 +1524,15 @@ export function TeamStockOperationsPageView() {
           reversalReasonCode: normalizedReasonCode,
           reversalReasonNotes: normalizedReasonNotes,
           reversalDate: normalizedReversalDate,
+          itemIds: activeReversalBatchItems.map((item) => item.id),
         }),
       });
 
       reversalIdempotency.reset();
       const data = (await response.json().catch(() => ({}))) as TeamOperationBatchReversalResponse;
       if (!response.ok) {
-        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao estornar o lote da operacao." });
-        await logError("Falha ao estornar lote da operacao de equipe.", undefined, {
+        setReversalFeedback({ type: "error", message: data.message ?? "Falha ao solicitar estorno do lote da operacao." });
+        await logError("Falha ao solicitar estorno do lote da operacao de equipe.", undefined, {
           responseStatus: response.status,
           responseMessage: data.message ?? null,
           reason: data.reason ?? null,
@@ -1531,26 +1541,7 @@ export function TeamStockOperationsPageView() {
         return;
       }
 
-      const reversedAt = new Date().toISOString();
-      const resultMap = new Map((data.results ?? []).map((result) => [result.itemId, result.reversalTransferId]));
-      const reversalReason = selectedReversalReason
-        ? normalizedReasonNotes
-          ? `${selectedReversalReason.label}: ${normalizedReasonNotes}`
-          : selectedReversalReason.label
-        : normalizedReasonNotes;
-
-      setHistoryItems((current) => current.map((item) => (
-        resultMap.has(item.id) && !item.isReversal
-          ? {
-              ...item,
-              isReversed: true,
-              reversalTransferId: resultMap.get(item.id) ?? item.reversalTransferId,
-              reversalReason: reversalReason || item.reversalReason,
-              reversedAt,
-            }
-          : item
-      )));
-      setFeedback({ type: "success", message: data.message ?? "Estorno em lote concluido com sucesso." });
+      setFeedback({ type: "success", message: data.message ?? "Pedido de estorno em lote enviado para atendimento." });
       setReversalModalItem(null);
       setReversalBatchItems([]);
       setReversalFeedback(null);
@@ -1562,9 +1553,9 @@ export function TeamStockOperationsPageView() {
     } catch (error) {
       setReversalFeedback({
         type: "error",
-        message: "Falha de comunicacao ao estornar o lote. Verifique a conexao e tente novamente.",
+        message: "Falha de comunicacao ao solicitar estorno do lote. Verifique a conexao e tente novamente.",
       });
-      await logError("Falha ao estornar lote da operacao de equipe.", error, {
+      await logError("Falha ao solicitar estorno do lote da operacao de equipe.", error, {
         transferId: reversalModalItem.transferId,
       });
     } finally {
@@ -1923,6 +1914,22 @@ export function TeamStockOperationsPageView() {
           </label>
 
           <label className={styles.field}>
+            <span>Encarregado do dia</span>
+            <select
+              value={dayForemanTeamId}
+              onChange={(event) => handleForemanChange(event.target.value)}
+              disabled={isSubmitting || isLoadingMeta || dayForemen.length === 0}
+            >
+              <option value="">{dayForemen.length ? "Selecione para preencher a equipe" : "Sem composicao lancada nesta data"}</option>
+              {dayForemen.map((item) => (
+                <option key={item.foremanPersonId} value={item.foremanPersonId}>
+                  {item.foremanName} - {item.teamName}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
             <span>
               Equipe <span className={styles.requiredMark}>*</span>
             </span>
@@ -2168,118 +2175,22 @@ export function TeamStockOperationsPageView() {
         </form>
       </article>
 
-      <article className={styles.card}>
-        <h3 className={styles.cardTitle}>Filtros</h3>
-
-        <form className={styles.filterGrid} onSubmit={handleApplyFilters}>
-          <label className={styles.field}>
-            <span>Data inicial</span>
-            <input
-              type="date"
-              value={filterDraft.startDate}
-              onChange={(event) => updateFilterDraft("startDate", event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Data final</span>
-            <input
-              type="date"
-              value={filterDraft.endDate}
-              onChange={(event) => updateFilterDraft("endDate", event.target.value)}
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Operacao</span>
-            <select
-              value={filterDraft.operationKind}
-              onChange={(event) => updateFilterDraft("operationKind", event.target.value as FilterState["operationKind"])}
-            >
-              <option value="TODOS">Todos</option>
-              <option value="REQUISITION">Requisicao</option>
-              <option value="RETURN">Devolucao</option>
-              <option value="FIELD_RETURN">Retorno de campo</option>
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Equipe</span>
-            <select
-              value={filterDraft.teamId}
-              onChange={(event) => updateFilterDraft("teamId", event.target.value)}
-            >
-              <option value="">Todas</option>
-              {activeTeams.map((team) => (
-                <option key={team.id} value={team.id}>
-                  {team.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Projeto</span>
-            <input
-              type="text"
-              value={filterProjectSearch}
-              onChange={(event) => {
-                const value = event.target.value;
-                setFilterProjectSearch(value);
-                if (!value.trim()) {
-                  updateFilterDraft("projectId", "");
-                }
-              }}
-              list="saida-projeto-filtro-list"
-              placeholder="Digite o codigo do projeto"
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Material (codigo)</span>
-            <input
-              type="text"
-              value={filterDraft.materialCode}
-              onChange={(event) => updateFilterDraft("materialCode", event.target.value)}
-              placeholder="Filtrar por material"
-            />
-          </label>
-
-          <label className={styles.field}>
-            <span>Tipo</span>
-            <select
-              value={filterDraft.entryType}
-              onChange={(event) => updateFilterDraft("entryType", event.target.value as FilterState["entryType"])}
-            >
-              <option value="TODOS">Todos</option>
-              <option value="NOVO">NOVO</option>
-              <option value="SUCATA">SUCATA</option>
-            </select>
-          </label>
-
-          <label className={styles.field}>
-            <span>Status de estorno</span>
-            <select
-              value={filterDraft.reversalStatus}
-              onChange={(event) => updateFilterDraft("reversalStatus", event.target.value as FilterState["reversalStatus"])}
-            >
-              <option value="TODOS">Todos</option>
-              <option value="ESTORNADAS">Estornadas</option>
-              <option value="NAO_ESTORNADAS">Nao estornadas</option>
-              <option value="ESTORNOS">Somente estornos</option>
-            </select>
-          </label>
-
-          <div className={styles.actions}>
-            <button type="submit" className={styles.secondaryButton} disabled={isLoadingHistory}>
-              Aplicar
-            </button>
-            <button type="button" className={styles.ghostButton} onClick={handleClearFilters} disabled={isLoadingHistory}>
-              Limpar
-            </button>
-          </div>
-        </form>
-      </article>
+      <TeamOperationFilters
+        filterDraft={filterDraft}
+        activeTeams={activeTeams}
+        categoryOptions={categoryOptions ?? []}
+        filterSubcategoryOptions={filterSubcategoryOptions}
+        filterProjectSearch={filterProjectSearch}
+        isLoadingHistory={isLoadingHistory}
+        onSubmit={handleApplyFilters}
+        onClear={handleClearFilters}
+        onUpdateFilter={updateFilterDraft}
+        onUpdateCategory={updateFilterCategory}
+        onProjectSearchChange={(value) => {
+          setFilterProjectSearch(value);
+          if (!value.trim()) updateFilterDraft("projectId", "");
+        }}
+      />
 
       {feedback ? (
         <div className={feedback.type === "error" ? styles.errorFeedback : styles.successFeedback}>
@@ -2440,86 +2351,14 @@ export function TeamStockOperationsPageView() {
         </div>
       </article>
 
-      {detailItem ? (
-        <div className={styles.modalOverlay} onClick={() => setDetailItem(null)}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Detalhes da Operacao</h4>
-                <p className={styles.modalSubtitle}>Transferencia: {detailItem.transferId}</p>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={() => setDetailItem(null)}>
-                Fechar
-              </button>
-            </header>
+      <OperationDetailModal item={detailItem} onClose={() => setDetailItem(null)} />
 
-            <div className={styles.modalBody}>
-              <div className={styles.detailGrid}>
-                <div><strong>Operacao:</strong> {operationKindLabel(detailItem.operationKind)}</div>
-                <div><strong>Equipe:</strong> {detailItem.teamName}</div>
-                <div><strong>Encarregado:</strong> {detailItem.foremanName ?? "-"}</div>
-                <div><strong>Centro estoque:</strong> {resolvePrimaryStockCenterName(detailItem)}</div>
-                <div><strong>Origem apoio:</strong> {resolveSupportCenterName(detailItem)}</div>
-                <div><strong>Projeto:</strong> {detailItem.projectCode}</div>
-                <div><strong>Material:</strong> {detailItem.materialCode}</div>
-                <div><strong>Descricao:</strong> {detailItem.description}</div>
-                <div><strong>Quantidade:</strong> {detailItem.quantity.toLocaleString("pt-BR")}</div>
-                <div><strong>Tipo:</strong> {detailItem.entryType}</div>
-                <div><strong>{operationDateLabel(detailItem.operationKind)}:</strong> {formatDate(detailItem.entryDate)}</div>
-                <div><strong>Serial:</strong> {detailItem.serialNumber ?? "-"}</div>
-                <div><strong>LP:</strong> {detailItem.lotCode ?? "-"}</div>
-                <div><strong>Atualizado em:</strong> {formatDateTime(detailItem.updatedAt)}</div>
-                <div><strong>Atualizado por:</strong> {detailItem.updatedByName}</div>
-                <div><strong>Transferencia original:</strong> {detailItem.originalTransferId ?? "-"}</div>
-                <div><strong>Transferencia de estorno:</strong> {detailItem.reversalTransferId ?? "-"}</div>
-                <div><strong>Motivo do estorno:</strong> {detailItem.reversalReason ?? "-"}</div>
-                <div><strong>Data do estorno:</strong> {formatDateTime(detailItem.reversedAt)}</div>
-                <div className={styles.detailWide}><strong>Observacao:</strong> {detailItem.notes ?? "-"}</div>
-              </div>
-            </div>
-          </article>
-        </div>
-      ) : null}
-
-      {historyModalItem ? (
-        <div className={styles.modalOverlay} onClick={closeHistoryModal}>
-          <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <header className={styles.modalHeader}>
-              <div className={styles.modalTitleBlock}>
-                <h4>Historico da Operacao</h4>
-                <p className={styles.modalSubtitle}>Transferencia: {historyModalItem.transferId}</p>
-              </div>
-              <button type="button" className={styles.modalCloseButton} onClick={closeHistoryModal}>
-                Fechar
-              </button>
-            </header>
-
-            <div className={styles.modalBody}>
-              {isLoadingHistoryModal ? <p>Carregando historico...</p> : null}
-              {!isLoadingHistoryModal && historyModalItems.length === 0 ? <p>Nenhum historico registrado.</p> : null}
-              {!isLoadingHistoryModal && historyModalItems.length > 0 ? historyModalItems.map((item) => (
-                <article key={item.id} className={styles.historyCard}>
-                  <header className={styles.historyCardHeader}>
-                    <strong>{formatHistoryActionLabel(item.action)}</strong>
-                    <span>{formatDateTime(item.changedAt)} | {item.changedByName}</span>
-                  </header>
-                  <div className={styles.historyChanges}>
-                    {Object.entries(item.changes ?? {}).length > 0
-                      ? Object.entries(item.changes ?? {}).map(([field, change]) => (
-                          <div key={field} className={styles.historyChangeItem}>
-                            <strong>{HISTORY_FIELD_LABELS[field] ?? field}</strong>
-                            <span>De: {formatHistoryValue(change.from)}</span>
-                            <span>Para: {formatHistoryValue(change.to)}</span>
-                          </div>
-                        ))
-                      : <div className={styles.historyChangeItem}><span>Sem alteracoes detalhadas.</span></div>}
-                  </div>
-                </article>
-              )) : null}
-            </div>
-          </article>
-        </div>
-      ) : null}
+      <OperationHistoryModal
+        item={historyModalItem}
+        entries={historyModalItems}
+        isLoading={isLoadingHistoryModal}
+        onClose={closeHistoryModal}
+      />
 
       {reversalModalItem ? (
         <div className={styles.modalOverlay} onClick={closeReversalModal}>
@@ -2662,7 +2501,7 @@ export function TeamStockOperationsPageView() {
                     || Boolean(selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes))
                   }
                 >
-                  {isReversing ? "Estornando..." : "Estornar material selecionado"}
+                  {isReversing ? "Enviando..." : "Enviar material para atendimento"}
                 </button>
                 <button
                   type="button"
@@ -2677,7 +2516,7 @@ export function TeamStockOperationsPageView() {
                     || Boolean(selectedReversalReason?.requiresNotes && !normalizeText(reversalReasonNotes))
                   }
                 >
-                  {isReversing ? "Estornando..." : `Estornar lote (${activeReversalBatchItems.length})`}
+                  {isReversing ? "Enviando..." : `Enviar lote para atendimento (${activeReversalBatchItems.length})`}
                 </button>
               </div>
             </div>

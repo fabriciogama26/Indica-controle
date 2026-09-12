@@ -10,6 +10,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { BILLING_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { createApiError, fetchBillingOrdersForExport } from "./exportQueries";
 import type {
   ActivityOption,
   BillingCatalogResponse,
@@ -65,10 +66,9 @@ type SaveResponse = {
   dbError?: unknown;
 };
 
-type StatusModalState = {
-  order: BillingListItem;
-  action: "FECHAR" | "CANCELAR" | "ABRIR";
-};
+type StatusAction = "FECHAR" | "CANCELAR" | "ABRIR";
+// FECHAR nao abre modal (nao exige motivo); so ABRIR/CANCELAR passam por confirmacao.
+type StatusModalState = { order: BillingListItem; action: Exclude<StatusAction, "FECHAR"> };
 
 type MassImportGroup = {
   rowNumbers: number[];
@@ -111,18 +111,16 @@ function formatHistoryValue(value: unknown) {
   return String(value);
 }
 
-function createApiError(payload: { message?: string; dbError?: unknown }, fallback: string) {
-  return Object.assign(new Error(payload.message ?? fallback), {
-    payload,
-    dbError: payload.dbError ?? null,
-  });
-}
-
 export function BillingPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("faturamento");
   const exportCooldown = useExportCooldown();
   const createOrderIdempotency = useIdempotencyKey();
+  // A importacao em massa cria ate 500 faturamentos numa chamada. Sem chave de
+  // idempotencia, um duplo clique ou um retry de rede duplicava o lote inteiro:
+  // a rota ja envelopa o POST em `withIdempotency`, mas o wrapper so age quando o
+  // cliente manda o header.
+  const massImportIdempotency = useIdempotencyKey();
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [noProductionReasons, setNoProductionReasons] = useState<NoProductionReasonOption[]>([]);
   const [activityOptions, setActivityOptions] = useState<ActivityOption[]>([]);
@@ -159,12 +157,8 @@ export function BillingPageView() {
     if (session?.accessToken) {
       headers.Authorization = `Bearer ${session.accessToken}`;
     }
-    const tenantId = session?.user.activeTenantId ?? session?.user.tenantId;
-    if (tenantId) {
-      headers["x-tenant-id"] = tenantId;
-    }
     return headers;
-  }, [session?.accessToken, session?.user.activeTenantId, session?.user.tenantId]);
+  }, [session?.accessToken]);
 
   const formTotalAmount = useMemo(
     () => form.items.reduce((sum, item) => sum + calculateItemTotal(item), 0),
@@ -542,18 +536,18 @@ export function BillingPageView() {
     }
   }
 
-  async function changeStatus() {
-    if (!statusModal) return;
+  async function changeStatus(order: BillingListItem, action: StatusAction, reason = "") {
+    if (isChangingStatus) return;
     setIsChangingStatus(true);
     try {
       const response = await fetch("/api/faturamento", {
         method: "PATCH",
         headers: authHeaders,
         body: JSON.stringify({
-          id: statusModal.order.id,
-          action: statusModal.action,
-          reason: statusReason,
-          expectedUpdatedAt: statusModal.order.updatedAt,
+          id: order.id,
+          action,
+          reason,
+          expectedUpdatedAt: order.updatedAt,
         }),
       });
       const payload = (await response.json().catch(() => ({}))) as SaveResponse;
@@ -567,8 +561,8 @@ export function BillingPageView() {
     } catch (error) {
       setError(error instanceof Error ? error.message : "Falha ao alterar status.");
       await logError("Falha ao alterar status do faturamento", error, {
-        orderId: statusModal.order.id,
-        action: statusModal.action,
+        orderId: order.id,
+        action,
       });
     } finally {
       setIsChangingStatus(false);
@@ -591,18 +585,15 @@ export function BillingPageView() {
     }
     setIsExporting(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "10000" });
-      if (filters.projectId) params.set("projectId", filters.projectId);
-      if (filters.status !== "TODOS") params.set("status", filters.status);
-      if (filters.billingKind !== "TODOS") params.set("billingKind", filters.billingKind);
-      if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-      const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
-      const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
-      if (!response.ok) throw createApiError(payload, "Falha ao exportar faturamentos.");
+      const exported = await fetchBillingOrdersForExport({
+        filters,
+        authHeaders,
+        errorMessage: "Falha ao exportar faturamentos.",
+      });
 
       downloadCsv("faturamento.csv", [
         ["numero", "projeto", "data_ingresso", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
-        ...(payload.orders ?? []).map((order) => [
+        ...exported.map((order) => [
           order.billingNumber,
           order.projectCode,
           order.ingressoDate ?? "",
@@ -630,16 +621,14 @@ export function BillingPageView() {
     }
     setIsExportingDetails(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "10000" });
-      if (filters.projectId) params.set("projectId", filters.projectId);
-      if (filters.status !== "TODOS") params.set("status", filters.status);
-      if (filters.billingKind !== "TODOS") params.set("billingKind", filters.billingKind);
-      if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-      const response = await fetch(`/api/faturamento?${params.toString()}`, { headers: authHeaders });
-      const payload = (await response.json().catch(() => ({}))) as BillingListResponse;
-      if (!response.ok) throw createApiError(payload, "Falha ao exportar detalhamento.");
+      // Antes deste laco compartilhado o detalhamento pedia `pageSize=10000` e
+      // parava nos 500 primeiros faturamentos sem avisar (a rota capa em 500).
+      const exportOrders = await fetchBillingOrdersForExport({
+        filters,
+        authHeaders,
+        errorMessage: "Falha ao exportar detalhamento.",
+      });
 
-      const exportOrders = payload.orders ?? [];
       if (!exportOrders.length) {
         throw new Error("Nenhum faturamento encontrado para exportar detalhamento.");
       }
@@ -784,11 +773,11 @@ export function BillingPageView() {
         const activityInput = readCsvField(row, headerMap, "codigo_atividade");
         const quantityInput = readCsvField(row, headerMap, "quantidade");
         const rateInput = readCsvField(row, headerMap, "taxa");
-        const observation = readCsvField(row, headerMap, "observacao");
+        const orderNotes = readCsvField(row, headerMap, "observacao");
         const ingressoDateRaw = readCsvField(row, headerMap, "data_ingresso");
         const ingressoDateIso = parseBrDate(ingressoDateRaw);
-        // notas_pedido e opcional — retorna "" se a coluna nao existir no CSV (compatibilidade retroativa)
-        const notasPedido = readCsvField(row, headerMap, "notas_pedido");
+        // `observacao` = nota do CABECALHO e `notas_pedido` = observacao do ITEM — invertido em relacao ao commit 3eba605 (item A3); ver TXT da tela. `notas_pedido` e opcional: retorna "" quando a coluna nao existe no CSV.
+        const itemObservation = readCsvField(row, headerMap, "notas_pedido");
         const project = findProjectOption(projectInput);
         const billingKind = normalizeBillingKind(kindInput);
         const reason = billingKind === "SEM_PRODUCAO" ? findReasonOption(reasonInput) : null;
@@ -813,15 +802,15 @@ export function BillingPageView() {
           continue;
         }
 
-        // groupKey inclui data_ingresso para agrupar pedidos do mesmo projeto/tipo/data; observation e exclusivo de cada item
-        const groupKey = [project.id, billingKind, reason?.id ?? "", ingressoDateIso, notasPedido].join("|");
+        // Mesma chave do indice unico `ux_project_billing_orders_semantic_key` (migration 389): o que agrupa aqui e o que o banco recusa duplicado la. A observacao do item varia por linha e fica de fora.
+        const groupKey = [project.id, billingKind, reason?.id ?? "", ingressoDateIso, orderNotes].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
           billingKind,
           noProductionReasonId: reason?.id ?? "",
           ingressoDate: ingressoDateIso,
-          notes: notasPedido,
+          notes: orderNotes,
           items: [],
         };
 
@@ -831,7 +820,7 @@ export function BillingPageView() {
         }
 
         group.rowNumbers.push(rowNumber);
-        group.items.push({ activityId: activity.id, quantity, rate, observation });
+        group.items.push({ activityId: activity.id, quantity, rate, observation: itemObservation });
         groups.set(groupKey, group);
       }
 
@@ -842,7 +831,7 @@ export function BillingPageView() {
 
       const response = await fetch("/api/faturamento", {
         method: "POST",
-        headers: authHeaders,
+        headers: { ...authHeaders, "Idempotency-Key": massImportIdempotency.getKey() },
         body: JSON.stringify({
           action: "BATCH_IMPORT_PARTIAL",
           rows: Array.from(groups.values()),
@@ -852,6 +841,9 @@ export function BillingPageView() {
       if (!response.ok) {
         throw createApiError(payload, "Falha ao importar faturamento.");
       }
+
+      // Lote aceito: a proxima importacao e outra operacao e precisa de chave nova.
+      massImportIdempotency.reset();
 
       const apiIssues = (payload.results ?? [])
         .filter((item) => item.success !== true)
@@ -1079,7 +1071,7 @@ export function BillingPageView() {
                       <button type="button" className={`${styles.actionButton} ${styles.actionView}`} title="Detalhes" onClick={() => void openDetail(order)}><ActionIcon name="details" /></button>
                       <button type="button" className={`${styles.actionButton} ${styles.actionHistory}`} title="Historico" onClick={() => void openHistory(order)}><ActionIcon name="history" /></button>
                       {order.status === "ABERTA" ? <button type="button" className={`${styles.actionButton} ${styles.actionEdit}`} title="Editar" onClick={() => void startEdit(order)}><ActionIcon name="edit" /></button> : null}
-                      {order.status === "ABERTA" ? <button type="button" className={`${styles.actionButton} ${styles.actionClose}`} title="Fechar" onClick={() => setStatusModal({ order, action: "FECHAR" })}><ActionIcon name="activate" /></button> : null}
+                      {order.status === "ABERTA" ? <button type="button" className={`${styles.actionButton} ${styles.actionClose}`} title="Fechar" disabled={isChangingStatus} onClick={() => void changeStatus(order, "FECHAR")}><ActionIcon name="activate" /></button> : null}
                       {order.status === "FECHADA" ? <button type="button" className={`${styles.actionButton} ${styles.actionClose}`} title="Abrir" onClick={() => setStatusModal({ order, action: "ABRIR" })}><ActionIcon name="activate" /></button> : null}
                       {order.status !== "CANCELADA" ? <button type="button" className={`${styles.actionButton} ${styles.actionCancel}`} title="Cancelar" onClick={() => setStatusModal({ order, action: "CANCELAR" })}><ActionIcon name="cancel" /></button> : null}
                     </div>
@@ -1166,14 +1158,14 @@ export function BillingPageView() {
         <div className={styles.modalOverlay} onClick={() => setStatusModal(null)}>
           <article className={styles.modalCard} role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
             <header className={styles.modalHeader}>
-              <div><h4>{statusModal.action === "FECHAR" ? "Fechar faturamento" : statusModal.action === "ABRIR" ? "Abrir faturamento" : "Cancelar faturamento"}</h4><p className={styles.modalSubtitle}>{statusModal.order.billingNumber}</p></div>
+              <div><h4>{statusModal.action === "ABRIR" ? "Abrir faturamento" : "Cancelar faturamento"}</h4><p className={styles.modalSubtitle}>{statusModal.order.billingNumber}</p></div>
               <button type="button" className={styles.modalCloseButton} onClick={() => setStatusModal(null)}>Fechar</button>
             </header>
             <div className={styles.modalBody}>
-              {statusModal.action !== "FECHAR" ? <label className={styles.field}><span>Motivo</span><textarea value={statusReason} onChange={(event) => setStatusReason(event.target.value)} /></label> : null}
+              <label className={styles.field}><span>Motivo</span><textarea value={statusReason} onChange={(event) => setStatusReason(event.target.value)} /></label>
               <div className={styles.actions}>
                 <button type="button" className={styles.ghostButton} onClick={() => setStatusModal(null)} disabled={isChangingStatus}>Cancelar</button>
-                <button type="button" className={statusModal.action === "CANCELAR" ? styles.dangerButton : styles.primaryButton} onClick={() => void changeStatus()} disabled={isChangingStatus}>{isChangingStatus ? "Salvando..." : "Confirmar"}</button>
+                <button type="button" className={statusModal.action === "CANCELAR" ? styles.dangerButton : styles.primaryButton} onClick={() => void changeStatus(statusModal.order, statusModal.action, statusReason)} disabled={isChangingStatus}>{isChangingStatus ? "Salvando..." : "Confirmar"}</button>
               </div>
             </div>
           </article>
@@ -1203,7 +1195,7 @@ export function BillingPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas do modelo: projeto, tipo_faturamento, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao, data_ingresso. Obrigatorias: projeto, tipo_faturamento, codigo_atividade, quantidade, taxa e data_ingresso. Motivo e obrigatorio somente em Sem producao.</p>
+                    <p>Colunas do modelo: projeto, tipo_faturamento, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao, data_ingresso, notas_pedido. Obrigatorias: projeto, tipo_faturamento, codigo_atividade, quantidade, taxa e data_ingresso. Motivo e obrigatorio somente em Sem producao. <strong>observacao</strong> e a nota do faturamento (cabecalho) e precisa ser igual em todas as linhas do mesmo pedido, porque faz parte do que agrupa as linhas; <strong>notas_pedido</strong> e a observacao de cada item e pode variar linha a linha.</p>
                   </div>
                 </div>
               </section>
@@ -1216,7 +1208,18 @@ export function BillingPageView() {
                   </div>
                 </div>
                 <label className={styles.importDropzone}>
-                  <input type="file" accept=".csv,text/csv" onChange={(event) => setMassImportFile(event.target.files?.[0] ?? null)} disabled={isImporting} />
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => {
+                      // Arquivo novo e outra operacao: sem o reset, a chave gerada para
+                      // a tentativa anterior voltaria com um payload diferente e o
+                      // wrapper de idempotencia recusaria com 409.
+                      massImportIdempotency.reset();
+                      setMassImportFile(event.target.files?.[0] ?? null);
+                    }}
+                    disabled={isImporting}
+                  />
                   <span>{massImportFile ? massImportFile.name : "Clique para selecionar o arquivo CSV"}</span>
                 </label>
                 <div className={styles.actions}>

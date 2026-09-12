@@ -28,6 +28,17 @@ type ProjectRow = {
   sob: string;
 };
 
+type MaterialCategoryRow = {
+  id: string;
+  name: string;
+};
+
+type MaterialSubcategoryRow = {
+  id: string;
+  category_id: string;
+  name: string;
+};
+
 type ReversalReasonRow = {
   code: string;
   label_pt: string;
@@ -58,7 +69,15 @@ export async function GET(request: NextRequest) {
     const requisitionAuth = await requirePageAction({ context: resolution, pageKey: "saida-requisicao", action: "read" });
     const canDirectRequisition = requisitionAuth.allowed;
 
-    const [stockCentersResult, teamsResult, projectsResult, materialsResult, reversalReasonsResult] = await Promise.all([
+    const [
+      stockCentersResult,
+      teamsResult,
+      projectsResult,
+      materialsResult,
+      categoriesResult,
+      subcategoriesResult,
+      reversalReasonsResult,
+    ] = await Promise.all([
       supabase
         .from("stock_centers")
         .select("id, name, center_type")
@@ -82,6 +101,22 @@ export async function GET(request: NextRequest) {
         .returns<ProjectRow[]>(),
       fetchActiveOperationalMaterials(supabase, appUser.tenant_id),
       supabase
+        .from("material_categories")
+        .select("id, name")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true })
+        .returns<MaterialCategoryRow[]>(),
+      supabase
+        .from("material_subcategories")
+        .select("id, category_id, name")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("is_active", true)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true })
+        .returns<MaterialSubcategoryRow[]>(),
+      supabase
         .from("stock_transfer_reversal_reason_catalog")
         .select("code, label_pt, requires_notes")
         .eq("is_active", true)
@@ -90,7 +125,14 @@ export async function GET(request: NextRequest) {
         .returns<ReversalReasonRow[]>(),
     ]);
 
-    if (stockCentersResult.error || teamsResult.error || projectsResult.error || materialsResult.error) {
+    if (
+      stockCentersResult.error
+      || teamsResult.error
+      || projectsResult.error
+      || materialsResult.error
+      || categoriesResult.error
+      || subcategoriesResult.error
+    ) {
       return NextResponse.json({ message: "Falha ao carregar metadados das operacoes de equipe." }, { status: 500 });
     }
 
@@ -116,6 +158,12 @@ export async function GET(request: NextRequest) {
     );
     const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
     const foremanMap = new Map((foremenResult.data ?? []).map((row) => [row.id, row.nome]));
+    const subcategoriesByCategoryId = new Map<string, Array<{ id: string; name: string }>>();
+    for (const subcategory of subcategoriesResult.data ?? []) {
+      const current = subcategoriesByCategoryId.get(subcategory.category_id) ?? [];
+      current.push({ id: subcategory.id, name: subcategory.name });
+      subcategoriesByCategoryId.set(subcategory.category_id, current);
+    }
 
     return NextResponse.json({
       fieldReturnOriginName: "CAMPO / INSTALADO",
@@ -144,6 +192,11 @@ export async function GET(request: NextRequest) {
         projectCode: row.sob,
       })),
       materials: (materialsResult.data ?? []).map(toOperationalMaterialOption),
+      categoryOptions: (categoriesResult.data ?? []).map((category) => ({
+        id: category.id,
+        name: category.name,
+        subcategories: subcategoriesByCategoryId.get(category.id) ?? [],
+      })),
       reversalReasons: reversalReasonsResult.error
         ? DEFAULT_REVERSAL_REASONS
         : (reversalReasonsResult.data ?? []).map((row) => ({

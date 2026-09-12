@@ -1,11 +1,15 @@
 export type TeamPerformanceOrder = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   teamId: string;
   executionDate: string;
   projectCodeSnapshot: string | null;
   teamNameSnapshot: string | null;
   foremanNameSnapshot: string | null;
+  commercialOrderRef?: string | null;
+  // Ordem COMERCIAL nao tem encarregado: quem executou sao os dois eletricistas
+  // gravados por ordem, na ordem dos slots 1 e 2. Vazio/ausente na ordem tecnica.
+  memberNames?: string[];
 };
 
 export type TeamPerformanceTeam = {
@@ -16,18 +20,32 @@ export type TeamPerformanceTeam = {
   isActive: boolean;
 };
 
+// Uma linha por Incidencia (`commercial_order_ref`) dentro do projeto. A ordem
+// comercial pode nao ter Incidencia, e nesse caso ela cai na entrada de `orderRef`
+// vazio -- sem isso a soma das linhas nao fecharia com o total do projeto.
+export type TeamPerformanceCommercialOrderDetail = {
+  orderRef: string;
+  totalValue: number;
+  orderCount: number;
+};
+
 export type TeamPerformanceProjectDetail = {
-  projectId: string;
+  projectId: string | null;
   projectCode: string;
   serviceCenter: string;
   totalValue: number;
   orderCount: number;
+  commercialOrders: TeamPerformanceCommercialOrderDetail[];
 };
 
 export type TeamForemanContributionRow = {
   teamId: string;
   teamName: string;
+  // Na tecnica e o encarregado da ordem. Na comercial e a dupla `A / B`, para a
+  // linha continuar tendo uma chave de exibicao unica.
   foremanName: string;
+  // Vazio na tecnica; na comercial traz Eletricista 1 e Eletricista 2 separados.
+  memberNames: string[];
   totalValue: number;
   orderCount: number;
   projectCount: number;

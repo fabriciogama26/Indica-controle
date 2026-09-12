@@ -24,9 +24,21 @@ export type TeamItem = {
   id: string;
   name: string;
   vehiclePlate: string;
+  // `Tipo operacional` (`team_types`), usado so como texto e por
+  // `resolveTeamStructureCode`. NAO e a natureza da equipe.
   teamTypeName: string;
+  // `Tipo de equipe` (`team_categories`): TECNICA/COMERCIAL, a unica fonte da
+  // natureza da equipe desde a migration 420. Vazio so em base sem a 420.
+  teamCategoryCode: string;
+  teamCategoryName: string;
+  foremanId: string | null;
   foremanName: string;
   serviceCenterName: string;
+};
+
+export type ForemanItem = {
+  id: string;
+  name: string;
 };
 
 export type SgdTypeItem = {
@@ -60,6 +72,7 @@ export type SupportOptionItem = {
 export type MetaResponse = {
   projects: ProjectItem[];
   teams: TeamItem[];
+  foremen: ForemanItem[];
   sgdTypes: SgdTypeItem[];
   electricalEqCatalog: ElectricalEqCatalogItem[];
   workCompletionCatalog: WorkCompletionCatalogItem[];
@@ -76,6 +89,8 @@ export type StageTeam = {
   participationReason: string | null;
   statusChangedAt: string | null;
   movedToId: string | null;
+  programmedForemanPersonId: string | null;
+  programmedForemanName: string;
   updatedAt: string;
 };
 
@@ -254,7 +269,11 @@ export type FormState = {
   executionDate: string;
   isPendencia: boolean;
   teamIds: string[];
+  teamForemanIds: Record<string, string>;
   teamSearch: string;
+  // Filtro do bloco `Equipes` por `Tipo de equipe`. Vazio = todos os tipos.
+  // Nao vai para o payload de salvamento: recorta so o que a grade exibe.
+  teamCategoryCode: string;
   serviceDescription: string;
   period: ProgrammingPeriod;
   startTime: string;
@@ -277,6 +296,7 @@ export type FormState = {
   activityQuantity: string;
   activities: ActivityFormItem[];
   documents: Record<DocumentFormKey, DocumentFormEntry>;
+  historyReason: string;
 };
 
 export type SaveStageResponse = {

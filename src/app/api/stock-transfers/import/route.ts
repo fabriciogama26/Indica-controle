@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
-import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { canCreatePendingSerial as canCreatePendingSerialItem } from "@/lib/stockSerialPolicy";
+import { loadStockSerialPolicy } from "@/lib/server/stockSerialPolicy";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import { withIdempotency } from "@/lib/server/idempotency";
 import {
   normalizeDateInput,
@@ -128,6 +131,11 @@ async function handleImport(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
+    const authorizationError = await authorizePageAction(resolution, "entrada", "import");
+    if (authorizationError) {
+      return authorizationError;
+    }
+
     const payload = (await request.json().catch(() => ({}))) as ImportPayload;
     const entries = Array.isArray(payload.entries) ? payload.entries : [];
 
@@ -160,6 +168,16 @@ async function handleImport(request: NextRequest) {
     if (materialResult.error) {
       return NextResponse.json({ message: "Falha ao validar materiais da importacao em massa." }, { status: 500 });
     }
+
+    const policyResult = await loadStockSerialPolicy(supabase, appUser.tenant_id);
+    if (policyResult.error) {
+      return NextResponse.json(
+        { message: "Falha ao carregar a politica de pendencia de serial do contrato." },
+        { status: 500 },
+      );
+    }
+
+    const serialPolicy = policyResult.data;
 
     const materialMap = new Map((materialResult.data ?? []).map((row) => [
       row.id,
@@ -214,10 +232,12 @@ async function handleImport(request: NextRequest) {
         const material = materialMap.get(item.materialId);
         const serialTrackingType = material?.serialTrackingType ?? "NONE";
         const hasSerial = Boolean(normalizeText(item.serialNumber));
-        const allowsPendingSerial = allowsPendingSerialIdentification(
+        const allowsPendingSerial = canCreatePendingSerialItem({
           serialTrackingType,
-          material?.allowPendingSerialIdentification,
-        ) && (movementType === "ENTRY" || movementType === "TRANSFER");
+          allowPendingSerialIdentification: material?.allowPendingSerialIdentification,
+          movementType,
+          policy: serialPolicy,
+        });
 
         if (!isSerialTrackedMaterial(serialTrackingType)) {
           return false;
@@ -231,10 +251,12 @@ async function handleImport(request: NextRequest) {
 
       if (invalidTransformerItem) {
         const material = materialMap.get(invalidTransformerItem.materialId);
-        const materialAllowsPendingSerial = allowsPendingSerialIdentification(
-          material?.serialTrackingType,
-          material?.allowPendingSerialIdentification,
-        ) && (movementType === "ENTRY" || movementType === "TRANSFER");
+        const materialAllowsPendingSerial = canCreatePendingSerialItem({
+          serialTrackingType: material?.serialTrackingType,
+          allowPendingSerialIdentification: material?.allowPendingSerialIdentification,
+          movementType,
+          policy: serialPolicy,
+        });
         const invalidItemHasSerial = Boolean(normalizeText(invalidTransformerItem.serialNumber));
         errorCount += 1;
         results.push({

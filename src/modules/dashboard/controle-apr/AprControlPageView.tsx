@@ -49,6 +49,7 @@ type ListResponse = {
   records?: AprRecord[];
   projects?: ProjectItem[];
   teams?: TeamItem[];
+  foremen?: string[];
   pagination?: { page: number; pageSize: number; total: number };
   message?: string;
 };
@@ -67,6 +68,7 @@ type FormState = {
   serviceDate: string;
   teamId: string;
   observation: string;
+  foremanName: string;
 };
 
 type Filters = {
@@ -105,6 +107,7 @@ function createForm(today: string): FormState {
     serviceDate: today,
     teamId: "",
     observation: "",
+    foremanName: "",
   };
 }
 
@@ -207,6 +210,7 @@ export function AprControlPageView() {
   const [filters, setFilters] = useState<Filters>(() => createFilters(today));
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
+  const [foremen, setForemen] = useState<string[]>([]);
   const [records, setRecords] = useState<AprRecord[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -223,10 +227,9 @@ export function AprControlPageView() {
   const token = session?.accessToken;
   const isEditing = Boolean(form.id);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const selectedTeam = useMemo(() => teams.find((item) => item.id === form.teamId) ?? null, [form.teamId, teams]);
   const foremanOptions = useMemo(
-    () => Array.from(new Set(teams.map((item) => item.foremanName).filter((item) => item && item !== "Sem encarregado"))).sort(),
-    [teams],
+    () => Array.from(new Set(foremen.filter(Boolean))).sort(),
+    [foremen],
   );
 
   const authenticatedFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -254,6 +257,7 @@ export function AprControlPageView() {
       if (includeMeta) {
         setProjects(data.projects ?? []);
         setTeams(data.teams ?? []);
+        setForemen(data.foremen ?? []);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Falha ao carregar Controle de APR.";
@@ -339,6 +343,7 @@ export function AprControlPageView() {
       serviceDate: record.serviceDate,
       teamId: record.teamId,
       observation: record.observation,
+      foremanName: record.foremanName,
     });
     setFeedback(null);
     scrollToTop();
@@ -517,7 +522,11 @@ export function AprControlPageView() {
 
           <label className={styles.field}>
             <span>Encarregado</span>
-            <input value={selectedTeam?.foremanName ?? ""} readOnly placeholder="Definido pela equipe" />
+            <input
+              value={isEditing ? form.foremanName : ""}
+              readOnly
+              placeholder="Definido pela composicao da data ao salvar"
+            />
           </label>
 
           <label className={`${styles.field} ${styles.fieldWide}`}>

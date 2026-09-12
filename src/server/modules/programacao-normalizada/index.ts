@@ -36,7 +36,7 @@ export {
   fetchProgrammingStagesForMap,
   type ProgrammingMapStageRow,
   type ProgrammingMapTeamRow,
-  fetchTeamIdsProgrammedInPeriod,
+  fetchProgrammedTeamDatesInPeriod,
 
   // Fonte normalizada consumida pela Medicao.
   fetchProgrammingStagesForMeasurementSources,

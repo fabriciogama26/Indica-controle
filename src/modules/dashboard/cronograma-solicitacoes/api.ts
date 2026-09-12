@@ -44,10 +44,15 @@ export async function fetchMeta(token: string): Promise<MetaResponse> {
   return parseJson<MetaResponse>(response, "Falha ao carregar dados de apoio.");
 }
 
-export async function fetchList(token: string, filters: FilterState, page: number): Promise<ListResponse> {
+export async function fetchList(
+  token: string,
+  filters: FilterState,
+  page: number,
+  pageSize: number = PAGE_SIZE,
+): Promise<ListResponse> {
   const params = new URLSearchParams();
   params.set("page", String(page));
-  params.set("pageSize", String(PAGE_SIZE));
+  params.set("pageSize", String(pageSize));
   if (filters.sort) params.set("sort", filters.sort);
   if (filters.tipo) params.set("tipo", filters.tipo);
   if (filters.prioridade) params.set("prioridade", filters.prioridade);

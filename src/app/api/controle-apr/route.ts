@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 
 type AprStatus = "ATIVO" | "CANCELADO" | "DIVERGENTE" | "CONFERIDO";
 
@@ -45,6 +46,11 @@ type TeamRow = {
 type PersonRow = {
   id: string;
   nome: string;
+};
+
+type JobTitleRow = {
+  id: string;
+  name: string | null;
 };
 
 type HistoryRow = {
@@ -137,15 +143,27 @@ async function loadMeta(
   }
 
   const teams = teamsResult.data ?? [];
-  const foremanIds = Array.from(
-    new Set(teams.map((item) => item.foreman_person_id).filter((item): item is string => Boolean(item))),
-  );
-  const peopleResult = foremanIds.length
+
+  const foremanJobTitlesResult = await supabase
+    .from("job_titles")
+    .select("id, name")
+    .eq("tenant_id", tenantId)
+    .ilike("name", "%encarregado%")
+    .returns<JobTitleRow[]>();
+
+  if (foremanJobTitlesResult.error) {
+    return { error: "Falha ao carregar encarregados das equipes." } as const;
+  }
+
+  const foremanJobTitleIds = (foremanJobTitlesResult.data ?? []).map((item) => item.id).filter(Boolean);
+  const peopleResult = foremanJobTitleIds.length
     ? await supabase
         .from("people")
         .select("id, nome")
         .eq("tenant_id", tenantId)
-        .in("id", foremanIds)
+        .eq("ativo", true)
+        .in("job_title_id", foremanJobTitleIds)
+        .order("nome", { ascending: true })
         .returns<PersonRow[]>()
     : { data: [] as PersonRow[], error: null };
 
@@ -167,6 +185,7 @@ async function loadMeta(
       foremanId: item.foreman_person_id,
       foremanName: item.foreman_person_id ? foremanMap.get(item.foreman_person_id) ?? "Sem encarregado" : "Sem encarregado",
     })),
+    foremen: Array.from(new Set(foremanMap.values())).filter(Boolean).sort(),
   } as const;
 }
 
@@ -201,15 +220,8 @@ export async function GET(request: NextRequest) {
     const userIds = Array.from(
       new Set((historyResult.data ?? []).map((item) => item.created_by).filter((item): item is string => Boolean(item))),
     );
-    const usersResult = userIds.length
-      ? await resolution.supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", tenantId)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : { data: [] as AppUserRow[], error: null };
-    const userMap = new Map((usersResult.data ?? []).map((item) => [item.id, item]));
+    const users = await fetchTenantLinkedAppUsers<AppUserRow>(resolution.supabase, tenantId, userIds);
+    const userMap = new Map(users.map((item) => [item.id, item]));
 
     return NextResponse.json({
       history: (historyResult.data ?? []).map((item) => ({
@@ -298,6 +310,7 @@ export async function GET(request: NextRequest) {
     }
     response.projects = meta.projects;
     response.teams = meta.teams;
+    response.foremen = meta.foremen;
   }
 
   return NextResponse.json(response);
@@ -311,6 +324,11 @@ async function saveApr(request: NextRequest, method: "POST" | "PUT") {
 
   if ("error" in resolution) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  }
+
+  const authorizationError = await authorizePageAction(resolution, "controle-apr", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
   }
 
   const payload = (await request.json().catch(() => null)) as SavePayload | null;
@@ -386,6 +404,12 @@ export async function PATCH(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as StatusPayload | null;
   const id = normalizeUuid(payload?.id);
   const action = normalizeText(payload?.action).toUpperCase();
+
+  const authorizationError = await authorizePageAction(resolution, "controle-apr", "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const reason = normalizeText(payload?.reason) || null;
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
 

@@ -1,0 +1,1 @@
+export { StockCentersPageView } from "./StockCentersPageView";

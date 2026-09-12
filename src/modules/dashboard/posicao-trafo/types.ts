@@ -67,11 +67,29 @@ export type TrafoPositionSummary = {
   withTeamCount: number;
   outsideCount: number;
   retCount: number;
+  pendingSerialCount: number;
+};
+
+/**
+ * Agregado anonimo de `stock_serial_pending_balances`: unidades que ja entraram no
+ * estoque mas ainda nao tiveram o serial informado. Nao e unidade rastreada, entao nao
+ * aparece na lista de posicoes nem tem serial, LP, CMD, equipe, projeto ou data.
+ */
+export type PendingSerialBalanceItem = {
+  materialId: string;
+  materialCode: string;
+  description: string;
+  serialTrackingType: SerialTrackingType;
+  stockCenterId: string;
+  stockCenterName: string;
+  entryType: string;
+  quantity: number;
 };
 
 export type TrafoPositionListResponse = {
   items?: TrafoPositionListItem[];
   summary?: TrafoPositionSummary;
+  pendingSerialBalances?: PendingSerialBalanceItem[];
   pagination?: {
     page: number;
     pageSize: number;

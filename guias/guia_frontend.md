@@ -43,7 +43,8 @@ Este guia funde frontend (busca de dados, hooks, Next.js client/server component
 17. Apenas `useAuth()` acessa sessão, usuário e permissões — nunca recarregar permissões a cada troca de tela.
 18. `AuthContext` é a única fonte de revalidação e idle timeout.
 19. Autorização visual usa `session.pageAccess.includes("page-key")` — mas isso nunca substitui a autorização server-side (ver [`guia_backend.md`](guia_backend.md) regra 8): esconder botão/menu no front não é controle de acesso.
-20. Tokens não são armazenados fora da chave definida em `auth.service.ts`.
+20. Em tela nova, acesso visual à tela deve corresponder ao uso completo da própria tela. Não esconder função normal da tela por `page_key` diferente; quando houver exceção granular explicitamente decidida, todos os caminhos de estado e UI devem refletir essa exceção sem criar valor invisível.
+21. Tokens não são armazenados fora da chave definida em `auth.service.ts`.
 
 ## 4. Fluxo recomendado
 

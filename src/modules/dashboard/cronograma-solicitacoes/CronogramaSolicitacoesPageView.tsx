@@ -5,6 +5,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { isAdminRole } from "@/lib/auth/authorization";
 import { ActionIcon } from "@/components/ui/ActionIcon";
+import { FeedbackSlot } from "@/components/ui/FeedbackSlot";
+import { TableSkeletonRows } from "@/components/ui/TableSkeleton";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import styles from "./CronogramaSolicitacoesPageView.module.css";
@@ -20,6 +22,7 @@ import {
 } from "./api";
 import {
   DEFAULT_FILTERS,
+  EXPORT_PAGE_SIZE,
   PRIORIDADE_LABEL,
   SORT_OPTIONS,
   STATUS_LABEL,
@@ -102,6 +105,7 @@ export function CronogramaSolicitacoesPageView() {
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -395,7 +399,45 @@ export function CronogramaSolicitacoesPageView() {
     }
   };
 
-  const exportCsv = () => {
+  // A exportacao percorre TODAS as paginas do filtro atual. Antes ela serializava
+  // `items`, que e so a pagina visivel: o CSV saia com no maximo 20 linhas e nada na
+  // tela indicava o corte. A parada e por pagina vazia ou por `total` alcancado, e o
+  // `pageSize` respeita o teto real do servidor (`maxPageSize: 100`).
+  const exportCsv = async () => {
+    if (!token || exporting) return;
+
+    setExporting(true);
+    setError(null);
+    try {
+      const exported: SolicitacaoItem[] = [];
+      let exportPage = 1;
+      let total = 0;
+
+      for (;;) {
+        const data = await fetchList(token, filters, exportPage, EXPORT_PAGE_SIZE);
+        const pageItems = data.items ?? [];
+        total = data.pagination?.total ?? total;
+        exported.push(...pageItems);
+
+        if (!pageItems.length || exported.length >= total) break;
+        exportPage += 1;
+      }
+
+      if (!exported.length) {
+        setError("Nenhuma solicitacao encontrada para exportar com os filtros atuais.");
+        return;
+      }
+
+      buildAndDownloadCsv(exported);
+      setFeedback(`${exported.length} solicitacao(oes) exportada(s).`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao exportar solicitacoes.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const buildAndDownloadCsv = (source: SolicitacaoItem[]) => {
     const header = [
       "Projeto",
       "Tipo",
@@ -412,7 +454,7 @@ export function CronogramaSolicitacoesPageView() {
       "Status",
       "Ultima Atualizacao",
     ];
-    const rows = items.map((item) => [
+    const rows = source.map((item) => [
       item.projetoCodigo,
       TIPO_LABEL[item.tipo],
       PRIORIDADE_LABEL[item.prioridade],
@@ -454,8 +496,8 @@ export function CronogramaSolicitacoesPageView() {
               Tipo padrao por usuario
             </button>
           )}
-          <button type="button" className={styles.secondaryButton} onClick={exportCsv} disabled={!items.length}>
-            Exportar Excel (CSV)
+          <button type="button" className={styles.secondaryButton} onClick={() => void exportCsv()} disabled={!items.length || exporting}>
+            {exporting ? "Exportando..." : "Exportar Excel (CSV)"}
           </button>
           <button type="button" className={styles.primaryButton} onClick={openCreate}>
             Nova Solicitacao
@@ -472,11 +514,12 @@ export function CronogramaSolicitacoesPageView() {
         ))}
       </section>
 
-      {(error || feedback) && (
-        <div className={error ? styles.alertError : styles.alertOk} onClick={() => { setError(null); setFeedback(null); }}>
-          {error ?? feedback}
-        </div>
-      )}
+      <FeedbackSlot
+        as="div"
+        className={error ? styles.alertError : styles.alertOk}
+        message={error ?? feedback}
+        onClick={() => { setError(null); setFeedback(null); }}
+      />
 
       <section className={styles.filters}>
         <input
@@ -540,9 +583,7 @@ export function CronogramaSolicitacoesPageView() {
             </tr>
           </thead>
           <tbody>
-            {loading && (
-              <tr><td colSpan={12} className={styles.emptyCell}>Carregando...</td></tr>
-            )}
+            {loading && <TableSkeletonRows columns={12} rows={20} />}
             {!loading && items.length === 0 && (
               <tr><td colSpan={12} className={styles.emptyCell}>Nenhuma solicitacao encontrada.</td></tr>
             )}

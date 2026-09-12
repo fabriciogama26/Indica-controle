@@ -4,8 +4,16 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { parsePositiveInteger } from "@/lib/server/apiHelpers";
+import {
+  fetchTenantLinkedAppUsers,
+  loadAllRows,
+  loadRowsInChunks,
+  parsePositiveInteger,
+  SUPABASE_RESPONSE_ROW_CAP,
+} from "@/lib/server/apiHelpers";
 import { allowsPendingSerialIdentification, isSerialTrackedMaterial, normalizeSerialTrackingType, requiresLotCode, SerialTrackingType, serialTrackingLabel } from "@/lib/materialSerialTracking";
+import { canCreatePendingSerial as canCreatePendingSerialItem, movementTypeLabel } from "@/lib/stockSerialPolicy";
+import { loadStockSerialPolicy } from "@/lib/server/stockSerialPolicy";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -162,37 +170,7 @@ type HistoryValueMaps = {
   projects: Map<string, string>;
 };
 
-type QueryError = {
-  message: string;
-  code?: string;
-};
-
 const RELATION_QUERY_CHUNK_SIZE = 100;
-
-function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
-  const chunks: string[][] = [];
-  for (let index = 0; index < values.length; index += chunkSize) {
-    chunks.push(values.slice(index, index + chunkSize));
-  }
-  return chunks;
-}
-
-async function loadRowsInChunks<T>(
-  values: string[],
-  loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: QueryError | null }>,
-) {
-  const rows: T[] = [];
-
-  for (const chunk of chunkValues(values)) {
-    const result = await loadChunk(chunk);
-    if (result.error) {
-      return { data: null, error: result.error };
-    }
-    rows.push(...(result.data ?? []));
-  }
-
-  return { data: rows, error: null };
-}
 
 // Above this many IDs an IN/NOT IN filter makes the PostgREST query too large to send.
 const IN_FILTER_MAX_IDS = 200;
@@ -236,19 +214,26 @@ async function preloadMaterialTransferIds(
   if (!materials?.length) return { transferIds: [], materialIds: [] };
 
   const materialIds = materials.map((m: { id: string }) => m.id);
-  const result = await loadRowsInChunks<{ stock_transfer_id: string }>(
-    materialIds,
-    (chunk) => supabase
+  // NAO usa `loadRowsInChunks`: esta leitura e limitada DE PROPOSITO. O retorno e cortado em
+  // 200 ids logo abaixo, entao este preload e um filtro de busca best-effort, nao uma fonte de
+  // verdade. Passar o callback para o helper faria ele paginar ate exaurir — e, se o callback
+  // ignorasse `from`/`to` para manter o teto, a parada por pagina vazia nunca aconteceria e o
+  // laco seria infinito. Ficar fora do helper e a forma honesta de declarar um teto intencional.
+  const preloadRows: Array<{ stock_transfer_id: string }> = [];
+  for (let index = 0; index < materialIds.length; index += RELATION_QUERY_CHUNK_SIZE) {
+    const chunk = materialIds.slice(index, index + RELATION_QUERY_CHUNK_SIZE);
+    const { data } = await supabase
       .from("stock_transfer_items")
       .select("stock_transfer_id")
       .eq("tenant_id", tenantId)
       .in("material_id", chunk)
-      .limit(5000)
-      .returns<{ stock_transfer_id: string }[]>(),
-  );
+      .limit(SUPABASE_RESPONSE_ROW_CAP)
+      .returns<{ stock_transfer_id: string }[]>();
+    preloadRows.push(...(data ?? []));
+  }
 
   return {
-    transferIds: Array.from(new Set((result.data ?? []).map((r) => r.stock_transfer_id))).slice(0, 200),
+    transferIds: Array.from(new Set(preloadRows.map((r) => r.stock_transfer_id))).slice(0, 200),
     materialIds,
   };
 }
@@ -273,19 +258,26 @@ async function preloadTransferReversalSets(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<{ originalIds: Set<string>; reversalIds: Set<string> }> {
+  // Estes dois Sets classificam TODA linha da listagem como estornada / estorno. Truncar aqui nao
+  // some com linhas: faz movimentacao estornada aparecer como ativa, que e pior do que faltar dado.
+  // Por isso a leitura e paginada ate o fim, e nao um `.limit()` alto que o PostgREST corta em 1000.
   const [transferReversalsResult, itemReversalsResult] = await Promise.all([
-    supabase
-      .from("stock_transfer_reversals")
-      .select("original_stock_transfer_id, reversal_stock_transfer_id")
-      .eq("tenant_id", tenantId)
-      .limit(10000)
-      .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>(),
-    supabase
-      .from("stock_transfer_item_reversals")
-      .select("original_stock_transfer_id, reversal_stock_transfer_id")
-      .eq("tenant_id", tenantId)
-      .limit(10000)
-      .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>(),
+    loadAllRows<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }>((from, to) =>
+      supabase
+        .from("stock_transfer_reversals")
+        .select("original_stock_transfer_id, reversal_stock_transfer_id")
+        .eq("tenant_id", tenantId)
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>()),
+    loadAllRows<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }>((from, to) =>
+      supabase
+        .from("stock_transfer_item_reversals")
+        .select("original_stock_transfer_id, reversal_stock_transfer_id")
+        .eq("tenant_id", tenantId)
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<{ original_stock_transfer_id: string; reversal_stock_transfer_id: string }[]>()),
   ]);
 
   const rows = [
@@ -303,12 +295,16 @@ async function preloadTeamOpTransferIds(
   supabase: SupabaseClient,
   tenantId: string,
 ): Promise<Set<string>> {
-  const { data } = await supabase
-    .from("stock_transfer_team_operations")
-    .select("transfer_id")
-    .eq("tenant_id", tenantId)
-    .limit(10000)
-    .returns<{ transfer_id: string }[]>();
+  // Mesmo raciocinio de preloadTransferReversalSets: este Set decide se a linha e operacao de
+  // equipe. Truncado, a listagem classifica errado em vez de mostrar a menos.
+  const { data } = await loadAllRows<{ transfer_id: string }>((from, to) =>
+    supabase
+      .from("stock_transfer_team_operations")
+      .select("transfer_id")
+      .eq("tenant_id", tenantId)
+      .order("transfer_id", { ascending: true })
+      .range(from, to)
+      .returns<{ transfer_id: string }[]>());
 
   return new Set((data ?? []).map((r) => r.transfer_id));
 }
@@ -774,7 +770,7 @@ async function loadTransferList(request: NextRequest) {
   // Load items only for this page of transfers
   const { data: itemRows, error: itemsError } = await loadRowsInChunks<StockTransferItemRow>(
     transferIds,
-    (chunk) => {
+    (chunk, from, to) => {
       let itemsQuery = supabase
         .from("stock_transfer_items")
         .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code, cmd")
@@ -790,8 +786,12 @@ async function loadTransferList(request: NextRequest) {
         itemsQuery = itemsQuery.eq("cmd", false);
       }
 
-      return itemsQuery.returns<StockTransferItemRow[]>();
+      return itemsQuery
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<StockTransferItemRow[]>();
     },
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
   );
 
   if (itemsError) {
@@ -814,7 +814,7 @@ async function loadTransferList(request: NextRequest) {
     materialsResult,
     stockCentersResult,
     projectsResult,
-    usersResult,
+    users,
     reversalsFromOriginalResult,
     reversalsByReversalResult,
     itemReversalsFromOriginalResult,
@@ -844,56 +844,61 @@ async function loadTransferList(request: NextRequest) {
           .in("id", enrichProjectIds)
           .returns<ProjectRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
-    userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+    fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
           transferIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferIds.length
       ? loadRowsInChunks<StockTransferReversalRow>(
           transferIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferItemIds.length
       ? loadRowsInChunks<StockTransferItemReversalRow>(
           transferItemIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_item_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferItemReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
     transferItemIds.length
       ? loadRowsInChunks<StockTransferItemReversalRow>(
           transferItemIds,
-          (chunk) => supabase
+          (chunk, from, to) => supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_item_id", chunk)
+            .order("id", { ascending: true })
+            .range(from, to)
             .returns<StockTransferItemReversalRow[]>(),
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE },
         )
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
@@ -927,7 +932,7 @@ async function loadTransferList(request: NextRequest) {
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
   const userMap = new Map(
-    (usersResult.data ?? []).map((row) => [
+    users.map((row) => [
       row.id,
       String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
     ]),
@@ -1142,21 +1147,10 @@ async function loadTransferEditHistory(request: NextRequest) {
     new Set((historyRows ?? []).map((row) => row.created_by).filter((value): value is string => Boolean(value))),
   );
 
-  const usersResult = userIds.length
-    ? await supabase
-        .from("app_users")
-        .select("id, display, login_name")
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", userIds)
-        .returns<AppUserRow[]>()
-    : ({ data: [], error: null } as { data: AppUserRow[]; error: null });
-
-  if (usersResult.error) {
-    return NextResponse.json({ message: "Falha ao carregar autores do historico da movimentacao." }, { status: 500 });
-  }
+  const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
   const userMap = new Map(
-    (usersResult.data ?? []).map((row) => [
+    users.map((row) => [
       row.id,
       String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
     ]),
@@ -1367,6 +1361,16 @@ async function handleCreateStockTransfer(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao validar materiais da movimentacao de estoque." }, { status: 500 });
     }
 
+    const policyResult = await loadStockSerialPolicy(supabase, appUser.tenant_id);
+    if (policyResult.error) {
+      return NextResponse.json(
+        { message: "Falha ao carregar a politica de pendencia de serial do contrato." },
+        { status: 500 },
+      );
+    }
+
+    const serialPolicy = policyResult.data;
+
     const materialMap = new Map((materialsResult.data ?? []).map((row) => [row.id, row]));
     for (const item of items) {
       const material = materialMap.get(item.materialId);
@@ -1392,14 +1396,20 @@ async function handleCreateStockTransfer(request: NextRequest) {
         );
       }
 
-      const canCreatePendingSerial = allowsPendingSerialIdentification(
+      const canCreatePendingSerial = canCreatePendingSerialItem({
         serialTrackingType,
-        material?.allow_pending_serial_identification,
-      ) && (movementType === "ENTRY" || movementType === "TRANSFER");
+        allowPendingSerialIdentification: material?.allow_pending_serial_identification,
+        movementType,
+        policy: serialPolicy,
+      });
 
       if (!hasSerial && !canCreatePendingSerial) {
         return NextResponse.json(
-          { message: `Serial e obrigatorio para material ${serialTrackingLabel(serialTrackingType)}.` },
+          {
+            message: allowsPendingSerialIdentification(serialTrackingType, material?.allow_pending_serial_identification)
+              ? `Serial e obrigatorio para material ${serialTrackingLabel(serialTrackingType)} em ${movementTypeLabel(movementType)}: este contrato nao aceita pendencia de identificacao neste movimento.`
+              : `Serial e obrigatorio para material ${serialTrackingLabel(serialTrackingType)}.`,
+          },
           { status: 400 },
         );
       }

@@ -211,3 +211,31 @@ Atualizacao 2026-08-15 - Escrita concorrente deixa de ter janela de corrida real
   `npm run build` falha neste ambiente por um erro pre-existente e nao relacionado (arquivos
   Deno em `Backup/` sendo varridos pelo typecheck do Next) — confirmado com `git stash` antes
   desta tarefa.
+
+Atualizacao 2026-08-21 - Exportacao CSV saia com 20 linhas
+--------------------------------------------------------------------------
+ACHADO (ver `Auditoria/14-exportacoes-csv.md`)
+- O botao `Exportar Excel (CSV)` serializava `items`, que e o array da PAGINA CORRENTE.
+  Com `PAGE_SIZE = 20`, o CSV saia com no maximo 20 linhas — sempre, desde a criacao da
+  tela, independente de volume ou de filtro. Nada na tela indicava o corte.
+- Foi o pior achado da auditoria de exportacoes em dano por simplicidade: nao depende de
+  teto de servidor nem de tamanho de base, e acontecia em 100% das exportacoes.
+
+CORRECAO
+- `exportCsv` virou assincrono e percorre TODAS as paginas do filtro atual, parando por
+  pagina vazia ou por `pagination.total` alcancado.
+- `fetchList` passou a aceitar `pageSize`, e a exportacao usa `EXPORT_PAGE_SIZE = 100`,
+  casado com o `maxPageSize: 100` de `handlers.ts`. Pedir mais nao adianta: o servidor capa
+  em silencio e a exportacao sairia curta achando que leu tudo.
+- O botao mostra `Exportando...` e fica desabilitado durante a operacao; ao fim, o feedback
+  informa quantas solicitacoes sairam.
+- Tambem corrigido o `.limit(5000)` em `handlers.ts` (lista de projetos de apoio) e o
+  `.limit(2000)` em `queries.ts` (usuarios), ambos cortados em 1.000 pelo PostgREST: opcao
+  de filtro sumia da tela sem nenhum sinal.
+
+- Arquivos alterados:
+  - `src/modules/dashboard/cronograma-solicitacoes/CronogramaSolicitacoesPageView.tsx`
+  - `src/modules/dashboard/cronograma-solicitacoes/api.ts`
+  - `src/modules/dashboard/cronograma-solicitacoes/constants.ts`
+  - `src/server/modules/cronograma-solicitacoes/handlers.ts`
+  - `src/server/modules/cronograma-solicitacoes/queries.ts`

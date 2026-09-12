@@ -40,11 +40,13 @@ Cadastro
   - Hora inicial
   - Ao menos uma pessoa
 - Campos opcionais:
+  - Projeto, quando `Situacao da equipe = Nao atuou`
   - Observacoes
 - Selecao de projetos:
   - O usuario digita um SOB valido e clica em `Adicionar`.
   - A composicao pode manter mais de um projeto.
   - O mesmo projeto nao pode ser adicionado duas vezes.
+  - Quando `Situacao da equipe = Nao atuou`, Projeto pode ser informado para referencia operacional, mas nao e obrigatorio.
   - O primeiro projeto selecionado e mantido em `team_compositions.project_id` como referencia legada.
   - Todos os projetos ficam normalizados em `team_composition_projects`.
 - Ao selecionar uma equipe:
@@ -64,10 +66,10 @@ Cadastro
   - Bloqueia composicao com mais de um integrante cuja funcao/cargo contenha `ENCARREGADO`.
   - Permite marcar `Presente = Sim/Nao` por integrante.
   - Quando `Situacao da equipe = Nao atuou`, a tela mantem somente o encarregado vinculado a equipe, marca `Presente = Nao` e bloqueia inclusao, remocao ou alteracao de presenca.
-  - Quando `Situacao da equipe = Nao atuou`, a lista de Projetos e limpa, o campo fica desabilitado e nenhum projeto e enviado para persistencia.
 - Validacao de salvamento:
   - A tela mostra todos os campos obrigatorios pendentes em uma unica mensagem.
-  - Campos verificados: Data, ao menos um Projeto valido, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
+  - Campos verificados: Data, ao menos um Projeto valido somente em `Atuando`, Equipe valida, Setor, Hora inicial, Patio/Centro de Servico da equipe e ao menos uma pessoa.
+  - Em `Nao atuou`, Projeto vazio passa; se Projeto for informado, a tela, a API e a RPC validam SOB/projeto ativo do tenant antes de salvar.
   - A API e a RPC `save_team_composition_record` repetem as mesmas regras de campos obrigatorios, duplicidade de matricula e limite de um encarregado.
   - A API faz pre-checagem de integrante presente em outra equipe na mesma data; o banco reforca a mesma regra com trigger deferrable e lock transacional por pessoa/data.
 - Persistencia:
@@ -603,3 +605,134 @@ Atualizacao 2026-08-12 - Filtro de projetos sem Medicao
   - `TeamCompositionPageView.tsx` permanece acima do limite recomendado pelo guia
     de frontend; a proxima melhoria estrutural deve extrair filtros/lista/modais
     para componentes/hooks do proprio modulo.
+
+
+Atualizacao 2026-08 - Encarregado selecionavel na composicao
+------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/373_team_composition_foreman_override.sql` (novo)
+  - `src/app/api/composicao-equipe/route.ts`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+- Funcoes/hooks/constantes tocadas:
+  - RPC `save_team_composition_record` (novo parametro `p_foreman_person_id`)
+  - `fetchTeamById`, `saveComposition`, `mapComposition` (`route.ts`)
+  - `applyTeam`, `applyForeman` (nova), `applyWorkStatus`, `removeMember`,
+    `addMember`, `startEdit`, `handleSubmit`, `getFormForemanPhone`,
+    `foremanOptions`, `selectedForeman` (`TeamCompositionPageView.tsx`)
+- Comportamento antes/depois:
+  - Antes: o encarregado era derivado da equipe (`teams.foreman_person_id`),
+    exibido em campo travado e inserido automaticamente como integrante 1 ao
+    selecionar a equipe.
+  - Depois: `Encarregado` e um `select` obrigatorio, listando apenas pessoas
+    ativas com cargo contendo `ENCARREGADO`. A selecao da equipe nao insere mais
+    ninguem; quem entra como integrante e o encarregado escolhido.
+  - Depois: a composicao grava `foreman_person_id` alem do
+    `foreman_name_snapshot`, permitindo emprestar um encarregado para outra
+    equipe em um dia especifico sem alterar o cadastro de Equipes.
+  - Depois: `Nao atuou` exige exatamente o encarregado selecionado como unico
+    integrante, marcado como nao presente (antes exigia o encarregado do
+    cadastro da equipe).
+  - Depois: remover o encarregado pela lista de integrantes e bloqueado; a troca
+    acontece pelo campo `Encarregado`.
+  - Mantido: os cards do painel diario continuam exibindo o encarregado do
+    cadastro da equipe (`teams.foreman_person_id`), nao o da composicao.
+  - Mantido: `phone_snapshot` de todos os integrantes continua sendo o telefone
+    do encarregado - agora o da composicao, nao o do cadastro da equipe.
+- Regras de integridade:
+  - `team_compositions_foreman_single_team_per_date` (EXCLUDE via btree_gist)
+    garante no banco que o mesmo encarregado nao responde por EQUIPES DIFERENTES
+    na mesma data. Isso torna deterministica a resolucao inversa
+    encarregado + data -> equipe e substitui qualquer checagem otimista no Node.
+  - A constraint vale somente para composicao `WORKING` (ajuste da migration 374).
+    Equipe que nao atuou nao ocupa o dia do encarregado: o caso comum e o
+    encarregado oficial de uma MK ir para o CESTO no dia, com a MK registrando
+    "Nao atuou" com ele como unico integrante nao presente. Mesma decisao que a
+    migration 354 ja tinha tomado para integrantes (`is_present = false` nao
+    ocupa a pessoa).
+  - Duas composicoes ativas da MESMA equipe na mesma data continuam permitidas,
+    como hoje: `ux_team_compositions_context_active` as autoriza por projeto
+    principal distinto e a operacao usa esse caminho. A resolucao inversa nao
+    fica ambigua porque a resposta e a mesma equipe.
+  - Composicoes legadas com o mesmo encarregado em equipes diferentes na mesma
+    data ficaram com `foreman_person_id` nulo no backfill e continuam
+    resolvendo o encarregado pela cadeia atual.
+  - A RPC recusa encarregado inativo, de outro tenant, sem cargo de Encarregado,
+    ou ausente da lista de integrantes.
+  - Continua valendo o limite de um unico integrante com cargo de Encarregado por
+    composicao.
+- Impacto multi-tenant:
+  - `foreman_person_id` usa FK composta `(foreman_person_id, tenant_id)` para
+    `people(id, tenant_id)`.
+  - A rota nunca aceita `tenant_id` do payload; a RPC valida a pessoa dentro do
+    tenant da sessao.
+  - EXECUTE da RPC continua restrito a `service_role`; a assinatura anterior foi
+    removida com `drop function` para evitar sobrecarga ambigua no PostgREST.
+- Ajuste posterior (mesma Atualizacao): botao "Fazer medicao"
+  - Antes: `openMeasurement` usava `projectId ?? projectIds[0]` e abria o projeto
+    principal em silencio. Composicao com mais de um projeto (migration 266)
+    deixava os demais sem caminho pela tela.
+  - Depois: com mais de um projeto o botao abre `MeasurementProjectModal`, que
+    lista as obras da composicao com Centro de Servico e indicacao de quais ja tem
+    medicao registrada naquele contexto Projeto + Equipe + Data. Com um unico
+    projeto o comportamento continua direto, sem clique extra.
+  - Depois: a navegacao passa `foremanName` na query, e a Medicao usa esse valor
+    no campo somente-leitura de Encarregado. Antes a Medicao exibia o encarregado
+    do CADASTRO da equipe em ordem nova, enquanto o trigger da 374 gravava o da
+    composicao — o campo mostrava uma pessoa e salvava outra.
+  - Estrutura: os tipos da tela sairam do `PageView` para `types.ts` e o modal
+    novo ficou em `components/MeasurementProjectModal.tsx`. O `PageView` caiu de
+    1.409 para 1.308 linhas, primeiro passo do plano de modularizacao registrado
+    na secao de lacuna tecnica.
+
+- Escopo desta entrega:
+  - Somente a tela Composicao de Equipe. Medicao, Controle APR, Mapa de
+    Programacao e as operacoes de estoque continuam resolvendo o encarregado por
+    `resolve_team_foreman_snapshot` (historico -> cadastro), sem enxergar o
+    encarregado da composicao. Essa propagacao e a fase seguinte.
+
+Atualizacao 2026-08 - Estabilidade visual / CLS
+------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.module.css`
+- Funcoes/hooks/constantes tocadas:
+  - `TeamCompositionPageView`
+  - `.coverageMessageLoading`
+  - `.compositionsTableWrapper`
+- Comportamento antes/depois:
+  - Antes: o painel `Composicoes das Equipes` exibia apenas a mensagem
+    `Carregando equipes...` e depois inseria a grade completa de cards, empurrando
+    cadastro, filtros e lista para baixo.
+  - Depois: a mensagem de carregamento reserva altura equivalente ao painel
+    diario enquanto metadados e cobertura carregam.
+  - Antes: a tabela `Lista de Composicoes` podia nascer com uma linha curta de
+    loading/vazio e crescer bastante apos a resposta da API.
+  - Depois: a tabela principal possui altura minima para reduzir deslocamento
+    durante a troca para os registros reais.
+- Impacto multi-tenant:
+  - Sem mudanca de API, banco, tenant_id, RLS, grants ou permissoes.
+
+Atualizacao 2026-08 - Projeto opcional em Nao atuou
+---------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/composicao-equipe/TeamCompositionPageView.tsx`
+  - `src/app/api/composicao-equipe/route.ts`
+  - `supabase/migrations/405_allow_not_working_composition_with_optional_project.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `applyWorkStatus`
+  - `addProject`
+  - `handleSubmit`
+  - `saveComposition`
+  - RPC `save_team_composition_record`
+- Comportamento antes/depois:
+  - Antes: ao selecionar `Nao atuou`, a tela limpava Projetos, bloqueava o campo e a API/RPC recusavam qualquer projeto informado.
+  - Depois: `Nao atuou` permite adicionar Projeto como referencia operacional, mas continua aceitando cadastro sem Projeto.
+  - Depois: `Atuando` continua exigindo ao menos um Projeto valido.
+  - Depois: se Projeto for informado em `Nao atuou`, a tela, a API e a RPC validam projeto ativo do tenant e persistem snapshots em `team_compositions` e `team_composition_projects`.
+- Impacto multi-tenant:
+  - Projeto opcional continua validado por `tenant_id = appUser.tenant_id`.
+  - A RPC permanece `SECURITY DEFINER` executavel apenas por `service_role`, com revoke explicito de `public`, `anon` e `authenticated`.
+  - Nao houve mudanca de RLS, grants de tabela, permissao de pagina ou aceite de `tenant_id` vindo do cliente.

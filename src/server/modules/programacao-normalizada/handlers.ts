@@ -29,6 +29,7 @@ import {
   normalizePositiveInteger,
   normalizeText,
   normalizeUniqueTextArray,
+  normalizeUuid,
 } from "./normalizers";
 import type {
   AddTeamPayload,
@@ -91,6 +92,20 @@ function normalizeActivitiesPayload(activities: SaveProgrammingStagePayload["act
     .filter((item) => item.catalogId && item.quantity > 0);
 }
 
+function normalizeTeamForemanPayload(teamForemanIds: SaveProgrammingStagePayload["teamForemanIds"] | undefined, teamIds: string[] | null) {
+  if (!teamForemanIds || typeof teamForemanIds !== "object" || !teamIds?.length) return { value: {} as Record<string, string>, hasEmptyForeman: false };
+
+  const allowedTeamIds = new Set(teamIds);
+  const normalized: Record<string, string> = {};
+  for (const [teamIdRaw, foremanIdRaw] of Object.entries(teamForemanIds)) {
+    const teamId = normalizeText(teamIdRaw);
+    const foremanId = normalizeText(foremanIdRaw);
+    if (teamId && allowedTeamIds.has(teamId) && !foremanId) return { value: normalized, hasEmptyForeman: true };
+    if (teamId && foremanId && allowedTeamIds.has(teamId)) normalized[teamId] = foremanId;
+  }
+  return { value: normalized, hasEmptyForeman: false };
+}
+
 export async function authorizeProgrammingNormalizadaAction(context: AuthenticatedAppUserContext, action: PageAction) {
   const authorization = await requirePageAction({ context, pageKey: PROGRAMMING_NORMALIZADA_PAGE_KEY, action });
   if (authorization.allowed) return null;
@@ -146,6 +161,11 @@ export async function saveProgrammingStage(request: NextRequest, method: "POST" 
   }
 
   const teamIds = payload?.teamIds === undefined ? null : normalizeUniqueTextArray(payload.teamIds);
+  const teamForemanResult = normalizeTeamForemanPayload(payload?.teamForemanIds, teamIds);
+  if (teamForemanResult.hasEmptyForeman) {
+    return NextResponse.json({ message: "Selecione o encarregado programado para uma das equipes." }, { status: 400 });
+  }
+  const teamForemanIds = teamForemanResult.value;
 
   const result = await saveProgrammingStageViaRpc({
     supabase: resolution.supabase,
@@ -177,6 +197,7 @@ export async function saveProgrammingStage(request: NextRequest, method: "POST" 
     note: normalizeNullableText(payload?.note),
     historyReason: normalizeNullableText(payload?.historyReason),
     isPendencia,
+    teamForemanIds,
     documents: normalizeDocumentsPayload(payload?.documents),
     activities: normalizeActivitiesPayload(payload?.activities),
   });
@@ -216,9 +237,15 @@ export async function addProgrammingTeam(request: NextRequest) {
   const payload = (await request.json().catch(() => null)) as AddTeamPayload | null;
   const programmingId = normalizeText(payload?.programmingId);
   const teamId = normalizeText(payload?.teamId);
+  const programmedForemanRaw = normalizeText(payload?.programmedForemanPersonId);
+  const programmedForemanPersonId = programmedForemanRaw ? normalizeUuid(programmedForemanRaw) : null;
 
   if (!programmingId || !teamId) {
     return NextResponse.json({ message: "Informe a etapa e a equipe a adicionar." }, { status: 400 });
+  }
+
+  if (programmedForemanRaw && !programmedForemanPersonId) {
+    return NextResponse.json({ message: "Encarregado programado invalido." }, { status: 400 });
   }
 
   const result = await addProgrammingTeamViaRpc({
@@ -227,6 +254,7 @@ export async function addProgrammingTeam(request: NextRequest) {
     actorUserId: resolution.appUser.id,
     programmingId,
     teamId,
+    programmedForemanPersonId,
   });
 
   if (!result.ok) {

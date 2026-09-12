@@ -38,7 +38,9 @@ const menuSections = [
       { href: "/mapa-programacao", label: "Mapa de Programacao", icon: "calendar" },
       { href: "/composicao-equipe", label: "Composicao de Equipe", icon: "users" },
       { href: "/controle-apr", label: "Controle de APR", icon: "calendar" },
+      { href: "/permissao-intervencao", label: "Permissao de Intervencao", icon: "folder" },
       { href: "/medicao", label: "Medicao", icon: "calendar" },
+      { href: "/medicao-comercial", label: "Medicao Comercial", icon: "calendar" },
       { href: "/medicao-visualizacao", label: "Visualizacao Medicao", icon: "calendar" },
       { href: "/apuracao-fator-minimo", label: "Apuracao de Fator Minimo", icon: "calendar" },
       { href: "/medicao-asbuilt", label: "Medicao Asbuilt", icon: "calendar" },
@@ -56,6 +58,7 @@ const menuSections = [
       { href: "/saida", label: "Operacoes de Equipe", icon: "arrow-up" },
       { href: "/requisicao-solicitacao", label: "Solicitacao de Requisicao", icon: "arrow-up" },
       { href: "/requisicao-atendimento", label: "Atendimento de Requisicoes", icon: "box" },
+      { href: "/estorno-atendimento", label: "Atendimento de Estornos", icon: "box" },
       { href: "/estornos", label: "Estornos", icon: "box" },
       { href: "/consumo-projeto", label: "Consumo por Projeto", icon: "box" },
     ],
@@ -77,13 +80,22 @@ const menuSections = [
       { href: "/configuracao-mapa-almoxarifado", label: "Mapa Almoxarifado", icon: "settings" },
       { href: "/prioridade", label: "Prioridade", icon: "settings" },
       { href: "/centro-servico", label: "Centro de Servico", icon: "settings" },
+      { href: "/centro-estoque", label: "Centro de estoque", icon: "settings" },
+      { href: "/politica-serial", label: "Politica de Serial", icon: "settings" },
       { href: "/contrato", label: "Contrato", icon: "settings" },
+      { href: "/categoria-atividade", label: "Categoria de Atividade", icon: "settings" },
+      { href: "/grupo-atividade", label: "Grupo de Atividade", icon: "settings" },
+      { href: "/motivo-sem-producao", label: "Motivo sem producao", icon: "settings" },
+      { href: "/datas-bloqueadas", label: "Datas Bloqueadas", icon: "calendar" },
+      // `Modelo de PI` fica aqui, e nao junto da PI em Operacao: trocar o modelo
+      // oficial e ato de administracao do contrato, nao rotina de quem emite PI.
+      { href: "/modelo-pi", label: "Modelo de PI", icon: "settings" },
       { href: "/tipo-equipe", label: "Tipo de Equipe", icon: "settings" },
       { href: "/imei", label: "Imei", icon: "settings" },
       { href: "/tipo-servico", label: "Tipo de Servico", icon: "settings" },
       { href: "/nivel-tensao", label: "Nivel de Tensao", icon: "settings" },
       { href: "/porte", label: "Porte", icon: "settings" },
-      { href: "/responsavel-distribuidora", label: "Responsavel Distribuidora", icon: "settings" },
+      { href: "/responsavel-distribuidora", label: "Responsaveis Distribuidora", icon: "settings" },
       { href: "/municipio", label: "Municipio", icon: "settings" },
     ],
   },
@@ -100,7 +112,7 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   },
   "/dashboard-equipes": {
     title: "Dashboard Equipes",
-    subtitle: "Desempenho por MK, encarregado e supervisor no ciclo.",
+    subtitle: "Desempenho por equipes, profissionais e supervisores no ciclo.",
   },
   "/dashboard-carteira-operacional": {
     title: "Dashboard Carteira Operacional",
@@ -154,6 +166,14 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Controle de APR",
     subtitle: "Cadastro, conferencia e acompanhamento de APR por projeto, equipe e data.",
   },
+  "/permissao-intervencao": {
+    title: "Permissao de Intervencao",
+    subtitle: "Cadastro da PI vinculada a Projeto + Data da etapa.",
+  },
+  "/modelo-pi": {
+    title: "Modelo de PI",
+    subtitle: "Cadastro base das versoes do template Word da Permissao de Intervencao.",
+  },
   "/programacao": {
     title: "Programacao (Legado)",
     subtitle: "Tela antiga desativada com redirecionamento para o novo fluxo.",
@@ -161,6 +181,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/medicao": {
     title: "Medicao",
     subtitle: "Gestao de medicoes operacionais por projeto e periodo.",
+  },
+  "/medicao-comercial": {
+    title: "Medicao Comercial",
+    subtitle: "Medicoes das equipes comerciais, com os dois eletricistas da execucao.",
   },
   "/medicao-visualizacao": {
     title: "Visualizacao Medicao",
@@ -197,6 +221,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/requisicao-atendimento": {
     title: "Atendimento de Requisicoes",
     subtitle: "Fila de pedidos para aceitar, reduzir ou recusar item a item.",
+  },
+  "/estorno-atendimento": {
+    title: "Atendimento de Estornos",
+    subtitle: "Fila de pedidos de estorno para analise, aprovacao, recusa e execucao.",
   },
   "/estornos": {
     title: "Estornos",
@@ -242,6 +270,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Centro de Servico",
     subtitle: "Cadastro base dos centros de servico do tenant.",
   },
+  "/centro-estoque": {
+    title: "Centro de estoque",
+    subtitle: "Cadastro base dos centros fisicos de estoque usados pelo almoxarifado.",
+  },
   "/contrato": {
     title: "Contrato",
     subtitle: "Cadastro base de contratos do tenant.",
@@ -250,9 +282,25 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     title: "Atividades",
     subtitle: "Cadastro de atividades de contratos e servicos.",
   },
+  "/categoria-atividade": {
+    title: "Categoria de Atividade",
+    subtitle: "Cadastro base das categorias que alimentam o campo Categoria em Atividades.",
+  },
+  "/grupo-atividade": {
+    title: "Grupo de Atividade",
+    subtitle: "Cadastro base dos grupos que alimentam o campo Grupo em Atividades.",
+  },
+  "/motivo-sem-producao": {
+    title: "Motivo sem producao",
+    subtitle: "Cadastro base dos motivos usados em ordens sem producao.",
+  },
+  "/datas-bloqueadas": {
+    title: "Datas Bloqueadas",
+    subtitle: "Cadastro base das datas em que a operacao nao deve programar.",
+  },
   "/tipo-equipe": {
     title: "Tipo de Equipe",
-    subtitle: "Cadastro base dos tipos de equipes.",
+    subtitle: "Cadastro base dos tipos de equipes, usados tambem no campo Tipo de Atividades.",
   },
   "/imei": {
     title: "Imei",
@@ -271,8 +319,8 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Cadastro base de porte para classificacao operacional.",
   },
   "/responsavel-distribuidora": {
-    title: "Responsavel Distribuidora",
-    subtitle: "Cadastro base dos responsaveis da distribuidora.",
+    title: "Responsaveis Distribuidora",
+    subtitle: "Cadastro base de responsaveis e gestores de campo da distribuidora.",
   },
   "/municipio": {
     title: "Municipio",
@@ -422,6 +470,7 @@ export function AppShell({ children }: PropsWithChildren) {
 
   const normalizedRole = normalizeRole(session?.user.role);
   const isAdmin = isAdminRole(normalizedRole);
+  const requiresTenantSelection = session?.source === "remote" && isAdmin && !session.user.activeTenantId;
   const routeAccessContext = useMemo(
     () => ({
       role: session?.user.role,
@@ -437,6 +486,12 @@ export function AppShell({ children }: PropsWithChildren) {
       router.replace("/login");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && requiresTenantSelection && pathname !== "/selecionar-contrato") {
+      router.replace("/selecionar-contrato");
+    }
+  }, [isAuthenticated, isLoading, pathname, requiresTenantSelection, router]);
 
   const header = useMemo(() => {
     if (!pathname) {
@@ -466,10 +521,10 @@ export function AppShell({ children }: PropsWithChildren) {
   }, [visibleSections]);
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated && !canAccessCurrentRoute) {
+    if (!isLoading && isAuthenticated && !requiresTenantSelection && !canAccessCurrentRoute) {
       router.replace(fallbackRoute ?? "/login");
     }
-  }, [canAccessCurrentRoute, fallbackRoute, isAuthenticated, isLoading, router]);
+  }, [canAccessCurrentRoute, fallbackRoute, isAuthenticated, isLoading, requiresTenantSelection, router]);
 
   if (isLoading || !session) {
     return (
@@ -480,6 +535,7 @@ export function AppShell({ children }: PropsWithChildren) {
   }
 
   const displayName = session.user.displayName?.trim() || "Usuario";
+  const tenantLabel = session.user.tenantName?.trim() || session.user.tenantId || "sem contrato";
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -530,8 +586,8 @@ export function AppShell({ children }: PropsWithChildren) {
 
             <div className={styles.userIdentity}>
               <span className={styles.userName}>{displayName}</span>
-              <span className={styles.userMeta}>
-                Tenant: {session.user.tenantId} | Perfil: {normalizedRole || "sem role"}
+              <span className={styles.userMeta} title={`Contrato: ${tenantLabel}`}>
+                Contrato: {tenantLabel} | Perfil: {normalizedRole || "sem role"}
               </span>
             </div>
 

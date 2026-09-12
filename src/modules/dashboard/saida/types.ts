@@ -23,9 +23,22 @@ export type MaterialOption = {
   id: string;
   materialCode: string;
   description: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
   materialType: string;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+};
+
+export type MaterialSubcategoryOption = {
+  id: string;
+  name: string;
+};
+
+export type MaterialCategoryOption = {
+  id: string;
+  name: string;
+  subcategories: MaterialSubcategoryOption[];
 };
 
 export type ReversalReasonOption = {
@@ -39,6 +52,7 @@ export type MetaResponse = {
   teams?: TeamOption[];
   projects?: ProjectOption[];
   materials?: MaterialOption[];
+  categoryOptions?: MaterialCategoryOption[];
   reversalReasons?: ReversalReasonOption[];
   fieldReturnOriginName?: string;
   canDirectRequisition?: boolean;
@@ -60,6 +74,10 @@ export type TeamOperationListItem = {
   materialId: string;
   materialCode: string;
   description: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
+  categoryName: string | null;
+  subcategoryName: string | null;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
   quantity: number;
@@ -164,6 +182,8 @@ export type TeamOperationFormItem = {
   materialId: string;
   materialCode: string;
   description: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
   quantity: number;
   serialNumber: string;
   lotCode: string;
@@ -229,6 +249,8 @@ export type FilterState = {
   teamId: string;
   projectId: string;
   materialCode: string;
+  categoryId: string;
+  subcategoryId: string;
   entryType: "TODOS" | "NOVO" | "SUCATA";
   reversalStatus: "TODOS" | "ESTORNADAS" | "NAO_ESTORNADAS" | "ESTORNOS";
 };

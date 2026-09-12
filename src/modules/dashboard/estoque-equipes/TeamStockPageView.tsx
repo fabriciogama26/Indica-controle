@@ -10,7 +10,6 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { usePagination } from "@/hooks/usePagination";
 import {
   EXPORT_COOLDOWN_MS,
-  EXPORT_PAGE_SIZE,
   HISTORY_PAGE_SIZE,
   INITIAL_FILTERS,
   PAGE_SIZE,
@@ -210,21 +209,18 @@ export function TeamStockPageView() {
     window.setTimeout(() => setIsExportCooldownActive(false), EXPORT_COOLDOWN_MS);
 
     try {
-      const exportedItems: TeamStockItem[] = [];
-      let exportPage = 1;
-      let exportTotal = 0;
+      const params = new URLSearchParams(buildTeamStockQuery(filters, 1, PAGE_SIZE));
+      params.set("mode", "export");
+      params.delete("page");
+      params.delete("pageSize");
 
-      do {
-        const response = await fetch(
-          `/api/team-stock-balance?${buildTeamStockQuery(filters, exportPage, EXPORT_PAGE_SIZE)}`,
-          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
-        );
-        const payload = (await response.json().catch(() => ({}))) as TeamStockResponse;
-        if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar o estoque das equipes.");
-        exportedItems.push(...(payload.items ?? []));
-        exportTotal = payload.pagination?.total ?? 0;
-        exportPage += 1;
-      } while (exportedItems.length < exportTotal);
+      const response = await fetch(`/api/team-stock-balance?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as TeamStockResponse;
+      if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar o estoque das equipes.");
+      const exportedItems = payload.items ?? [];
 
       const headers = ["Equipe", "Status equipe", "Encarregado", "Base", "Material", "Descricao", "UMB", "Tipo", "Saldo", "Ultima movimentacao"];
       const rows = exportedItems.map((item) => [

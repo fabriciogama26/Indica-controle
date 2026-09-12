@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 
@@ -235,13 +236,18 @@ async function loadForecast(context: AuthenticatedAppUserContext, projectId: str
 }
 
 async function loadProjectTransfers(context: AuthenticatedAppUserContext, projectId: string) {
-  const { data, error } = await context.supabase
+  // Le TODAS as movimentacoes do projeto: o `.limit(5000)` anterior era cortado em
+  // 1.000 pelo PostgREST sem sinalizar, e como esta lista alimenta o consumo por
+  // material, o projeto com mais de 1.000 movimentacoes exibia (e exportava) consumo
+  // subestimado com cara de numero fechado.
+  const { data, error } = await loadAllRows<TransferRow>((from, to) => context.supabase
     .from("stock_transfers")
     .select("id, from_stock_center_id, to_stock_center_id, project_id, entry_date, updated_at, created_at")
     .eq("tenant_id", context.appUser.tenant_id)
     .eq("project_id", projectId)
-    .limit(5000)
-    .returns<TransferRow[]>();
+    .order("id", { ascending: true })
+    .range(from, to)
+    .returns<TransferRow[]>());
 
   if (error) {
     throw new Error("Falha ao carregar movimentacoes do projeto.");

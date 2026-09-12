@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { buildUserDisplayMap, parsePagination } from "@/lib/server/apiHelpers";
+import { buildUserDisplayMap, fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 import { normalizeExpectedUpdatedAt } from "@/lib/server/concurrency";
 import { DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
@@ -449,19 +449,8 @@ export async function handleWarehouseConfigHistoryGet(request: NextRequest) {
   const rows = data ?? [];
   const userIds = Array.from(new Set(rows.map((row) => row.created_by).filter((id): id is string => Boolean(id))));
 
-  let userDisplayMap = new Map<string, string>();
-  if (userIds.length > 0) {
-    const usersResult = await context.supabase
-      .from("app_users")
-      .select("id, display, login_name")
-      .in("id", userIds);
-
-    if (usersResult.error) {
-      return NextResponse.json({ message: "Falha ao carregar historico da configuracao do mapa." }, { status: 500 });
-    }
-
-    userDisplayMap = buildUserDisplayMap(usersResult.data ?? []);
-  }
+  const users = await fetchTenantLinkedAppUsers(context.supabase, context.appUser.tenant_id, userIds);
+  const userDisplayMap = buildUserDisplayMap(users);
 
   return NextResponse.json({
     entries: rows.map((row) => ({

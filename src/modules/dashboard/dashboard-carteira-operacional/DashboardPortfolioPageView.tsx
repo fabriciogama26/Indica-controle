@@ -289,6 +289,14 @@ export function DashboardPortfolioPageView() {
             </select>
           </label>
           <label className={styles.field}>
+            <span>Tipo</span>
+            <select value={dashboard.draftFilters.serviceScope} onChange={(event) => dashboard.setDraftFilters((current) => ({ ...current, serviceScope: event.target.value as typeof current.serviceScope }))}>
+              <option value="ALL">Todos</option>
+              <option value="OBRAS">Obras</option>
+              <option value="MANUTENCAO">Manutencao</option>
+            </select>
+          </label>
+          <label className={styles.field}>
             <span>Projeto (SOB)</span>
             <input
               list="dashboard-carteira-projects"

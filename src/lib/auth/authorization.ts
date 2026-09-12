@@ -20,8 +20,10 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/programacao", pageKey: "programacao-normalizada" },
   { prefix: "/composicao-equipe", pageKey: "composicao-equipe" },
   { prefix: "/controle-apr", pageKey: "controle-apr" },
+  { prefix: "/permissao-intervencao", pageKey: "permissao-intervencao" },
   { prefix: "/apuracao-fator-minimo", pageKey: "apuracao-fator-minimo" },
   { prefix: "/medicao-asbuilt", pageKey: "medicao-asbuilt" },
+  { prefix: "/medicao-comercial", pageKey: "medicao-comercial" },
   { prefix: "/medicao-visualizacao", pageKey: "medicao-visualizacao" },
   { prefix: "/medicao", pageKey: "medicao" },
   { prefix: "/faturamento", pageKey: "faturamento" },
@@ -34,6 +36,7 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/saida", pageKey: "saida" },
   { prefix: "/requisicao-solicitacao", pageKey: "requisicao-solicitacao" },
   { prefix: "/requisicao-atendimento", pageKey: "requisicao-atendimento" },
+  { prefix: "/estorno-atendimento", pageKey: "estorno-atendimento" },
   { prefix: "/estornos", pageKey: "estornos" },
   { prefix: "/consumo-projeto", pageKey: "consumo-projeto" },
   { prefix: "/materiais", pageKey: "materiais" },
@@ -43,8 +46,14 @@ const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/configuracao-mapa-almoxarifado", pageKey: "configuracao-mapa-almoxarifado" },
   { prefix: "/prioridade", pageKey: "prioridade" },
   { prefix: "/centro-servico", pageKey: "centro-servico" },
+  { prefix: "/centro-estoque", pageKey: "centro-estoque" },
   { prefix: "/contrato", pageKey: "contrato" },
   { prefix: "/atividades", pageKey: "atividades" },
+  { prefix: "/categoria-atividade", pageKey: "categoria-atividade" },
+  { prefix: "/grupo-atividade", pageKey: "grupo-atividade" },
+  { prefix: "/motivo-sem-producao", pageKey: "motivo-sem-producao" },
+  { prefix: "/datas-bloqueadas", pageKey: "datas-bloqueadas" },
+  { prefix: "/modelo-pi", pageKey: "modelo-pi" },
   { prefix: "/tipo-equipe", pageKey: "tipo-equipe" },
   { prefix: "/imei", pageKey: "imei" },
   { prefix: "/tipo-servico", pageKey: "tipo-servico" },
@@ -66,7 +75,7 @@ export function normalizeRole(role: string | null | undefined) {
 
 export function isAdminRole(role: string | null | undefined) {
   const normalized = normalizeRole(role);
-  return normalized === "admin" || normalized === "master";
+  return normalized === "admin";
 }
 
 // Espelho de `app_pages.default_user_access = true`. NAO e a fonte de verdade — o banco e —,
@@ -129,6 +138,11 @@ export const DEFAULT_USER_PAGE_ACCESS = [
 export const VIEWER_PAGE_ACCESS = [
   "home",
   "dash-estoque",
+  "dashboard-medicao",
+  "dashboard-equipes",
+  "dash-operacional-faturamento",
+  "programacao-visualizacao",
+  "medicao-visualizacao",
   "estoque",
   "estoque-equipes",
   "posicao-trafo",
@@ -140,12 +154,8 @@ export function resolveDefaultPageAccess(role: string | null | undefined) {
   const normalized = normalizeRole(role);
   const defaultPageAccess = [...DEFAULT_USER_PAGE_ACCESS];
 
-  if (normalized === "master" || normalized === "admin") {
+  if (normalized === "admin") {
     return [...defaultPageAccess, "dashboard-carteira-operacional"];
-  }
-
-  if (normalized === "supervisor") {
-    return defaultPageAccess;
   }
 
   if (normalized === "viewer") {

@@ -1,5 +1,8 @@
+import { useState } from "react";
+
 import styles from "../../ProgrammingNormalizedPageView.module.css";
-import type { AddTeamCheckState, TeamItem } from "../../types";
+import type { AddTeamCheckState, ForemanItem, TeamItem } from "../../types";
+import { buildTeamCategoryOptions, matchesTeamCategory } from "../../utils";
 
 // A janela (data + hora inicio/fim) e da ETAPA, nao da equipe: `programming_team`
 // guarda so identidade + status. Por isso os horarios aparecem aqui como leitura —
@@ -17,10 +20,12 @@ function checkFeedbackClass(status: AddTeamCheckState["status"]) {
   return styles.feedback;
 }
 
-export function AddTeamModal(props: {
+type AddTeamModalProps = {
   isOpen: boolean;
   availableTeams: TeamItem[];
+  foremanOptions: ForemanItem[];
   selectedTeamId: string;
+  selectedForemanId: string;
   isSubmitting: boolean;
   executionDate: string | null;
   startTime: string | null;
@@ -29,11 +34,24 @@ export function AddTeamModal(props: {
   onClose: () => void;
   onConfirm: () => void;
   onSelectedTeamIdChange: (value: string) => void;
-}) {
+  onSelectedForemanIdChange: (value: string) => void;
+};
+
+// O corpo e um componente separado de proposito: fechado, o `AddTeamModal` nao o
+// renderiza, entao o filtro de tipo de equipe desmonta junto e a proxima abertura
+// comeca em `Todos`, sem efeito nenhum para zerar. Os pais ja zeram a equipe e o
+// encarregado escolhidos no `openAddTeamModal`.
+export function AddTeamModal(props: AddTeamModalProps) {
+  if (!props.isOpen) return null;
+  return <AddTeamModalBody {...props} />;
+}
+
+function AddTeamModalBody(props: AddTeamModalProps) {
   const {
-    isOpen,
     availableTeams,
+    foremanOptions,
     selectedTeamId,
+    selectedForemanId,
     isSubmitting,
     executionDate,
     startTime,
@@ -42,8 +60,24 @@ export function AddTeamModal(props: {
     onClose,
     onConfirm,
     onSelectedTeamIdChange,
+    onSelectedForemanIdChange,
   } = props;
-  if (!isOpen) return null;
+
+  // O filtro mora aqui porque nenhuma das duas telas que montam o modal precisa
+  // dele para outra coisa.
+  const [categoryCode, setCategoryCode] = useState("");
+
+  const categoryOptions = buildTeamCategoryOptions(availableTeams);
+  const filteredTeams = availableTeams.filter((team) => matchesTeamCategory(team, categoryCode));
+
+  // Trocar o filtro derruba a equipe escolhida que sai da lista: sem isso o select
+  // exibiria a primeira opcao enquanto o estado guardava outra equipe, e o Concluir
+  // adicionaria a equipe que o usuario nao esta vendo.
+  function changeCategoryCode(nextCategoryCode: string) {
+    setCategoryCode(nextCategoryCode);
+    const selectedTeam = availableTeams.find((team) => team.id === selectedTeamId);
+    if (selectedTeam && !matchesTeamCategory(selectedTeam, nextCategoryCode)) onSelectedTeamIdChange("");
+  }
 
   // So `blocked` trava o botao. Em `unknown` (checagem indisponivel) a tentativa
   // segue liberada de proposito: quem recusa de fato e a RPC, e ela devolve a
@@ -64,11 +98,35 @@ export function AddTeamModal(props: {
         </header>
         <div className={styles.modalBody}>
           <label className={styles.field}>
+            <span>Tipo de equipe</span>
+            <select
+              value={categoryCode}
+              onChange={(event) => changeCategoryCode(event.target.value)}
+              disabled={isSubmitting || !categoryOptions.length}
+            >
+              <option value="">Todos</option>
+              {categoryOptions.map((option) => (
+                <option key={option.code} value={option.code}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
             <span>Equipe</span>
             <select value={selectedTeamId} onChange={(event) => onSelectedTeamIdChange(event.target.value)} disabled={isSubmitting}>
               <option value="">Selecionar equipe...</option>
-              {availableTeams.map((team) => (
+              {filteredTeams.map((team) => (
                 <option key={team.id} value={team.id}>{team.name} — {team.foremanName || "Sem encarregado"}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Encarregado programado</span>
+            <select value={selectedForemanId} onChange={(event) => onSelectedForemanIdChange(event.target.value)} disabled={isSubmitting || !selectedTeamId}>
+              <option value="" disabled>Selecionar encarregado...</option>
+              {foremanOptions.map((foreman) => (
+                <option key={foreman.id} value={foreman.id}>{foreman.name}</option>
               ))}
             </select>
           </label>
@@ -83,7 +141,7 @@ export function AddTeamModal(props: {
             type="button"
             className={styles.buttonPrimary}
             onClick={onConfirm}
-            disabled={isSubmitting || isChecking || isBlocked || !selectedTeamId}
+            disabled={isSubmitting || isChecking || isBlocked || !selectedTeamId || !selectedForemanId}
           >
             Concluir
           </button>

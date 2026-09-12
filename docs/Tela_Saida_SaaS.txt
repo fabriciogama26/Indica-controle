@@ -108,6 +108,8 @@ Filtros, auto-complete e listagem
   - `Equipe`
   - `Projeto`
   - `Material (codigo)`
+  - `Categoria`
+  - `Subcategoria` (dependente da categoria)
   - `Tipo`
   - `Status de estorno`
 - Lista:
@@ -157,6 +159,9 @@ Boas praticas
 - Usar `stock_transfer_team_operations` apenas como mapeamento funcional `transfer -> team`, sem duplicar o ledger principal.
 - Registrar erros da tela com `useErrorLogger("operacoes_equipe")`.
 - Respeitar cooldown de `10` segundos na exportacao.
+- A exportacao CSV da lista chama `GET /api/team-stock-operations?mode=export`, sem percorrer paginas no frontend.
+- A exportacao CSV da lista inclui `categoria` e `subcategoria` apos `descricao`, consumindo
+  `materials.category_id/subcategory_id` e os catalogos `material_categories/material_subcategories`.
 - No submit manual, consolidar todos os materiais com saldo zerado ou insuficiente antes de bloquear a operacao, informando codigo, saldo atual, quantidade solicitada e falta.
 - Preservar os detalhes de `INSUFFICIENT_STOCK` retornados pela RPC quando o saldo muda entre a pre-validacao da tela e o save transacional.
 
@@ -187,6 +192,7 @@ Atalhos
 - Endpoints:
   - `GET/POST /api/team-stock-operations`
   - `GET /api/team-stock-operations?mode=history`
+  - `GET /api/team-stock-operations?mode=export`
   - `GET /api/team-stock-operations/serial-options`
   - `POST /api/team-stock-operations/import`
   - `POST /api/team-stock-operations/reversal`
@@ -381,7 +387,7 @@ Atualizacao 2026-06 - Filtro funcional de Projeto
   - bloqueia codigo inexistente com a mensagem `Projeto invalido no filtro. Selecione um projeto da lista.`;
   - normaliza o texto exibido para o codigo oficial do projeto.
 - A API recebe `projectId` e compara por igualdade, removendo a busca parcial por texto em `projectCode`.
-- A exportacao CSV reutiliza o mesmo filtro efetivo por `projectId`.
+- A exportacao CSV reutiliza o mesmo filtro efetivo por `projectId` e usa `mode=export` para retornar todos os registros filtrados em uma unica chamada.
 - `Limpar` remove tanto o texto pesquisado quanto o identificador aplicado.
 - Arquivos alterados:
   - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
@@ -777,3 +783,373 @@ Atualizacao 2026-07-27 (Correcao: Atendimento encerrado nao aparecia na lista)
   - `cmd /c npm run lint`
   - Consultar `/saida` sem filtros ou filtrando por `Equipe = MK-03` e `Projeto = RC0323050671`; devem aparecer
     os lancamentos de Requisicao com data de operacao `2026-07-23`.
+
+
+Atualizacao 2026-08 - Encarregado do dia pela Composicao de Equipe
+------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/375_stock_operation_foreman_from_composition.sql` (novo)
+  - `src/server/modules/composicao-equipe/dayForemen.ts` e `index.ts` (novos)
+  - `src/app/api/team-stock-operations/day-foremen/route.ts` (novo)
+  - `src/modules/dashboard/saida/components/OperationDetailModal.tsx` (novo)
+  - `src/modules/dashboard/saida/components/OperationHistoryModal.tsx` (novo)
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/modules/dashboard/saida/utils.ts`
+- Funcoes/hooks/constantes tocadas:
+  - `resolve_team_foreman` (nova) e `resolve_team_foreman_snapshot` (passa a delegar)
+  - RPC `save_team_stock_operation_record` (republicada)
+  - `fetchDayForemen` (novo modulo server)
+  - `handleForemanChange`, `dayForemanTeamId`, efeito de carga de `dayForemen`
+  - `resolvePrimaryStockCenterName`, `resolveSupportCenterName` (movidas para `utils.ts`)
+- Comportamento antes/depois:
+  - Antes: a equipe era escolhida direto no select, e a RPC gravava o encarregado
+    lido de `teams.foreman_person_id` — o encarregado do CADASTRO.
+  - Depois: novo campo `Encarregado do dia` acima de `Equipe`, alimentado pelas
+    composicoes ativas e `WORKING` daquela data. Escolher o encarregado preenche a
+    equipe; escolher a equipe direto continua funcionando; trocar a data recarrega
+    a lista.
+  - Depois: a RPC resolve o encarregado pela cadeia da migration 374 (composicao do
+    dia -> historico de nomeacao -> cadastro), usando o `p_entry_date` que ela ja
+    recebia. Sem isso a tela deixava escolher pelo encarregado do dia e gravava o do
+    cadastro, e a exportacao CSV saia com outra pessoa.
+  - Sem composicao lancada na data, o campo fica desabilitado com o texto
+    `Sem composicao lancada nesta data` e a selecao manual de equipe continua igual
+    ao comportamento anterior. Falha na consulta tambem nao bloqueia a tela.
+- Decisoes de estado:
+  - O formulario NAO ganhou um campo `foremanPersonId`. O select de encarregado
+    deriva de `form.teamId`, entao nao existe um segundo estado capaz de guardar
+    valor que a tela nao renderiza.
+  - O atalho passa pelo `handleTeamChange` existente, entao a regra de remover os
+    itens antes de trocar a equipe continua valendo — o atalho nao e um caminho
+    paralelo que fura validacao.
+  - Composicao apontando equipe inativa no cadastro e recusada com o nome da
+    equipe, em vez de preencher um valor que o select de Equipe nao lista.
+- Estrutura:
+  - Os modais de detalhe e de historico sairam do `PageView` para `components/`.
+    O arquivo caiu de 2.832 para 2.821 linhas mesmo com o campo novo.
+  - `resolvePrimaryStockCenterName` e `resolveSupportCenterName` foram para
+    `utils.ts`. Elas alimentam tanto o modal quanto a exportacao CSV; mante-las
+    dentro do componente de modal deixava a exportacao da tela dependendo de um
+    modal.
+- Auditoria de CSV (2026-08):
+  - As telas que exportam encarregado e leem SNAPSHOT herdaram a correcao sem
+    codigo novo: Estornos e Posicao Trafo pela 375; Medicao, Controle de APR,
+    Apuracao de Fator Minimo e Dashboard de Equipes pela 374.
+  - `Saldo por Equipe` continua no cadastro de proposito: saldo e uma posicao de
+    "agora", sem data para resolver.
+  - `Mapa de Programacao` segue no cadastro — unico caso em aberto. La a resolucao
+    e de LEITURA por linha (equipe + data da ultima etapa de cada obra), nao um
+    snapshot gravado, e exige RPC recebendo os pares (equipe, data).
+- Limite declarado:
+  - Snapshots ja gravados nao mudam. A correcao vale para o que for salvo daqui em
+    diante, consequencia da decisao de resolver o encarregado na ESCRITA.
+- Impacto multi-tenant:
+  - `fetchDayForemen` filtra por `tenant_id` da sessao; nenhum tenant vem do cliente.
+  - O endpoint valida `page_key` `saida` + acao `read` antes de qualquer consulta —
+    quem opera a Saida nao precisa de acesso a tela de Composicao de Equipe.
+  - `resolve_team_foreman`, `resolve_team_foreman_snapshot` e
+    `save_team_stock_operation_record` ficaram com EXECUTE apenas para
+    `service_role`.
+
+Atualizacao 2026-08-19 (Performance: join no banco e chunks paralelos na listagem/exportacao)
+---------------------------------------------------------------------------------------------
+- Problema medido:
+  - `loadTeamOperationList` carregava TODAS as operacoes do tenant em `stock_transfer_team_operations`
+    (paginas de 1000, sequenciais) e so depois buscava os cabecalhos em `stock_transfers` em chunks de
+    100 ids, tambem sequenciais. Os filtros de data (`startDate`/`endDate`), `projectId` e `entryType`
+    so entravam na SEGUNDA etapa, entao filtrar por periodo nao reduzia o trabalho da primeira.
+  - `loadRowsInChunks` era um `for...of` com `await` dentro: zero paralelismo. Com chunk de 100, as
+    duas queries de `stock_transfer_item_reversals` (sobre ids de ITEM, nao de transfer) dominavam o
+    tempo — em uma base com ~30 mil operacoes e ~80 mil itens o caminho somava mais de 1.400
+    requisicoes HTTP sequenciais ao PostgREST.
+  - `mode=export` sofre o mesmo custo e ainda devolve todas as linhas (`route.ts`, retorno de
+    `loadTeamOperationList`), por isso a exportacao era a operacao mais lenta da tela.
+- O que mudou em `src/app/api/team-stock-operations/route.ts`:
+  - Nova `loadTeamOperationsWithHeaders`: um unico SELECT em `stock_transfer_team_operations` com
+    embed `stock_transfers!inner(...)` (a FK existe desde a migration 140: `transfer_id` e PK e
+    referencia `stock_transfers(id)`). Os filtros de cabecalho passam a ser aplicados NO BANCO
+    (`stock_transfers.entry_date`, `stock_transfers.project_id`, `stock_transfers.entry_type`),
+    junto com `team_id` e `operation_kind`. Isso elimina a etapa de chunks de `stock_transfers`.
+  - A funcao mantem FALLBACK explicito: se o embed falhar (relacionamento nao resolvido pelo
+    PostgREST, schema legado), ela loga `team-operations-embedded-select` com
+    `fallback: "two-step-select"` e executa exatamente o caminho antigo em duas etapas. Nenhuma
+    consulta perde comportamento; o pior caso e voltar ao desempenho anterior, nao quebrar.
+  - `loadRowsInChunks` passou a rodar em lotes paralelos: `RELATION_QUERY_CHUNK_SIZE` de 100 para
+    500 e `RELATION_QUERY_MAX_PARALLEL = 4`. Erro em qualquer chunk do lote continua abortando com
+    o mesmo contrato de retorno de antes.
+  - Novo helper `loadAllPages`: o loop de paginacao de 1000 em 1000 existia duplicado em tres
+    lugares (`loadTeamOperationRows` full, `loadTeamOperationRows` legado, e seria um terceiro no
+    caminho novo). Agora e um so.
+  - Nova constante `TRANSFER_HEADER_COLUMNS`: a lista de colunas do cabecalho era repetida entre o
+    embed e o fallback.
+- O que NAO mudou (de proposito):
+  - Contrato da rota, nomes de parametros, formato da resposta e `pagination`.
+  - `reversalStatus` e `materialCode` continuam como pos-filtro em memoria — dependem de dados de
+    estorno e do codigo do material ja resolvidos. A ordenacao final por `updatedAt` segue em JS.
+  - Autorizacao: `requirePageAction({ pageKey: "saida", action: "read" })` continua antes de
+    qualquer SELECT; nenhum `tenant_id` vem do cliente. O embed ainda aplica
+    `.eq("stock_transfers.tenant_id", tenantId)` como barreira redundante alem da RLS.
+- Funcoes e constantes:
+  - `loadTeamOperationsWithHeaders` (nova)
+  - `loadAllPages` (nova)
+  - `TRANSFER_HEADER_COLUMNS` (nova)
+  - `RELATION_QUERY_MAX_PARALLEL` (nova)
+  - `RELATION_QUERY_CHUNK_SIZE` (100 -> 500)
+  - `loadRowsInChunks` (sequencial -> lotes paralelos)
+  - `loadTeamOperationRows` (agora usa `loadAllPages`; assinatura inalterada)
+- Como validar:
+  - Abrir `/saida` sem filtros: a lista carrega e `pagination.total` bate com o volume esperado.
+  - Filtrar por Equipe, Operacao, Projeto, Material, Tipo e Status de estorno, um a um e combinados,
+    e conferir que o resultado e o mesmo de antes da mudanca.
+  - Filtrar por periodo curto (ex.: ultimos 7 dias) e comparar o tempo de resposta com o periodo
+    aberto: agora o periodo curto deve ser visivelmente mais rapido, o que antes nao acontecia.
+  - Exportar CSV com filtro de periodo e sem filtro, conferindo que a contagem de linhas do arquivo
+    bate com `pagination.total` da listagem equivalente.
+  - Conferir no log do servidor que NAO aparece `[team-stock-operations] load error` com
+    `step: "team-operations-embedded-select"`. Se aparecer, o embed nao foi aceito pelo PostgREST e a
+    rota esta rodando no fallback lento — o resultado continua correto, mas o ganho nao se aplica.
+- Limite declarado:
+  - Isto e otimizacao do caminho existente, nao a solucao final da exportacao. O custo continua
+    crescendo com o volume porque as tabelas de estorno e de itens ainda sao lidas por chunk e o
+    CSV ainda e montado no navegador a partir de JSON. A proxima etapa (RPC dedicada de export
+    resolvendo todos os joins no Postgres + resposta `text/csv` direto da rota + indice
+    `(tenant_id, transfer_id)` em `stock_transfer_team_operations`) esta registrada em `TASKS.md`.
+- Impacto multi-tenant: nenhum. Todas as queries seguem filtrando `tenant_id` da sessao e a RLS
+  permanece como ultima barreira.
+
+Atualizacao 2026-08-19b (Exportacao: RPC no Postgres e resposta text/csv em stream)
+------------------------------------------------------------------------------------
+- Problema que restava depois da 2026-08-19:
+  - O embed cortou os round trips de cabecalho, mas `mode=export` ainda percorria TODO o caminho da
+    listagem: itens e as duas tabelas de estorno lidas por chunk de ids, `flatMap`/`filter`/`sort`
+    em JS, e a rota devolvendo o dataset inteiro em JSON para o navegador montar o CSV linha a linha
+    em `handleExportHistory`. O custo continuava crescendo com o volume.
+- Migration `379_create_team_operations_export_rpc.sql`:
+  - Indice `idx_stock_transfer_team_operations_tenant_transfer (tenant_id, transfer_id)`. Os indices
+    que existiam eram `(tenant_id, team_id, created_at desc)` e `(tenant_id, operation_kind,
+    created_at desc)` — nenhum servia ao join real, que e por `transfer_id`.
+  - Indices `idx_stock_transfer_item_reversals_tenant_original_item` e
+    `..._tenant_reversal_item`, que sustentam os dois `EXISTS` de estorno por item.
+  - RPC `list_team_operations_export`: `language sql`, `stable`, `security definer`,
+    `set search_path = public`. Resolve os joins de material, centro de estoque, projeto, equipe e os
+    dois niveis de estorno, aplica todos os filtros da tela e devolve as 15 colunas do CSV ja
+    formatadas. Recebe `p_limit`/`p_offset` para a rota paginar e transmitir em pedacos, com default
+    de 1.000 — o teto de linhas por resposta do PostgREST deste projeto.
+  - Grants: `revoke all` de `public`/`anon`/`authenticated`, `grant execute` apenas para
+    `service_role`. `p_tenant_id` vem SEMPRE da sessao resolvida no servidor.
+  - Ordenacao `sort_at desc, transfer_id, item_id`: sem ordem total, paginar por `p_offset`
+    duplicaria ou puliria linhas entre chamadas sucessivas.
+- Novo modulo `src/server/modules/saida/`:
+  - `teamOperationExport.ts` + fachada `index.ts`. Contem `buildTeamOperationExportStream`, que
+    chama a RPC pagina a pagina e monta um `ReadableStream`. A rota so decide o status HTTP e os
+    cabecalhos — regra de negocio saiu do `route.ts`, conforme CLAUDE.md secao 5.
+  - A extracao tambem foi necessaria pelo ratchet: com o export inline, `route.ts` chegou a 1.522
+    linhas e estourou o teto de 1.500. Com o modulo, ficou em 1.419.
+- Rota `GET /api/team-stock-operations?mode=export`:
+  - Passa a responder `text/csv; charset=utf-8` com `Content-Disposition: attachment`, em vez de
+    JSON. O BOM UTF-8 continua no inicio do arquivo (Excel pt-BR abre acentuacao corrompida sem ele).
+  - Lista vazia responde 404 com `{ message }` — o frontend ja tratava essa mensagem.
+  - Falha na PRIMEIRA pagina responde 500 em JSON. Falha numa pagina POSTERIOR nao pode virar erro
+    HTTP (status e cabecalhos ja foram enviados): o stream e abortado com `controller.error`, para o
+    navegador acusar download incompleto em vez de salvar um CSV truncado que parece integro.
+  - O ramo de export sai ANTES de `loadTeamOperationsWithHeaders` — nenhuma query do caminho de
+    listagem e executada numa exportacao.
+- `TeamStockOperationsPageView.handleExportHistory`:
+  - Deixou de montar as linhas do CSV. Agora le `response.blob()` e chama `downloadBlobFile` de
+    `src/lib/utils/csv.ts`. O tratamento de erro por `response.ok` + `{ message }` foi mantido.
+  - Cooldown de 10s preservado (`useExportCooldown`).
+- Divergencia assumida (registrar antes que alguem tropece):
+  - Os rotulos do CSV (`Requisicao`/`Devolucao`/`Retorno de campo`, `Estorno`/`Estornada`/`Ativa`,
+    e a regra de centro primario x centro de apoio) agora existem em DOIS lugares: na RPC, para a
+    exportacao, e em `src/modules/dashboard/saida/utils.ts`, para a tabela na tela. Sao consumos
+    diferentes (o CSV grava `Ativa`, a tabela nao renderiza rotulo nenhum nesse caso), mas a regra
+    de fundo e a mesma. Se um dia mudar o rotulo de uma operacao, os dois lados precisam mudar
+    juntos. A alternativa — RPC devolver dados crus e o Node formatar — foi descartada porque
+    reintroduziria o passo de transformacao linha a linha que esta tarefa existe para eliminar.
+- Autorizacao: sem mudanca. A exportacao continua exigindo `page_key` `saida` + acao `read`, como
+  antes. NAO foi promovida para a acao `export` porque isso tiraria a exportacao de quem hoje tem
+  apenas leitura — mudanca de permissao e decisao de produto, nao efeito colateral de performance.
+- Como validar:
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build`, `npm run db:security-check`.
+  - Aplicar a migration 379 e conferir em `npm run db:migration-list`.
+  - Exportar sem filtro e conferir que o arquivo baixa com cabecalho identico ao anterior:
+    `operacao;centro_estoque;equipe;encarregado;origem_apoio;projeto;material_codigo;descricao;quantidade;serial;lp;data_operacao;tipo;status;observacao`.
+  - Exportar com CADA filtro isolado (equipe, operacao, projeto, material, tipo, periodo, status de
+    estorno) e conferir que a contagem de linhas do CSV bate com `pagination.total` da listagem
+    equivalente. Esse e o teste que pega divergencia entre a RPC e o caminho da listagem.
+  - Exportar um recorte com observacao contendo `;` e conferir que as colunas nao deslocam.
+  - Exportar com filtro que nao retorna nada e conferir a mensagem "Nao ha registros para exportar
+    com os filtros atuais.".
+  - Abrir o CSV no Excel pt-BR e conferir acentuacao.
+  - Exportacao acima de 1.000 linhas: conferir que o arquivo tem TODAS as linhas (a rota pagina a
+    RPC de 1.000 em 1.000; um bug de offset apareceria como linha repetida ou faltando na virada).
+- Lacuna conhecida:
+  - A migration 379 NAO foi aplicada nesta maquina: `npm run db:check-link` reporta que o Supabase
+    CLI nao esta linkado, entao `db:migration-list`, `db:lint` e `db:security-check-live` nao
+    puderam rodar. So o check ESTATICO de `SECURITY DEFINER` foi executado (98 migrations, verde).
+    Enquanto a migration nao for aplicada, `mode=export` responde 500 e loga
+    `team-operations-export-rpc` — a listagem continua funcionando normalmente.
+- Impacto multi-tenant:
+  - `p_tenant_id` vem de `resolveAuthenticatedAppUser`, nunca do cliente. Todo join dentro da RPC
+    casa `tenant_id` nos dois lados (`stock_transfers`, `stock_transfer_items`, `teams`, `project`,
+    `materials` e as duas tabelas de estorno).
+  - A RPC e `SECURITY DEFINER` e so `service_role` pode executa-la, entao a RLS nao a protege por
+    si — o isolamento vem do `p_tenant_id` obrigatorio no corpo da funcao, e o acesso a rota
+    continua barrado por `requirePageAction`.
+
+Correcao 2026-08-19c (Exportacao truncava em 1.000 linhas em silencio)
+------------------------------------------------------------------------
+- Sintoma que teria ido para producao:
+  - A entrega 2026-08-19b pedia `p_limit: 5000` a RPC. O PostgREST deste projeto entrega no maximo
+    1.000 linhas por resposta (`db-max-rows`) e NAO sinaliza o corte: devolve 200 com menos linhas
+    do que o SQL produziu. A condicao de parada do laco em `buildTeamOperationExportStream` era
+    `pageRowCount === EXPORT_RPC_PAGE_SIZE`, ou seja, `1000 === 5000` -> falso na primeira volta.
+  - Resultado: o laco nunca rodava, o CSV saia com exatamente 1.000 linhas e nada acusava o
+    problema — nem erro, nem aviso, nem log. Num tenant com 4.046 registros o arquivo pareceria
+    completo e teria perdido 3.046 linhas.
+- Este e o MESMO erro ja cometido no Dashboard Estoque (`TASKS.md`, item do `loadTransfers` com
+  `.limit(5000)`), e o mesmo motivo do commit `98783c9`, que tirou `loadTeamOperationRows` da
+  "janela implicita de 1000 linhas do PostgREST". A regra do repositorio ja era paginar de 1.000
+  em 1.000; a entrega anterior a ignorou.
+- Correcao:
+  - `EXPORT_RPC_PAGE_SIZE` de 5000 para 1000, com o motivo escrito no proprio arquivo.
+  - Default de `p_limit` na RPC de 5000 para 1000 (a migration 379 ainda nao havia sido aplicada
+    em nenhum banco, entao foi corrigida no lugar em vez de virar uma 380 para consertar um
+    default que nunca rodou).
+  - A condicao de parada deixou de comparar com o limite pedido: agora o laco para so em pagina
+    VAZIA e avanca o offset pelo numero de linhas REALMENTE recebidas. Assim a exportacao continua
+    correta mesmo se o teto do PostgREST for alterado, para mais ou para menos. Custa uma chamada
+    extra no fim de cada exportacao, o que e barato perto de truncar sem avisar.
+- Licao para as proximas telas:
+  - Nunca usar "a pagina veio menor que a pedida" como fim de resultado quando existe um teto de
+    linhas imposto pelo servidor no meio do caminho. O unico sinal confiavel de fim e pagina vazia.
+
+Atualizacao 2026-08-19d (Migration 380: realinhar o default de p_limit)
+--------------------------------------------------------------------------
+- Fato novo: a migration 379 ja havia sido aplicada MANUALMENTE no banco (Dashboard/SQL editor),
+  com o default original `p_limit integer default 5000`, antes de a correcao 2026-08-19c ser feita.
+  A correcao alterou o arquivo da 379 no lugar, sob a premissa — errada — de que ela nunca tinha
+  rodado em lugar nenhum. Resultado: o arquivo em git e o banco vivo passaram a divergir.
+- Por que isso importa mesmo sem efeito visivel: `guia_sql.md` regra 2 — migration aplicada e
+  historico do banco. Arquivo corrigido no lugar significa que `db reset`, branch de preview ou
+  projeto novo nascem com um estado diferente do de producao. Foi exatamente o caso de
+  `v_stock_conflicts` (migrations 007 -> 377).
+- Correcao: nova migration `380_realign_team_operations_export_default_limit.sql`, que redeclara
+  `list_team_operations_export` com o default 1000. Ela foi GERADA por script a partir do corpo real
+  da 379, para nao transcrever a funcao a mao (mesmo padrao da 324 gerada a partir da 318). O corpo
+  e identico exceto pelo default, e o bloco revoke/grant e repetido conforme `guia_sql.md` regra 17.
+- A 380 converge os dois cenarios possiveis sem depender de saber qual versao da 379 foi executada
+  em cada ambiente:
+  - banco com default 5000 -> passa a 1000;
+  - banco com default 1000 -> redeclaracao sem efeito;
+  - banco novo montado das migrations -> 379 cria, 380 redeclara, estado final igual ao de producao.
+- Efeito no caminho da aplicacao: nenhum. A rota sempre passa `p_limit` explicito
+  (`EXPORT_RPC_PAGE_SIZE = 1000`), entao o default nunca e exercido pela tela. O que a 380 remove e
+  a armadilha para o proximo chamador — humano no SQL editor ou codigo novo — que invoque a RPC sem
+  `p_limit`, peca 5000 e receba 1000 achando que recebeu tudo. E a mesma armadilha da 2026-08-19c,
+  so que um nivel abaixo.
+- Como conferir o estado real do banco antes de aplicar:
+  `select pg_get_function_arguments(oid) from pg_proc where proname = 'list_team_operations_export';`
+- Situacao do CLI: o link do Supabase continua pendente nesta maquina, entao `db:migration-list`,
+  `db:lint` e `db:security-check-live` seguem sem rodar. O check ESTATICO de `SECURITY DEFINER`
+  passou com 99 migrations (era 98 antes da 380).
+- Licao: antes de corrigir uma migration no lugar, confirmar se ela ja foi aplicada em ALGUM
+  ambiente — inclusive manualmente pelo Dashboard, que nao aparece em `db:migration-list`. Na duvida,
+  migration nova; ela e barata e sempre converge, enquanto a edicao no lugar so e segura no caso em
+  que a migration comprovadamente nunca rodou.
+
+Atualizacao 2026-08-20 (Categoria/Subcategoria em filtros e CSV)
+-----------------------------------------------------------------
+- Filtros novos:
+  - `Categoria`: select carregado de `material_categories` ativo no tenant.
+  - `Subcategoria`: select dependente da categoria, carregado de `material_subcategories`.
+- Listagem:
+  - `GET /api/team-stock-operations` aceita `categoryId` e `subcategoryId`.
+  - A API aplica o recorte na query de `stock_transfer_items` por join `materials!inner`, usando
+    `tenant_id`, `category_id`, `subcategory_id` e `codigo` quando combinados. Isso evita montar
+    uma lista grande de IDs de material em `.in("material_id", ...)` para categorias volumosas.
+  - O modal de detalhes exibe Categoria/Subcategoria do material.
+- Exportacao:
+  - Migration `381_team_operations_category_filters_export.sql` republica
+    `list_team_operations_export` com `p_category_id` e `p_subcategory_id`.
+  - O CSV passa a incluir as colunas `categoria` e `subcategoria` apos `descricao`.
+  - A RPC continua `SECURITY DEFINER`, `search_path = public`, com EXECUTE somente para
+    `service_role`; o `tenant_id` continua vindo da sessao resolvida na API, nunca do cliente.
+
+Atualizacao 2026-08-21 - Itens sumiam da listagem por teto de 1.000 linhas
+--------------------------------------------------------------------------
+ACHADO (ver `Auditoria/15-supabase-implicit-row-cap.md`)
+- A listagem de historico carregava os itens quebrando a lista de transferencias em lotes
+  de 500 (`RELATION_QUERY_CHUNK_SIZE`) e consultando `stock_transfer_items` com
+  `.in("stock_transfer_id", lote)`, SEM `.range()` e SEM `.limit()`.
+- Chunk de parametro nao e paginacao de resposta: quebrar a lista de ids limita o tamanho
+  da CONSULTA, nao o numero de LINHAS que ela devolve. O PostgREST corta em 1.000 por
+  resposta e nao sinaliza — status 200 com menos linhas do que o banco produziu.
+- Medido em 2026-08-21: 2.987 transferencias, 5.791 itens reais, 5.748 entregues.
+  **43 itens sumiam da listagem e da exportacao CSV, sem nenhum aviso na tela.**
+- Dos 6 lotes, 1 estourava o teto. A media por lote era 965 linhas contra teto de 1.000:
+  a tela estava na BORDA, com folga de 3,5%, e qualquer crescimento de volume levaria os
+  outros 5 lotes por cima.
+
+CORRECAO
+- `loadRowsInChunks` deixou de ser copia privada desta rota e passou a ser o helper
+  compartilhado de `src/lib/server/apiHelpers.ts`, que pagina a RESPOSTA de cada lote ate
+  pagina vazia, alem de quebrar os parametros em lotes.
+- Os 6 pontos de leitura desta rota foram migrados com ORDEM TOTAL explicita, requisito da
+  paginacao por offset. Atencao a `stock_transfer_team_operations`: a PK dela e
+  `transfer_id`, nao `id`, entao a ordem usa `transfer_id`.
+- O tamanho de lote (500) e o paralelismo (4) foram PRESERVADOS de proposito: a correcao e
+  sobre paginacao de resposta, e mudar o lote junto tornaria impossivel atribuir qualquer
+  diferenca de comportamento a uma causa.
+
+SEGUNDA CORRECAO NA MESMA ROTA: `loadAllPages`
+- A leitura das operacoes usava um segundo helper privado, `loadAllPages`, com a condicao de
+  parada que a auditoria classifica como proibida: `pageRows.length < TEAM_OPERATION_PAGE_SIZE`.
+- A consulta e um embed com `stock_transfers!inner`. Com join interno, pagina mais curta que a
+  pedida e NORMAL, nao excepcional — entao a primeira pagina curta encerrava a leitura e levava
+  junto todas as operacoes seguintes.
+- Substituido por `loadAllRows`, que para em pagina VAZIA e avanca pelas linhas RECEBIDAS.
+
+RESULTADO VERIFICADO NA TELA — 2026-08-21
+- ANTES das correcoes: `Total: 4193` sem filtro.
+- DEPOIS: `Total: 5787` (290 paginas). A correcao de `loadAllPages` era o defeito
+  PRINCIPAL desta tela: recuperou ~1.594 linhas, contra as 43 da correcao de
+  `loadRowsInChunks`.
+- Causa: a parada `pageRows.length < TEAM_OPERATION_PAGE_SIZE` sob um embed
+  `stock_transfers!inner`. Com join interno, pagina mais curta que a pedida e o caso
+  NORMAL — entao a primeira pagina curta encerrava a leitura de operacoes e levava junto
+  todos os itens correspondentes.
+
+RESIDUO DE 4 LINHAS — em apuracao, sem impacto conhecido
+- Esperado 5.791, exibido 5.787. `npm run db:residual-live` confirmou que a semantica
+  exata da rota (filtro de tenant nos dois lados, join interno) da 5.791: nao ha operacao
+  orfa nem item de outro tenant. As 4 linhas somem na APLICACAO.
+- Causa nao identificada. Descartadas por leitura: filtro em memoria (todos guardados por
+  `if (filtro)`), a guarda `if (!transfer || !teamOperation)` (os dois mapas saem do mesmo
+  resultado embutido) e item com `tenant_id` nulo (a coluna e `not null`).
+- Severidade baixa: 4 linhas em 5.791 (0,07%), sem impacto conhecido em soma ou saldo.
+- Para retomar, instrumentar o pipeline da rota e comparar cada estagio com o esperado
+  `2.987 / 2.987 / 2.987 / 5.791 / 5.791 / 5.791`. Nao formular nova hipotese por leitura.
+
+Atualizacao 2026-08 - Estorno com fila de atendimento
+-----------------------------------------------------
+- O botao `Estornar` e o modal de selecao visual permanecem na tela.
+- Mudanca de efeito: confirmar o modal nao executa mais a reversao imediatamente.
+- `POST /api/team-stock-operations/reversal` passa a criar pedido em `stock_reversal_requests` e
+  itens em `stock_reversal_request_items`, retornando `requestId`.
+- A execucao real do estorno ocorre somente em `/estorno-atendimento`, pela acao `Aprovar e executar`.
+- Em lote, o frontend envia `itemIds` com os itens ativos exibidos no modal, preservando exatamente o
+  escopo solicitado pelo usuario, inclusive lotes com mais de um `transferId`.
+- A migration `384_harden_stock_reversal_request_flow.sql` reforca essa regra no banco: `BATCH`
+  sem `itemIds` explicitos e rejeitado, evitando ampliar uma selecao parcial por payload adulterado.
+- A tela nao marca a linha como `Estornada` apos a solicitacao; esse status continua derivado das
+  tabelas reais de estorno depois da aprovacao.
+- Arquivos alterados:
+  - `src/app/api/team-stock-operations/reversal/route.ts`
+  - `src/modules/dashboard/saida/TeamStockOperationsPageView.tsx`
+  - `src/lib/server/stockReversalRequests.ts`
+  - `supabase/migrations/383_create_stock_reversal_request_flow.sql`
+  - `supabase/migrations/384_harden_stock_reversal_request_flow.sql`
+- Comportamento antes/depois:
+  - Antes: `Usuario -> Estornar -> saldo alterado`.
+  - Depois: `Usuario -> Estornar -> pedido pendente -> Atendimento de Estornos -> Aprovar/Recusar`.

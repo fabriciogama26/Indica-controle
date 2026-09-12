@@ -1,5 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
+
 type LocationProjectRow = {
   id: string;
   sob: string;
@@ -234,13 +236,14 @@ export async function ensureLocationPlan(
     .limit(1);
 
   if (!planRisksError && (planRiskRows ?? []).length === 0) {
-    const { data: riskCatalogRows, error: riskCatalogError } = await supabase
+    const { data: riskCatalogRows, error: riskCatalogError } = await loadAllRows<LocationRiskCatalogRow>((from, to) => supabase
       .from("project_location_risks")
       .select("description, is_active, updated_at")
       .eq("tenant_id", tenantId)
       .order("updated_at", { ascending: false })
-      .limit(5000)
-      .returns<LocationRiskCatalogRow[]>();
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<LocationRiskCatalogRow[]>());
 
     if (!riskCatalogError && (riskCatalogRows ?? []).length > 0) {
       const uniqueCatalog = new Map<string, { description: string; is_active: boolean }>();

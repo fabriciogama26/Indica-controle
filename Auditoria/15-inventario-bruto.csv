@@ -1,0 +1,490 @@
+tabela;arquivo;linha;ponto_execucao;barreira_detectada;pistas;cardinalidade;classificacao;justificativa
+material_history;src/app/api/materials/route.ts;773;await;NENHUMA;range+countExact;10803 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 10803 linhas no maior tenant
+material_history;src/app/api/stock-transfers/route.ts;1097;callback;NENHUMA;-;10803 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 10803 linhas no maior tenant
+material_history;src/app/api/team-stock-operations/route.ts;1187;callback;NENHUMA;-;10803 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 10803 linhas no maior tenant
+stock_transfer_items;src/app/api/consumo-projeto/route.ts;307;await;NENHUMA;inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/dash-estoque/route.ts;435;await;NENHUMA;inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/estornos/route.ts;293;await;NENHUMA;inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/materials/route.ts;465;await;NENHUMA;limit;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/materials/route.ts;1030;await;NENHUMA;inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/stock-balance/route.ts;847;await;NENHUMA;chunk+inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/stock-transfers/reversal/route.ts;181;await;NENHUMA;inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/stock-transfers/route.ts;242;callback;NENHUMA;limit+chunk+inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/stock-transfers/route.ts;793;await;NENHUMA;chunk+inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/team-stock-balance/route.ts;306;await;NENHUMA;inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/team-stock-operations/reversal/route.ts;130;await;NENHUMA;inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/team-stock-operations/route.ts;780;await;NENHUMA;chunk+inFilter;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+stock_transfer_items;src/app/api/trafo-positions/route.ts;318;await;NENHUMA;-;7976 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 7976 linhas no maior tenant
+project_material_forecast;src/app/api/consumo-projeto/route.ts;225;await;NENHUMA;-;4339 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 4339 linhas no maior tenant
+project_material_forecast;src/app/api/projects/forecast/route.ts;141;await;NENHUMA;-;4339 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 4339 linhas no maior tenant
+stock_transfers;src/app/api/dash-estoque/route.ts;384;await;NENHUMA;range;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/dash-estoque/route.ts;411;await;NENHUMA;range;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/estornos/route.ts;277;await;NENHUMA;inFilter;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/stock-balance/route.ts;282;callback;NENHUMA;chunk+inFilter;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/stock-balance/route.ts;829;await;NENHUMA;-;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/stock-transfers/reversal/route.ts;145;await;NENHUMA;-;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/stock-transfers/route.ts;678;indefinido;NENHUMA;-;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/team-stock-balance/route.ts;282;await;NENHUMA;range;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/team-stock-operations/route.ts;440;await;NENHUMA;chunk+inFilter;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/trafo-positions/route.ts;351;await;NENHUMA;inFilter;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+stock_transfers;src/app/api/trafo-positions/route.ts;704;await;NENHUMA;inFilter;3777 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3777 linhas no maior tenant
+programming_history;src/server/modules/programacao-normalizada/queries.ts;801;callback;NENHUMA;range+inFilter;3493 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3493 linhas no maior tenant
+programming_history;src/server/modules/programacao-normalizada/queries.ts;919;await;NENHUMA;limit;3493 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 3493 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/consumo-projeto/route.ts;264;await;NENHUMA;inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/consumo-projeto/route.ts;280;await;NENHUMA;inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/dash-estoque/route.ts;494;await;NENHUMA;inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/estornos/route.ts;309;await;NENHUMA;inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/stock-balance/route.ts;368;callback;NENHUMA;chunk+inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/stock-transfers/reversal/route.ts;158;await;NENHUMA;limit+inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/team-stock-balance/route.ts;313;indefinido;NENHUMA;inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/team-stock-operations/reversal/route.ts;116;await;NENHUMA;-;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/team-stock-operations/route.ts;298;await;NENHUMA;-;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/team-stock-operations/route.ts;323;await;NENHUMA;-;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/team-stock-operations/route.ts;357;await;NENHUMA;-;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/trafo-positions/route.ts;418;indefinido;NENHUMA;inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+stock_transfer_team_operations;src/app/api/trafo-positions/route.ts;728;indefinido;NENHUMA;inFilter;2987 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2987 linhas no maior tenant
+team_composition_members;src/app/api/composicao-equipe/route.ts;550;await;NENHUMA;inFilter;2913 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2913 linhas no maior tenant
+team_composition_members;src/app/api/composicao-equipe/route.ts;604;await;NENHUMA;limit+inFilter;2913 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2913 linhas no maior tenant
+project_measurement_order_items;src/app/api/apuracao-fator-minimo/route.ts;394;await;NENHUMA;inFilter;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/app/api/dash-operacional-faturamento/route.ts;691;callback;NENHUMA;range+inFilter;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/app/api/medicao/project-activity-usage/route.ts;56;await;NENHUMA;limit+inFilter;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/server/modules/dashboard-measurement/controller.ts;502;await;NENHUMA;inFilter;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/server/modules/dashboard-portfolio/controller.ts;517;await;NENHUMA;inFilter;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/server/modules/medicao/list.ts;83;callback;NENHUMA;range;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/server/modules/medicao/list.ts;306;callback;NENHUMA;range+inFilter;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/server/modules/medicao/queries.ts;458;await;NENHUMA;-;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+project_measurement_order_items;src/server/modules/medicao/queries.ts;597;await;NENHUMA;inFilter;2835 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2835 linhas no maior tenant
+stock_requisition_request_items;src/app/api/stock-requisitions/fulfill/route.ts;64;await;NENHUMA;inFilter;2386 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2386 linhas no maior tenant
+stock_requisition_request_items;src/app/api/stock-requisitions/route.ts;78;await;NENHUMA;-;2386 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2386 linhas no maior tenant
+stock_requisition_request_items;src/app/api/stock-requisitions/route.ts;251;await;NENHUMA;inFilter;2386 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2386 linhas no maior tenant
+project_measurement_order_history;src/server/modules/medicao/queries.ts;516;await;NENHUMA;limit;2296 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 2296 linhas no maior tenant
+project_activity_forecast;src/app/api/projects/activity-forecast/import/route.ts;303;await;NENHUMA;inFilter;1744 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1744 linhas no maior tenant
+project_activity_forecast;src/app/api/projects/activity-forecast/import/route.ts;371;await;NENHUMA;-;1744 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1744 linhas no maior tenant
+project_activity_forecast;src/app/api/projects/activity-forecast/route.ts;147;await;NENHUMA;-;1744 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1744 linhas no maior tenant
+project_activity_forecast;src/app/api/projects/activity-forecast/route.ts;158;await;NENHUMA;-;1744 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1744 linhas no maior tenant
+stock_center_balances;src/app/api/consumo-projeto/route.ts;449;await;NENHUMA;inFilter;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/app/api/dash-estoque/route.ts;357;indefinido;NENHUMA;inFilter;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/app/api/stock-balance/route.ts;631;indefinido;NENHUMA;inFilter+countExact;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/app/api/stock-balance/route.ts;645;return-builder;NENHUMA;inFilter;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/app/api/stock-balance/route.ts;758;indefinido;NENHUMA;-;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/app/api/stock-requisitions/materials/route.ts;30;await;NENHUMA;range;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/app/api/team-stock-balance/route.ts;423;indefinido;NENHUMA;inFilter;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/app/api/team-stock-operations/import/route.ts;322;indefinido;NENHUMA;inFilter;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+stock_center_balances;src/server/modules/warehouse-addressing/handlers.ts;510;await;NENHUMA;-;1699 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1699 linhas no maior tenant
+materials;src/app/api/dash-estoque/route.ts;469;indefinido;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/locacao/materials/catalog/route.ts;34;await;NENHUMA;limit;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/materials/route.ts;839;indefinido;NENHUMA;range+countExact;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/projects/forecast/catalog/route.ts;38;await;NENHUMA;limit;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-requisitions/fulfill/route.ts;74;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-requisitions/route.ts;95;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-transfers/import/route.ts;153;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-transfers/reversal/route.ts;223;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-transfers/route.ts;226;indefinido;NENHUMA;limit;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-transfers/route.ts;839;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-transfers/route.ts;930;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/stock-transfers/route.ts;1373;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/team-stock-operations/import/route.ts;269;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/team-stock-operations/reversal/route.ts;172;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/team-stock-operations/route.ts;823;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/team-stock-operations/route.ts;928;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/app/api/team-stock-operations/route.ts;1382;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/lib/server/materialCatalog.ts;54;await;NENHUMA;range;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+materials;src/server/modules/warehouse-addressing/handlers.ts;537;await;NENHUMA;inFilter;1351 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1351 linhas no maior tenant
+app_entity_history;src/app/api/activities/route.ts;398;await;NENHUMA;range+countExact;1150 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1150 linhas no maior tenant
+app_entity_history;src/app/api/composicao-equipe/route.ts;741;await;NENHUMA;-;1150 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1150 linhas no maior tenant
+app_entity_history;src/app/api/composicao-equipe/route.ts;837;await;NENHUMA;range+countExact;1150 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1150 linhas no maior tenant
+app_entity_history;src/app/api/job-titles/route.ts;227;await;NENHUMA;range+countExact;1150 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1150 linhas no maior tenant
+app_entity_history;src/app/api/people/route.ts;977;await;NENHUMA;range+countExact;1150 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1150 linhas no maior tenant
+app_entity_history;src/app/api/teams/route.ts;980;await;NENHUMA;range+countExact;1150 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1150 linhas no maior tenant
+app_entity_history;src/lib/server/locationPlanning.ts;649;await;NENHUMA;-;1150 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1150 linhas no maior tenant
+app_user_page_permissions;src/app/api/auth/session-access/route.ts;33;await;NENHUMA;-;1065 linhas no maior tenant (2026-08-21);P0;ACIMA DO TETO HOJE - 1065 linhas no maior tenant
+programming_team;src/server/modules/programacao-normalizada/queries.ts;40;await;NENHUMA;inFilter;975 linhas no maior tenant (2026-08-21);P1;a menos de 10% do teto - 975 linhas
+programming_team;src/server/modules/programacao-normalizada/queries.ts;895;await;NENHUMA;inFilter;975 linhas no maior tenant (2026-08-21);P1;a menos de 10% do teto - 975 linhas
+project_asbuilt_measurement_order_items;src/app/api/medicao-asbuilt/route.ts;472;await;NENHUMA;-;918 linhas no maior tenant (2026-08-21);P1;a menos de 10% do teto - 918 linhas
+project_asbuilt_measurement_order_items;src/app/api/medicao-asbuilt/route.ts;666;await;NENHUMA;inFilter;918 linhas no maior tenant (2026-08-21);P1;a menos de 10% do teto - 918 linhas
+project_measurement_orders;src/app/api/apuracao-fator-minimo/route.ts;356;await;NENHUMA;inFilter;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/app/api/composicao-equipe/route.ts;697;await;NENHUMA;range+inFilter;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/app/api/dash-operacional-faturamento/route.ts;737;indefinido;NENHUMA;inFilter;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/app/api/medicao/rate-suggestion/route.ts;47;await;NENHUMA;limit;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/app/api/medicao/rate-suggestion/route.ts;68;await;NENHUMA;limit;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/app/api/meta/route.ts;305;await;NENHUMA;-;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/server/modules/dashboard-measurement/controller.ts;731;await;NENHUMA;limit;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/server/modules/dashboard-portfolio/controller.ts;490;callback;NENHUMA;range+inFilter+loadPaged;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/server/modules/medicao/list.ts;106;indefinido;NENHUMA;countExact;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_measurement_orders;src/server/modules/medicao/queries.ts;577;await;NENHUMA;inFilter;879 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 879 linhas
+project_location_risks;src/lib/server/locationPlanning.ts;232;await;NENHUMA;limit;714 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 714 linhas
+project_location_risks;src/lib/server/locationPlanning.ts;267;await;NENHUMA;-;714 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 714 linhas
+project_location_risks;src/lib/server/locationPlanning.ts;363;indefinido;NENHUMA;-;714 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 714 linhas
+team_compositions;src/app/api/composicao-equipe/route.ts;582;indefinido;NENHUMA;-;663 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 663 linhas
+team_compositions;src/app/api/composicao-equipe/route.ts;951;indefinido;NENHUMA;countExact;663 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 663 linhas
+team_compositions;src/server/modules/composicao-equipe/dayForemen.ts;40;await;NENHUMA;-;663 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 663 linhas
+team_compositions;src/server/modules/medicao/queries.ts;32;callback;NENHUMA;range+inFilter;663 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 663 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;345;await;NENHUMA;inFilter;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;373;indefinido;NENHUMA;-;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;408;indefinido;NENHUMA;-;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;513;indefinido;NENHUMA;limit+countExact;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;607;indefinido;NENHUMA;inFilter;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;649;await;NENHUMA;-;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;685;await;NENHUMA;-;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;738;callback;NENHUMA;range+inFilter;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;758;callback;NENHUMA;range+inFilter;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+programming;src/server/modules/programacao-normalizada/queries.ts;780;callback;NENHUMA;range+inFilter;602 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 602 linhas
+project_billing_order_items;src/app/api/faturamento/route.ts;406;await;NENHUMA;-;578 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 578 linhas
+project_billing_order_items;src/app/api/faturamento/route.ts;608;await;NENHUMA;inFilter;578 linhas no maior tenant (2026-08-21);P2;cerca de metade do teto - 578 linhas
+team_types;src/app/api/activities/meta/route.ts;33;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+types_service_activities;src/app/api/activities/meta/route.ts;40;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/activities/route.ts;419;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/activities/route.ts;463;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/activities/route.ts;521;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/app/api/activities/route.ts;535;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+types_service_activities;src/app/api/activities/route.ts;549;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/app-users/search/route.ts;25;await;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/app-users/search/route.ts;46;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_roles;src/app/api/app-users/search/route.ts;84;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/apuracao-fator-minimo/route.ts;231;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+teams;src/app/api/apuracao-fator-minimo/route.ts;238;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_types;src/app/api/apuracao-fator-minimo/route.ts;245;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/apuracao-fator-minimo/route.ts;252;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/apuracao-fator-minimo/route.ts;276;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/apuracao-fator-minimo/route.ts;322;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+teams;src/app/api/apuracao-fator-minimo/route.ts;431;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_type_history;src/app/api/apuracao-fator-minimo/route.ts;437;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/app/api/apuracao-fator-minimo/route.ts;462;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_score_targets;src/app/api/apuracao-fator-minimo/route.ts;515;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_workdays;src/app/api/apuracao-fator-minimo/route.ts;542;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_target_items;src/app/api/apuracao-fator-minimo/route.ts;553;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_team_type_targets;src/app/api/apuracao-fator-minimo/route.ts;569;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/composicao-equipe/meta/route.ts;78;indefinido;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/composicao-equipe/meta/route.ts;94;indefinido;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_centers;src/app/api/composicao-equipe/meta/route.ts;100;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/composicao-equipe/route.ts;421;await;NENHUMA;inFilter;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+people;src/app/api/composicao-equipe/route.ts;492;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/composicao-equipe/route.ts;506;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_composition_projects;src/app/api/composicao-equipe/route.ts;649;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/composicao-equipe/route.ts;853;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/composicao-equipe/route.ts;891;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/composicao-equipe/route.ts;1019;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/consumo-projeto/route.ts;204;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/consumo-projeto/route.ts;328;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/consumo-projeto/route.ts;355;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/consumo-projeto/route.ts;361;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/consumo-projeto/route.ts;386;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/consumo-projeto/route.ts;392;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/consumo-projeto/route.ts;420;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/consumo-projeto/route.ts;427;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/controle-apr/route.ts;124;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+teams;src/app/api/controle-apr/route.ts;132;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/controle-apr/route.ts;147;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/controle-apr/route.ts;160;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_apr_control_history;src/app/api/controle-apr/route.ts;208;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/controle-apr/route.ts;224;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_apr_controls;src/app/api/controle-apr/route.ts;259;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/dash-estoque/route.ts;305;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/dash-estoque/route.ts;313;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/dash-estoque/route.ts;515;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/dash-estoque/route.ts;539;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/dash-estoque/route.ts;592;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/dash-estoque/route.ts;598;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/dash-estoque/route.ts;604;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/dash-estoque/route.ts;610;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/dash-operacional-faturamento/route.ts;501;await;NENHUMA;range;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+(dinamico);src/app/api/dash-operacional-faturamento/route.ts;598;indefinido;NENHUMA;range+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_asbuilt_measurement_orders;src/app/api/dash-operacional-faturamento/route.ts;644;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+(dinamico);src/app/api/dash-operacional-faturamento/route.ts;780;await;NENHUMA;range+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/dash-operacional-faturamento/route.ts;806;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/dash-operacional-faturamento/route.ts;831;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+types_service_activities;src/app/api/dash-operacional-faturamento/route.ts;850;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_work_completion_catalog;src/app/api/dash-operacional-faturamento/route.ts;1304;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+(dinamico);src/app/api/dash-operacional-faturamento/route.ts;1494;callback;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+(dinamico);src/app/api/dash-operacional-faturamento/route.ts;1562;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+(dinamico);src/app/api/estornos/route.ts;331;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversal_reason_catalog;src/app/api/estornos/route.ts;345;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/faturamento/activities/catalog/route.ts;104;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/faturamento/activities/catalog/route.ts;122;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/faturamento/meta/route.ts;79;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_no_production_reasons;src/app/api/faturamento/meta/route.ts;85;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/faturamento/route.ts;347;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/faturamento/route.ts;367;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_billing_order_history;src/app/api/faturamento/route.ts;478;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_billing_orders;src/app/api/faturamento/route.ts;584;indefinido;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_levels;src/app/api/job-titles/route.ts;186;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/job-titles/route.ts;248;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/job-titles/route.ts;290;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/job-titles/route.ts;328;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_title_types;src/app/api/job-titles/route.ts;342;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/locacao/activities/catalog/route.ts;39;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_location_plans;src/app/api/locacao/meta/route.ts;93;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/locacao/meta/route.ts;114;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_sgd_types;src/app/api/locacao/meta/route.ts;129;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/mapa-programacao/route.ts;320;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+programming_work_completion_catalog;src/app/api/mapa-programacao/route.ts;338;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/mapa-programacao/route.ts;356;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/app/api/mapa-programacao/route.ts;373;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/mapa-programacao/route.ts;376;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_centers;src/app/api/mapa-programacao/route.ts;379;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_umb_options;src/app/api/materials/meta/route.ts;93;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_categories;src/app/api/materials/meta/route.ts;101;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_subcategories;src/app/api/materials/meta/route.ts;109;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_umb_options;src/app/api/materials/route.ts;355;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/materials/route.ts;459;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/materials/route.ts;792;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_categories;src/app/api/materials/route.ts;859;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_subcategories;src/app/api/materials/route.ts;879;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+requisicao_itens;src/app/api/materials/route.ts;930;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/materials/route.ts;965;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_categories;src/app/api/materials/route.ts;993;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_subcategories;src/app/api/materials/route.ts;1001;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/materials/route.ts;1024;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/medicao-asbuilt/activities/catalog/route.ts;104;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/medicao-asbuilt/activities/catalog/route.ts;122;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/medicao-asbuilt/meta/route.ts;80;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_no_production_reasons;src/app/api/medicao-asbuilt/meta/route.ts;87;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/medicao-asbuilt/route.ts;287;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_asbuilt_measurement_orders;src/app/api/medicao-asbuilt/route.ts;324;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/medicao-asbuilt/route.ts;436;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_asbuilt_measurement_order_history;src/app/api/medicao-asbuilt/route.ts;538;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_asbuilt_measurement_orders;src/app/api/medicao-asbuilt/route.ts;618;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_asbuilt_measurement_orders;src/app/api/medicao-asbuilt/route.ts;624;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/medicao/activities/catalog/route.ts;82;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/medicao/activities/catalog/route.ts;95;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/medicao/activities/catalog/route.ts;113;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/medicao/activities/catalog/route.ts;125;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_work_completion_catalog;src/app/api/medicao/export/route.ts;204;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/medicao/meta/route.ts;70;indefinido;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+teams;src/app/api/medicao/meta/route.ts;82;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/medicao/meta/route.ts;94;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+measurement_no_production_reasons;src/app/api/medicao/meta/route.ts;129;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_types;src/app/api/medicao/meta/route.ts;137;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_work_completion_catalog;src/app/api/medicao/meta/route.ts;144;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/medicao/programming-sources/route.ts;38;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+project_with_labels;src/app/api/medicao/programming-sources/route.ts;49;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+measurement_project_activity_indicators;src/app/api/medicao/project-activity-usage/route.ts;133;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/medicao/project-activity-usage/route.ts;154;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/meta/route.ts;262;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/meta/route.ts;289;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_target_items;src/app/api/meta/route.ts;364;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/app/api/meta/route.ts;375;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_meta_history;src/app/api/meta/route.ts;457;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/app/api/meta/route.ts;490;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_team_type_targets;src/app/api/meta/route.ts;497;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/meta/route.ts;503;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_workdays;src/app/api/meta/route.ts;577;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_target_items;src/app/api/meta/route.ts;598;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/people/meta/route.ts;29;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_title_types;src/app/api/people/meta/route.ts;51;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_levels;src/app/api/people/meta/route.ts;74;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/people/route.ts;500;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/people/route.ts;524;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/people/route.ts;588;return-builder;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/people/route.ts;602;return-builder;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/people/route.ts;900;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/people/route.ts;998;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/people/route.ts;1094;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/people/route.ts;1108;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_title_types;src/app/api/people/route.ts;1122;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/projects/activity-forecast/catalog/route.ts;45;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/projects/activity-forecast/catalog/route.ts;58;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/projects/activity-forecast/import/route.ts;246;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/app/api/projects/activity-forecast/import/route.ts;252;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_priorities;src/app/api/projects/meta/route.ts;94;indefinido;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_centers;src/app/api/projects/meta/route.ts;101;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_types;src/app/api/projects/meta/route.ts;108;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_voltage_levels;src/app/api/projects/meta/route.ts;115;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_sizes;src/app/api/projects/meta/route.ts;122;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_municipalities;src/app/api/projects/meta/route.ts;129;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/projects/meta/route.ts;136;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_utility_responsibles;src/app/api/projects/meta/route.ts;143;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_utility_field_managers;src/app/api/projects/meta/route.ts;150;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_work_completion_catalog;src/app/api/projects/meta/route.ts;157;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_sgd_types;src/app/api/projects/meta/route.ts;165;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/projects/meta/route.ts;185;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/app/api/projects/route.ts;585;indefinido;NENHUMA;countExact;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+project_with_labels;src/app/api/projects/route.ts;702;indefinido;NENHUMA;range;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+project_with_labels;src/app/api/projects/route.ts;741;await;NENHUMA;range;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+project_with_labels;src/app/api/projects/route.ts;782;await;NENHUMA;range;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+job_titles;src/app/api/projects/route.ts;931;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/projects/route.ts;948;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_history;src/app/api/projects/route.ts;1324;await;NENHUMA;range+countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/projects/route.ts;1342;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/projects/route.ts;1431;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-balance/meta/route.ts;32;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/stock-balance/meta/route.ts;42;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-balance/route.ts;335;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/stock-balance/route.ts;346;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/stock-balance/route.ts;357;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/stock-balance/route.ts;377;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/stock-balance/route.ts;386;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/stock-balance/route.ts;397;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/stock-balance/route.ts;562;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-balance/route.ts;580;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-requisitions/meta/route.ts;61;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/stock-requisitions/meta/route.ts;69;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/stock-requisitions/meta/route.ts;75;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_requisition_adjustment_reason_catalog;src/app/api/stock-requisitions/meta/route.ts;83;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/stock-requisitions/meta/route.ts;101;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/stock-requisitions/route.ts;113;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_requisition_requests;src/app/api/stock-requisitions/route.ts;215;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/stock-requisitions/route.ts;253;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/stock-requisitions/route.ts;254;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-requisitions/route.ts;255;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/stock-requisitions/serial-options/route.ts;86;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-transfers/meta/route.ts;54;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/stock-transfers/meta/route.ts;61;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/stock-transfers/meta/route.ts;66;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversal_reason_catalog;src/app/api/stock-transfers/meta/route.ts;74;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/stock-transfers/reversal/route.ts;188;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/stock-transfers/reversal/route.ts;194;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/stock-transfers/reversal/route.ts;200;indefinido;NENHUMA;limit+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/stock-transfers/reversal/route.ts;231;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/stock-transfers/route.ts;265;await;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-transfers/route.ts;847;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/stock-transfers/route.ts;855;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/stock-transfers/route.ts;863;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/stock-transfers/route.ts;873;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/stock-transfers/route.ts;884;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/stock-transfers/route.ts;895;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/stock-transfers/route.ts;906;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/stock-transfers/route.ts;1161;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/stock-transfers/route.ts;1194;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+projects;src/app/api/stock-transfers/route.ts;1202;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/stock-transfers/route.ts;1348;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/stock-transfers/serial-options/route.ts;103;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/team-stock-balance/route.ts;184;await;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/team-stock-balance/route.ts;207;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_centers;src/app/api/team-stock-balance/route.ts;215;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/team-stock-balance/route.ts;340;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/team-stock-operations/import/route.ts;277;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/team-stock-operations/import/route.ts;284;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/team-stock-operations/import/route.ts;289;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/team-stock-operations/import/route.ts;314;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/team-stock-operations/import/route.ts;331;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/team-stock-operations/meta/route.ts;82;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/team-stock-operations/meta/route.ts;90;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/team-stock-operations/meta/route.ts;96;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_categories;src/app/api/team-stock-operations/meta/route.ts;104;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_subcategories;src/app/api/team-stock-operations/meta/route.ts;112;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversal_reason_catalog;src/app/api/team-stock-operations/meta/route.ts;120;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/team-stock-operations/meta/route.ts;145;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/team-stock-operations/reversal/route.ts;137;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/team-stock-operations/reversal/route.ts;143;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/team-stock-operations/reversal/route.ts;149;indefinido;NENHUMA;limit+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/team-stock-operations/reversal/route.ts;180;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/team-stock-operations/route.ts;831;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/team-stock-operations/route.ts;839;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/team-stock-operations/route.ts;847;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/team-stock-operations/route.ts;855;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/team-stock-operations/route.ts;864;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/team-stock-operations/route.ts;873;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/team-stock-operations/route.ts;882;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_item_reversals;src/app/api/team-stock-operations/route.ts;891;callback;NENHUMA;chunk+inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_categories;src/app/api/team-stock-operations/route.ts;953;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+material_subcategories;src/app/api/team-stock-operations/route.ts;961;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/team-stock-operations/route.ts;1219;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/team-stock-operations/route.ts;1227;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/team-stock-operations/route.ts;1235;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/team-stock-operations/serial-options/route.ts;125;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/teams/meta/route.ts;34;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/teams/meta/route.ts;51;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/app/api/teams/meta/route.ts;70;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_centers;src/app/api/teams/meta/route.ts;88;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/teams/meta/route.ts;106;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/teams/meta/route.ts;123;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/teams/route.ts;301;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/app/api/teams/route.ts;317;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/teams/route.ts;495;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/teams/route.ts;829;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/teams/route.ts;1001;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/teams/route.ts;1045;indefinido;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/teams/route.ts;1113;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/teams/route.ts;1127;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/app/api/teams/route.ts;1141;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_centers;src/app/api/teams/route.ts;1155;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/app/api/teams/route.ts;1169;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/teams/route.ts;1183;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/trafo-positions/meta/route.ts;29;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/trafo-positions/meta/route.ts;37;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/trafo-positions/route.ts;307;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+serial_retirements;src/app/api/trafo-positions/route.ts;331;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/trafo-positions/route.ts;394;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/trafo-positions/route.ts;402;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/trafo-positions/route.ts;410;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/trafo-positions/route.ts;426;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/trafo-positions/route.ts;433;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_transfer_reversals;src/app/api/trafo-positions/route.ts;441;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+trafo_instances;src/app/api/trafo-positions/route.ts;603;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/app/api/trafo-positions/route.ts;676;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/app/api/trafo-positions/route.ts;712;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/app/api/trafo-positions/route.ts;720;indefinido;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/app/api/trafo-positions/route.ts;756;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_user_tenants;src/lib/server/appUsersAdmin.ts;219;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+(dinamico);src/lib/server/idempotency.ts;35;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+idempotency_requests;src/lib/server/idempotency.ts;60;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+idempotency_requests;src/lib/server/idempotency.ts;88;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_location_materials;src/lib/server/locationPlanning.ts;345;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_location_activities;src/lib/server/locationPlanning.ts;354;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+location_execution_support_items;src/lib/server/locationPlanning.ts;370;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/lib/server/locationPlanning.ts;671;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+(dinamico);src/lib/server/projectForecastXlsx.ts;83;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+cronograma_solicitacoes;src/server/modules/cronograma-solicitacoes/handlers.ts;169;await;NENHUMA;countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+job_titles;src/server/modules/cronograma-solicitacoes/handlers.ts;266;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/server/modules/cronograma-solicitacoes/handlers.ts;291;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+cronograma_solicitacoes;src/server/modules/cronograma-solicitacoes/handlers.ts;676;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/server/modules/cronograma-solicitacoes/queries.ts;42;await;NENHUMA;inFilter;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+people;src/server/modules/cronograma-solicitacoes/queries.ts;128;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/server/modules/cronograma-solicitacoes/queries.ts;146;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/server/modules/cronograma-solicitacoes/queries.ts;200;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+project_with_labels;src/server/modules/cronograma-solicitacoes/queries.ts;226;await;NENHUMA;limit;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+people;src/server/modules/cronograma-solicitacoes/queries.ts;234;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/server/modules/cronograma-solicitacoes/queries.ts;241;indefinido;NENHUMA;limit;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+cronograma_user_tipo_default;src/server/modules/cronograma-solicitacoes/queries.ts;346;indefinido;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+cronograma_user_tipo_default;src/server/modules/cronograma-solicitacoes/queries.ts;366;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+cronograma_user_tipo_default;src/server/modules/cronograma-solicitacoes/queries.ts;385;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+cronograma_solicitacoes_history;src/server/modules/cronograma-solicitacoes/queries.ts;402;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/server/modules/dashboard-measurement/controller.ts;414;await;NENHUMA;inFilter;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+teams;src/server/modules/dashboard-measurement/controller.ts;851;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/server/modules/dashboard-measurement/controller.ts;857;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_type_history;src/server/modules/dashboard-measurement/controller.ts;872;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_foreman_history;src/server/modules/dashboard-measurement/controller.ts;897;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_supervisor_history;src/server/modules/dashboard-measurement/controller.ts;920;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/server/modules/dashboard-measurement/controller.ts;947;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/server/modules/dashboard-measurement/controller.ts;970;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_workdays;src/server/modules/dashboard-measurement/controller.ts;1250;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_target_items;src/server/modules/dashboard-measurement/controller.ts;1264;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/server/modules/dashboard-portfolio/controller.ts;468;await;NENHUMA;inFilter;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+project;src/server/modules/medicao/list.ts;64;callback;NENHUMA;range;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/server/modules/medicao/queries.ts;110;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project;src/server/modules/medicao/queries.ts;125;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/server/modules/medicao/queries.ts;145;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/server/modules/medicao/queries.ts;174;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_type_history;src/server/modules/medicao/queries.ts;180;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/server/modules/medicao/queries.ts;206;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_score_targets;src/server/modules/medicao/queries.ts;261;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_workdays;src/server/modules/medicao/queries.ts;288;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_cycle_target_items;src/server/modules/medicao/queries.ts;299;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+measurement_team_type_targets;src/server/modules/medicao/queries.ts;315;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/server/modules/medicao/queries.ts;338;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+team_types;src/server/modules/programacao-normalizada/catalogs.ts;48;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+people;src/server/modules/programacao-normalizada/catalogs.ts;51;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_centers;src/server/modules/programacao-normalizada/catalogs.ts;54;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/server/modules/programacao-normalizada/catalogs.ts;79;await;NENHUMA;-;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+teams;src/server/modules/programacao-normalizada/catalogs.ts;100;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/server/modules/programacao-normalizada/catalogs.ts;120;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_sgd_types;src/server/modules/programacao-normalizada/catalogs.ts;137;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_eq_catalog;src/server/modules/programacao-normalizada/catalogs.ts;156;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_work_completion_catalog;src/server/modules/programacao-normalizada/catalogs.ts;175;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_reason_catalog;src/server/modules/programacao-normalizada/catalogs.ts;194;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_support_items;src/server/modules/programacao-normalizada/catalogs.ts;213;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+service_activities;src/server/modules/programacao-normalizada/catalogs.ts;231;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/server/modules/programacao-normalizada/queries.ts;23;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+programming_work_completion_catalog;src/server/modules/programacao-normalizada/queries.ts;300;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_with_labels;src/server/modules/projects/serviceCenters.ts;41;await;NENHUMA;inFilter;228 - 1:1 com project (2026-08-21);P3;1:1 com project (228) - confirmado por ratio 1.0000
+project;src/server/modules/projects/serviceCenters.ts;52;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+project_service_centers;src/server/modules/projects/serviceCenters.ts;74;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+warehouse_storage_types;src/server/modules/warehouse-addressing/handlers.ts;193;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+stock_centers;src/server/modules/warehouse-addressing/handlers.ts;216;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+teams;src/server/modules/warehouse-addressing/handlers.ts;225;indefinido;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+warehouse_shelves;src/server/modules/warehouse-addressing/handlers.ts;293;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+warehouse_shelf_floors;src/server/modules/warehouse-addressing/handlers.ts;310;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+warehouse_address_history;src/server/modules/warehouse-addressing/handlers.ts;436;await;NENHUMA;range+countExact;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+app_users;src/server/modules/warehouse-addressing/handlers.ts;455;await;NENHUMA;inFilter;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente
+warehouse_material_addresses;src/server/modules/warehouse-addressing/handlers.ts;516;await;NENHUMA;-;nao medida - tabela nao listada;P3;sem tenant_id ou nao medida - revisar manualmente

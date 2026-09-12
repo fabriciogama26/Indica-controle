@@ -80,7 +80,9 @@ export function createInitialForm(executionDate: string): FormState {
     executionDate,
     isPendencia: false,
     teamIds: [],
+    teamForemanIds: {},
     teamSearch: "",
+    teamCategoryCode: "",
     serviceDescription: "",
     period: "INTEGRAL",
     startTime: "08:00",
@@ -107,6 +109,7 @@ export function createInitialForm(executionDate: string): FormState {
       pi: { number: "", includedAt: "", deliveredAt: "" },
       pep: { number: "", includedAt: "", deliveredAt: "" },
     },
+    historyReason: "",
   };
 }
 
@@ -149,6 +152,7 @@ export const HISTORY_ACTION_LABELS: Record<string, string> = {
   CREATE_STAGE: "Cadastro",
   UPDATE_STAGE: "Edicao",
   ADD_TEAM: "Adicao de equipe",
+  UPDATE_PROGRAMMED_FOREMAN: "Troca de encarregado programado",
   REMOVE_TEAM: "Remocao de equipe",
   POSTPONE_STAGE: "Adiamento",
   CREATED_FROM_POSTPONE: "Criada por adiamento",
@@ -216,6 +220,9 @@ export const HISTORY_FIELD_LABELS: Record<string, string> = {
   project: "Projeto",
   projectId: "Projeto",
   team: "Equipe",
+  teamId: "Equipe",
+  programmedForeman: "Encarregado programado",
+  programmedForemanId: "Encarregado programado",
   expectedMinutes: "Tempo previsto",
   electricalField: "Ponto Eletrico",
   electricalEq: "No EQ",

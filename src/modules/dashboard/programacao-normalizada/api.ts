@@ -160,6 +160,7 @@ export type SaveStageRequestBody = {
   projectId: string;
   executionDate: string;
   teamIds?: string[];
+  teamForemanIds?: Record<string, string>;
   programmingId?: string;
   expectedUpdatedAt?: string;
   serviceDescription?: string;
@@ -200,11 +201,21 @@ export async function saveProgrammingStage(params: {
   return { status: response.status, ok: response.ok, data: await readJson<SaveStageResponse>(response) };
 }
 
-export async function addProgrammingTeam(params: { accessToken: string; programmingId: string; teamId: string }) {
+export async function addProgrammingTeam(params: {
+  accessToken: string;
+  programmingId: string;
+  teamId: string;
+  programmedForemanPersonId?: string | null;
+}) {
   const response = await fetch("/api/programacao-normalizada", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders(params.accessToken) },
-    body: JSON.stringify({ action: "ADD_TEAM", programmingId: params.programmingId, teamId: params.teamId }),
+    body: JSON.stringify({
+      action: "ADD_TEAM",
+      programmingId: params.programmingId,
+      teamId: params.teamId,
+      programmedForemanPersonId: params.programmedForemanPersonId ?? null,
+    }),
   });
 
   return { status: response.status, ok: response.ok, data: await readJson<SaveStageResponse>(response) };

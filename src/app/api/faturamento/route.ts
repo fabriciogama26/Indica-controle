@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { normalizeText, parsePagination } from "@/lib/server/apiHelpers";
+import {
+  fetchTenantLinkedAppUsers,
+  loadAllRows,
+  loadRowsInChunks,
+  normalizeText,
+  parsePagination,
+} from "@/lib/server/apiHelpers";
 import { withIdempotency } from "@/lib/server/idempotency";
+import { BILLING_PAGE_KEY, resolveBillingContext } from "@/server/modules/faturamento";
 
 type BillingStatus = "ABERTA" | "FECHADA" | "CANCELADA";
 type BillingKind = "COM_PRODUCAO" | "SEM_PRODUCAO";
+
+// Quantos `billing_order_id` por lote no filtro `.in(...)`. Limita a LARGURA da
+// consulta (tamanho da URL do PostgREST); o numero de LINHAS de cada lote e
+// paginado separadamente por `loadRowsInChunks`.
+const BILLING_RELATION_CHUNK_SIZE = 100;
+
+// Historico exibido em modal: teto de 50 registros (guia_backend.md regra 26).
+const BILLING_HISTORY_LIMIT = 50;
 
 type BillingOrderRow = {
   id: string;
@@ -145,9 +161,14 @@ type SetBillingStatusRpcResult = {
   currentUpdatedAt?: string;
 };
 
+// Formato real de UUID, nao "36 caracteres hex ou hifen": a regex antiga aceitava
+// coisas como 36 hifens, que passavam pela validacao da rota e so estouravam no
+// cast `::uuid` do Postgres — devolvendo 500 onde o certo e 400.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function normalizeUuid(value: unknown) {
   const normalized = normalizeText(value);
-  return /^[0-9a-f-]{36}$/i.test(normalized) ? normalized : null;
+  return UUID_PATTERN.test(normalized) ? normalized : null;
 }
 
 function normalizeIsoDate(value: unknown): string | null {
@@ -267,71 +288,29 @@ function dbErrorResponse(params: {
   error: unknown;
   operation: string;
   message: string;
+  tenantId?: string;
+  userId?: string;
 }) {
   const dbError = serializeDbError(params.error, params.operation);
   const hint = billingModuleMigrationHint(dbError.message);
+
+  // O erro completo (code/details/hint do Postgres) fica no log do servidor com o
+  // contexto de tenant/usuario. Devolver `details`/`hint` ao cliente expunha nome
+  // de tabela, constraint e trecho de payload para qualquer usuario da tela, entao
+  // o corpo so carrega o diagnostico fora de producao.
+  console.error("[FATURAMENTO][DB]", {
+    ...dbError,
+    tenantId: params.tenantId ?? null,
+    userId: params.userId ?? null,
+  });
+
   return NextResponse.json(
     {
       message: `${params.message}${hint}`.trim(),
-      dbError,
+      ...(process.env.NODE_ENV === "production" ? {} : { dbError }),
     },
     { status: 500 },
   );
-}
-
-async function ensureBillingPageAccess(resolution: AuthenticatedAppUserContext) {
-  if (resolution.role.isAdmin) {
-    return true;
-  }
-
-  const userPermission = await resolution.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("user_id", resolution.appUser.id)
-    .eq("page_key", "faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) {
-    return Boolean(userPermission.data.can_access);
-  }
-
-  if (!resolution.appUser.role_id) {
-    return false;
-  }
-
-  const rolePermission = await resolution.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("role_id", resolution.appUser.role_id)
-    .eq("page_key", "faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
-async function resolveBillingContext(request: NextRequest, invalidSessionMessage: string) {
-  const resolution = await resolveAuthenticatedAppUser(request, {
-    invalidSessionMessage,
-    inactiveMessage: "Usuario inativo.",
-  });
-
-  if ("error" in resolution) {
-    return resolution;
-  }
-
-  const canAccess = await ensureBillingPageAccess(resolution);
-  if (!canAccess) {
-    return {
-      error: {
-        status: 403,
-        message: "Acesso negado para operar faturamento.",
-      },
-    };
-  }
-
-  return resolution;
 }
 
 async function fetchAppUserMap(params: {
@@ -339,18 +318,8 @@ async function fetchAppUserMap(params: {
   tenantId: string;
   ids: string[];
 }) {
-  if (!params.ids.length) {
-    return new Map<string, AppUserRow>();
-  }
-
-  const { data } = await params.supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", params.tenantId)
-    .in("id", params.ids)
-    .returns<AppUserRow[]>();
-
-  return new Map((data ?? []).map((item) => [item.id, item]));
+  const users = await fetchTenantLinkedAppUsers<AppUserRow>(params.supabase, params.tenantId, params.ids);
+  return new Map(users.map((item) => [item.id, item]));
 }
 
 async function fetchActivityVoicePointMap(params: {
@@ -389,27 +358,32 @@ async function fetchBillingOrderDetail(params: {
     return null;
   }
 
-  let { data: items, error: itemsError } = await params.supabase
+  // `loadAllRows` em vez da consulta direta: o `total_value` do detalhe e a soma
+  // destes itens, entao um corte silencioso em 1.000 linhas devolveria um valor
+  // menor apresentado como total. A ordem por `id` e o desempate exigido pela
+  // paginacao por offset; `activity_code` continua definindo a ordem de exibicao.
+  const loadItems = (columns: string) => loadAllRows<BillingOrderItemRow>((from, to) => params.supabase
     .from("project_billing_order_items")
-    .select("id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, voice_point, quantity, rate, unit_value, activity_active_snapshot, total_value, observation, is_active, updated_at")
+    .select(columns)
     .eq("tenant_id", params.tenantId)
     .eq("billing_order_id", params.orderId)
     .eq("is_active", true)
     .order("activity_code", { ascending: true })
-    .returns<BillingOrderItemRow[]>();
+    .order("id", { ascending: true })
+    .range(from, to)
+    .returns<BillingOrderItemRow[]>());
+
+  let { data: items, error: itemsError } = await loadItems(
+    "id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, voice_point, quantity, rate, unit_value, activity_active_snapshot, total_value, observation, is_active, updated_at",
+  );
 
   if (itemsError && (
     String(itemsError.message ?? "").includes("activity_active_snapshot")
     || String(itemsError.message ?? "").includes("voice_point")
   )) {
-    const fallback = await params.supabase
-      .from("project_billing_order_items")
-      .select("id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, quantity, rate, unit_value, total_value, observation, is_active, updated_at")
-      .eq("tenant_id", params.tenantId)
-      .eq("billing_order_id", params.orderId)
-      .eq("is_active", true)
-      .order("activity_code", { ascending: true })
-      .returns<BillingOrderItemRow[]>();
+    const fallback = await loadItems(
+      "id, billing_order_id, service_activity_id, activity_code, activity_description, activity_unit, quantity, rate, unit_value, total_value, observation, is_active, updated_at",
+    );
     items = fallback.data ?? [];
     itemsError = fallback.error;
   }
@@ -480,6 +454,7 @@ async function loadHistory(params: {
     .eq("tenant_id", params.tenantId)
     .eq("billing_order_id", params.orderId)
     .order("created_at", { ascending: false })
+    .limit(BILLING_HISTORY_LIMIT)
     .returns<BillingHistoryRow[]>();
 
   if (error) {
@@ -505,10 +480,19 @@ async function loadHistory(params: {
 }
 
 export async function GET(request: NextRequest) {
-  const resolution = await resolveBillingContext(request, "Sessao invalida para consultar faturamento.");
-  if ("error" in resolution) {
-    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  // A exportacao consome esta mesma rota (listagem paginada e detalhe por ordem),
+  // entao a permissao `export` e cobrada aqui, no modo `mode=export`. Sem isso,
+  // `can_export = false` nao bloqueava nada em Faturamento — ao contrario de
+  // medicao/estornos/stock-balance, que ja separam as duas acoes.
+  const isExportRequest = normalizeText(request.nextUrl.searchParams.get("mode")).toLowerCase() === "export";
+  const resolved = await resolveBillingContext(request, {
+    invalidSessionMessage: "Sessao invalida para consultar faturamento.",
+    action: isExportRequest ? "export" : "read",
+  });
+  if ("errorResponse" in resolved) {
+    return resolved.errorResponse;
   }
+  const resolution = resolved.context;
 
   const historyOrderId = normalizeUuid(request.nextUrl.searchParams.get("historyOrderId"));
   if (historyOrderId) {
@@ -569,6 +553,8 @@ export async function GET(request: NextRequest) {
       error: summaryError,
       operation: "faturamento.list.summary",
       message: "Falha ao listar faturamentos.",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
     });
   }
 
@@ -584,7 +570,13 @@ export async function GET(request: NextRequest) {
     .from("project_billing_orders")
     .select("id, billing_number, project_id, billing_kind, no_production_reason_id, no_production_reason_name_snapshot, status, ingresso_date, notes, project_code_snapshot, is_active, cancellation_reason, canceled_at, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", resolution.appUser.tenant_id)
+    // `id` como desempate garante ordem TOTAL. Sem ele a paginacao por offset e
+    // indeterminada sempre que varias linhas compartilham `updated_at` — e a
+    // importacao em lote garante esse empate: `now()` e constante na transacao,
+    // entao as 500 ordens de um mesmo lote nascem com o mesmo `updated_at`, e o
+    // loop de exportacao repetia e pulava registros entre as paginas.
     .order("updated_at", { ascending: false })
+    .order("id", { ascending: false })
     .range(startIndex, startIndex + pageSize - 1);
 
   if (projectId) dataQuery = dataQuery.eq("project_id", projectId);
@@ -598,20 +590,40 @@ export async function GET(request: NextRequest) {
       error,
       operation: "faturamento.list.data",
       message: "Falha ao listar faturamentos.",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
     });
   }
 
   const pagedOrderIds = (pagedBaseOrders ?? []).map((item) => item.id);
 
-  const { data: aggregateItems } = pagedOrderIds.length
-    ? await resolution.supabase
+  // O `.in(...)` cru cortava em 1.000 linhas sem sinalizar: com `pageSize` de ate
+  // 500 ordens (o export pede exatamente 500), qualquer pagina com mais de 1.000
+  // itens somados perdia o resto em silencio e as ordens que ficavam de fora
+  // apareciam com `valor_total` e `itens` zerados — na tela e no CSV.
+  const { data: aggregateItems, error: aggregateError } = await loadRowsInChunks<BillingAggregateItem>(
+    pagedOrderIds,
+    (chunk, from, to) => resolution.supabase
       .from("project_billing_order_items")
-        .select("billing_order_id, total_value")
-        .eq("tenant_id", resolution.appUser.tenant_id)
-        .eq("is_active", true)
-        .in("billing_order_id", pagedOrderIds)
-        .returns<BillingAggregateItem[]>()
-    : { data: [] as BillingAggregateItem[] };
+      .select("billing_order_id, total_value")
+      .eq("tenant_id", resolution.appUser.tenant_id)
+      .eq("is_active", true)
+      .in("billing_order_id", chunk)
+      .order("id", { ascending: true })
+      .range(from, to)
+      .returns<BillingAggregateItem[]>(),
+    { chunkSize: BILLING_RELATION_CHUNK_SIZE },
+  );
+
+  if (aggregateError) {
+    return dbErrorResponse({
+      error: aggregateError,
+      operation: "faturamento.list.items",
+      message: "Falha ao listar faturamentos.",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
+    });
+  }
 
   // M1: userIds apenas dos registros da pagina atual
   const userIds = Array.from(new Set((pagedBaseOrders ?? []).flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))));
@@ -667,10 +679,14 @@ export async function GET(request: NextRequest) {
 }
 
 async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
-  const resolution = await resolveBillingContext(request, "Sessao invalida para salvar faturamento.");
-  if ("error" in resolution) {
-    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  const resolved = await resolveBillingContext(request, {
+    invalidSessionMessage: "Sessao invalida para salvar faturamento.",
+    action: method === "POST" ? "create" : "update",
+  });
+  if ("errorResponse" in resolved) {
+    return resolved.errorResponse;
   }
+  const resolution = resolved.context;
 
   const payload = (await request.json().catch(() => null)) as SaveBillingPayload | null;
   const orderId = normalizeUuid(payload?.id);
@@ -737,6 +753,8 @@ async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
       error,
       operation: method === "PUT" ? "faturamento.save.update" : "faturamento.save.create",
       message: "Falha ao salvar faturamento.",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
     });
   }
 
@@ -773,10 +791,14 @@ async function saveBillingOrder(request: NextRequest, method: "POST" | "PUT") {
 }
 
 async function saveBillingOrderBatchPartial(request: NextRequest) {
-  const resolution = await resolveBillingContext(request, "Sessao invalida para importar faturamento em lote.");
-  if ("error" in resolution) {
-    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  const resolved = await resolveBillingContext(request, {
+    invalidSessionMessage: "Sessao invalida para importar faturamento em lote.",
+    action: "import",
+  });
+  if ("errorResponse" in resolved) {
+    return resolved.errorResponse;
   }
+  const resolution = resolved.context;
 
   const payload = (await request.json().catch(() => null)) as SaveBillingBatchPayload | null;
   const rowsInput = Array.isArray(payload?.rows) ? payload.rows : [];
@@ -811,6 +833,8 @@ async function saveBillingOrderBatchPartial(request: NextRequest) {
       error,
       operation: "faturamento.batch_import",
       message: "Falha ao importar faturamento em lote.",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
     });
   }
 
@@ -854,16 +878,28 @@ export async function PUT(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const resolution = await resolveBillingContext(request, "Sessao invalida para alterar status do faturamento.");
-  if ("error" in resolution) {
-    return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
+  const resolved = await resolveBillingContext(request, {
+    invalidSessionMessage: "Sessao invalida para alterar status do faturamento.",
+    action: "read",
+  });
+  if ("errorResponse" in resolved) {
+    return resolved.errorResponse;
   }
+  const resolution = resolved.context;
 
   const payload = (await request.json().catch(() => null)) as UpdateStatusPayload | null;
   const orderId = normalizeUuid(payload?.id);
   const action = normalizeText(payload?.action).toUpperCase();
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const reason = normalizeText(payload?.reason) || null;
+
+  // Permissao granular por operacao: a acao especifica e cobrada depois de ler o
+  // payload, dentro do fluxo da operacao, e nao no topo da rota.
+  const authorizationError = await authorizePageAction(resolution, BILLING_PAGE_KEY, action === "CANCELAR" ? "cancel" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
 
   if (!orderId || (action !== "FECHAR" && action !== "CANCELAR" && action !== "ABRIR")) {
     return NextResponse.json({ message: "Informe faturamento e acao valida para atualizar o status." }, { status: 400 });
@@ -891,6 +927,8 @@ export async function PATCH(request: NextRequest) {
       error,
       operation: "faturamento.status",
       message: "Falha ao alterar status do faturamento.",
+      tenantId: resolution.appUser.tenant_id,
+      userId: resolution.appUser.id,
     });
   }
 

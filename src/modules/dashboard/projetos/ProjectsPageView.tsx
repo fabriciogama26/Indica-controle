@@ -6,13 +6,24 @@ import { FormEvent, useCallback, useDeferredValue, useEffect, useMemo, useState 
 import { useAuth } from "@/hooks/useAuth";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import styles from "./ProjectsPageView.module.css";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
 import { downloadBlobFile, downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
+import { formatDecimalDegrees, parseLatitude, parseLongitude, splitDecimalDegreesPair } from "@/lib/utils/parsers";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import {
+  PROJECT_MASS_IMPORT_COLUMNS_HINT,
+  buildProjectMassImportTemplateCsv,
+  parseProjectMassImportCsv,
+  type ProjectImportCatalogs,
+  type ProjectImportRow,
+} from "./massImport";
 
 type ProjectItem = {
   id: string;
@@ -31,6 +42,8 @@ type ProjectItem = {
   street: string;
   neighborhood: string;
   city: string;
+  latitude: number | null;
+  longitude: number | null;
   serviceDescription: string | null;
   observation: string | null;
   isActive: boolean;
@@ -70,6 +83,8 @@ type FormState = {
   street: string;
   neighborhood: string;
   city: string;
+  latitude: string;
+  longitude: string;
   serviceDescription: string;
   observation: string;
   isTest: boolean;
@@ -79,6 +94,7 @@ type FormState = {
 
 type FilterState = {
   sob: string;
+  observation: string;
   executionDate: string;
   priority: string;
   serviceCenter: string;
@@ -253,7 +269,6 @@ const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 const PROJECT_FORECAST_QTY_LIMIT = 100000;
-const PRIORITY_OPTIONS = ["GRUPO B - FLUXO", "DRP / DRC", "GRUPO A - FLUXO", "FUSESAVER"] as const;
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   priority: "Prioridade",
   sob: "Projeto (SOB)",
@@ -269,6 +284,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
   city: "Municipio",
   street: "Logradouro",
   neighborhood: "Bairro",
+  latitude: "Latitude",
+  longitude: "Longitude",
   serviceDescription: "Descricao do servico",
   observation: "Observacao",
   partner: "Parceira",
@@ -296,6 +313,8 @@ const INITIAL_FORM: FormState = {
   street: "",
   neighborhood: "",
   city: "",
+  latitude: "",
+  longitude: "",
   serviceDescription: "",
   observation: "",
   isTest: false,
@@ -305,6 +324,7 @@ const INITIAL_FORM: FormState = {
 
 const INITIAL_FILTERS: FilterState = {
   sob: "",
+  observation: "",
   executionDate: "",
   priority: "",
   serviceCenter: "",
@@ -402,6 +422,9 @@ function buildQuery(filters: FilterState, page: number, pageSize = PAGE_SIZE) {
   if (filters.sob.trim()) {
     params.set("sob", filters.sob.trim());
   }
+  if (filters.observation.trim()) {
+    params.set("observation", filters.observation.trim());
+  }
   if (filters.executionDate) {
     params.set("executionDate", filters.executionDate);
   }
@@ -443,6 +466,8 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     "Municipio",
     "Logradouro",
     "Bairro",
+    "Latitude",
+    "Longitude",
     "Responsavel Contratada",
     "Responsavel Distribuidora",
     "Gestor de campo Distribuidora",
@@ -471,6 +496,8 @@ function buildProjectsCsv(projectItems: ProjectItem[]) {
     project.city,
     project.street,
     project.neighborhood,
+    formatDecimalDegrees(project.latitude),
+    formatDecimalDegrees(project.longitude),
     project.contractorResponsible,
     project.utilityResponsible,
     project.utilityFieldManager,
@@ -727,6 +754,8 @@ function toFormState(project: ProjectItem): FormState {
     street: project.street,
     neighborhood: project.neighborhood,
     city: project.city,
+    latitude: formatDecimalDegrees(project.latitude),
+    longitude: formatDecimalDegrees(project.longitude),
     serviceDescription: project.serviceDescription ?? "",
     observation: project.observation ?? "",
     isTest: Boolean(project.isTest),
@@ -859,10 +888,35 @@ export function ProjectsPageView() {
     () =>
       Array.from(
         new Set(
-          [...PRIORITY_OPTIONS, ...(meta.priorities ?? []).map((item) => normalizePriority(item)).filter(Boolean)],
+          (meta.priorities ?? []).map((item) => normalizePriority(item)).filter(Boolean),
         ),
       ),
     [meta.priorities],
+  );
+
+  const projectImportCatalogs = useMemo<ProjectImportCatalogs>(
+    () => ({
+      priorities: priorityOptions,
+      serviceCenters: meta.serviceCenters,
+      serviceTypes: meta.serviceTypes,
+      voltageLevels: meta.voltageLevels,
+      projectSizes: meta.projectSizes,
+      cities: meta.cities,
+      contractorResponsibles: meta.contractorResponsibles,
+      utilityResponsibles: meta.utilityResponsibles,
+      utilityFieldManagers: meta.utilityFieldManagers,
+    }),
+    [
+      meta.cities,
+      meta.contractorResponsibles,
+      meta.projectSizes,
+      meta.serviceCenters,
+      meta.serviceTypes,
+      meta.utilityFieldManagers,
+      meta.utilityResponsibles,
+      meta.voltageLevels,
+      priorityOptions,
+    ],
   );
 
   const sobBaseMap = useMemo(() => {
@@ -1024,6 +1078,51 @@ export function ProjectsPageView() {
     [session?.accessToken, setTotal],
   );
 
+  const submitProjectMassImport = useCallback(
+    async (rows: ProjectImportRow[]) => {
+      if (!session?.accessToken) {
+        return { ok: false, message: "Sessao invalida para importar projetos em massa.", savedCount: 0, results: [] };
+      }
+
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const projectMassImport = useMassImport<ProjectImportRow>({
+    entityLabel: "projetos",
+    errorFilePrefix: "projetos",
+    templateFileName: "modelo_projetos_cadastro_em_massa.csv",
+    buildTemplateCsv: () => buildProjectMassImportTemplateCsv(projectImportCatalogs),
+    parse: (content, fileName) => parseProjectMassImportCsv({ content, fileName, catalogs: projectImportCatalogs }),
+    submit: submitProjectMassImport,
+    resolveErrorColumn: (code) => (code === "DUPLICATE_PROJECT_SOB" ? "projeto" : "salvamento"),
+    onImported: async () => {
+      await Promise.all([loadMeta(), loadProjects(1, activeFilters)]);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+  });
+
   useEffect(() => {
     void loadMeta();
   }, [loadMeta]);
@@ -1126,6 +1225,22 @@ export function ProjectsPageView() {
     setForm((current) => ({
       ...current,
       [field]: value,
+    }));
+  }
+
+  // O Google Maps copia o par "latitude, longitude" num texto so; colar no campo Latitude
+  // preenche os dois campos em vez de recusar o valor.
+  function updateLatitudeField(value: string) {
+    const pair = splitDecimalDegreesPair(value);
+    if (!pair) {
+      updateFormField("latitude", value);
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      latitude: pair.latitude,
+      longitude: pair.longitude,
     }));
   }
 
@@ -2172,6 +2287,24 @@ export function ProjectsPageView() {
       return;
     }
 
+    const latitude = parseLatitude(form.latitude);
+    if (latitude === null) {
+      setFeedback({
+        type: "error",
+        message: "Latitude invalida. Informe em graus decimais entre -90 e 90 (ex.: -23.550520).",
+      });
+      return;
+    }
+
+    const longitude = parseLongitude(form.longitude);
+    if (longitude === null) {
+      setFeedback({
+        type: "error",
+        message: "Longitude invalida. Informe em graus decimais entre -180 e 180 (ex.: -46.633308).",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
     setFeedback(null);
 
@@ -2190,6 +2323,8 @@ export function ProjectsPageView() {
           sob: normalizeSob(form.sob),
           priority: normalizePriority(form.priority),
           estimatedValue: estimatedValue.toFixed(2),
+          latitude,
+          longitude,
         }),
       });
 
@@ -2743,6 +2878,37 @@ export function ProjectsPageView() {
                 />
               </label>
 
+              <label className={styles.field}>
+                <span>
+                  Latitude <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.latitude}
+                  onChange={(event) => updateLatitudeField(event.target.value)}
+                  placeholder="-23.550520"
+                  required
+                />
+                <small className={styles.fieldHelp}>
+                  Graus decimais, como o Google Maps copia. Colar o par completo aqui preenche tambem a longitude.
+                </small>
+              </label>
+
+              <label className={styles.field}>
+                <span>
+                  Longitude <span className="requiredMark">*</span>
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={form.longitude}
+                  onChange={(event) => updateFormField("longitude", event.target.value)}
+                  placeholder="-46.633308"
+                  required
+                />
+              </label>
+
               <label className={`${styles.field} ${styles.fieldWide}`}>
                 <span>Descricao do servico</span>
                 <textarea
@@ -2812,6 +2978,16 @@ export function ProjectsPageView() {
                 {isEditing ? (
                   <button type="button" className={styles.ghostButton} onClick={resetFormState} disabled={isSubmitting}>
                     Cancelar edicao
+                  </button>
+                ) : null}
+                {!isEditing ? (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={projectMassImport.open}
+                    disabled={isSubmitting || isLoadingMeta}
+                  >
+                    Cadastro em massa
                   </button>
                 ) : null}
               </div>
@@ -3111,6 +3287,16 @@ export function ProjectsPageView() {
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>Observacao</span>
+            <input
+              type="text"
+              value={filterDraft.observation}
+              onChange={(event) => updateFilterField("observation", event.target.value)}
+              placeholder="Filtrar por Observacao"
+            />
           </label>
         </div>
 
@@ -3880,6 +4066,8 @@ export function ProjectsPageView() {
                 <div><strong>Municipio:</strong> {detailProject.city}</div>
                 <div><strong>Logradouro:</strong> {detailProject.street}</div>
                 <div><strong>Bairro:</strong> {detailProject.neighborhood}</div>
+                <div><strong>Latitude:</strong> {formatDecimalDegrees(detailProject.latitude) || "-"}</div>
+                <div><strong>Longitude:</strong> {formatDecimalDegrees(detailProject.longitude) || "-"}</div>
                 <div><strong>Descricao do servico:</strong> {detailProject.serviceDescription ?? "-"}</div>
                 <div><strong>Observacao:</strong> {detailProject.observation ?? "-"}</div>
                 <div><strong>Registrado por:</strong> {formatAuditActor(detailProject.createdByName)}</div>
@@ -4030,6 +4218,12 @@ export function ProjectsPageView() {
           <option key={item.sob} value={item.sob} />
         ))}
       </datalist>
+
+      <MassImportModal
+        controller={projectMassImport}
+        entityLabel="projetos"
+        columnsHint={PROJECT_MASS_IMPORT_COLUMNS_HINT}
+      />
 
       <datalist id="forecast-sob-list">
         {meta.sobCatalog.map((project) => (

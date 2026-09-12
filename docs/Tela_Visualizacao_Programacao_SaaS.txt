@@ -296,3 +296,36 @@ Ajuda contextual
 - Comportamento antes/depois:
   - Antes: lista e calendario estavam acoplados ao fluxo de cadastro.
   - Depois: existe uma tela nova dedicada para visualizacao, mantendo cadastro separado.
+
+Atualizacao 2026-09-10 - Cartao vermelho de data bloqueada no calendario
+-------------------------------------------------------------------------
+- Origem: tela nova `Datas Bloqueadas` (`/datas-bloqueadas`, migration 424).
+  Detalhe completo em `docs/Tela_Datas_Bloqueadas_SaaS.txt`.
+- `ProgrammingWeeklyCalendarPanel` recebeu a prop `blockedDates` e passou a
+  marcar em vermelho os dias bloqueados. Nada mais do calendario mudou.
+- DOIS NIVEIS DE MARCACAO, e o motivo e estrutural: a grade e equipe x dia e NAO
+  carrega municipio. Uma celula VAZIA nao tem projeto, logo nao existe municipio
+  para casar com um feriado municipal.
+  - `NACIONAL` pinta a coluna inteira, celula vazia inclusive, porque vale para
+    qualquer projeto do tenant. Na celula vazia o texto `Sem programacao` da
+    lugar ao cartao vermelho com a descricao.
+  - `MUNICIPAL` marca o cabecalho do dia, com o nome do municipio, e so pinta as
+    celulas cujo projeto e daquele municipio -- as unicas em que a informacao
+    existe. O casamento usa `stage.city`, que ja vinha no `StageListItem`.
+- Celula com etapa mantem os cartoes das etapas; o cartao vermelho entra ACIMA
+  deles, sem esconder programacao existente.
+- Legenda ganhou o item `Data bloqueada`.
+- Fonte do dado: `useActiveBlockedDates` sobre `GET /api/blocked-dates/vigentes`,
+  com janela igual a SEMANA EXIBIDA, nao uma janela fixa em torno de hoje. O
+  usuario navega o calendario livremente, e uma janela fixa deixaria de avisar
+  assim que ele passasse do intervalo -- mesmo cuidado que fez a semana ter carga
+  propria em vez de reusar a pagina da lista (ver a armadilha registrada no C4).
+- A carga so acontece no modo `consulta` (`enabled: isConsultaMode`), entao a
+  tela de cadastro nao paga por ela.
+- Estilos novos em `components/ProgrammingWeeklyCalendar.module.css`:
+  `.weekLegendBlocked`, `.weekCalendarDayHeaderBlocked`, `.weekBlockedTag`,
+  `.weekCalendarDayCellBlocked` e `.weekBlockedCard`.
+- Permissao inalterada: a leitura aceita o `page_key` `programacao-visualizacao`
+  via `authorizeAnyPageAction`.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros, 2 warnings
+  legados) e `npm run build`.

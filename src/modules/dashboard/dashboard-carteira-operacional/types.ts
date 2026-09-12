@@ -9,11 +9,17 @@ export type DashboardPortfolioCycle = {
   label: string;
 };
 
+// `serviceScope` usa a mesma classificacao do Mapa de Programacao (manutencao
+// agrupa emergencial), com `ALL` a mais: a Carteira Operacional sempre foi lida
+// com os dois tipos juntos, entao o escopo neutro continua sendo o padrao.
+export type DashboardPortfolioServiceScope = "ALL" | "OBRAS" | "MANUTENCAO";
+
 export type DashboardPortfolioFilters = {
   cycleStart: string;
   project: string;
   serviceCenterId: string;
   portfolioScope: "ACTIVE" | "WITHDRAWN" | "ALL";
+  serviceScope: DashboardPortfolioServiceScope;
 };
 
 export type DashboardPortfolioDiagnostic = {

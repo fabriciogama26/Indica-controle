@@ -45,15 +45,18 @@ Arquitetura
   - `supabase/migrations/204_preserve_measurement_work_completion_snapshot.sql`
   - `supabase/migrations/293_create_measurement_project_activity_indicators.sql`
   - `supabase/migrations/331_prevent_duplicate_active_measurement_items.sql`
+  - `supabase/migrations/423_backfill_measurement_project_activity_indicators.sql`
 
 Cadastro
 --------
 - Origem obrigatoria:
-  - `Projeto + Equipe + Data de execucao`
+  - `Com producao`: `Projeto + Equipe + Data de execucao`
+  - `Sem producao`: `Equipe + Data de execucao`; `Projeto` e opcional.
   - A tela aceita pre-preenchimento do cabecalho via `/medicao?projectId=<id>&teamId=<id>&executionDate=<YYYY-MM-DD>&compositionId=<id>`, aplicado somente quando projeto e equipe existem nos metadados autenticados do tenant.
 - Campos principais:
-  - Projeto (padrao `input + datalist`, igual ao filtro)
-  - Equipe
+  - Projeto (padrao `input + datalist`, igual ao filtro; obrigatorio somente em `Com producao`)
+  - Equipe (select exibe `Equipe / Encarregado` quando o encarregado esta cadastrado, no mesmo padrao da Composicao de Equipe)
+  - O select de `Equipe` (cadastro e filtro) lista SOMENTE equipe com `Tipo de equipe` = `TECNICA`, lido de `teams.team_category_id`. Equipe COMERCIAL nao aparece aqui: ela pertence a tela `Medicao Comercial`.
   - Data execucao
   - Tipo da medicao (`Com producao` ou `Sem producao`)
   - Motivo sem producao (visivel no formulario, mas habilitado apenas em `Sem producao`)
@@ -69,8 +72,8 @@ Cadastro
   - Observacao
 - Regras:
   - Toda ordem exige `Tipo da medicao`.
-  - `Com producao` exige ao menos uma atividade valida na ordem.
-  - `Sem producao` exige `Motivo sem producao` e salva a ordem sem itens.
+  - `Com producao` exige Projeto e ao menos uma atividade valida na ordem.
+  - `Sem producao` exige `Motivo sem producao` e salva a ordem sem itens; pode ser salva sem Projeto.
   - `Motivo sem producao` nao pode ser informado em ordens `Com producao` (regra reforcada na API).
   - `Sem producao` nao permite atividades na ordem e registra total `0`.
   - O motivo de `Sem producao` vem do catalogo `measurement_no_production_reasons` segregado por tenant.
@@ -78,6 +81,7 @@ Cadastro
   - Quando existir match por `Projeto + Equipe + Data de execucao`, a ordem vincula automaticamente a melhor programacao candidata.
   - O resultado do match de Programacao e exibido somente apos salvar a medicao (na lista e em detalhes).
   - Nao e permitido cadastrar mais de uma ordem para o mesmo `Projeto + Equipe + Data de execucao` dentro do mesmo tenant, mesmo quando o vinculo de `Programacao` for diferente ou nulo.
+  - Para `Sem producao` sem Projeto, nao e permitido cadastrar mais de uma ordem para a mesma `Equipe + Data de execucao` dentro do mesmo tenant.
   - A inclusao de atividades e independente da lista de atividades da Programacao.
   - A mesma atividade nao pode se repetir dentro da mesma ordem (`tenant + Projeto + Equipe + Data de execucao` no contexto operacional da medicao).
   - A regra de nao repetir atividade vale no frontend, na API, na RPC `save_project_measurement_order` e no indice unico parcial de `project_measurement_order_items`, cobrindo tambem o cadastro em massa.
@@ -132,7 +136,7 @@ Filtros, auto-complete e listagem
   - Data inicial (padrao: primeiro dia do mes corrente)
   - Data final (padrao: ultimo dia do mes corrente)
   - Projeto (padrao digitavel `input + datalist`, igual as outras telas)
-  - Equipe (lista carregada dos metadados da tela; filtra por `team_id`)
+  - Equipe (lista carregada dos metadados da tela; filtra por `team_id` e exibe `Equipe / Encarregado` quando disponivel)
   - Tipo de Servico (catalogo ativo de `project_service_types`; filtra pelo tipo vinculado ao projeto)
   - Atividade (autocomplete por codigo/descricao; retorna ordens que possuem item ativo da atividade selecionada)
   - Status (`TODOS`, `ABERTA`, `FECHADA`, `CANCELADA`)
@@ -162,8 +166,14 @@ Filtros, auto-complete e listagem
   - Cor do status na lista: `ABERTA` em verde, `FECHADA` e `CANCELADA` em vermelho
   - Atualizado em
   - Paginacao server-side com `page`, `pageSize` e `total`, exibindo navegacao `Anterior/Proxima` na tela.
-  - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela, incluindo `Centro de Servicos` do projeto.
-  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`, `Codigo IDD` e `Centro de Servicos` do projeto.
+  - Botao `Exportar Excel (CSV)` para baixar a listagem filtrada da tela, incluindo `Centro de Servicos`.
+  - Botao `Detalhamento (CSV)` para exportar linha a linha por atividade, incluindo `Codigo atividade`, `Codigo IDD` e `Centro de Servicos`.
+  - `Centro de Servicos` tem DUAS origens desde 2026-09-09: ordem COM projeto usa o Centro de
+    Servico do projeto, sem mudanca; ordem SEM projeto usa a Base da equipe
+    (`teams.service_center_id`). Na Medicao TECNICA o unico caso sem projeto e `Sem producao`,
+    entao so essas linhas mudaram -- antes elas imprimiam `Sem projeto` nessa coluna. `Sem base`
+    sobra so para equipe legada sem Base. Resolucao em `resolveMeasurementOrderServiceCenter`
+    (`src/server/modules/medicao/normalizers.ts`), compartilhada por listagem e detalhe.
   - Botao `Exportar pontuacao` para baixar CSV com `Tipo`, `Nome`, `Data`, `Projeto`, `Pontos`, `Valor (R$)`, `Status` e `Compensatorio`.
   - As colunas monetarias dos CSVs de Medicao exportam valores numericos sem prefixo `R$`, mantendo a unidade no cabecalho para permitir soma no Excel.
   - A `Pontuacao` nao fica visivel na lista; e calculada para exportacao por `sum(Pontos da atividade x Quantidade)`.
@@ -180,6 +190,7 @@ Filtros, auto-complete e listagem
   - Cancelar (permitido em `ABERTA` e `FECHADA`, motivo obrigatorio e bloqueio somente quando `CANCELADA`)
   - Fechar (somente quando `ABERTA`)
   - Abrir (somente quando `FECHADA`, com modal de motivo obrigatorio e registro no historico)
+  - Descancelar (somente quando `CANCELADA`, com modal de motivo obrigatorio e registro no historico)
 - Modal de detalhes:
   - Exibe `Tipo da medicao` e `Motivo sem producao` no cabecalho.
   - Exibe `Composicao equipe = Sim/Nao` conforme a existencia de composicao ativa para o mesmo `tenant + Projeto + Equipe + Data execucao`.
@@ -198,6 +209,8 @@ Cancelamento e saldo
 --------------------
 - `Cancelamento` exige motivo minimo e grava historico.
 - `Fechamento` da ordem altera status para `FECHADA`.
+- `Descancelamento` usa a acao `ABRIR`, exige motivo minimo, volta a ordem para `ABERTA`,
+  reativa `is_active`, limpa os campos de cancelamento e grava historico `UNCANCEL`.
 - Nao existe status `FATURADA` nesta etapa.
 - Nao ha impacto direto em saldo de estoque nesta tela.
 
@@ -219,6 +232,41 @@ Atalhos
 - Modelo cadastro em massa:
   - colunas obrigatorias: `projeto,data,equipe,tipo_medicao,motivo_sem_producao,voz,taxa`
   - colunas de quantidade: `quantidade` (padrao) e `mva,horas` (atividade composta)
+
+Atualizacao 2026-08-20 - Projeto opcional para Sem producao
+------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/app/api/medicao/route.ts`
+  - `src/app/api/medicao/export/route.ts`
+  - `src/server/modules/medicao/types.ts`
+  - `src/server/modules/medicao/normalizers.ts`
+  - `src/server/modules/medicao/queries.ts`
+  - `src/server/modules/medicao/list.ts`
+  - `src/server/modules/medicao/programmingMatch.ts`
+  - `supabase/migrations/382_allow_no_project_no_production_measurement.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `submitOrder`, `startEdit` e renderizacao do campo `Projeto`
+  - `saveMeasurementOrder`
+  - `buildSummaryCsv`, `buildDetailsCsv`, `buildScoreCsv`
+  - `buildMeasurementOrderDetail`, `fetchMeasurementOrderDetail`, `fetchMeasurementOrderDetailsForExport`
+  - `listMeasurementOrdersPage`
+  - `loadProgrammingMatchMap`, `resolveProjectWorkCompletionAtWindowEnd`
+  - RPC `save_project_measurement_order`
+  - Trigger function `enforce_project_measurement_order_context_unique`
+- Comportamento antes/depois:
+  - Antes: `Projeto` era obrigatorio para qualquer ordem, inclusive `Sem producao`, no formulario, na API, na RPC e no schema (`project_id not null`).
+  - Depois: `Projeto` permanece obrigatorio para `Com producao`, mas fica opcional para `Sem producao`.
+  - Depois: quando `Sem producao` e salva sem Projeto, a listagem, detalhes e CSVs exibem `Sem projeto`, nao uma celula vazia.
+  - Depois: ordens `Sem producao` sem Projeto nao tentam resolver Programacao, Centro de Servicos nem Composicao de Equipe.
+  - Depois: a duplicidade continua bloqueada por `Projeto + Equipe + Data` quando existe Projeto; sem Projeto, o bloqueio passa a ser `Equipe + Data` para `SEM_PRODUCAO`.
+- Multi-tenant:
+  - `tenant_id` continua derivado da sessao no Route Handler e repassado para a RPC.
+  - RLS/policies da tabela nao foram relaxadas.
+  - A RPC `SECURITY DEFINER` permanece executavel somente por `service_role`, conforme hardening da migration 375.
 
 Atualizacao 2026-08-12 (2) - Validacao de equipe ATIVA saiu do estado dormente
 --------------------------------------------------------------------------------
@@ -1360,6 +1408,15 @@ Atualizacao 2026-08-03 - Coluna Codigo IDD no detalhe e no CSV de detalhamento
 - Divergencia tratada (CLAUDE.md secao 12):
   - `service_activities.code_idd` ja existia no banco, mas nao havia migration correspondente no repositorio.
   - A migration 353 apenas sincroniza o versionamento (`add column if not exists`), sendo no-op no ambiente onde a coluna ja existe. Nao ha carga/backfill de dados.
+
+Atualizacao 2026-09-01 - Tipo do Codigo IDD/SAP
+-----------------------------------------------
+- Corrigido drift de schema relacionado a `service_activities.code_idd`: em ambiente vivo a coluna podia
+  estar como `bigint`, apesar do contrato versionado e da tela tratarem o campo como texto.
+- A migration `406_fix_service_activities_code_idd_text.sql` converte `code_idd` para `text`, preservando
+  valores numericos existentes como texto.
+- Impacto na Medicao: a leitura do `Codigo IDD` continua sem mudanca de contrato, mas passa a ficar alinhada
+  ao tipo oficial usado por `Atividades`.
 - Impacto multi-tenant:
   - Sem alteracao de RLS ou permissoes.
   - A leitura de `service_activities` e filtrada por `tenant_id` do usuario autenticado e restrita aos `service_activity_id` dos itens da propria ordem.
@@ -1483,3 +1540,313 @@ Atualizacao 2026-08-15 - 409 de conflito enriquecido (edicao x cancelamento conc
   falha neste ambiente por um erro pre-existente e nao relacionado (arquivos Deno em
   `Backup/` sendo varridos pelo typecheck do Next) — confirmado com `git stash` antes desta
   tarefa.
+
+
+Atualizacao 2026-08 - Encarregado resolvido pela Composicao de Equipe
+---------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/374_resolve_team_foreman_from_composition.sql` (novo)
+- Funcoes/hooks/constantes tocadas:
+  - `resolve_team_foreman_snapshot` (nova cadeia de resolucao)
+- Comportamento antes/depois:
+  - Antes: `foreman_name_snapshot` da ordem era resolvido pela cadeia
+    `team_foreman_history` (encarregado vigente na data) -> `teams.foreman_person_id`.
+  - Depois: a Composicao de Equipe daquela data entrou como nivel 1 da cadeia.
+    Se existir composicao ativa da equipe na `execution_date` com encarregado
+    definido, e ele quem vai para o snapshot; sem composicao, o comportamento e
+    exatamente o anterior.
+  - Nenhum arquivo de aplicacao mudou: a Medicao ja resolvia por
+    `trg_apply_measurement_team_snapshot` (migration 161), entao herdou a cadeia
+    nova sem alteracao de RPC, rota ou tela.
+  - Ponto cosmetico conhecido: no cadastro de ordem nova, o campo somente-leitura
+    de encarregado mostra o encarregado do cadastro da equipe enquanto o
+    formulario esta aberto (`MeasurementPageView.tsx`, resolucao por `teamMap`);
+    depois de salvar, a ordem volta com o snapshot correto e a tela se corrige.
+- Regra de atualizacao:
+  - O snapshot continua sendo resolvido na ESCRITA e o trigger so re-resolve
+    quando `team_id` ou `execution_date` mudam. Ordem salva ANTES de a composicao
+    do dia existir mantem o encarregado que foi congelado.
+- Impacto multi-tenant:
+  - A funcao de resolucao filtra por `tenant_id` em todas as tabelas envolvidas e
+    passou a ter EXECUTE restrito a `service_role`.
+- Ajuste posterior (mesma Atualizacao): campo Encarregado do formulario
+  - Antes: em ordem NOVA o campo lia `teamMap`, ou seja, o encarregado do cadastro
+    da equipe, enquanto o trigger da migration 374 gravava o encarregado da
+    composicao daquela data. O campo exibia uma pessoa e salvava outra.
+  - Depois: o campo mostra `form.foremanNameSnapshot`, preenchido pela navegacao
+    vinda da Composicao de Equipe (query `foremanName`), e fica vazio com o texto
+    `Definido pela composicao da data ao salvar` quando a ordem nao veio de la.
+  - Depois: trocar equipe ou data de execucao em ordem nova limpa o valor, porque
+    o encarregado sera resolvido de novo no salvamento para o contexto novo.
+  - `readMeasurementPrefillParams` passou a ler `foremanName` da query.
+
+
+Atualizacao 2026-08-19 - Modulo server-side de Medicao e exportacao sem HTTP interno
+--------------------------------------------------------------------------------
+Motivacao: `src/app/api/medicao/route.ts` tinha 2.022 linhas e concentrava TODA a
+leitura do dominio. Como `route.ts` do Next so pode exportar handlers HTTP, a rota
+de exportacao nao tinha como reusar nada e chamava a PROPRIA rota de listagem por
+HTTP interno: paginas de 500 para montar a lista e, no detalhamento, uma chamada
+por ordem em lotes de 20. Cada chamada refazia resolucao de sessao e rodava
+`loadProgrammingMatchMap` para UMA ordem -- um N+1 sobre a funcao mais cara do
+modulo.
+
+O que mudou (estrutura):
+- Novo modulo `src/server/modules/medicao/`, no padrao ja usado por
+  `programacao-normalizada`:
+  - `types.ts` (278 linhas) - tipos de linha do dominio.
+  - `normalizers.ts` (214) - funcoes puras, sem acesso a banco.
+  - `programmingMatch.ts` (312) - match ordem x Programacao e Estado do Trabalho
+    na janela consultada. Separado por ser a parte mais cara e mais autocontida.
+  - `queries.ts` (705) - acesso a dados.
+  - `index.ts` - fachada publica (regra de arquitetura do CLAUDE.md).
+- `src/app/api/medicao/route.ts` caiu de 2.022 para 733 linhas e saiu do baseline
+  de tamanho (teto de 1.500 para `route.ts`).
+- A extracao foi MECANICA: o diff da rota e de 3 insercoes (as 3 linhas de import)
+  e 1.286 delecoes. Nenhuma linha de logica foi reescrita.
+
+O que mudou (exportacao de detalhamento):
+- `buildDetailsCsv` deixou de chamar a rota por HTTP e passou a usar
+  `fetchMeasurementOrderDetailsForExport`, que resolve as colecoes UMA vez para
+  todas as ordens: ordens e itens em chunks de 200 por `in()`, e depois
+  `fetchAppUserMap`, `fetchProjectServiceCenterMap`, `fetchTeamCompositionContextSet`
+  e `fetchServiceActivityIddMap` uma vez cada.
+- Para 3.000 ordens, o detalhamento sai de ~150 chamadas HTTP internas (e ~3.000
+  execucoes de `loadProgrammingMatchMap`) para ~30 consultas.
+
+Fidelidade do CSV (o que garante que a planilha nao muda):
+- O objeto por ordem vem de `buildMeasurementOrderDetail`, funcao pura extraida de
+  `fetchMeasurementOrderDetail` e usada pelos DOIS caminhos. Cabecalho, ordem das
+  colunas e formatacao nao foram tocados.
+- Ordem das linhas preservada: o lote reordena o resultado pela ordem de entrada.
+- Ordem dos itens dentro da ordem preservada: a consulta em lote mantem
+  `order(activity_code)`, que preserva o ordenamento relativo dentro de cada ordem.
+- Janela de match agrupada, nao unificada: quando a exportacao NAO envia `endDate`,
+  cada ordem usa a propria `execution_date` como janela. O lote agrupa por janela
+  efetiva e chama `loadProgrammingMatchMap` uma vez por janela distinta. Unificar
+  numa janela so teria mudado o status de programacao das ordens.
+
+Mudanca de comportamento consciente (unica):
+- Antes, `Promise.allSettled` descartava em silencio a ordem cujo detalhe falhasse:
+  o usuario recebia um CSV incompleto sem qualquer aviso. Agora um erro de consulta
+  interrompe a exportacao com mensagem. Ordem que simplesmente nao existe mais
+  continua sendo ignorada, como antes.
+
+O que NAO mudou e continua pendente:
+- `loadOrdersForExport` ainda pagina a LISTAGEM por HTTP interno (500 por pagina).
+  O pipeline de listagem continua dentro do handler `GET`, misturado com o parse
+  dos filtros, e extrai-lo e uma tarefa propria.
+- O parametro `_export=1` que a rota de exportacao envia NAO existe na rota de
+  listagem -- e um no-op. Mantido para nao alterar comportamento nesta tarefa.
+
+Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+NAO executada: comparacao byte-a-byte do CSV antes/depois, que exige app rodando
+com banco real. Como o projeto nao tem suite automatizada, essa comparacao e o
+teste manual obrigatorio antes do merge -- exportar Resumo, Detalhamento e
+Pontuacao com o mesmo filtro, em versao antiga e nova, e comparar os arquivos.
+
+Atualizacao 2026-08-19 (2) - Exportacao sem nenhuma chamada HTTP interna
+--------------------------------------------------------------------------------
+Fecha a pendencia registrada na atualizacao anterior: `loadOrdersForExport` ainda
+paginava a LISTAGEM chamando `GET /api/medicao` por HTTP, 500 por pagina.
+
+O que mudou:
+- O pipeline de listagem saiu do handler `GET` para `src/server/modules/medicao/
+  list.ts` como `listMeasurementOrdersPage`, recebendo filtros JA normalizados.
+- O parse dos filtros virou `parseMeasurementOrderListFilters` em `normalizers.ts`
+  (puro, recebe `URLSearchParams`). Handler e exportacao usam o MESMO parse. Antes
+  a exportacao repassava a query string crua para a rota, entao qualquer divergencia
+  de normalizacao passaria despercebida.
+- `src/app/api/medicao/route.ts` foi de 733 para 429 linhas.
+- `src/app/api/medicao/export/route.ts` perdeu `buildInternalRequest`,
+  `readJsonResponse`, o tipo `OrderListResponse` e o import `GET as
+  listMeasurementOrders` da propria rota.
+- `queries.ts` passou de 1.026 para 699 linhas com a saida do pipeline; nenhum
+  arquivo do modulo ficou perto do teto.
+
+Decisao de desenho: o LACO DE PAGINAS foi mantido.
+- O pipeline aplica tres filtros em memoria DEPOIS da pagina do banco
+  (`programmingMatch`, `workCompletionStatus`, `completionAlert`) e descarta projeto
+  de teste. Por isso `total` e aproximado e a pagina pode vir com menos itens que
+  `pageSize`.
+- Trocar o laco por uma unica consulta "traz tudo" mudaria essa semantica. O ganho
+  buscado aqui era remover o HTTP e a re-resolucao de sessao por pagina, nao alterar
+  o contrato da listagem.
+
+Resto removido: o parametro `_export=1` que a exportacao enviava nao existia na rota
+de listagem -- era no-op. Saiu junto com o `buildInternalRequest`.
+
+Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+NAO executada: comparacao de CSV antes/depois desta etapa. A etapa anterior teve
+comparacao byte-a-byte aprovada (MD5 identico, 300 linhas, 112 ordens) no
+Detalhamento de /medicao. Esta etapa mexe no caminho que alimenta os TRES CSVs e a
+listagem da tela, entao exige nova rodada: Resumo, Detalhamento e Pontuacao em
+/medicao e em /medicao-visualizacao, mais a paginacao da tela de Medicao.
+
+Encerramento da validacao de CSV (2026-08-19)
+--------------------------------------------------------------------------------
+A pendencia de comparacao de CSV das duas etapas acima foi dada por encerrada pelo
+usuario. Registro do que de fato foi verificado, para nao induzir leitura errada
+depois:
+- VERIFICADO por comparacao byte-a-byte: Detalhamento em /medicao, na etapa do
+  modulo server-side + lote (commit 87b9f1e). MD5 identico entre antes e depois,
+  300 linhas, 112 ordens distintas.
+- NAO verificado por comparacao: Resumo, Pontuacao, as tres exportacoes de
+  /medicao-visualizacao, e o Detalhamento apos a extracao do pipeline de listagem
+  (commit 2a3d46f). Aceito com base em uso, nao em diff.
+
+Metodo, para quando alguem repetir isso:
+- Comparar exportacoes de um periodo ABERTO nao prova nada. Na tentativa de
+  reexecutar a comparacao, o arquivo de referencia (01/08 a 18/08) tinha 300 linhas
+  as 11:51 e 318 as 15:13 do mesmo dia: sete ordens novas nasceram em producao no
+  intervalo. A diferenca seria dado novo, nao regressao.
+- Use sempre um periodo FECHADO, que nao recebe mais medicao, e gere os dois lados
+  com o mesmo filtro. O ponto de comparacao anterior a toda a refatoracao e o
+  commit 8c664b4.
+
+Atualizacao 2026-09-01 - Select de Equipe com encarregado
+--------------------------------------------------------------------------------
+- O select `Equipe` do cadastro e dos filtros da Medicao passou a exibir o nome
+  do encarregado junto ao nome da equipe, no formato `Equipe / Encarregado`,
+  igual ao padrao usado na Composicao de Equipe.
+- Sem alteracao de API, payload, filtros, schema, RLS, grants ou permissoes: o
+  valor enviado continua sendo `team_id` e a tela reutiliza `foremanName` ja
+  carregado nos metadados existentes.
+
+Atualizacao 2026-09-03 - Descancelamento de ordem
+--------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+  - `src/app/api/medicao/route.ts`
+  - `supabase/migrations/412_allow_measurement_uncancel_status_action.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Medicao_SaaS.txt`
+  - `TASKS.md`
+  - `file-size-baseline.json`
+- A lista da Medicao passou a permitir a acao `Descancelar` em ordens com
+  `Status = CANCELADA`.
+- A tela reutiliza o PATCH `/api/medicao` com `action = ABRIR`, `expectedUpdatedAt`
+  e motivo minimo de 10 caracteres; o botao mostra `Descancelar` quando a origem e
+  cancelada e continua mostrando `Abrir` para ordens fechadas.
+- A migration `412_allow_measurement_uncancel_status_action.sql` republica
+  `set_project_measurement_order_status` para aceitar `ABRIR` quando o status atual
+  e `FECHADA` ou `CANCELADA`.
+- Ao descancelar, a RPC volta a ordem para `ABERTA`, define `is_active = true`,
+  limpa `cancellation_reason`, `canceled_at` e `canceled_by`, e grava historico com
+  `action_type = UNCANCEL`.
+- Permissoes e multi-tenant: sem nova `page_key` nem acao granular; a rota continua
+  derivando `tenant_id` da sessao, usando `medicao/update` para abrir/descancelar e
+  `medicao/cancel` para cancelar.
+
+Atualizacao 2026-09-04 - Variante Comercial e handlers fora do route.ts
+--------------------------------------------------------------------------------
+- Contexto: a tela `Medicao Comercial` (`docs/Tela_Medicao_Comercial_SaaS.txt`) e
+  a MESMA tela desta, apontada para equipes de categoria COMERCIAL. Em vez de
+  clonar o PageView e as rotas, as duas variantes compartilham o mesmo codigo.
+- `MeasurementPageView` passou a aceitar `variant`
+  (`src/modules/dashboard/medicao/variant.ts`), que define a base da API
+  (`/api/medicao` ou `/api/medicao-comercial`), os campos dos integrantes e a
+  presenca do `Cadastro em massa`. Sem `variant`, a tela e exatamente a de antes.
+- Toda a regra das rotas saiu de `src/app/api/medicao/**/route.ts` para
+  `src/server/modules/medicao/`: `handlers.ts`, `routeConfig.ts`, `metaHandler.ts`,
+  `exportHandler.ts`, `programmingSourcesHandler.ts`, `activitiesCatalogHandler.ts`,
+  `minimumBillingHandler.ts`, `projectActivityUsageHandler.ts` e
+  `rateSuggestionHandler.ts`. Os `route.ts` viraram delegacao pura.
+  Motivo tecnico, alem do CLAUDE.md secao 5: `route.ts` do App Router so pode
+  exportar handlers HTTP. Uma versao intermediaria exportava os handlers do
+  proprio `route.ts` e quebrava o typecheck com
+  `OmitWithTag ... is not assignable to type never`.
+- `GET /api/medicao` passou a filtrar por categoria de equipe TECNICA. Ordem de
+  equipe comercial nao aparece aqui, e o detalhe/historico/PATCH dela responde 404.
+- Permissao: os endpoints compartilhados de LEITURA/EXTRACAO continuam aceitando
+  `medicao` OU `medicao-visualizacao`
+  (`authorizeMeasurementVariantReadOrExportAction`). Isso vale para
+  `GET /api/medicao`, `GET /api/medicao/export` e
+  `GET /api/medicao/activities/catalog`, que a tela `Visualizacao Medicao` consome.
+- Modularizacao (o arquivo segue acima do teto de 1.000 linhas do CLAUDE.md):
+  a primeira fatia saiu nesta entrega -- `src/modules/dashboard/medicao/types.ts`
+  (tipos puros) e `src/modules/dashboard/medicao/utils.ts` (26 funcoes puras de
+  rotulo, normalizacao e busca de opcao). O PageView caiu de 3.644 para 3.447
+  linhas MESMO ganhando a variante comercial.
+  Proximas fatias sugeridas, na ordem: (1) o cadastro em massa (parse de CSV,
+  relatorio de erro e casamento com Programacao), (2) os modais de detalhe,
+  historico e status, (3) o bloco de filtros.
+- Projeto obrigatorio em `COM_PRODUCAO` deixou de ser CHECK e virou o trigger
+  `enforce_measurement_project_by_kind`. A regra para equipe TECNICA e a MESMA
+  da 382, letra por letra; o trigger existe porque a Medicao Comercial abriu uma
+  excecao que depende da categoria da equipe, e CHECK nao consulta outra tabela.
+  `save_project_measurement_order` recebeu a excecao pela mesma cirurgia de texto
+  que a 382 usou, e a migration aborta se a guarda esperada nao for encontrada.
+  Nenhuma ordem tecnica muda de comportamento.
+- Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+
+Atualizacao 2026-09-08 - Select de Equipe restrito a equipe TECNICA
+-------------------------------------------------------------------
+- Problema: o select `Equipe` do cadastro -- e o do filtro, que le a mesma lista --
+  mostrava TODAS as equipes ativas do tenant, inclusive as COMERCIAIS, que apareciam
+  como `<Equipe> / Sem encarregado` porque equipe comercial nao tem encarregado. A
+  gravacao ja recusava essas equipes com 422 (`Selecione uma equipe tecnica.`), entao
+  a opcao existia apenas para falhar depois da ordem inteira preenchida.
+- Causa: no ramo tecnico, `handleMeasurementProgrammingSourcesGet` chamava
+  `fetchTeams()` de `programacao-normalizada`. Essa funcao e o catalogo do quadro da
+  Programacao e nao conhece categoria de equipe. O ramo comercial ja recortava por
+  categoria desde a 415; so o tecnico nao tinha recorte nenhum.
+- Correcao: o ramo tecnico intersecta `fetchTeams()` com
+  `fetchTeamIdsByMeasurementMode({ mode: "TECNICA", activeOnly: true })`. A lista
+  cacheada da Programacao continua sendo reaproveitada (nome, encarregado e base nao
+  ganham query nova); entra so a leitura de categoria, que a variante comercial ja
+  fazia.
+- `teamMode.ts` passou a classificar a equipe SO por `teams.team_category_id` ->
+  `team_categories.code`, alinhado a migration 420. Ate aqui o arquivo ainda usava a
+  regra pre-420: atalho por `team_types.name = 'COMERCIAL'` e TECNICA definida por
+  exclusao ("tudo que nao e comercial"). Agora o recorte e POSITIVO dos dois lados --
+  equipe sem categoria resolvivel nao entra em nenhuma das duas telas, em vez de cair
+  na tecnica por omissao.
+- Mesmo recorte, de proposito, nos outros consumidores da funcao: `GET /api/medicao`
+  (listagem), `GET /api/medicao/meta?includeSources=1` (filtros da
+  `Visualizacao Medicao`) e `Dashboard Medicao`. Como `teams.team_category_id` e NOT
+  NULL e a 420 ja realinhou as equipes que eram comerciais so pelo nome do tipo
+  operacional, o conjunto retornado nao muda para dado correto -- muda o criterio.
+- Falha de leitura do catalogo de categorias deixou de virar select vazio: as duas
+  variantes respondem erro da rota. Select vazio e indistinguivel de "nao ha equipe
+  cadastrada", que e o mesmo defeito de dado errado apresentado como certo.
+- Nao entrou nesta tarefa: a Programacao continua oferecendo qualquer equipe ativa no
+  quadro (`fetchTeams` sem recorte). Se uma etapa for programada para equipe
+  COMERCIAL, ela continua chegando em `schedules` sem opcao correspondente no select
+  -- hoje sem efeito visivel, porque o estado `schedules` do PageView e write-only e
+  a gravacao ja barra a equipe.
+- Arquivos alterados: `src/server/modules/medicao/teamMode.ts`,
+  `src/server/modules/medicao/programmingSourcesHandler.ts`,
+  `docs/Tela_Medicao_SaaS.txt`, `docs/Tela_Medicao_Comercial_SaaS.txt` e `TASKS.md`.
+- Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+
+Atualizacao 2026-09-09 - Autor do historico em usuario multi-tenant
+--------------------------------------------------------------------
+- `fetchAppUserMap` em `src/server/modules/medicao/queries.ts` passou a resolver autores de historico/lista/detalhe pelo helper compartilhado `fetchTenantLinkedAppUsers`, que tambem cobre outras telas editaveis com historico/autoria.
+- Causa: usuario/admin multi-tenant opera no tenant ativo, mas o `created_by`/`updated_by` gravado e o `app_users.id` home do usuario. A leitura antiga buscava esse id somente em `app_users.tenant_id = tenant ativo`, entao exibia `Nao identificado`.
+- O fallback so aceita ids que tenham vinculo ativo em `app_user_tenants` para o tenant da tela. Sem mudanca de schema, RLS, permissao ou contrato de API.
+
+Atualizacao 2026-09-10 - Chips de codigo sumidos no cadastro por tenant sem seed
+--------------------------------------------------------------------------------
+- Sintoma: no cadastro da Medicao, ao selecionar um projeto valido, nenhum chip de
+  codigo aparecia embaixo do campo `Projeto`. So o espaco reservado do bloco
+  (`min-height: 22px`) continuava la, empurrando o campo `Projeto` alguns pixels acima
+  dos demais campos da linha.
+- Causa: o seed da migration 293 usou `cross join public.tenants` e alcancou apenas os
+  tenants existentes naquela data. Tenant criado depois ficou com zero linhas em
+  `measurement_project_activity_indicators`, entao
+  `GET /api/medicao/project-activity-usage` respondia 200 com `items: []` e o `.map()`
+  do `MeasurementPageView` nao tinha o que renderizar. Como a resposta era 200, nao
+  havia mensagem de erro na tela.
+- Correcao: `supabase/migrations/423_backfill_measurement_project_activity_indicators.sql`
+  semeia `AHO717` e `AHO720` para todo tenant sem nenhuma linha na tabela, com
+  `not exists` por tenant e `on conflict do nothing`. Tenant que ja configurou os
+  proprios codigos, inclusive quem desativou algum de proposito, nao e alterado.
+- Sem alteracao de frontend, rota, RPC, RLS ou permissao. A tela ja lia a tabela
+  corretamente; o que faltava era o dado de configuracao do tenant.
+- Risco residual conhecido: o backfill corrige os tenants atuais, mas nao existe rotina
+  de provisionamento que semeie a tabela para um tenant novo. Tenant criado depois desta
+  migration volta a abrir a Medicao sem chip ate receber as linhas.
+- Arquivos alterados:
+  `supabase/migrations/423_backfill_measurement_project_activity_indicators.sql`,
+  `supabase/migrations/README.txt` e `docs/Tela_Medicao_SaaS.txt`.

@@ -34,6 +34,7 @@ Obrigatório antes de qualquer PR ou entrega de código. Substitui o protocolo a
 | PageView, hook ou componente de listagem | [`guia_frontend.md`](guia_frontend.md) |
 | Endpoint que retorna lista ou dashboard | [`guia_backend.md`](guia_backend.md) (tráfego/egress) |
 | Alteração de trigger/função PL-pgSQL | [`guia_sql.md`](guia_sql.md) (armadilha de NULL boolean) |
+| Criação/alteração de `VIEW` ou `MATERIALIZED VIEW` | [`guia_sql.md`](guia_sql.md) (regras 23-27: `security_invoker`, tenant, RLS) |
 | `crc/[modulo].md` existente | ler antes de alterar qualquer arquivo do módulo listado |
 
 ### Checklist consolidado de qualidade por tela
@@ -47,13 +48,15 @@ Obrigatório antes de qualquer PR ou entrega de código. Substitui o protocolo a
 
 **Segurança e autorização**
 - [ ] Toda rota valida `page_key` e `action` no servidor.
+- [ ] Tela nova/refatorada não cria acesso parcial involuntário: menu, meta/catálogo, lista, detalhe, histórico, exportação e ações próprias usam a mesma permissão da tela visível, ou a exceção granular foi explicitamente decidida, agrupada e documentada.
 - [ ] Nenhuma rota aceita `tenant_id` do body como fonte de verdade.
 - [ ] RPC `SECURITY DEFINER` executável apenas por `service_role` ou valida auth internamente.
 - [ ] Tabela operacional crítica não aceita INSERT/UPDATE direto de `authenticated`.
 
 **Performance e tráfego**
 - [ ] Nenhum `.select("*")`.
-- [ ] Nenhum `.limit()` acima de 1.000 sem paginação ou RPC de agregação.
+- [ ] Nenhum `.limit()` acima de 1.000 — nem com justificativa. O PostgREST corta em 1.000 sem avisar, então o valor pedido acima disso nunca é entregue. Leitura completa usa `loadAllRows`; teto proposital usa `loadAllRows(..., { maxRows })`. Verificado por `npm run lint:rowlimit`.
+- [ ] `.limit()` com valor dinâmico (variável/campo) conferido à mão: o ratchet lista essas ocorrências como aviso porque não consegue resolvê-las estaticamente, e foi exatamente numa delas (`filters.pageSize` = 5.000 no export da Programação Normalizada) que um truncamento passou despercebido.
 - [ ] Filtros aplicados no banco, não no JavaScript.
 - [ ] Queries independentes são paralelas (`Promise.all`).
 - [ ] Colunas de filtro frequente têm índice documentado.
@@ -84,7 +87,10 @@ Obrigatório antes de qualquer PR ou entrega de código. Substitui o protocolo a
 - [ ] Backup e rollback preparados antes de mudança estrutural.
 - [ ] Validação local (`npx tsc --noEmit`, `npm run lint`) executada antes de qualquer deploy.
 - [ ] Ratchet de tamanho de arquivo verde; se o baseline **aumentou** para algum arquivo, o aceite foi explícito (`lint:size:accept`) e está justificado na descrição do PR.
+- [ ] Se a entrega foi dividida em mais de uma PR e alguma delas mexe no tamanho do mesmo arquivo, conferir o delta **líquido** entre o estado anterior à tarefa e o final (ver [`guia_git.md`](guia_git.md) regra 6). Uma PR que só encolhe seguida de outra que faz crescer quebra a `main` entre os dois merges.
 - [ ] `npm run db:check-link` confirmado antes de `db:migration-list`/`db:lint`/deploy.
+- [ ] Migration que cria/altera view: `npm run db:view-check` verde e a view validada em **banco reconstruído das migrations**, não só em produção. O check live passa mesmo com a migration errada — produção pode estar correta por conserto manual enquanto qualquer ambiente novo nasce sem RLS (caso `v_stock_conflicts`, migrations 007→377).
+- [ ] Correção feita direto no Dashboard/SQL editor foi versionada como migration na mesma tarefa; em caso de dúvida, `npm run db:drift-check`.
 
 ## 4. Fluxo recomendado
 
@@ -113,9 +119,12 @@ Nunca:
 ## 7. Validação
 
 - `npx tsc --noEmit`
-- `npm run lint` (ESLint + ratchet de tamanho de arquivo)
+- `npm run lint` (ESLint + ratchet de tamanho de arquivo + ratchet do teto de linhas)
+- `npm run lint:rowlimit` isolado quando só o teto de linhas estiver em questão; `npm run lint:rowlimit:update` quando um arquivo deixar de violar (só reduz, e não existe aceite de aumento)
 - `npm run lint:size` isolado quando só o tamanho de arquivo estiver em questão; `npm run lint:size:update` quando um arquivo do baseline encolher ou for removido (só reduz); `npm run lint:size:accept -- <caminho>` para aceitar crescimento excepcional, sempre nomeando cada arquivo
 - `npm run build` (mudanças que afetam rota/build)
 - `npm run db:lint` / `npm run db:security-check` (mudanças de schema/RPC)
+- `npm run db:view-check` (mudanças que criam/alteram view) e `npm run db:view-check-live` quando o link estiver confirmado
+- `npm run db:drift-check` quando houver suspeita de schema corrigido fora do versionamento (exige Docker para montar o shadow)
 
 **Lacuna conhecida:** o projeto não tem suíte de testes automatizados hoje (`package.json` não define script `test`). Até isso ser resolvido, a validação deste guia fica limitada a typecheck/lint/build e verificação manual do caminho feliz — ver TODO no relatório da migração de documentação (2026-07).

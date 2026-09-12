@@ -10,10 +10,14 @@ Visao geral
 Arquitetura
 -----------
 - Rota: `src/app/(public)/login/page.tsx`
+- Rota de selecao de contrato: `src/app/(public)/selecionar-contrato/page.tsx`
 - View: `src/modules/auth/login/LoginPageView.tsx`
+- View de selecao de contrato: `src/modules/auth/tenant-selector/TenantSelectorPageView.tsx`
 - Estilo: `src/modules/auth/login/LoginPageView.module.css`
+- Estilo de selecao de contrato: `src/modules/auth/tenant-selector/TenantSelectorPageView.module.css`
 - Logo: `public/indica.png`
 - Autenticacao: `src/services/auth/auth.service.ts`
+- API de tenant ativo: `src/app/api/auth/active-tenant/route.ts`
 - Estado de sessao: `src/context/AuthContext.tsx`
 - Integracao Supabase: `src/lib/supabase/client.ts`
 - Integracao React Query: `src/lib/react-query/provider.tsx`
@@ -42,6 +46,11 @@ Boas praticas
 - Registrar `TOKEN_EXPIRED` no `login_audit` sempre que a sessao remota precisar ser encerrada por expiracao.
 - Invalidar hidratacoes antigas de sessao quando houver novo login/logout para evitar sobrescrever o usuario atual.
 - Desabilitar cache em `/api/auth/session-access` no frontend para evitar leitura de identidade/permissoes antigas.
+- Hidratar `tenantName` em `/api/auth/session-access` para que o shell exiba o nome do contrato ativo em vez do UUID.
+- Direcionar todo admin remoto para `/selecionar-contrato` apos login.
+- Persistir o contrato ativo apenas via API server-side em cookie `httpOnly`; o front nao deve editar esse estado direto.
+- Resolver tenant no backend por membership: para admin remoto, o cookie indica o tenant ativo e precisa ser validado contra os tenants permitidos ao usuario; `user`/`viewer` ignoram esse cookie e `x-tenant-id` nao e fonte operacional padrao.
+- Ignorar e limpar cookie de tenant invalido durante a hidratacao da sessao, evitando 403 persistente em maquina compartilhada.
 
 Cancelamento e saldo
 --------------------
@@ -50,7 +59,9 @@ Cancelamento e saldo
 Atalhos
 -------
 - `login -> /home` apos autenticacao bem sucedida.
-- `/ -> /login` ou `/home` conforme sessao persistida.
+- `login -> /selecionar-contrato` para admin remoto.
+- `login -> /home` para `user`, `viewer` ou login local/dev.
+- `/ -> /login`, `/selecionar-contrato` ou `/home` conforme sessao persistida e role.
 
 Atualizacao 2026-03
 -------------------
@@ -79,18 +90,30 @@ Mapa de Codigo (funcoes, hooks e constantes)
 Funcoes principais
 - Caminho: `src/app/(public)/login/page.tsx`
   - Responsavel por: expor a rota `/login` e montar a view da tela.
+- Caminho: `src/app/(public)/selecionar-contrato/page.tsx`
+  - Responsavel por: expor a rota `/selecionar-contrato` e montar a view de escolha do contrato ativo.
 - Caminho: `src/modules/auth/login/LoginPageView.tsx`
-  - Responsavel por: formulario, textos visiveis, envio do login, feedback de erro, redirect e disparo do email de recuperacao.
+  - Responsavel por: formulario, textos visiveis, envio do login, feedback de erro, redirect para contrato/home e disparo do email de recuperacao.
 - Caminho: `src/modules/auth/login/LoginPageView.module.css`
   - Responsavel por: centralizacao do card, fundo da tela e responsividade do login.
+- Caminho: `src/modules/auth/tenant-selector/TenantSelectorPageView.tsx`
+  - Responsavel por: listar contratos disponiveis ao admin, enviar a selecao para a API e recarregar a aplicacao no tenant escolhido.
+- Caminho: `src/modules/auth/tenant-selector/TenantSelectorPageView.module.css`
+  - Responsavel por: layout visual e responsividade da tela de selecao de contrato.
 - Caminho: `src/services/auth/auth.service.ts`
-  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `requestPasswordRecovery`, `clearPersistedSession`, `consumeAuthFeedback` e sincronizacao de token remoto, preservando `session_ref` da sessao web.
+  - Responsavel por: `remoteLogin`, `localLogin`, `login`, `requestPasswordRecovery`, `clearPersistedSession`, `consumeAuthFeedback`, limpeza do cookie de tenant ativo, hidratacao de `tenantName` e sincronizacao de token remoto, preservando `session_ref` da sessao web.
 - Caminho: `supabase/edge_functions/auth-login-web/index.ts`
   - Responsavel por: exigir gravacao valida de evento `LOGIN` antes de concluir o login remoto e resolver `role_key` via `app_roles`.
 - Caminho: `supabase/edge_functions/logout/index.ts`
   - Responsavel por: registrar um novo evento `LOGOUT`, inclusive para `TOKEN_EXPIRED`, correlacionando-o por `session_ref`.
 - Caminho: `src/context/AuthContext.tsx`
   - Responsavel por: hidratar sessao, manter estado autenticado, tratar timeout por inatividade, token expirado e expor `login/logout`.
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: resolver usuario autenticado, validar tenants disponiveis, aplicar o tenant ativo vindo do cookie `INDICA.activeTenantId`, bloquear header de tenant por padrao e retornar 428 quando admin nao selecionou contrato.
+- Caminho: `src/app/api/auth/active-tenant/route.ts`
+  - Responsavel por: listar contratos ativos do admin, gravar o tenant selecionado em cookie `httpOnly` e limpar esse cookie no logout.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: redirecionar admin remoto sem contrato selecionado para `/selecionar-contrato` antes de renderizar telas internas.
 
 Constantes e configuracoes
 - Caminho: `.env.example`
@@ -106,6 +129,23 @@ Servicos e integracoes externas
 - Edge Function: `supabase/edge_functions/auth-login-web/index.ts`
 - Edge Function: `supabase/edge_functions/auth-recover/index.ts`
 - Rota local: `src/app/api/auth/local-login/route.ts`
+- Rota de sessao: `src/app/api/auth/session-access/route.ts`
+- Rota de tenant ativo: `src/app/api/auth/active-tenant/route.ts`
+
+Atualizacao 2026-08 - Nome do contrato na sessao
+------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/auth/session-access/route.ts`
+  - `src/services/auth/auth.service.ts`
+  - `src/types/auth.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/components/layout/AppShell.module.css`
+- Comportamento antes/depois:
+  - Antes: a sessao frontend carregava apenas `tenantId`, e o topo exibia o UUID do tenant.
+  - Depois: a sessao tambem carrega `tenantName`, resolvido em `tenants.name`, e o topo exibe o nome do contrato.
+- Impacto multi-tenant:
+  - A leitura do nome usa o `appUser.tenant_id` ja resolvido por `resolveAuthenticatedAppUser`.
+  - Nao ha troca de tenant por body/header nem alteracao de cookie, RLS, grants ou permissoes.
 
 Ajuda contextual
 - O login remoto exige `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e a Edge Function `auth-login-web` publicada.
@@ -127,3 +167,51 @@ Ajuda contextual
 - Estado atual: a tela passa a mostrar feedback de `sessao expirada` e `expirada por inatividade` quando o `AuthContext` limpa a sessao.
 - Estado atual: a sessao frontend preserva `role` como `role_key` e `roleId` como referencia tecnica do perfil.
 - Estado atual: `TOKEN_EXPIRED` continua limpando a sessao local, mas agora tambem tenta registrar a saida no `login_audit` com base no `session_ref` salvo.
+- Estado atual: todo admin remoto e direcionado para `/selecionar-contrato` antes da home.
+- Estado atual: a selecao de contrato lista apenas contratos ativos vinculados em `app_user_tenants` e grava `INDICA.activeTenantId` em cookie `httpOnly`, validado no servidor.
+- Estado atual: cookie de tenant invalido e limpo na hidratacao da sessao e nao causa 403 permanente.
+- Estado atual: `x-tenant-id` vindo do frontend nao e mais usado por Faturamento/Medicao Asbuilt e o backend bloqueia header por padrao.
+- Estado atual: logout/inatividade/token expirado limpam tambem o cookie de tenant ativo; a rota `DELETE /api/auth/active-tenant` e idempotente e expira o cookie mesmo quando a sessao ja venceu, evitando 401 ruidoso no log. `GET` e `POST` continuam autenticados e restritos a admin.
+
+Atualizacao 2026-08-25 - Selecao de contrato
+---------------------------------------------
+- Arquivos alterados:
+  - `src/app/page.tsx`
+  - `src/app/(public)/selecionar-contrato/page.tsx`
+  - `src/app/api/auth/active-tenant/route.ts`
+  - `src/app/api/auth/session-access/route.ts`
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/server/appUsersAdmin.ts`
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `src/modules/auth/login/LoginPageView.tsx`
+  - `src/modules/auth/tenant-selector/TenantSelectorPageView.tsx`
+  - `src/modules/auth/tenant-selector/TenantSelectorPageView.module.css`
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
+  - `src/services/auth/auth.service.ts`
+  - `supabase/migrations/386_harden_admin_tenant_links.sql`
+- Comportamento antes/depois:
+  - Antes: apos login, todos os perfis iam direto para `/home`; o tenant ativo era o default ou o header manual enviado por telas especificas.
+  - Depois: admin remoto sempre escolhe o contrato em `/selecionar-contrato`; `user` e `viewer` continuam indo direto para `/home`.
+- Impacto multi-tenant:
+  - Para admin, os contratos permitidos vem obrigatoriamente de `app_user_tenants`; `app_users.tenant_id` nao e fallback operacional para administrador.
+  - O tenant ativo fica em cookie `httpOnly` e so e aceito depois de validado no backend contra os contratos permitidos ao usuario.
+  - A rota de troca de contrato ignora o cookie atual ao carregar o contexto, permitindo que admin corrija uma selecao expirada ou invalida.
+  - A migration 386 faz backfill dos vinculos existentes, ajusta o trigger de sync de usuario e faz `save_user_permissions` criar/reativar vinculo quando o papel vira `admin`.
+  - A leitura e a gravacao do contrato ativo passam por autenticacao/admin; a limpeza por `DELETE` apenas expira o cookie `httpOnly` e e idempotente para logout, inatividade e token expirado.
+
+Atualizacao 2026-08 - Estabilidade visual / CLS
+------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/auth/login/LoginPageView.tsx`
+  - `src/modules/auth/login/LoginPageView.module.css`
+- Funcoes/hooks/constantes tocadas:
+  - `LoginPageView`
+  - `.feedbackSlot`
+- Comportamento antes/depois:
+  - Antes: mensagens iniciais consumidas de `consumeAuthFeedback()` podiam ser
+    inseridas apos a primeira pintura e empurrar o botao `Entrar`.
+  - Depois: a tela reserva o slot do feedback no formulario, mantendo a posicao do
+    botao estavel quando aparece aviso de sessao expirada, inatividade ou erro de
+    login.
+- Impacto multi-tenant:
+  - Sem mudanca de API, banco, tenant_id, RLS, grants ou permissoes.

@@ -5,7 +5,7 @@ import { isSerialTrackedMaterial, normalizeSerialTrackingType } from "@/lib/mate
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, loadRowsInChunks, parsePagination } from "@/lib/server/apiHelpers";
 import {
   normalizeDateInput,
   normalizeEntryType,
@@ -13,6 +13,10 @@ import {
   parsePositiveNumber,
   StockTransferItemInput,
 } from "@/lib/server/stockTransfers";
+import {
+  buildTeamOperationExportStream,
+  type TeamOperationExportFilters,
+} from "@/server/modules/saida";
 import {
   normalizeTeamOperationKind,
   saveTeamStockOperationViaRpc,
@@ -30,8 +34,20 @@ type MaterialRow = {
   id: string;
   codigo: string;
   descricao: string;
+  category_id?: string | null;
+  subcategory_id?: string | null;
   is_transformer?: boolean | null;
   serial_tracking_type?: string | null;
+};
+
+type MaterialCategoryRow = {
+  id: string;
+  name: string;
+};
+
+type MaterialSubcategoryRow = {
+  id: string;
+  name: string;
 };
 
 type MaterialEntryTypeRow = {
@@ -97,6 +113,19 @@ type LegacyTeamOperationMapRow = {
   created_at: string;
 };
 
+type TeamOperationEmbeddedRow = TeamOperationMapRow & {
+  stock_transfers: TransferHeaderRow | TransferHeaderRow[] | null;
+};
+
+type TeamOperationHeaderFilters = {
+  teamIdFilter: string;
+  operationKindFilter: TeamOperationKind | null;
+  startDate: string | null;
+  endDate: string | null;
+  projectIdFilter: string;
+  entryTypeFilter: "SUCATA" | "NOVO" | null;
+};
+
 type TeamRow = {
   id: string;
   stock_center_id: string | null;
@@ -143,33 +172,10 @@ type HistoryValueMaps = {
   projects: Map<string, string>;
 };
 
-const RELATION_QUERY_CHUNK_SIZE = 100;
-const TEAM_OPERATION_PAGE_SIZE = 1000;
-
-function chunkValues(values: string[], chunkSize = RELATION_QUERY_CHUNK_SIZE) {
-  const chunks: string[][] = [];
-  for (let index = 0; index < values.length; index += chunkSize) {
-    chunks.push(values.slice(index, index + chunkSize));
-  }
-  return chunks;
-}
-
-async function loadRowsInChunks<T>(
-  values: string[],
-  loadChunk: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: PostgrestError | null }>,
-) {
-  const rows: T[] = [];
-
-  for (const chunk of chunkValues(values)) {
-    const result = await loadChunk(chunk);
-    if (result.error) {
-      return { data: null, error: result.error };
-    }
-    rows.push(...(result.data ?? []));
-  }
-
-  return { data: rows, error: null };
-}
+const TRANSFER_HEADER_COLUMNS =
+  "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by";
+const RELATION_QUERY_CHUNK_SIZE = 500;
+const RELATION_QUERY_MAX_PARALLEL = 4;
 
 function normalizeCodeFilter(value: string | null) {
   return String(value ?? "").trim().toUpperCase();
@@ -232,7 +238,7 @@ async function loadTeamOperationRows(
   teamIdFilter: string,
   operationKindFilter?: TeamOperationKind | null,
 ) {
-  const loadFullPage = (from: number, to: number) => {
+  const fullResult = await loadAllRows<TeamOperationMapRow>((from, to) => {
     let fullQuery = supabase
       .from("stock_transfer_team_operations")
       .select("transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot, created_at")
@@ -249,37 +255,15 @@ async function loadTeamOperationRows(
       .order("created_at", { ascending: false })
       .range(from, to)
       .returns<TeamOperationMapRow[]>();
-  };
+  });
 
-  const firstFullResult = await loadFullPage(0, TEAM_OPERATION_PAGE_SIZE - 1);
-
-  if (!firstFullResult.error) {
-    const rows = [...(firstFullResult.data ?? [])];
-    let nextFrom = TEAM_OPERATION_PAGE_SIZE;
-
-    while ((rows.length % TEAM_OPERATION_PAGE_SIZE) === 0 && rows.length > 0) {
-      const pagedResult = await loadFullPage(nextFrom, nextFrom + TEAM_OPERATION_PAGE_SIZE - 1);
-      if (pagedResult.error) {
-        return { data: null, error: pagedResult.error };
-      }
-      const pageRows = pagedResult.data ?? [];
-      rows.push(...pageRows);
-      if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
-        break;
-      }
-      nextFrom += TEAM_OPERATION_PAGE_SIZE;
-    }
-
-    return { data: rows, error: null };
+  if (!fullResult.error || !shouldFallbackToLegacyTeamOperationSelect(fullResult.error)) {
+    return fullResult;
   }
 
-  if (!shouldFallbackToLegacyTeamOperationSelect(firstFullResult.error)) {
-    return firstFullResult;
-  }
+  logTeamOperationLoadError("team-operations-full-select", fullResult.error, { fallback: "legacy-select" });
 
-  logTeamOperationLoadError("team-operations-full-select", firstFullResult.error, { fallback: "legacy-select" });
-
-  const loadLegacyPage = (from: number, to: number) => {
+  const legacyResult = await loadAllRows<LegacyTeamOperationMapRow>((from, to) => {
     let legacyQuery = supabase
       .from("stock_transfer_team_operations")
       .select("transfer_id, team_id, created_at")
@@ -293,32 +277,132 @@ async function loadTeamOperationRows(
       .order("created_at", { ascending: false })
       .range(from, to)
       .returns<LegacyTeamOperationMapRow[]>();
-  };
+  });
 
-  const legacyRows: LegacyTeamOperationMapRow[] = [];
-  let nextLegacyFrom = 0;
-
-  while (true) {
-    const legacyResult = await loadLegacyPage(nextLegacyFrom, nextLegacyFrom + TEAM_OPERATION_PAGE_SIZE - 1);
-    if (legacyResult.error) {
-      return {
-        data: null,
-        error: legacyResult.error,
-      };
-    }
-
-    const pageRows = legacyResult.data ?? [];
-    legacyRows.push(...pageRows);
-    if (pageRows.length < TEAM_OPERATION_PAGE_SIZE) {
-      break;
-    }
-    nextLegacyFrom += TEAM_OPERATION_PAGE_SIZE;
+  if (legacyResult.error) {
+    return { data: null, error: legacyResult.error };
   }
 
   return {
-    data: normalizeLegacyTeamOperationRows(legacyRows),
+    data: normalizeLegacyTeamOperationRows(legacyResult.data),
     error: null,
   };
+}
+
+// Caminho rapido: um unico SELECT com join em stock_transfers, empurrando os filtros de
+// cabecalho (data, projeto, tipo de entrada) para o banco. Evita carregar todas as operacoes
+// do tenant e buscar os cabecalhos em centenas de queries por chunk de ids.
+async function loadTeamOperationsWithHeaders(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: TeamOperationHeaderFilters,
+) {
+  const embeddedResult = await loadAllRows<TeamOperationEmbeddedRow>((from, to) => {
+    let query = supabase
+      .from("stock_transfer_team_operations")
+      .select(
+        `transfer_id, team_id, operation_kind, technical_origin_stock_center_id, team_name_snapshot, foreman_name_snapshot, created_at, stock_transfers!inner(${TRANSFER_HEADER_COLUMNS})`,
+      )
+      .eq("tenant_id", tenantId)
+      .eq("stock_transfers.tenant_id", tenantId);
+
+    if (filters.teamIdFilter) {
+      query = query.eq("team_id", filters.teamIdFilter);
+    }
+    if (filters.operationKindFilter) {
+      query = query.eq("operation_kind", filters.operationKindFilter);
+    }
+    if (filters.startDate) {
+      query = query.gte("stock_transfers.entry_date", filters.startDate);
+    }
+    if (filters.endDate) {
+      query = query.lte("stock_transfers.entry_date", filters.endDate);
+    }
+    if (filters.projectIdFilter) {
+      query = query.eq("stock_transfers.project_id", filters.projectIdFilter);
+    }
+    if (filters.entryTypeFilter) {
+      query = query.eq("stock_transfers.entry_type", filters.entryTypeFilter);
+    }
+
+    return query
+      .order("created_at", { ascending: false })
+      .range(from, to)
+      .returns<TeamOperationEmbeddedRow[]>();
+  });
+
+  if (!embeddedResult.error) {
+    const operations: TeamOperationMapRow[] = [];
+    const headers: TransferHeaderRow[] = [];
+
+    for (const row of embeddedResult.data ?? []) {
+      const embedded = row.stock_transfers;
+      const header = Array.isArray(embedded) ? embedded[0] ?? null : embedded;
+      if (!header) {
+        continue;
+      }
+
+      headers.push(header);
+      operations.push({
+        transfer_id: row.transfer_id,
+        team_id: row.team_id,
+        operation_kind: row.operation_kind,
+        technical_origin_stock_center_id: row.technical_origin_stock_center_id,
+        team_name_snapshot: row.team_name_snapshot,
+        foreman_name_snapshot: row.foreman_name_snapshot,
+        created_at: row.created_at,
+      });
+    }
+
+    return { data: { operations, headers }, error: null };
+  }
+
+  logTeamOperationLoadError("team-operations-embedded-select", embeddedResult.error, {
+    tenantId,
+    fallback: "two-step-select",
+  });
+
+  const operationsResult = await loadTeamOperationRows(
+    supabase,
+    tenantId,
+    filters.teamIdFilter,
+    filters.operationKindFilter,
+  );
+
+  if (operationsResult.error) {
+    return { data: null, error: operationsResult.error };
+  }
+
+  const operations = operationsResult.data ?? [];
+  if (!operations.length) {
+    return { data: { operations, headers: [] as TransferHeaderRow[] }, error: null };
+  }
+
+  const headersResult = await loadRowsInChunks<TransferHeaderRow>(
+    operations.map((row) => row.transfer_id),
+    (chunk, from, to) => {
+      let q = supabase
+        .from("stock_transfers")
+        .select(TRANSFER_HEADER_COLUMNS)
+        .eq("tenant_id", tenantId)
+        .in("id", chunk);
+      if (filters.startDate) q = q.gte("entry_date", filters.startDate);
+      if (filters.endDate) q = q.lte("entry_date", filters.endDate);
+      if (filters.projectIdFilter) q = q.eq("project_id", filters.projectIdFilter);
+      if (filters.entryTypeFilter) q = q.eq("entry_type", filters.entryTypeFilter);
+      return q
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<TransferHeaderRow[]>();
+    },
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL },
+  );
+
+  if (headersResult.error) {
+    return { data: null, error: headersResult.error };
+  }
+
+  return { data: { operations, headers: headersResult.data ?? [] }, error: null };
 }
 
 async function loadTeamOperationRowByTransfer(
@@ -536,6 +620,37 @@ function resolveOperationKind(
   return "RETURN";
 }
 
+async function respondTeamOperationExport(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: TeamOperationExportFilters,
+) {
+  const result = await buildTeamOperationExportStream(supabase, tenantId, filters, (step, error, context) =>
+    logTeamOperationLoadError(step, error, context),
+  );
+
+  if (result.kind === "error") {
+    logTeamOperationLoadError("team-operations-export-rpc", result.error, { tenantId });
+    return NextResponse.json({ message: "Falha ao exportar operacoes de equipe." }, { status: 500 });
+  }
+
+  if (result.kind === "empty") {
+    return NextResponse.json(
+      { message: "Nao ha registros para exportar com os filtros atuais." },
+      { status: 404 },
+    );
+  }
+
+  return new NextResponse(result.body, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${result.fileName}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
 async function loadTeamOperationList(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar operacoes de equipe.",
@@ -552,6 +667,8 @@ async function loadTeamOperationList(request: NextRequest) {
   }
 
   const { supabase, appUser } = resolution;
+  const mode = normalizeText(request.nextUrl.searchParams.get("mode")).toLowerCase();
+  const isExportRequest = mode === "export";
   const { page, pageSize } = parsePagination(request.nextUrl.searchParams, { maxPageSize: 100 });
   const startDate = normalizeDateInput(request.nextUrl.searchParams.get("startDate"));
   const endDate = normalizeDateInput(request.nextUrl.searchParams.get("endDate"));
@@ -559,89 +676,70 @@ async function loadTeamOperationList(request: NextRequest) {
   const teamIdFilter = normalizeText(request.nextUrl.searchParams.get("teamId"));
   const projectIdFilter = normalizeText(request.nextUrl.searchParams.get("projectId"));
   const materialCodeFilter = normalizeCodeFilter(request.nextUrl.searchParams.get("materialCode"));
+  const categoryIdFilter = normalizeText(request.nextUrl.searchParams.get("categoryId"));
+  const subcategoryIdFilter = normalizeText(request.nextUrl.searchParams.get("subcategoryId"));
   const entryTypeFilter =
     String(request.nextUrl.searchParams.get("entryType") ?? "").trim().toUpperCase() === "TODOS"
       ? null
       : normalizeEntryType(request.nextUrl.searchParams.get("entryType"));
   const reversalStatus = normalizeReversalStatus(request.nextUrl.searchParams.get("reversalStatus"));
 
-  const [teamOperationsResult, matchingMaterialsResult] = await Promise.all([
-    loadTeamOperationRows(supabase, appUser.tenant_id, teamIdFilter, operationKindFilter),
-    materialCodeFilter
-      ? supabase
-          .from("materials")
-          .select("id")
-          .eq("tenant_id", appUser.tenant_id)
-          .ilike("codigo", `%${materialCodeFilter}%`)
-          .returns<{ id: string }[]>()
-      : Promise.resolve({ data: null as { id: string }[] | null, error: null }),
-  ]);
+  if (isExportRequest) {
+    return respondTeamOperationExport(supabase, appUser.tenant_id, {
+      teamIdFilter,
+      operationKindFilter,
+      startDate,
+      endDate,
+      projectIdFilter,
+      entryTypeFilter,
+      materialCodeFilter,
+      categoryIdFilter,
+      subcategoryIdFilter,
+      reversalStatus,
+    });
+  }
+
+  const hasMaterialFilters = Boolean(materialCodeFilter || categoryIdFilter || subcategoryIdFilter);
+  const teamOperationsResult = await loadTeamOperationsWithHeaders(supabase, appUser.tenant_id, {
+    teamIdFilter,
+    operationKindFilter,
+    startDate,
+    endDate,
+    projectIdFilter,
+    entryTypeFilter,
+  });
 
   if (teamOperationsResult.error) {
     logTeamOperationLoadError("team-operations", teamOperationsResult.error, { tenantId: appUser.tenant_id, teamIdFilter });
     return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
   }
 
-  const teamOperationRows = teamOperationsResult.data;
-  if (!teamOperationRows?.length) {
+  const teamOperationRows = teamOperationsResult.data?.operations ?? [];
+  const transferHeaders = teamOperationsResult.data?.headers ?? [];
+  if (!teamOperationRows.length || !transferHeaders.length) {
     return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
   }
 
-  const materialIdFilter: string[] | null = materialCodeFilter
-    ? (matchingMaterialsResult.data ?? []).map((r) => r.id)
-    : null;
-
-  if (materialIdFilter !== null && materialIdFilter.length === 0) {
-    return NextResponse.json({ history: [], pagination: { page, pageSize, total: 0 } });
-  }
-
-  const transferIds = teamOperationRows.map((row) => row.transfer_id);
   const teamIds = Array.from(new Set(teamOperationRows.map((row) => row.team_id).filter(Boolean)));
-
-  const { data: transferHeaders, error: transfersError } = await loadRowsInChunks<TransferHeaderRow>(
-    transferIds,
-    (chunk) => {
-      let q = supabase
-        .from("stock_transfers")
-        .select(
-          "id, movement_type, from_stock_center_id, to_stock_center_id, project_id, entry_date, entry_type, notes, created_at, updated_at, created_by, updated_by",
-        )
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", chunk);
-      if (startDate) q = q.gte("entry_date", startDate);
-      if (endDate) q = q.lte("entry_date", endDate);
-      if (projectIdFilter) q = q.eq("project_id", projectIdFilter);
-      if (entryTypeFilter) q = q.eq("entry_type", entryTypeFilter);
-      return q.returns<TransferHeaderRow[]>();
-    },
-  );
-  if (transfersError) {
-    logTeamOperationLoadError("stock-transfers", transfersError, {
-      tenantId: appUser.tenant_id,
-      transferCount: transferIds.length,
-    });
-    return NextResponse.json({ message: "Falha ao carregar operacoes de equipe." }, { status: 500 });
-  }
-
-  if (!transferHeaders?.length) {
-    return NextResponse.json({
-      history: [],
-      pagination: { page, pageSize, total: 0 },
-    });
-  }
-
-  const currentTransferIds = (transferHeaders ?? []).map((row) => row.id);
+  const currentTransferIds = transferHeaders.map((row) => row.id);
   const { data: itemRows, error: itemsError } = await loadRowsInChunks<TransferItemRow>(
     currentTransferIds,
-    (chunk) => {
+    (chunk, from, to) => {
       let q = supabase
         .from("stock_transfer_items")
-        .select("id, stock_transfer_id, material_id, quantity, serial_number, lot_code")
+        .select(`id, stock_transfer_id, material_id, quantity, serial_number, lot_code${hasMaterialFilters ? ", materials!inner(id)" : ""}`)
         .eq("tenant_id", appUser.tenant_id)
         .in("stock_transfer_id", chunk);
-      if (materialIdFilter) q = q.in("material_id", materialIdFilter);
-      return q.returns<TransferItemRow[]>();
+      if (hasMaterialFilters) q = q.eq("materials.tenant_id", appUser.tenant_id);
+      if (materialCodeFilter) q = q.ilike("materials.codigo", `%${materialCodeFilter}%`);
+      if (categoryIdFilter) q = q.eq("materials.category_id", categoryIdFilter);
+      if (subcategoryIdFilter) q = q.eq("materials.subcategory_id", subcategoryIdFilter);
+      return q
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<TransferItemRow[]>();
     },
+    { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL },
   );
 
   if (itemsError) {
@@ -666,7 +764,7 @@ async function loadTeamOperationList(request: NextRequest) {
     materialsResult,
     stockCentersResult,
     projectsResult,
-    usersResult,
+    users,
     teamsResult,
     reversalsFromOriginalResult,
     reversalsByReversalResult,
@@ -676,7 +774,7 @@ async function loadTeamOperationList(request: NextRequest) {
     materialIds.length
       ? supabase
           .from("materials")
-          .select("id, codigo, descricao, is_transformer, serial_tracking_type")
+          .select("id, codigo, descricao, category_id, subcategory_id, is_transformer, serial_tracking_type")
           .eq("tenant_id", appUser.tenant_id)
           .in("id", materialIds)
           .returns<MaterialRow[]>()
@@ -697,14 +795,7 @@ async function loadTeamOperationList(request: NextRequest) {
           .in("id", projectIds)
           .returns<ProjectRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: ProjectRow[]; error: null }),
-    userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+    fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     teamIds.length
       ? supabase
           .from("teams")
@@ -714,40 +805,52 @@ async function loadTeamOperationList(request: NextRequest) {
           .returns<TeamRow[]>()
       : Promise.resolve({ data: [], error: null } as { data: TeamRow[]; error: null }),
     currentTransferIds.length
-      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_id", chunk)
-            .returns<StockTransferReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     currentTransferIds.length
-      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferReversalRow>(currentTransferIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_reversals")
             .select("original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_id", chunk)
-            .returns<StockTransferReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferReversalRow[]; error: null }),
     transferItemIds.length
-      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("original_stock_transfer_item_id", chunk)
-            .returns<StockTransferItemReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferItemReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
     transferItemIds.length
-      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk) =>
+      ? loadRowsInChunks<StockTransferItemReversalRow>(transferItemIds, (chunk, from, to) =>
           supabase
             .from("stock_transfer_item_reversals")
             .select("original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, created_at")
             .eq("tenant_id", appUser.tenant_id)
             .in("reversal_stock_transfer_item_id", chunk)
-            .returns<StockTransferItemReversalRow[]>())
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<StockTransferItemReversalRow[]>(),
+      { chunkSize: RELATION_QUERY_CHUNK_SIZE, maxParallel: RELATION_QUERY_MAX_PARALLEL })
       : Promise.resolve({ data: [], error: null } as { data: StockTransferItemReversalRow[]; error: null }),
   ]);
 
@@ -796,12 +899,51 @@ async function loadTeamOperationList(request: NextRequest) {
     materialsData = legacyMaterialsResult.data ?? [];
   }
 
+  const materialCategoryIds = Array.from(
+    new Set(materialsData.map((row) => row.category_id).filter((value): value is string => Boolean(value))),
+  );
+  const materialSubcategoryIds = Array.from(
+    new Set(materialsData.map((row) => row.subcategory_id).filter((value): value is string => Boolean(value))),
+  );
+  const [materialCategoriesResult, materialSubcategoriesResult] = await Promise.all([
+    materialCategoryIds.length
+      ? supabase
+          .from("material_categories")
+          .select("id, name")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", materialCategoryIds)
+          .returns<MaterialCategoryRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: MaterialCategoryRow[]; error: null }),
+    materialSubcategoryIds.length
+      ? supabase
+          .from("material_subcategories")
+          .select("id, name")
+          .eq("tenant_id", appUser.tenant_id)
+          .in("id", materialSubcategoryIds)
+          .returns<MaterialSubcategoryRow[]>()
+      : Promise.resolve({ data: [], error: null } as { data: MaterialSubcategoryRow[]; error: null }),
+  ]);
+
+  if (materialCategoriesResult.error || materialSubcategoriesResult.error) {
+    logTeamOperationLoadError(
+      "material-classification",
+      materialCategoriesResult.error ?? materialSubcategoriesResult.error,
+      { tenantId: appUser.tenant_id, materialCount: materialsData.length },
+    );
+    return NextResponse.json(
+      { message: "Falha ao carregar categorias dos materiais das operacoes de equipe." },
+      { status: 500 },
+    );
+  }
+
   const teamByTransferId = new Map(teamOperationRows.map((row) => [row.transfer_id, row.team_id]));
   const transferMap = new Map((transferHeaders ?? []).map((row) => [row.id, row]));
   const materialMap = new Map(materialsData.map((row) => [row.id, row]));
+  const materialCategoryMap = new Map((materialCategoriesResult.data ?? []).map((row) => [row.id, row.name]));
+  const materialSubcategoryMap = new Map((materialSubcategoriesResult.data ?? []).map((row) => [row.id, row.name]));
   const stockCenterMap = new Map((stockCentersResult.data ?? []).map((row) => [row.id, row.name]));
   const projectMap = new Map((projectsResult.data ?? []).map((row) => [row.id, row.sob]));
-  const userMap = new Map((usersResult.data ?? []).map((row) => [
+  const userMap = new Map(users.map((row) => [
     row.id,
     String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
   ]));
@@ -876,6 +1018,10 @@ async function loadTeamOperationList(request: NextRequest) {
         materialId: item.material_id,
         materialCode: material?.codigo ?? "-",
         description: material?.descricao ?? "-",
+        categoryId: material?.category_id ?? null,
+        subcategoryId: material?.subcategory_id ?? null,
+        categoryName: materialCategoryMap.get(material?.category_id ?? "") ?? null,
+        subcategoryName: materialSubcategoryMap.get(material?.subcategory_id ?? "") ?? null,
         isTransformer: isSerialTrackedMaterial(normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE"))),
         serialTrackingType: normalizeSerialTrackingType(material?.serial_tracking_type ?? (material?.is_transformer ? "TRAFO" : "NONE")),
         quantity: Number(item.quantity ?? 0),
@@ -1025,15 +1171,8 @@ async function loadTeamOperationHistory(request: NextRequest) {
   const stockCenterIds = Array.from(new Set([transferResult.data.from_stock_center_id, transferResult.data.to_stock_center_id].filter(Boolean)));
   const projectIds = Array.from(new Set([transferResult.data.project_id].filter(Boolean)));
 
-  const [usersResult, historyStockCentersResult, historyProjectsResult] = await Promise.all([
-    userIds.length
-      ? supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>()
-      : Promise.resolve({ data: [], error: null } as { data: AppUserRow[]; error: null }),
+  const [users, historyStockCentersResult, historyProjectsResult] = await Promise.all([
+    fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     stockCenterIds.length
       ? supabase
           .from("stock_centers")
@@ -1056,7 +1195,7 @@ async function loadTeamOperationHistory(request: NextRequest) {
     stockCenters: new Map((historyStockCentersResult.data ?? []).map((row) => [row.id, row.name])),
     projects: new Map((historyProjectsResult.data ?? []).map((row) => [row.id, row.sob])),
   };
-  const userMap = new Map((usersResult.data ?? []).map((row) => [
+  const userMap = new Map(users.map((row) => [
     row.id,
     String(row.display ?? row.login_name ?? "").trim() || "Nao informado",
   ]));

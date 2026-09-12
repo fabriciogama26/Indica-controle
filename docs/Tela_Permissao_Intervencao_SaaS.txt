@@ -1,0 +1,122 @@
+Tela: Permissao de Intervencao
+
+Visao geral
+-----------
+- A Permissao de Intervencao (PI) e um documento operacional vinculado a Projeto + Data da etapa.
+- A tela e o CADASTRO da PI: listagem, nova PI a partir da Programacao ou sem Programacao, formulario completo, plano de execucao e emissao do documento.
+- PARCIALMENTE ENTREGUE: listagem com filtros, criacao nos dois caminhos, formulario completo das oito secoes, plano de execucao ordenavel, historico, painel de comparacao e as acoes de status (pronta, reabrir, emitir, cancelar). Falta APENAS a geracao do documento real, que ainda usa o preview de demonstracao da tela Modelo de PI.
+- A camada do documento Word JA ESTA PRONTA e vive numa tela propria: `Cadastro Base > Modelo de PI` (`/modelo-pi`). Ver `Tela_Modelo_PI_SaaS.txt`.
+- Rota: `/permissao-intervencao`, secao `Operacao` do menu.
+
+Arquitetura (estado atual)
+--------------------------
+- Rota: `src/app/(dashboard)/permissao-intervencao/page.tsx`
+- View da listagem: `src/modules/dashboard/permissao-intervencao/PermissionInterventionPageView.tsx`
+- View do formulario: `src/modules/dashboard/permissao-intervencao/PiFormPageView.tsx`, na rota `/permissao-intervencao/[id]`
+- Estado do formulario: `usePiForm.ts`
+- Secoes: `components/PiFormFields.tsx` (1 a 6 e 8), `components/PiExecutionPlan.tsx` (7), `components/PiSidePanels.tsx` (comparacao e historico)
+- Fluxo Nova PI: `src/modules/dashboard/permissao-intervencao/components/NewPiModal.tsx`
+- Estilo, cliente HTTP, contratos e fachada: `PermissionInterventionPageView.module.css`, `api.ts`, `types.ts`, `constants.ts`, `index.ts`
+- Backend: `src/server/modules/permissao-intervencao/` (`queries.ts`, `handlers.ts`, `templates.ts`, `piTemplateTags.ts`, `piTemplateMapper.ts`, `piTemplateStorage.ts`, `piDemoDocument.ts`, `types.ts`, `index.ts`)
+- API: `src/app/api/permissao-intervencao/` — `route.ts` (GET lista, POST cria/edita), `meta`, `programacoes`, `[id]`, `[id]/historico`, `[id]/status`, `[id]/vinculo` e `[id]/plano`
+- Infraestrutura DOCX (sem dominio): `src/lib/server/docxTemplate.ts`
+- Banco: `supabase/migrations/426_create_pi_document_template_and_page.sql`, `427_split_pi_template_screen.sql`, `428_create_pi_catalogs_and_settings.sql`, `429_create_permission_intervention.sql` e `430_create_permission_intervention_rpcs.sql`
+- Verificacao das RPCs: `scripts/diagnosticos/pi-rpc-smoke.mjs` (ESCREVE no banco ligado; cria uma PI de teste e a remove no fim)
+- Rotulo da etapa vinculada: `getStageDisplayClassification`, importado da FACHADA de `programacao-normalizada`. O servidor devolve a classificacao crua e quem formata e aquela funcao — fonte unica da regra.
+- Navegacao/autorizacao:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+
+Modelo de dados (migrations 428 e 429)
+--------------------------------------
+- `pi_settings`: configuracao por contrato — `code_prefix`, `company_code`, `sequence_digits` e o Plano de Emergencia vigente com sua versao. `PI-RJ` e `INDICA` vivem AQUI, nunca no codigo da aplicacao.
+- `pi_sequence_counter`: contador do sequencial, uma linha por contrato, incrementado sob lock de linha dentro da transacao da emissao. Tabela separada de `pi_settings` para nao disputar lock com quem edita o Plano de Emergencia. Nao e legivel por `authenticated`.
+- `pi_operation_areas` e `pi_voltage_levels`: catalogos de codigo fechado por contrato. `code` identifica e `code_token` e o pedaco que entra no codigo da PI — sao colunas diferentes porque `UT_AT` produziria `PI-RJ-MT-UT_AT-INDICA-0001`, com underscore no meio de um codigo de documento.
+- `pi_execution_step_template`: etapas padrao do Plano de Execucao. Nasce VAZIA; o seed entra quando a lista oficial for fornecida.
+- `permission_intervention`: a PI. Uma viva por projeto+data (indice parcial que ignora canceladas), codigo e sequencial unicos por contrato inclusive contra canceladas.
+- `pi_operation_area_link` e `pi_voltage_level_link`: N:N com `scope`, que separa as listas independentes do formulario — area da PI x area do contato, tensao da PI x tensao da instalacao interferente.
+- `pi_execution_step`: linhas do Plano de Execucao. `unique (pi_id, sort_order)` DEFERRABLE, porque reordenar passa por estado intermediario duplicado. O teto de 23 linhas NAO e constraint: quem recusa e a validacao de emissao, para nao dar erro cru no meio da edicao do rascunho.
+- `pi_history`: historico proprio. Nao usa `app_entity_history` porque o CHECK daquela tabela so aceita UPDATE/CANCEL/ACTIVATE, e a PI precisa de CREATE, LINK, UNLINK, ISSUE e GENERATE_DOCUMENT.
+- Todas com RLS de leitura por `user_can_access_tenant` e `revoke` de escrita para `public`/`anon`/`authenticated`.
+- Estados: `status` DRAFT / READY / ISSUED / CANCELLED; `link_status` LINKED / PENDING / ATTENTION. PENDING e exatamente "sem etapa vinculada"; ATTENTION e uma PI vinculada cuja etapa saiu do plano ativo, e o vinculo historico permanece.
+
+RPCs de escrita (migration 430)
+-------------------------------
+- Todas sao `SECURITY DEFINER`, com `revoke` de `public`/`anon`/`authenticated`. So as quatro publicas recebem `grant execute` para `service_role`; os quatro helpers internos nao recebem grant nenhum.
+- NENHUMA escreve na Programacao. `programming` e suas filhas sao lidas para montar snapshot e resolver vinculo.
+- `save_permission_intervention(tenant, ator, pi_id, payload jsonb, expected_updated_at)`: cria e edita. Recebe `jsonb` em vez de 40 parametros porque acrescentar campo com parametro explicito exige DROP + CREATE da funcao, problema que `save_project_programming_stage` ja acumulou. CONTRATO: o payload e o conjunto COMPLETO dos campos editaveis — chave ausente vale como NULO, nao como "nao mexer". Na criacao, reconsulta a etapa ativa DENTRO da transacao, fechando a janela de corrida da PI manual. Historico com diff generico: compara `to_jsonb` do antes e do depois, ignorando `updated_at`/`updated_by`, em vez de 40 comparacoes a mao que ficariam desatualizadas na primeira coluna nova.
+- `save_pi_execution_steps(tenant, ator, pi_id, steps jsonb, expected_updated_at)`: substitui o plano inteiro. Substituicao completa em vez de diff linha a linha porque casar linha existente com linha nova exigiria um id estavel que a tela nao tem enquanto o usuario arrasta. A unique DEFERRABLE permite o estado intermediario duplicado.
+- `set_permission_intervention_status(tenant, ator, pi_id, acao, motivo, expected_updated_at)`: acoes `READY`, `REOPEN`, `ISSUE` e `CANCEL`. Transicoes: DRAFT <-> READY, READY -> ISSUED, qualquer -> CANCELLED. ISSUE exige READY de proposito: e o unico ponto que queima numero de documento oficial, e um passo explicito de "revisada" vale mais que a economia de um clique. Na emissao gera o sequencial sob lock de linha, monta o `pi_code` a partir de `pi_settings` e dos `code_token`, e tira snapshot do Plano de Emergencia e do template (versao e checksum), para o documento continuar reconstruivel depois de qualquer um dos dois mudar.
+- `link_permission_intervention_to_programming(tenant, ator, pi_id, programming_id, motivo, expected_updated_at)`: cria APENAS o relacionamento, nunca sobrescreve dado da PI. Sem etapa informada, procura a ativa daquela data. Recusa etapa de outro projeto ou de outra data. Trocar um vinculo ja existente EXIGE motivo e fica registrado — o sistema nunca troca sozinho, nem quando a etapa sai do plano ativo.
+- `pi_validate_for_issue(tenant, pi_id)`: devolve o array de ERROS que impedem a emissao. Area e tensao principais so sao exigidas quando ha MAIS DE UMA marcada; com uma so, a emissao resolve sozinha. O teto de 23 etapas e cobrado aqui, nao por constraint.
+- Os AVISOS de divergencia (encarregado, equipe, atividade, alimentador, horario diferentes da Programacao) NAO ficam nas RPCs: sao de leitura, calculados na camada Node comparando `source_programming_snapshot` com o estado atual. Divergir nunca bloqueia.
+- Todas usam `expectedUpdatedAt` para concorrencia otimista e recusam edicao de PI emitida ou cancelada.
+
+Formulario da PI
+----------------
+- Rota `/permissao-intervencao/[id]`. As oito secoes seguem a ordem do documento oficial.
+- SALVAR e EMITIR sao acoes separadas. A PI vive como rascunho e so a emissao cobra os campos obrigatorios do documento e queima numero. Emitir exige passar por `Marcar como pronta` antes.
+- NENHUM campo trazido da Programacao fica bloqueado. A PI e independente, e a divergencia aparece no painel de comparacao como aviso.
+- `Plano de Emergencia` aparece somente leitura, com a origem explicada: e configuracao do contrato, e a PI guarda o texto usado no momento da emissao.
+- `Area que compoe o codigo` e `Tensao que compoe o codigo` so aparecem quando ha MAIS DE UMA marcada. Desmarcar a que era principal limpa a escolha, para o estado nao guardar um valor que a tela nao mostra e que a emissao recusaria.
+- `Instalacao eletrica interferente` tem tres estados: Sim, Nao e nao informado. O botao `Limpar` volta ao terceiro, que deixa as duas caixas do documento vazias.
+- Plano de Execucao: reordenacao por botoes de subir e descer, e nao por arrastar — drag-and-drop exigiria dependencia nova e nao funciona por teclado. O teto de 23 linhas NAO trava a edicao: o aviso aparece e a emissao e que recusa.
+- PI emitida ou cancelada abre em somente leitura; o backend recusa a escrita de qualquer forma.
+- Salvar envia o plano ANTES do cadastro: as duas escritas tocam `updated_at`, e nessa ordem o `expectedUpdatedAt` devolvido no fim e o mais recente.
+- Criar uma PI leva direto ao formulario: ela nasce como rascunho quase vazio e o proximo passo e sempre preenche-la.
+
+Contrato de permissao
+---------------------
+- `page_key`: `permissao-intervencao`, com `default_user_access = false`.
+- Quando a tela existir, esse unico `page_key` deve liberar menu, listagem, detalhe, historico, formulario e emissao do documento.
+- A geracao do documento le o template ativo, que pertence a tela `modelo-pi`. O endpoint NAO pode exigir `modelo-pi`: precisa aceitar as duas chaves via `authorizeAnyPageAction`, senao a tela abre e a propria acao dela toma 403 — o caso que o "Padrao de permissao por tela" do CLAUDE.md proibe.
+
+Decisoes de negocio ja travadas
+-------------------------------
+- IDENTIDADE: UUID nativo. O vinculo com a Programacao e sempre pelo UUID da linha da etapa, nunca pelo rotulo calculado (`Etapa 2`, `Final`, `Unica`), que e derivado e muda quando outra etapa e cancelada ou adiada.
+- VINCULO: a busca e por `tenant_id + project_id + work_date`, filtrando etapa ATIVA (`PROGRAMADA`/`REPROGRAMADA`). O indice parcial `programming_active_project_date_key` (migration 346) garante no maximo UMA etapa ativa por projeto+data, entao a busca nunca e ambigua. Etapa CANCELADA ou ADIADA nao serve para vincular, e um vinculo historico nunca e trocado em silencio.
+- PI SEM PROGRAMACAO: nasce `PENDING`, e a RPC reconsulta a Programacao no momento de salvar (fecha a janela de corrida). Quando a etapa daquela data for criada depois, o vinculo e feito SEM sobrescrever os dados ja preenchidos na PI.
+- CODIGO: `PI-RJ-[TENSAO]-[AREA]-INDICA-[SEQUENCIAL]`, com prefixo e empresa vindos de configuracao por contrato, nunca hardcoded. Sequencial gerado no Postgres com lock, e atribuido NA EMISSAO, nao no rascunho — rascunho abandonado nao pode queimar numero de documento oficial.
+- NIVEL DE TENSAO: catalogo proprio com codigo fechado (AT/MT/BT), separado de `project_voltage_levels`, que e texto livre por tenant e nao serve para marcar as caixas do Word.
+- ELEMENTOS BLOQUEADOS / DE CORTE: passam a existir na Programacao e sao HERDADOS pela PI. Editaveis na PI, e a edicao de um lado nao altera o outro.
+- DESCRICAO DAS ATIVIDADES: herda a `Descricao do servico` da etapa, e NAO a lista de atividades. Divergencia consciente com a especificacao inicial, confirmada pelo usuario: as atividades da etapa sao outra coisa e viram linhas do Plano de Execucao.
+- PRE-PREENCHIMENTO NA CRIACAO: gestor, empresa, N. contrato, telefone e e-mail saem de `contract`; o contato da distribuidora sai do cadastro que a configuracao apontar (Responsavel ou Gestor de Campo), lido pelo vinculo do projeto. Tudo continua editavel na PI.
+- PAPEIS: quem pode ser Encarregado e quem pode ser Responsavel pela Intervencao sai de `pi_role_job_titles`, por CARGO e por contrato. Medido em producao: filtrar por equipe deixaria 3 encarregados legitimos de fora, porque nem todo encarregado esta em equipe ativa. Categoria (Tecnica/Comercial) e atributo de EQUIPE, nao de pessoa, entao escolher os cargos tecnicos na configuracao e o que expressa a regra.
+- SUPERVISOR OBRIGATORIO: apenas quando a etapa VINCULADA tem mais equipes ativas que o limite configurado (padrao 3). PI sem Programacao nao tem etapa e nunca cai nesta regra. Medido em producao: com o limite em 3, a regra atinge 37 de 648 etapas.
+- DOCUMENTO PI DA PROGRAMACAO: `programming_document` do tipo `PI` e o MESMO documento. Ao emitir, a PI passa a alimentar aquele registro, e o campo deixa de ser editavel na Programacao — vira herdado.
+- INDEPENDENCIA: alterar a Programacao depois NAO altera uma PI ja criada, e editar a PI NUNCA altera a Programacao. A divergencia vira warning, nunca bloqueio.
+
+Fases pendentes
+---------------
+- FASE 1a (FEITA): schema completo — catalogos, configuracao por contrato, contador do sequencial, entidade e filhas. Migrations 428 e 429.
+- FASE 1b (FEITA): RPCs de escrita. Migration 430.
+- FASE 2a (FEITA): camada Node completa — leituras, comparacao Programacao x PI, handlers e as 8 rotas de API.
+- FASE 2b (FEITA): tela de listagem com filtros e paginacao, e o fluxo Nova PI nos dois caminhos.
+- FASE 3 (FEITA): formulario completo com as oito secoes.
+- FASE 4 (FEITA): plano de execucao ordenavel, com etapas padrao vindas de modelo.
+- FASE 5: emissao real, substituindo o preview de demonstracao da tela `Modelo de PI`.
+- FASE 6 (FEITA): historico na UI e comparacao Programacao x PI.
+- FASE 7 (toca a Programacao, migration isolada): campos de elementos bloqueados e de corte na etapa, e o campo PI da etapa virando herdado e nao editavel.
+
+Areas que NAO sao digitalizadas
+-------------------------------
+- Recursos Envolvidos na Intervencao (Equipes e Veiculos), Protocolo de Autorizacao de Criacao e Desativacao de Area/Zona de Trabalho e Controle de Alteracoes de Responsabilidades continuam em branco no documento, para preenchimento em campo.
+- Nao ha upload de croqui, diagrama ou imagem.
+- O "Controle de Alteracoes de Responsabilidades" fisico do documento NAO substitui o historico digital da PI, que continua obrigatorio.
+
+Atualizacao 2026-09
+-------------------
+- Formulario da PI entregue: oito secoes, plano de execucao ordenavel, painel de comparacao, historico e as acoes de status. Falta so a geracao do documento real.
+- `scripts/diagnosticos/pi-rpc-smoke.mjs` ganhou a secao `Contrato do formulario`, que envia o payload EXATO da tela e prova os dois lados do contrato: campo preenchido persiste, e chave ausente LIMPA o valor em vez de preserva-lo. Sem isso a tela nao conseguiria apagar um campo.
+- Tela de listagem e fluxo Nova PI entregues. O passo 1 escolhe o projeto por autocomplete; o passo 2 escolhe entre `A partir da Programacao` (lista de etapas com o rotulo correto e as que ja tem PI marcadas como indisponiveis) e `Sem Programacao` (projeto + data).
+- A tela avisa sobre pendencias de configuracao (contrato, Plano de Emergencia, template ativo e etapas padrao) logo no topo, para o usuario nao descobrir a falta so na emissao.
+- DEFEITO ENCONTRADO E CORRIGIDO pelo teste de fumaca: `fetchProjectLookupMap` lia da tabela `project`, mas `city_text` e coluna da VIEW `project_with_labels` (a tabela base guarda so o id do municipio). O erro do PostgREST estava sendo descartado, entao a listagem mostraria "Nao identificado" em TODO projeto, sem nenhum sintoma no log. Passou a ler da view e o erro agora sobe.
+- Camada Node da tela: `queries.ts` com listagem filtrada e paginada, detalhe, historico, etapas oferecidas na criacao e catalogos; `handlers.ts` com os nove handlers; e 8 rotas de API. Nenhuma escrita na Programacao.
+- O rotulo da etapa vinculada vem de `getStageDisplayClassification`, exposto na fachada de `programacao-normalizada`: o servidor devolve a classificacao crua e a formatacao continua com fonte unica.
+- O filtro por area e por tensao resolve os ids numa consulta propria, e nao por `!inner` no embed, porque com `!inner` filtrado o embed voltaria so com a tag filtrada e a coluna da tela mentiria.
+- Rota criada com `ModulePlaceholder`; `page_key` registrado pela migration 426 e mantido pela 427.
+- A administracao do template saiu desta tela para `Cadastro Base > Modelo de PI` na migration 427.
+- Migrations 428 e 429: schema da PI criado, tabelas vazias. A Programacao nao foi tocada.
+- Migration 430: RPCs de escrita da PI. Nenhuma delas escreve na Programacao — `programming` e suas filhas sao apenas lidas, para montar snapshot e resolver vinculo.
+- `scripts/diagnosticos/pi-rpc-smoke.mjs`: 86 verificacoes contra o banco ligado, cobrindo criacao sem Programacao, concorrencia otimista, diff do historico, plano de execucao com reordenacao, validacao de emissao, recusa de vinculo sem etapa ativa e o caminho completo de emissao. Executado com sucesso contra producao antes da entrega, sem deixar residuo: tabelas vazias, contador devolvido e Plano de Emergencia restaurado.

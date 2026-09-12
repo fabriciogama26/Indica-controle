@@ -1,0 +1,1 @@
+export { TeamTypesPageView } from "./TeamTypesPageView";

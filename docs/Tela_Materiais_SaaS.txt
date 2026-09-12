@@ -16,6 +16,8 @@ Arquitetura
 - UI compartilhada: `src/components/ui/CsvExportButton.module.css`
 - API de materiais: `src/app/api/materials/route.ts`
 - API de metadados dos materiais: `src/app/api/materials/meta/route.ts`
+  - Carrega UMBs, categorias, subcategorias e indicador de materiais sem UMB.
+  - Em falha, diferencia a origem do erro para diagnosticar catalogo/migration pendente sem mascarar tudo como UMB.
 - Banco (core de materiais): `supabase/migrations/001_create_core_tables.sql`
 - Banco (auditoria): `supabase/migrations/015_add_audit_columns.sql`
 - Banco (preco + status + historico): `supabase/migrations/042_materials_price_status_and_history.sql`
@@ -27,12 +29,15 @@ Arquitetura
 - Banco (bloqueio de rastreio em uso): `supabase/migrations/243_block_material_serial_tracking_downgrade.sql`
 - Banco (catalogo de UMB): `supabase/migrations/366_create_material_umb_options.sql`
 - Banco (saneamento de UMB CJT): `supabase/migrations/367_update_materials_umb_cjt_to_un.sql`
+- Banco (classificacao por categoria/subcategoria): `supabase/migrations/378_backfill_material_categories_from_xlsx.sql`
 
 Cadastro
 --------
 - Campos obrigatorios:
   - `Codigo`
   - `Descricao`
+  - `Categoria`
+  - `Subcategoria`
   - `Tipo`
   - `UMB`
 - Campo opcional:
@@ -54,8 +59,9 @@ Cadastro
 - Cadastro em massa:
   - Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao.
   - Abre modal no mesmo padrao da tela de Medicao, com etapas para baixar modelo CSV, preencher e enviar arquivo.
-  - Modelo CSV: `codigo;descricao;tipo;umb;preco;rastreio_por_serial`.
-  - Colunas obrigatorias: `codigo`, `descricao`, `tipo`, `umb`.
+  - Modelo CSV: `codigo;descricao;categoria;subcategoria;tipo;umb;preco;estoque_minimo;estoque_maximo;rastreio_por_serial`.
+  - Colunas obrigatorias: `codigo`, `descricao`, `categoria`, `subcategoria`, `tipo`, `umb`.
+  - `categoria` e `subcategoria` sao resolvidas pelo nome no catalogo ativo do tenant.
   - `tipo` aceita somente `NOVO` ou `SUCATA`.
   - `rastreio_por_serial` aceita `NAO`, `TRAFO`, `RELIGADOR` ou `CHAVE`.
   - Erros parciais geram CSV de retorno com `linha`, `coluna`, `valor` e `erro`.
@@ -75,12 +81,20 @@ Cadastro
   - Em modo edicao, o bloco `Cadastro de Material` recebe borda amarela de destaque.
   - A rolagem para topo usa o container interno do dashboard (`mainContent`), nao `window`.
   - A edicao envia `expectedUpdatedAt` e bloqueia o save quando outro usuario altera ou inativa o material antes.
+- Classificacao tecnica:
+  - `material_categories` e `material_subcategories` guardam o catalogo normalizado por tenant.
+  - `materials.category_id` e `materials.subcategory_id` vinculam cada material ao catalogo por FK composta com `tenant_id`.
+  - A migration 378 popula os catalogos a partir da planilha `materiais_2026-08-11_categorizados.xlsx`, aplica backfill por `codigo`, registra diff em `material_history` e cria indices por `tenant_id + category_id/subcategory_id`.
+  - Cadastro e edicao manual usam selects dependentes: ao trocar Categoria, Subcategoria e limpa.
+  - A RPC `save_material_record` valida categoria/subcategoria ativa e impede subcategoria fora da categoria selecionada.
 
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros implementados:
   - `Codigo` (texto)
   - `Descricao` (texto)
+  - `Categoria` (select com opcoes ativas de `material_categories`)
+  - `Subcategoria` (select dependente da categoria, com opcoes ativas de `material_subcategories`)
   - `UMB` (select com opcoes ativas de `material_umb_options` e opcao `Sem UMB` para registros legados)
   - `Tipo` (texto)
   - `Status` (`Ativo` / `Inativo`)
@@ -90,10 +104,14 @@ Filtros, auto-complete e listagem
 - Colunas da lista:
   - `Codigo`
   - `Descricao`
+  - `Categoria`
+  - `Subcategoria`
   - `Tipo`
   - `Rastreio`
   - `UMB`
   - `Preco`
+  - `Min.`
+  - `Max.`
   - `Registrado por`
   - `Registrado em`
   - `Acoes`
@@ -107,7 +125,7 @@ Filtros, auto-complete e listagem
 Boas praticas
 -------------
 - Sempre filtrar e gravar com `tenant_id` no backend.
-- Validar obrigatorios na API antes de gravar (`codigo`, `descricao`, `tipo`, `preco`).
+- Validar obrigatorios na API antes de gravar (`codigo`, `descricao`, `categoria`, `subcategoria`, `tipo`, `umb`).
 - Garantir auditoria com `created_by`, `updated_by`, `created_at` e `updated_at`.
 - Tratar inativacao por status (`is_active`) em vez de exclusao fisica.
 - Exigir `expectedUpdatedAt` na edicao e no cancelamento/ativacao para evitar sobrescrita silenciosa.
@@ -239,7 +257,7 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
-  - Suporta selecao de tenant por requisicao via header `x-tenant-id` (quando o usuario possui vinculo em `app_user_tenants`).
+  - Usa o cookie server-side `INDICA.activeTenantId` como contexto de tenant ativo; `x-tenant-id` nao e fonte operacional padrao.
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
 - Caminho: `src/components/ui/ActionIcon.tsx`
@@ -361,3 +379,60 @@ Atualizacao 2026-08-15 - Formulario nao e mais apagado em conflito de concorrenc
 - Arquivos alterados: `src/modules/dashboard/materiais/MaterialsPageView.tsx`.
 - Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; arquivo encolheu, baseline
   reduzido via `npm run lint:size:update`).
+
+Atualizacao 2026-09-03 - Pendencia de identificacao de serial vira campo do cadastro
+--------------------------------------------------------------------------------------------
+- Problema: `materials.allow_pending_serial_identification` existe desde a migration 247,
+  mas nenhuma tela lia ou gravava a coluna e `save_material_record` nao tinha o parametro.
+  O valor vinha so do backfill da 247, que marcou `true` para os RELIGADOR/CHAVE existentes
+  naquele momento. Como o default da coluna e `false`, todo material rastreado por serial
+  cadastrado depois nascia exigindo Serial em Entrada, Saida e Transferencia, sem forma de
+  mudar pela aplicacao.
+- Depois: o bloco de rastreio por serial do formulario passa a exibir o checkbox
+  `Aceita entrada e transferencia sem Serial (pendencia de identificacao)`, visivel apenas
+  quando o tipo de rastreio for `RELIGADOR` ou `CHAVE`.
+- Regras:
+  - TRAFO nunca aceita pendencia (constraint `materials_pending_serial_not_trafo_check`).
+    O checkbox nao e renderizado para TRAFO/NONE, e a RPC recusa a combinacao com
+    `PENDING_SERIAL_NOT_ALLOWED_FOR_TYPE` (422) para chamada direta.
+  - Ao trocar o tipo de rastreio para um que nao aceita pendencia, o estado do formulario
+    zera a flag junto. O estado nunca guarda um valor que a UI deixou de renderizar.
+  - `p_allow_pending_serial_identification = null` preserva o valor atual na edicao, para
+    que chamada que nao conhece o parametro nao zere a configuracao em silencio.
+  - A importacao CSV nao expoe a flag: ela so cria material (`materialId: null`), entao a
+    coluna nasce `false`, igual ao comportamento anterior. Nao ha risco de a importacao
+    desligar a flag de material ja cadastrado.
+- Duas travas novas na RPC, obrigatorias a partir do momento em que a flag virou editavel:
+  - Desligar a flag com saldo pendente em aberto passa a ser recusado com
+    `PENDING_SERIAL_BALANCE_OPEN` (409). `identify_pending_serial_tracked_unit` (319, linha
+    73) recusa a identificacao quando a flag esta `false`; sem essa trava, o saldo ja
+    acumulado em `stock_serial_pending_balances` ficaria preso, sem nenhum caminho de
+    identificacao, com as unidades ainda contando no saldo agregado.
+  - Trocar `serial_tracking_type` com saldo pendente em aberto tambem passa a ser recusado
+    com o mesmo `reason`. A checagem de uso que ja existia olha `trafo_instances` e
+    `stock_transfer_items` com serial preenchido, mas nao olhava
+    `stock_serial_pending_balances`: material com pendencia aberta e nenhuma unidade
+    identificada passava por ela, e a troca de tipo deixava linhas de saldo pendente
+    apontando para material que nao e mais rastreado por serial.
+  - Nenhuma das duas travas altera dado existente; elas apenas recusam a transicao.
+- Decisao de UX registrada: `serialTrackingChangeBlocked` continua derivando de
+  `hasSerialTrackingUsage`, que nao considera saldo pendente. Material com apenas pendencia
+  aberta mostra os checkboxes habilitados e so recebe o erro no submit, com a mensagem da
+  RPC informando o codigo do material e a quantidade pendente. Foi preferido a incluir um
+  agregado de `stock_serial_pending_balances` por linha na listagem.
+- Arquivos alterados:
+  - `supabase/migrations/414_material_pending_serial_flag_in_save_rpc.sql`
+  - `src/app/api/materials/route.ts`
+  - `src/modules/dashboard/materiais/MaterialsPageView.tsx`
+  - `src/modules/dashboard/materiais/components/SerialTrackingFields.tsx` (novo)
+  - `file-size-baseline.json`
+- Funcoes/hooks/constantes tocadas (2026-09-03):
+  - `save_material_record` (assinatura passa de 16 para 17 parametros)
+  - `parseMaterialInput`, `saveMaterialViaRpc`, `MaterialInput`, `MaterialRow`
+  - `updateSerialTrackingType`, `toFormState`, `formatHistoryValue`, `INITIAL_FORM`
+  - `HISTORY_FIELD_LABELS.allowPendingSerialIdentification`
+  - `SerialTrackingFields` (extraido do PageView para caber no ratchet de tamanho)
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros). `MaterialsPageView.tsx`
+  encolheu de 1695 para 1687 linhas com a extracao do bloco de rastreio; baseline reduzido
+  via `npm run lint:size:update`. Comandos de banco (`db:migration-list`, `db:lint`,
+  `db:security-check`) nao foram executados: o Supabase CLI nao esta linkado neste ambiente.

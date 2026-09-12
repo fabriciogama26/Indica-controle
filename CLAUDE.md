@@ -147,6 +147,7 @@ Depois da modificação:
   - qualquer outro `.ts`/`.tsx` de `src/` (inclusive `PageView.tsx`): até 1.000 linhas.
   - Arquivo novo acima do teto falha o lint. Arquivo legado que já estava acima entra no baseline com o tamanho daquele momento e só pode encolher; quando encolhe, o baseline desce junto (`npm run lint:size:update`), e quando volta ao limite sai do baseline.
   - Os dois fluxos são separados de propósito: `lint:size:update` **nunca aumenta** um baseline, então rodá-lo depois de várias alterações não pode abençoar em lote um crescimento não intencional. Aumento excepcional só por `npm run lint:size:accept -- <caminho>`, um arquivo por vez, com baseline anterior/tamanho atual/aumento impressos antes da escrita.
+  - Tarefa que **encolhe e depois faz crescer** o mesmo arquivo não se divide em PRs separadas: o ratchet compara com o baseline imediato, não com o estado anterior à tarefa, então a segunda PR vira crescimento sobre o teto que a primeira derrubou. Ver [`guias/guia_git.md`](guias/guia_git.md) regra 6.
   - Arquivo acima do teto continua exigindo plano de modularização no TXT da tela.
 - Estado inicial do baseline: 31 arquivos acima do respectivo limite. Maior concentração: `src/modules/dashboard/projetos/ProjectsPageView.tsx` (4.063), `src/modules/dashboard/entrada/StockTransfersPageView.tsx` (3.687), `src/modules/dashboard/medicao/MeasurementPageView.tsx` (3.641) e `src/server/modules/programacao/handlers.ts` (2.337).
 - `src/modules/dashboard/programacao-simples/*` está congelada até a remoção — não recebe refatoração nem crescimento; prioridade de refatoração considera apenas módulos ativos.
@@ -175,6 +176,8 @@ Leia apenas os guias aplicáveis, mas não deixe de ler nenhum guia diretamente 
 | Proposta de commit, uso de comandos git | [`guias/guia_git.md`](guias/guia_git.md) |
 | Qualquer PR/entrega de código | [`guias/guia_validacao.md`](guias/guia_validacao.md) (sempre) |
 | Deploy de Edge Function | [`guias/runbook_deploy_edge_functions.md`](guias/runbook_deploy_edge_functions.md) |
+| Rollback de codigo, revert de PR mergeado, escolha de ponto para `git bisect` | [`guias/runbook_rollback.md`](guias/runbook_rollback.md) |
+| Drift entre banco vivo e migrations, correcao feita pelo Dashboard/SQL editor | [`guias/runbook_drift_schema.md`](guias/runbook_drift_schema.md) |
 | Gerar uma ordem de engenharia a partir de um pedido simples | [`prompts/gerar-prompt.md`](prompts/gerar-prompt.md) |
 
 **Exemplo real de combinação:** "Adiciona um filtro por status na listagem de Cronograma de Solicitações" aciona `guia_backend.md` (filtro no banco, não em memória), `guia_frontend.md` (estado do filtro, debounce se for texto) e `guia_validacao.md` (checklist antes do PR) — não aciona `guia_sql.md` a menos que o filtro exija coluna/índice novo.
@@ -187,8 +190,10 @@ Nenhum servidor MCP configurado no momento (sem `.mcp.json` no repositório e se
 
 Comandos reais do projeto (`package.json`):
 - `npx tsc --noEmit` — typecheck.
-- `npm run lint` — ESLint + ratchet de tamanho de arquivo (roda `lint:eslint` e `lint:size`).
+- `npm run lint` — ESLint + ratchet de tamanho de arquivo + ratchet do teto de linhas (roda `lint:eslint`, `lint:size` e `lint:rowlimit`).
 - `npm run lint:size` — só o ratchet de tamanho (`scripts/qualidade/check-file-size.mjs`); falha com exit code 1.
+- `npm run lint:rowlimit` — só o ratchet do teto de linhas (`scripts/qualidade/check-row-limit.mjs` + `row-limit-baseline.json`); falha com exit code 1 em qualquer `.limit()` novo acima de 1.000. O PostgREST entrega no máximo 1.000 linhas por resposta e não sinaliza o corte, então pedir mais devolve resultado incompleto com status 200 — dado errado, não erro. Resolve constantes além de literais e ignora ocorrências em comentário/string. **Não existe `--accept`**: aumento não tem justificativa possível, porque o servidor não entrega. Leitura completa se faz com `loadAllRows` de `src/lib/server/apiHelpers.ts`.
+- `npm run lint:rowlimit:update` — **só reduz** o baseline do teto de linhas, quando um arquivo deixa de violar.
 - `npm run lint:size:update` — **só reduz** o baseline (arquivo encolheu, foi removido ou voltou ao limite). Recusa e não escreve nada se houver crescimento pendente.
 - `npm run lint:size:accept -- <caminho>` — única forma de aumentar um baseline; exige o caminho de cada arquivo, não existe aceite em lote. O diff do baseline é a evidência; a justificativa vai na descrição do PR.
 - `npm run build` — build de produção, para mudanças que afetam rota/build.
@@ -199,6 +204,14 @@ Comandos reais do projeto (`package.json`):
 Não há script `test` — até uma suíte automatizada existir, validação de front/UI é manual (caminho feliz + estado vazio/erro), registrada como lacuna em `guias/guia_validacao.md`.
 
 ## 10. Documentação
+
+## Padrão de permissão por tela (obrigatório para telas novas)
+Aplica-se a toda tela criada ou refatorada depois desta regra.
+
+1. Quem tem acesso a uma tela deve ter acesso total às funções daquela tela. O `page_key` da tela libera menu, carregamento inicial, catálogos/meta, listagem, detalhes, histórico, exportações e ações próprias exibidas naquela tela.
+2. É proibido deixar a UX em estado "abre a tela, mas a própria tela falha por permissão" por usar outro `page_key` nos endpoints internos. Frontend e backend devem usar a mesma permissão funcional da tela visível.
+3. Se uma tela reutilizar API/componente de outra, a leitura deve aceitar o `page_key` da tela visível ou a API deve ser separada. Nunca exigir permissão de cadastro/admin para uma tela que foi criada como consulta.
+4. Permissão granular por operação é exceção, não padrão. Só pode existir quando for outro fluxo de negócio ou uma exceção explicitamente decidida; nesse caso, deve estar agrupada na tela pai na UI de Permissões, para que liberar a tela libere também suas funções esperadas, salvo pedido explícito em contrário.
 
 ## Padrão de permissão granular por operação (obrigatório)
 Aplica-se quando uma permissão/flag bloqueia apenas PARTE das operações de uma tela, e não a tela inteira (ex.: `saida-requisicao` dentro de Operacoes de Equipe).

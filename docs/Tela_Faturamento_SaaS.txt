@@ -117,9 +117,9 @@ Filtros, auto-complete e listagem
   - Detalhes
   - Historico
   - Editar (somente `ABERTA`)
-  - Fechar (somente `ABERTA`)
-  - Abrir (somente `FECHADA`)
-  - Cancelar (quando diferente de `CANCELADA`)
+  - Fechar (somente `ABERTA`) - acao direta, SEM modal de confirmacao (mesmo padrao da tela `Medicao`); nao exige motivo.
+  - Abrir (somente `FECHADA`) - abre modal e exige motivo com no minimo 10 caracteres.
+  - Cancelar (quando diferente de `CANCELADA`) - abre modal e exige motivo com no minimo 10 caracteres.
 - Exportacao:
   - `Exportar Excel (CSV)` com cooldown de 10 segundos.
   - `Detalhamento (CSV)` exporta uma linha por atividade do faturamento.
@@ -153,9 +153,9 @@ Atalhos
   - `GET /api/faturamento/meta`
   - `GET /api/faturamento/activities/catalog`
 - Modelo cadastro em massa:
-  - `projeto;tipo_faturamento;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao;data_ingresso`
+  - `projeto;tipo_faturamento;motivo_sem_producao;codigo_atividade;quantidade;taxa;observacao;data_ingresso;notas_pedido`
   - Valores obrigatorios: `projeto`, `tipo_faturamento`, `codigo_atividade`, `quantidade`, `taxa` e `data_ingresso`.
-  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`; `observacao` e opcional.
+  - `motivo_sem_producao` e obrigatorio somente em `Sem producao`. `observacao` (nota do cabecalho, participa do agrupamento) e `notas_pedido` (observacao do item) sao opcionais — ver "Atualizacao 2026-08-26 (3)".
   - Quantidade e taxa aceitam decimal com virgula ou ponto, por exemplo `1,5` ou `1.5`.
   - Modal no mesmo padrao da Medicao: baixar modelo, preencher planilha e enviar arquivo com acao explicita `Importar planilha`.
 
@@ -328,3 +328,306 @@ Atualizacao 2026-08-15 - Idempotencia na criacao (achado CRITICO da auditoria de
 - Validado com `npx tsc --noEmit` (sem erro) e `npm run lint` (0 erros; crescimento de
   `BillingPageView.tsx` +5 linhas aceito via `npm run lint:size:accept`, arquivo ja
   acima do baseline antes desta tarefa).
+
+Atualizacao 2026-08-21 - Exportacao CSV parava em 500 linhas
+--------------------------------------------------------------------------
+ACHADO (ver `Auditoria/14-exportacoes-csv.md`)
+- A exportacao pedia `pageSize=10000` numa UNICA requisicao a `/api/faturamento`. A rota aplica
+  `parsePagination(..., { maxPageSize: 500 })`, que capa o valor SEM AVISAR.
+- Resultado: o cliente recebia 500 linhas, nao conferia `pagination.total`, e dava a
+  exportacao por completa. Acima de 500 faturamentos no filtro, o CSV saia truncado em silencio.
+- Este caso NAO era detectavel pelo ratchet `lint:rowlimit`: nao existe `.limit()` literal
+  acima de 1.000 nesse caminho — o teto efetivo era 500, e so existe em runtime.
+
+CORRECAO
+- A exportacao percorre as paginas ate alcancar `pagination.total`, com
+  `EXPORT_PAGE_SIZE = 500` casado com o `maxPageSize` real da rota.
+
+- Arquivos alterados:
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `src/modules/dashboard/faturamento/constants.ts` (constante `EXPORT_PAGE_SIZE`)
+
+Atualizacao 2026-08-26 - Auditoria de brechas: grants de RPC, permissao de export e truncamentos
+------------------------------------------------------------------------------------------------
+Auditoria completa da tela (rotas, PageView e migrations 176/259/260/262/263/278/298/360).
+Correcoes agrupadas por severidade.
+
+CRITICO - RPC SECURITY DEFINER executavel por `authenticated`
+- ACHADO: a migration 298 estabeleceu a politica "RPC SECURITY DEFINER so por
+  service_role" e blindou `save_project_billing_order`, mas deixou de fora tres funcoes
+  do mesmo modulo, que seguiam com o GRANT original da 176 para `authenticated`.
+  Como o anon key e o JWT do usuario estao no browser, `/rest/v1/rpc/...` era alcancavel:
+  1. `set_project_billing_order_status` - sem NENHUMA validacao interna do chamador.
+     Qualquer usuario logado, mesmo SEM a pagina `faturamento` liberada, podia FECHAR,
+     CANCELAR ou REABRIR faturamento, gravando `updated_by`/`canceled_by` com o id de
+     outra pessoa. O `expected_updated_at` nao era barreira: a RLS de leitura permite
+     SELECT a qualquer membro do tenant, entao o valor era lido antes da chamada.
+  2. `save_project_billing_order_batch_partial` - bypass de `can_create`/`can_import`:
+     ate 500 faturamentos por chamada sem passar pelo `authorizePageAction` da rota.
+  3. `append_project_billing_order_history_record` - permitia forjar linha de historico
+     em qualquer tenant, com `created_by` arbitrario.
+- CORRECAO: `supabase/migrations/388_harden_project_billing_rpc_grants.sql` revoga
+  `public`/`anon`/`authenticated` e concede EXECUTE so a `service_role` nas tres, com o
+  bloco `do $$ ... has_function_privilege` de verificacao (mesmo padrao da 298).
+  Alem dos grants:
+  - `set_project_billing_order_status` recriada com o guard de `auth.uid()` que a 278
+    aplicou na funcao irma (defesa em camadas: um GRANT reaberto por engano no futuro
+    nao reabre sozinho a brecha). Corpo restante identico ao da 259.
+  - `save_project_billing_order_batch_partial` recriada com subtransacao por linha
+    (`begin ... exception when others`). Antes, o nome prometia importacao PARCIAL mas
+    qualquer erro SQL de verdade abortava a transacao inteira e o lote virava um 500
+    opaco - o caso real e a colisao de `project_billing_orders_unique_number`, ja que
+    `now()` e constante na transacao e as 500 linhas compartilham o timestamp do numero.
+- `scripts/supabase/check-security-definer.ps1`: as notas de `$knownNoRevoke` para as migrations
+  259-262 diziam "Corrigida pelas migrations 278/298", o que era so parcialmente verdade
+  e foi o que silenciou este achado. Passam a citar a 388 para status/batch.
+
+ALTO - `valor_total` e `itens` zerados na listagem e no CSV
+- ACHADO: o agregado de itens da listagem usava `.in("billing_order_id", pagedOrderIds)`
+  cru. Com `pageSize` de ate 500 ordens (o export pede exatamente 500), qualquer pagina
+  com mais de 1.000 itens somados era cortada em silencio pelo PostgREST, e as ordens que
+  ficavam de fora apareciam com `valor_total` e `itens` ZERADOS - na tela e no CSV. O card
+  "Valor total" estava certo (vem da RPC agregada); a linha a linha, nao.
+- CORRECAO: `loadRowsInChunks` (`BILLING_RELATION_CHUNK_SIZE = 100`) com ordem total por
+  `id`, e o erro do agregado passa a abortar a listagem em vez de ser ignorado.
+- `fetchBillingOrderDetail` recebeu o mesmo tratamento com `loadAllRows` (o `totalAmount`
+  do detalhe e a soma desses itens), preservando o fallback de schema legado.
+
+ALTO - permissao `export` nao era verificada
+- ACHADO: as duas exportacoes consomem `GET /api/faturamento`, que so exigia `can_access`.
+  Marcar `can_export = false` nao bloqueava nada em Faturamento, ao contrario de
+  medicao/estornos/stock-balance.
+- CORRECAO: a GET aceita `mode=export` e cobra a acao `export` nesse modo; as duas
+  exportacoes do PageView passam a enviar o parametro.
+
+ALTO - importacao em massa sem `Idempotency-Key`
+- ACHADO: a rota ja envolvia o POST em `withIdempotency` e o cadastro unitario mandava a
+  chave desde 2026-08-15, mas o lote (ate 500 faturamentos) mandava so `authHeaders`. Sem
+  o header o wrapper nao age: duplo clique ou retry duplicava o lote inteiro.
+- CORRECAO: `massImportIdempotency = useIdempotencyKey()`, header enviado no POST do lote,
+  `reset()` apos sucesso E na troca de arquivo (arquivo novo e outra operacao; sem o reset
+  a chave voltaria com payload diferente e o wrapper responderia 409).
+
+MEDIO - `ensureBillingPageAccess` duplicado divergia do `requirePageAction`
+- ACHADO: a funcao estava copiada em `route.ts`, `meta/route.ts` e
+  `activities/catalog/route.ts`, e divergia do helper canonico em dois pontos: pulava o
+  gate `app_pages.default_user_access = true and ativo = true` antes do fallback por role
+  (tela desativada continuava servindo dados) e tratava falha de lookup como "sem
+  registro", caindo para o role em vez de devolver `PAGE_PERMISSION_LOOKUP_FAILED`.
+- CORRECAO: novo `src/server/modules/faturamento/authorization.ts` com
+  `resolveBillingContext(request, { invalidSessionMessage, action })` sobre
+  `requirePageAction`; as tres copias foram removidas. A pagina `faturamento` nasceu na
+  migration 176 (anterior a 245), entao ja tem `default_user_access = true` e
+  `ativo = true` - aplicar o gate nao altera quem tem acesso hoje.
+
+MEDIO - injecao de filtro PostgREST na busca do catalogo
+- ACHADO: o `.or(...)` do catalogo interpolava `q` cru dentro de
+  `code.ilike.%<q>%,description.ilike.%<q>%`. Virgula, ponto e parenteses sao estruturais
+  na gramatica do `or=`: dava para injetar predicados arbitrarios sobre
+  `service_activities` (`?q=x,unit_value.gte.0`) e qualquer busca com virgula quebrava a
+  consulta. O filtro de tenant e AND de topo e nao caia, entao nao havia vazamento
+  cross-tenant.
+- CORRECAO: `quoteFilterValue` envolve o valor em aspas duplas escapando `\` e `"`. Os
+  curingas (`%`, e o `*` que o PostgREST converte em `%`) continuam valendo como antes.
+
+MEDIO - paginacao instavel no export
+- ACHADO: a listagem ordenava so por `updated_at desc`. A importacao em lote GARANTE o
+  empate (`now()` e constante na transacao, entao as 500 ordens nascem com o mesmo
+  `updated_at`), e o laco de exportacao repetia e pulava registros entre as paginas.
+- CORRECAO: desempate por `id` (ordem total).
+
+MEDIO - erro de banco cru devolvido ao cliente
+- ACHADO: `serializeDbError` incluia `code`, `message`, `details` e `hint` do Postgres em
+  todo 500, sem guarda de ambiente - unico lugar do `src/` que fazia isso.
+- CORRECAO: o erro completo vai para `console.error("[FATURAMENTO][DB]", ...)` com
+  `tenantId`/`userId`; o corpo da resposta so carrega `dbError` fora de producao.
+
+BAIXO
+- `normalizeUuid` usava uma regex de "36 caracteres hex ou hifen", que aceitava 36 hifens
+  e so estourava no cast `::uuid` (500 onde o certo e 400). Passa a exigir o formato real
+  de UUID.
+- `loadHistory` nao tinha teto: `.limit(BILLING_HISTORY_LIMIT = 50)`, conforme
+  `guias/guia_backend.md` regra 26 (historico exibido em modal).
+
+ACHADO ADICIONAL (encontrado durante a implementacao)
+- `exportOrdersDetailed` ainda pedia `pageSize=10000` numa unica requisicao - a mesma
+  falha que a Atualizacao 2026-08-21 corrigiu no `exportOrders`, mas que havia passado
+  batido na exportacao de detalhamento. Acima de 500 faturamentos o detalhamento saia
+  truncado em silencio. Corrigido junto: as duas exportacoes agora compartilham
+  `fetchBillingOrdersForExport` em `src/modules/dashboard/faturamento/exportQueries.ts`,
+  para nao voltarem a divergir.
+
+NAO ALTERADO (decisao consciente)
+- Reabrir faturamento fechado (`ABRIR`) continua exigindo `update`, e nao `reverse`.
+  E o mesmo criterio da tela de Medicao (`src/app/api/medicao/route.ts`); mudar so o
+  Faturamento criaria divergencia entre telas irmas. Fica registrado como candidato a
+  revisao conjunta das duas telas.
+- A RLS de `project_billing_orders` permite SELECT a qualquer membro do tenant,
+  independentemente da permissao de pagina. E o desenho vigente em todo o projeto (RLS
+  isola tenant; permissao de pagina e cobrada no Route Handler) e mudar isso e decisao de
+  arquitetura, nao correcao de tela.
+
+- Arquivos alterados:
+  - `supabase/migrations/388_harden_project_billing_rpc_grants.sql` (novo)
+  - `src/server/modules/faturamento/authorization.ts` (novo)
+  - `src/server/modules/faturamento/index.ts` (novo)
+  - `src/modules/dashboard/faturamento/exportQueries.ts` (novo)
+  - `src/app/api/faturamento/route.ts`
+  - `src/app/api/faturamento/meta/route.ts`
+  - `src/app/api/faturamento/activities/catalog/route.ts`
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `scripts/supabase/check-security-definer.ps1`
+  - `file-size-baseline.json`
+- Validado com `npx tsc --noEmit`, `npm run lint` (0 erros; `BillingPageView.tsx` encolheu
+  8 linhas liquidas e o baseline foi reduzido com `npm run lint:size:update`),
+  `npm run build` e `npm run db:security-check`.
+
+Mapa de Codigo - complemento 2026-08-26
+- `src/server/modules/faturamento/authorization.ts` -> `BILLING_PAGE_KEY`,
+  `resolveBillingContext(request, { invalidSessionMessage, action })`: autenticacao +
+  autorizacao de pagina unica das tres rotas do modulo.
+- `src/modules/dashboard/faturamento/exportQueries.ts` -> `createApiError` (movido do
+  PageView) e `fetchBillingOrdersForExport({ filters, authHeaders, errorMessage })`:
+  laco de paginacao compartilhado pelas duas exportacoes.
+- `src/app/api/faturamento/route.ts` -> constantes `BILLING_RELATION_CHUNK_SIZE` (100) e
+  `BILLING_HISTORY_LIMIT` (50); `UUID_PATTERN`; `dbErrorResponse` agora aceita
+  `tenantId`/`userId` para o log.
+- `src/app/api/faturamento/activities/catalog/route.ts` -> `quoteFilterValue`.
+
+Atualizacao 2026-08-26 (2) - Importacao duplicava faturamento entre arquivos
+----------------------------------------------------------------------------
+ACHADO (reportado em uso real, nao pela auditoria anterior)
+- Dois arquivos do mesmo contrato foram importados (R$ 3.976.127,11 e
+  R$ 1.674.806,35) e a tela passou a somar R$ 5.366.906,08 em 146 faturamentos.
+  A diferenca para a soma simples (R$ 5.650.933,46) e exatamente o total das
+  linhas recusadas por duplicidade DENTRO de cada arquivo.
+- CAUSA: a deduplicacao da importacao so existia dentro de UMA chamada. O
+  `groupKey` de `BillingPageView.tsx` agrupa as linhas do CSV por
+  projeto|tipo|motivo|data_ingresso|notas, e a mensagem "Atividade duplicada no
+  mesmo faturamento" so dispara quando o mesmo codigo de atividade se repete
+  dentro desse grupo, no arquivo que esta sendo lido. Nada comparava a linha com
+  o que ja existia no banco, e `save_project_billing_order` sempre faz INSERT
+  quando `p_billing_order_id` e nulo. Importar dois arquivos com sobreposicao
+  criava dois conjuntos completos de faturamentos, sem um unico aviso.
+- Este ponto NAO foi pego pela auditoria da mesma data: ela verificou a validacao
+  DENTRO de uma importacao e nao questionou a ausencia de chave semantica entre
+  importacoes, mesmo com o `TASKS.md` de 2026-08-15 ja registrando que
+  `billing_number` "nunca colide" e que nao havia UNIQUE semantico.
+
+DECISAO DE REGRA (definida pelo usuario)
+- Chave que identifica o mesmo faturamento: projeto + data de ingresso + tipo
+  (com o motivo de sem producao, que faz parte do tipo) + notas do pedido. E a
+  mesma chave que o `groupKey` do importador ja usa. O motivo entra porque, sem
+  ele, o banco recusaria como duplicado um par de faturamentos SEM_PRODUCAO que o
+  importador legitimamente separa por motivos diferentes.
+- Comportamento na colisao: RECUSAR a linha e reportar. Nunca somar itens ao
+  faturamento existente, nunca sobrescrever.
+
+CORRECAO - `supabase/migrations/389_project_billing_unique_semantic_key.sql`
+- Indice unico parcial `ux_project_billing_orders_semantic_key` sobre
+  (tenant_id, project_id, ingresso_date, billing_kind,
+   coalesce(no_production_reason_id, uuid zero), coalesce(btrim(notes), ''))
+  com `where status <> 'CANCELADA'` — cancelar libera a chave para o lancamento
+  correto entrar no lugar.
+- `save_project_billing_order` ganha pre-checagem da chave na criacao, devolvendo
+  409 `DUPLICATE_BILLING_ORDER` com mensagem legivel. A pre-checagem existe SO
+  para a mensagem: a barreira real contra corrida e o indice unico
+  (`guias/guia_sql.md` regra 6). `unique_violation` do indice e traduzida no
+  mesmo 409, tanto no INSERT quanto no UPDATE (editar tambem pode colidir);
+  qualquer outra violacao unica continua subindo como erro de verdade, checada
+  pelo `constraint_name`.
+- `ingresso_date` nula (linhas anteriores a migration 260) nao colide: NULL e
+  sempre distinto num indice unico. Registros legados ficam fora da trava.
+- A mensagem por linha ja chega na lista "Linhas com erro" da tela sem mudanca de
+  frontend: o route mapeia `message` de cada resultado do lote. Um faturamento
+  duplicado com N linhas no CSV produz N linhas de erro, todas com o mesmo texto.
+
+ORDEM DE APLICACAO (obrigatoria)
+- O indice unico nao pode ser criado sobre dados que ja violam a chave. A
+  migration comeca com um bloco `do $$` que conta as violacoes e ABORTA com uma
+  amostra de ate 10 chaves, em vez de falhar no meio com erro de indice.
+- Sequencia correta: (1) limpar/cancelar os duplicados existentes;
+  (2) aplicar 388 e 389; (3) reimportar os arquivos. Aplicar a 389 antes da
+  limpeza e seguro — ela aborta sem escrever nada.
+
+- Arquivos alterados:
+  - `supabase/migrations/389_project_billing_unique_semantic_key.sql` (novo)
+- Validado com `npm run db:security-check` (107 migrations) e `npx tsc --noEmit`.
+  Migration NAO aplicada: exige `npm run db:check-link` e a limpeza previa.
+
+Atualizacao 2026-08-26 (3) - Troca de origem: observacao do item x nota do pedido
+----------------------------------------------------------------------------------
+CORRECAO DE REGRA (definida pelo usuario)
+- O commit `3eba605` (migration 259, item A3) tinha definido: `observacao` = por
+  item, `notas_pedido` = nota do pedido (cabecalho). A regra correta e a INVERSA:
+  - coluna `observacao`   -> nota do CABECALHO (`project_billing_orders.notes`)
+  - coluna `notas_pedido` -> observacao do ITEM (`project_billing_order_items.observation`)
+
+CONSEQUENCIA NO AGRUPAMENTO (o ponto que importa)
+- O `groupKey` da importacao decide quais linhas do CSV viram o MESMO faturamento,
+  e ele carrega a nota do cabecalho — nunca a observacao do item. Antes da troca
+  ele usava `notas_pedido`; agora usa `observacao`.
+- A razao e estrutural, nao estetica: a nota do cabecalho e a mesma para todas as
+  linhas de um pedido, entao pode agrupar. A observacao do item varia linha a
+  linha; se ela entrasse no `groupKey`, cada observacao diferente viraria um
+  faturamento separado e a importacao se fragmentaria.
+- Efeito colateral a observar em arquivos antigos: quem preenchia `observacao` por
+  item (a convencao anterior) passa a ver esse texto virar nota de cabecalho E
+  entrar no agrupamento — fragmentando a importacao exatamente como descrito
+  acima. Arquivos no formato novo devem repetir a mesma `observacao` em todas as
+  linhas do mesmo pedido.
+
+RELACAO COM A CHAVE UNICA
+- A migration 389 NAO muda. O indice
+  `ux_project_billing_orders_semantic_key` sempre indexou `notes` (a nota do
+  cabecalho); o que mudou foi so a coluna do CSV que alimenta esse campo. O
+  `groupKey` da tela e a chave do indice continuam sendo a mesma coisa — o que
+  agrupa na importacao e o que o banco recusa duplicado.
+
+ALTERACOES
+- `src/modules/dashboard/faturamento/BillingPageView.tsx`:
+  - `orderNotes` (ex-`observation`) le a coluna `observacao` e alimenta
+    `group.notes` e o `groupKey`.
+  - `itemObservation` (ex-`notasPedido`) le a coluna `notas_pedido` e alimenta
+    `group.items[].observation`.
+  - Texto de ajuda do passo 2 do modal de importacao passa a listar
+    `notas_pedido` entre as colunas do modelo e a explicar o destino de cada uma,
+    incluindo o aviso de que `observacao` precisa ser igual em todas as linhas do
+    mesmo pedido.
+- Sem mudanca de rota, RPC, schema, RLS, grant ou permissao: a troca e de origem
+  do dado dentro do parser do CSV, e os campos de destino no banco sao os mesmos.
+- O CSV de exportacao detalhada nao muda: `observacao_item` e
+  `observacao_faturamento` continuam nomeando os campos armazenados, que seguem
+  com o mesmo significado.
+
+- Arquivos alterados:
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+- Validado com `npx tsc --noEmit`, `npm run lint` (0 erros, baseline de tamanho
+  inalterado) e `npm run build`.
+
+Atualizacao 2026-08-27 - Fechar faturamento sem modal (padrao da Medicao)
+--------------------------------------------------------------------------
+AJUSTE DE UX (definido pelo usuario)
+- O botao `Fechar` da lista abria um modal de confirmacao sem campo de motivo,
+  apenas com `Cancelar`/`Confirmar`. O modal foi removido: `Fechar` agora dispara
+  o `PATCH /api/faturamento` direto, igual ao botao equivalente da tela `Medicao`
+  (`submitStatusChange(order, "FECHAR")` em `MeasurementPageView.tsx`).
+- `Abrir` e `Cancelar` continuam abrindo o modal, porque o backend exige motivo
+  com no minimo 10 caracteres para essas duas acoes.
+- Implementacao:
+  - `changeStatus(order, action, reason)` passou a receber os dados por parametro
+    em vez de ler apenas de `statusModal`, atendendo o caminho direto e o modal.
+  - `StatusModalState.action` agora e `Exclude<StatusAction, "FECHAR">`, entao o
+    modal nao consegue mais ser aberto com `FECHAR`; o campo `Motivo` deixou de
+    ser condicional.
+  - Botao `Fechar` recebe `disabled={isChangingStatus}` e `changeStatus` ignora
+    chamada concorrente, evitando duplo clique agora que nao ha confirmacao.
+- Sem mudanca de rota, RPC, schema, RLS, grant ou permissao: o `PATCH` com
+  `action: "FECHAR"` (sem motivo) ja era aceito por `src/app/api/faturamento/route.ts`
+  e continua exigindo `expectedUpdatedAt`.
+
+- Arquivos alterados:
+  - `src/modules/dashboard/faturamento/BillingPageView.tsx`
+  - `file-size-baseline.json` (arquivo encolheu de 1248 para 1247 linhas)
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros, 3 warnings
+  pre-existentes, ratchet de tamanho atualizado so para baixo).

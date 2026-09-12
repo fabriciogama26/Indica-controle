@@ -7,11 +7,13 @@
     "dev:turbopack": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "npm run lint:eslint && npm run lint:size",
+    "lint": "npm run lint:eslint && npm run lint:size && npm run lint:rowlimit",
     "lint:eslint": "eslint",
     "lint:size": "node scripts/qualidade/check-file-size.mjs",
     "lint:size:update": "node scripts/qualidade/check-file-size.mjs --update",
     "lint:size:accept": "node scripts/qualidade/check-file-size.mjs --accept",
+    "lint:rowlimit": "node scripts/qualidade/check-row-limit.mjs",
+    "lint:rowlimit:update": "node scripts/qualidade/check-row-limit.mjs --update",
     "db:link": "npx supabase link --project-ref lcusxnhhrjosxqgiphgp",
     "db:check-link": "powershell -ExecutionPolicy Bypass -File scripts/supabase/supabase-check-link.ps1",
     "db:status": "npm run db:check-link && npx supabase projects list",
@@ -19,6 +21,14 @@
     "db:lint": "npm run db:check-link && npx supabase db lint --linked",
     "db:security-check": "powershell -ExecutionPolicy Bypass -File scripts/supabase/check-security-definer.ps1",
     "db:security-check-live": "npm run db:check-link && npx supabase db query --file scripts/supabase/check-security-definer-live.sql --linked",
+    "db:view-check": "powershell -ExecutionPolicy Bypass -File scripts/supabase/check-view-security-invoker.ps1",
+    "db:view-check-live": "npm run db:check-link && npx supabase db query --file scripts/supabase/check-view-security-invoker-live.sql --linked",
+    "db:cardinality-live": "npm run db:check-link && npx supabase db query --file scripts/performance/check-tenant-cardinality-live.sql --linked",
+    "db:coverage-live": "npm run db:check-link && npx supabase db query --file scripts/performance/check-tenant-coverage-live.sql --linked",
+    "db:postfilter-live": "npm run db:check-link && npx supabase db query --file scripts/performance/check-postfilter-cardinality-live.sql --linked",
+    "db:chunk-acceptance-live": "npm run db:check-link && npx supabase db query --file scripts/performance/check-chunk-fix-acceptance-live.sql --linked",
+    "db:residual-live": "npm run db:check-link && npx supabase db query --file scripts/performance/check-team-operations-residual-live.sql --linked",
+    "db:drift-check": "npm run db:check-link && npx supabase db diff --linked --schema public",
     "fn:deploy": "npm run db:check-link && npx supabase functions deploy --project-ref lcusxnhhrjosxqgiphgp",
     "fn:deploy:forecast": "npm run db:check-link && npx supabase functions deploy import_project_forecast --project-ref lcusxnhhrjosxqgiphgp",
     "fn:deploy:activity-forecast": "npm run db:check-link && npx supabase functions deploy import_project_activity_forecast --project-ref lcusxnhhrjosxqgiphgp"
@@ -29,17 +39,21 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
     "@tanstack/react-query": "^5.90.21",
-    "next": "16.1.6",
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
+    "docxtemplater": "^3.69.3",
+    "next": "16.3.3",
+    "pizzip": "^3.2.0",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.3.3",
     "typescript": "^5"
   }
 }

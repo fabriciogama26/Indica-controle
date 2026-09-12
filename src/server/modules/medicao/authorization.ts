@@ -6,6 +6,7 @@ import type { PageAction, PageActionAuthorization } from "@/lib/server/pageAutho
 
 export const MEASUREMENT_PAGE_KEY = "medicao";
 export const MEASUREMENT_VISUALIZATION_PAGE_KEY = "medicao-visualizacao";
+export const COMMERCIAL_MEASUREMENT_PAGE_KEY = "medicao-comercial";
 
 function buildMeasurementAuthorizationResponse(authorization: PageActionAuthorization) {
   if (authorization.allowed) return null;
@@ -61,4 +62,31 @@ export async function authorizeMeasurementReadOrExportAction(
     },
     { status: 403 },
   );
+}
+
+export async function authorizeCommercialMeasurementReadOrExportAction(
+  context: AuthenticatedAppUserContext,
+  action: Extract<PageAction, "read" | "export">,
+) {
+  const authorization = await requirePageAction({
+    context,
+    pageKey: COMMERCIAL_MEASUREMENT_PAGE_KEY,
+    action,
+  });
+
+  return buildMeasurementAuthorizationResponse(authorization);
+}
+
+// Despacho por variante da tela, usado nos endpoints de LEITURA/EXTRACAO que as
+// tres telas de Medicao compartilham. Existe para nao repetir o `if` em cada
+// handler e, principalmente, para nao voltar a exigir `medicao` de quem so tem
+// `medicao-visualizacao` (CLAUDE.md, padrao de permissao por tela).
+export async function authorizeMeasurementVariantReadOrExportAction(
+  context: AuthenticatedAppUserContext,
+  action: Extract<PageAction, "read" | "export">,
+  commercial: boolean,
+) {
+  return commercial
+    ? authorizeCommercialMeasurementReadOrExportAction(context, action)
+    : authorizeMeasurementReadOrExportAction(context, action);
 }

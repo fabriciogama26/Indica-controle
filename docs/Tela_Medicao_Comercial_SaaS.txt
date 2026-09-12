@@ -1,0 +1,333 @@
+Tela: Medicao Comercial SaaS
+
+Visao geral
+-----------
+- Ordem de medicao das equipes COMERCIAIS, no mesmo padrao `cadastro + filtros + lista` da tela `Medicao`.
+- Diferenca de negocio em relacao a `Medicao`:
+  - So lista e so aceita equipe cujo `Tipo de equipe` seja `COMERCIAL`, lido de `teams.team_category_id` (NOT NULL desde a migration 420, unica fonte da natureza da equipe). O atalho antigo por `team_types.name = COMERCIAL` NAO vale mais.
+  - A equipe comercial nao tem encarregado fixo. Cada ordem carrega os DOIS eletricistas que executaram, escolhidos no cadastro de `Pessoas` (cargo com correspondencia em `ELETRICISTA`).
+  - Os integrantes NAO sao deduzidos da equipe: sao selecionados ordem a ordem. E exatamente por isso que equipe comercial pode existir sem vinculo fixo com pessoas.
+  - `Projeto` continua na tela e continua vindo do cadastro de `Projetos`, mas NAO e obrigatorio -- nem em `Com producao`. A equipe comercial atende demanda que nem sempre tem projeto aberto.
+  - Campo `Incidencia`: texto livre e OBRIGATORIO, sem nenhuma consulta a tabela de projetos. Serve para registrar a referencia da execucao quando nao ha projeto (ou junto com ele). Nao pode repetir para a mesma Incidencia + Equipe + Data de execucao.
+  - `Processo`, `Hora inicio` e `Hora termino` sao proprios desta tela e OBRIGATORIOS.
+  - A tela NAO trabalha com `Composicao de Equipe` nem com `Programacao`, e nao tem campo `Encarregado`. Quem executou sao os dois eletricistas da ordem.
+- O resto do fluxo (atividades, pontos, taxa, valor, status, historico, exportacao CSV) e identico ao da `Medicao`.
+- A formula do item e a mesma: `Pontos (voice_point) x Quantidade x Taxa manual x Valor unitario`.
+
+Arquitetura
+-----------
+- A tela NAO e um clone da `Medicao`. O `MeasurementPageView` recebe uma variante e troca a base da API, os campos dos integrantes e o cadastro em massa. Backend no mesmo desenho: as rotas de `/api/medicao-comercial` delegam para os handlers compartilhados de `src/server/modules/medicao`.
+- Rota: `src/app/(dashboard)/medicao-comercial/page.tsx`
+- View: `src/modules/dashboard/medicao-comercial/CommercialMeasurementPageView.tsx` (fachada `index.ts`)
+- View compartilhada: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
+- Variantes da tela: `src/modules/dashboard/medicao/variant.ts`
+- Campos dos integrantes por nome/matricula: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`
+- Filtros proprios da tela (`Incidencia` e `Eletricista`): `src/modules/dashboard/medicao/CommercialFilterFields.tsx`
+- Campo `Incidencia` + checagem de duplicidade: `src/modules/dashboard/medicao/CommercialOrderRefField.tsx` (o nome do arquivo e do componente segue a coluna `commercial_order_ref`, nao o rotulo da tela)
+- Catalogo de Processo: tabela `measurement_commercial_processes`, servida por `/api/medicao-comercial/meta`. Sem tela de cadastro: nasce semeada pela migration 415 (`Cobrancas`, `Novas_Ligacoes`, `Perdas`) e cresce por SQL.
+- API da tela (todas delegam):
+  - `src/app/api/medicao-comercial/route.ts`
+  - `src/app/api/medicao-comercial/meta/route.ts`
+  - `src/app/api/medicao-comercial/export/route.ts`
+  - `src/app/api/medicao-comercial/programming-sources/route.ts`
+  - `src/app/api/medicao-comercial/activities/catalog/route.ts`
+  - `src/app/api/medicao-comercial/minimum-billing/route.ts`
+  - `src/app/api/medicao-comercial/project-activity-usage/route.ts`
+  - `src/app/api/medicao-comercial/rate-suggestion/route.ts`
+  - `src/app/api/medicao-comercial/order-ref-check/route.ts` (so na variante comercial: a Medicao tecnica nao tem o campo `Incidencia`)
+- Handlers compartilhados (regra de negocio):
+  - `src/server/modules/medicao/handlers.ts`
+  - `src/server/modules/medicao/routeConfig.ts` (`MeasurementRouteConfig`, modo da equipe por variante)
+  - `src/server/modules/medicao/teamMode.ts` (resolve TECNICA/COMERCIAL so por `teams.team_category_id`, recorte positivo nos dois lados)
+  - `src/server/modules/medicao/metaHandler.ts`
+  - `src/server/modules/medicao/exportHandler.ts`
+  - `src/server/modules/medicao/programmingSourcesHandler.ts`
+  - `src/server/modules/medicao/activitiesCatalogHandler.ts`
+  - `src/server/modules/medicao/minimumBillingHandler.ts`
+  - `src/server/modules/medicao/projectActivityUsageHandler.ts`
+  - `src/server/modules/medicao/rateSuggestionHandler.ts`
+  - `src/server/modules/medicao/orderRefCheckHandler.ts`
+- Integracao de menu: `src/components/layout/AppShell.tsx`
+- Integracao de autorizacao: `src/lib/auth/authorization.ts`
+- Integracao de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+- Base SQL: `supabase/migrations/415_team_categories_and_commercial_measurement.sql`
+- Base SQL herdada da Medicao: ver `docs/Tela_Medicao_SaaS.txt` (a ordem comercial grava nas MESMAS tabelas: `project_measurement_orders` e `project_measurement_order_items`).
+
+Por que `route.ts` do Next nao exporta os handlers
+--------------------------------------------------
+- `route.ts` do App Router so pode exportar handlers HTTP. Qualquer export extra quebra o typecheck do build (`OmitWithTag ... is not assignable to type 'never'`).
+- Por isso o handler compartilhado vive em `src/server/modules/medicao/`, e as duas rotas apenas delegam. E a mesma razao registrada em `src/server/modules/medicao/index.ts`.
+
+Cadastro
+--------
+- Origem obrigatoria:
+  - `Com producao`: `Equipe + Data de execucao`
+  - `Sem producao`: `Equipe + Data de execucao`
+  - `Projeto` e opcional nos dois casos. E a unica diferenca de origem em relacao a `Medicao` tecnica, onde `Projeto` segue obrigatorio em `Com producao`.
+- Campos proprios da tela:
+  - `Eletricista 1` (obrigatorio)
+  - `Eletricista 2` (obrigatorio)
+  - `Incidencia` (obrigatorio)
+  - `Processo` (obrigatorio)
+  - `Hora inicio` (obrigatorio)
+  - `Hora termino` (obrigatorio)
+- Regras dos integrantes:
+  - Os dois sao obrigatorios em qualquer ordem comercial, inclusive `Sem producao`.
+  - Os dois campos usam `input + datalist` e aceitam escolher por nome ou por `matriculation` do cadastro de Pessoas.
+  - Os dois precisam ser diferentes. O eletricista ja escolhido some das sugestoes do outro campo, mas continua disponivel no campo em que esta selecionado.
+  - Precisam estar ativos em `people`, no mesmo tenant, com cargo com correspondencia em `ELETRICISTA`.
+  - Validados em tres camadas: formulario, rota (`/api/medicao-comercial`) e RPC `save_project_commercial_measurement_order`.
+- Regras de `Projeto` e `Incidencia`:
+  - `Projeto` e opcional; `Incidencia` e obrigatoria. A ordem pode ter os dois ou so a `Incidencia`, nunca so o projeto.
+  - `Projeto` opcional NAO significa aceitar codigo inexistente: se o usuario digitar algo, o valor ainda precisa casar com um projeto ativo do tenant.
+  - Ordem sem projeto nao carrega nenhum vestigio de projeto/programacao (`programming_id`, `project_code_snapshot` e os snapshots de conclusao ficam nulos), regra herdada da 382 para `SEM_PRODUCAO` e agora valida tambem para a comercial `COM_PRODUCAO`.
+  - `Incidencia` e texto livre gravado em `project_measurement_orders.commercial_order_ref`. O rotulo mudou de `Ordem` para `Incidencia` so na tela; a coluna, a RPC e o indice mantiveram o nome antigo de proposito, para nao exigir migration de renomeacao.
+  - `Incidencia` e obrigatoria nos DOIS tipos de medicao (`Com producao` e `Sem producao`), igual a Processo e aos horarios. Validada em tres camadas: formulario, rota e trigger `enforce_commercial_measurement_fields` (`commercial_order_ref_required`).
+  - `Incidencia` NAO pode repetir para a mesma Incidencia + Equipe + Data de execucao. A barreira e o UNIQUE INDEX parcial `uq_project_measurement_orders_commercial_ref_team_date` (migration 419), sobre `upper(btrim(commercial_order_ref))` -- a comparacao ignora caixa e espaco, entao `1234`, `1234 ` e `1234a`/`1234A` sao a MESMA Incidencia. O texto continua gravado como foi digitado.
+  - A tela ainda avisa ANTES do submit: ao sair do campo `Incidencia`, `GET /api/medicao-comercial/order-ref-check` responde se ja existe. Isso e conveniencia, NAO e a barreira -- entre a consulta e o salvamento existe janela para outro usuario gravar a mesma Incidencia, e so o indice fecha isso sem TOCTOU. O conflito real volta como 409 (`COMMERCIAL_ORDER_REF_ALREADY_EXISTS`).
+  - Ordem CANCELADA libera a reutilizacao: cancelar grava `is_active=false` e a linha sai do indice. Efeito colateral: reabrir (`ABRIR`) uma ordem cancelada cuja `Incidencia` foi reutilizada no periodo volta a colidir, e a tela recebe 409 com mensagem propria.
+  - As regras de duplicidade SOMAM com as da 382: duas Incidencias diferentes no MESMO projeto + equipe + data seguem bloqueadas pela regra antiga, e duas ordens `Sem producao` sem projeto na mesma equipe + data seguem bloqueadas mesmo com Incidencias diferentes.
+  - Aparece como `Incidencia` na listagem, no detalhe e nos CSVs de resumo e de detalhamento. E uma coluna separada de `Ordem`, que continua sendo o numero da ordem de medicao gerado pelo sistema.
+- Regras de `Processo`, `Hora inicio` e `Hora termino`:
+  - Os tres sao obrigatorios em qualquer ordem comercial, inclusive `Sem producao`.
+  - `Hora termino` precisa ser maior que `Hora inicio`. Turno que atravessa a meia-noite NAO e suportado de proposito: a ordem e amarrada a uma unica data de execucao. Se isso mudar, o par vira `timestamptz` em vez de virar check mais frouxo.
+  - `Processo` precisa estar ativo no tenant. O nome vai para `commercial_process_name_snapshot` no salvamento, no mesmo padrao do motivo sem producao.
+  - Validados em tres camadas: formulario, rota e RPC. No banco, o trigger `enforce_commercial_measurement_fields` recusa ordem de equipe COMERCIAL sem os tres, e recusa ordem de equipe TECNICA COM qualquer um deles.
+- O que esta tela NAO tem:
+  - `Encarregado` (campo do formulario, coluna da lista, linha do detalhe e coluna do CSV).
+  - `Composicao equipe`: a coluna some da lista, do detalhe e do CSV, e `fetchTeamCompositionContextSet` nao roda nesta variante.
+  - `Programacao` e `Status execucao`: somem da lista, do detalhe, do CSV e dos filtros; `loadProgrammingMatchMap` nao roda, e `programmingId` e forcado a nulo no salvamento.
+  - Sao duas consultas a menos por pagina da listagem, nao so colunas escondidas.
+- Regra da equipe:
+  - `POST`/`PUT` recusam equipe que nao seja `COMERCIAL` (422, `Selecione uma equipe comercial.`).
+  - `GET` de detalhe/historico e `PATCH` de status respondem `404` para ordem de equipe tecnica: a tela nao enxerga nem manipula ordem da outra categoria.
+- `Cadastro em massa` NAO existe nesta tela. O botao nao e renderizado e o `POST` com `action: BATCH_IMPORT_PARTIAL` responde `400`.
+- Nao ha etapa de `Programacao` a puxar: `programming-sources` devolve `schedules` vazio nesta variante.
+
+Persistencia
+------------
+- Cabecalho e itens: `project_measurement_orders` e `project_measurement_order_items`, iguais aos da `Medicao`.
+- `Incidencia`: coluna `commercial_order_ref` em `project_measurement_orders`, com check de nao-branco e indice parcial por tenant.
+- `Processo` e horarios: `commercial_process_id` (FK composta com `tenant_id`), `commercial_process_name_snapshot`, `commercial_start_time` e `commercial_end_time`.
+  - As colunas sao ANULAVEIS de proposito: a ordem tecnica nao tem esses campos. A obrigatoriedade depende da categoria da equipe e por isso vive no trigger, nao em `NOT NULL`.
+  - Sao DOIS triggers, com tempos diferentes de proposito:
+    - `trg_enforce_measurement_project_rules`: BEFORE, imediato, exatamente como o CHECK que substitui. A ordem TECNICA continua sendo reprovada na propria instrucao, e nao no commit -- mudar isso alteraria em silencio o comportamento de erro de um fluxo que nao faz parte deste pedido.
+    - `trg_enforce_commercial_measurement_fields`: CONSTRAINT TRIGGER DEFERIDO, porque a ordem comercial nasce em DOIS passos -- a RPC comercial grava o cabecalho pela RPC da Medicao (que nao conhece Processo, horarios nem Incidencia) e so depois preenche esses campos num UPDATE. Um trigger imediato reprovaria o INSERT intermediario, que ainda esta incompleto.
+      ATENCAO (corrigido pela 418): deferir NAO faz o trigger enxergar a linha completa. `deferrable` muda QUANDO o trigger roda, nao QUAL versao da tupla o evento carrega -- o evento de INSERT guarda o `ctid` da tupla inserida e o Postgres busca exatamente aquela versao (`SnapshotAny`) na hora de disparar. O UPDATE posterior gera um SEGUNDO evento, ele nao substitui o primeiro. Por isso a funcao RELE a linha por `id` antes de validar: e a releitura, e nao o `deferrable`, que entrega o estado final da transacao.
+- Projeto obrigatorio deixou de ser CHECK e virou trigger, porque passou a depender da categoria da equipe e CHECK nao consulta outra tabela. Para equipe TECNICA a regra e identica a da 382.
+- `save_project_measurement_order` recebeu a mesma excecao pela cirurgia de texto que a 382 usou (`public.is_commercial_team`), porque nao existe versao integral da funcao em nenhuma migration para recriar do zero.
+- Integrantes: `project_commercial_measurement_order_members`
+  - `(tenant_id, measurement_order_id, sort_order)` unico, `sort_order in (1, 2)`
+  - `(tenant_id, measurement_order_id, person_id)` unico
+  - `person_name_snapshot` preserva o nome no momento do salvamento
+- RPC: `save_project_commercial_measurement_order`
+  - Valida que a equipe e comercial pelo tipo operacional, os dois eletricistas, o Processo ativo do tenant e o intervalo de horario.
+  - Delega cabecalho e itens para `save_project_measurement_order` em vez de duplicar a regra da Medicao.
+  - Regrava os integrantes (`delete` + `insert`) na mesma transacao da chamada.
+  - Desde a migration 422, anexa ao historico da ordem os campos proprios da tela (`Incidencia`, Processo, horarios e Eletricista 1/2). A RPC tecnica grava o historico antes de conhecer esses campos; por isso o envelope comercial captura o estado anterior, faz o UPDATE comercial e completa o mesmo registro de `project_measurement_order_history`.
+- `foreman_name_snapshot` fica vazio na ordem comercial: `resolve_team_foreman_snapshot` devolve `NULL` quando a equipe nao tem encarregado.
+
+Filtros e listagem
+------------------
+- Mesmos filtros da `Medicao`, com as listas de `Equipe` restritas a `Tipo de equipe` = `COMERCIAL`.
+- DOIS filtros existem SO nesta tela, porque so a ordem comercial tem os campos:
+  - `Incidencia`: busca por TRECHO, sem diferenciar caixa (`ilike` sobre `commercial_order_ref`).
+    Mesma semantica do indice unico da 419, que compara `upper(btrim(...))`. Digitar `123` acha
+    `1234` e `0123`.
+  - `Eletricista`: texto livre que casa por MATRICULA OU NOME. O termo resolve as pessoas em
+    `people` (`matriculation`/`nome`, por trecho) e a ordem entra se QUALQUER um dos dois
+    integrantes for uma delas. A lista suspensa e atalho, nao trava: busca parcial funciona.
+    - A busca em `people` NAO filtra por cargo: quem esta na ordem comercial ja e eletricista
+      por construcao, e repetir o casamento `ILIKE %ELETRICISTA%` aqui so criaria mais uma copia
+      dessa regra fragil.
+    - Tambem NAO filtra por `ativo`: eletricista desligado depois continua sendo quem executou
+      as ordens antigas, e some-lo do filtro esconderia ordem que existe.
+    - Termo que casa com mais de 200 pessoas volta `400` pedindo mais caracteres. Todos os ids
+      iriam para a URL do filtro seguinte, que estoura muito antes disso -- recusar com mensagem
+      e melhor que cortar em silencio e devolver lista errada.
+  - Os dois sao aplicados NO BANCO, na mesma consulta paginada da listagem, entao o `total` da
+    paginacao conta certo. O de `Eletricista` usa join interno
+    (`project_commercial_measurement_order_members!inner`), que descarta a ordem sem integrante
+    correspondente e nao duplica a ordem em que os DOIS eletricistas casam: o PostgREST aninha os
+    filhos em vez de multiplicar o pai. O join so entra na consulta quando o filtro esta
+    preenchido, entao o caminho normal da listagem continua identico ao de antes.
+  - Os dois viajam na MESMA query string da exportacao, entao os dois CSVs saem filtrados junto.
+  - Caracteres de sintaxe do PostgREST sao removidos do termo antes da consulta (`%`, `_`, `*`,
+    virgula e parenteses): os tres primeiros sao curinga do `ilike` e os dois ultimos separam e
+    agrupam condicoes dentro de um `or(...)`, entao um nome com virgula quebraria a expressao.
+- A coluna que na `Medicao` mostra `Encarregado` aqui mostra `Integrantes` (`Eletricista 1 / Eletricista 2`).
+- Exportacao CSV usa o prefixo `ordens_medicao_comercial_`.
+- Nos CSVs de resumo e de detalhamento, as colunas `Composicao equipe`, `Encarregado`, `Programacao` e `Status execucao` dao lugar a `Processo`, `Hora inicio`, `Hora termino` e `Integrantes`.
+- Os dois CSVs trazem `Incidencia` logo depois de `Projeto`, na mesma posicao, para os arquivos serem lidos do mesmo jeito.
+- `Centro de Servicos` tem DUAS origens, nesta ordem:
+  1. Ordem COM projeto: o Centro de Servico do projeto (`project_with_labels.service_center_text`),
+     exatamente como antes.
+  2. Ordem SEM projeto: a Base da equipe da ordem (`teams.service_center_id` -> `project_service_centers.name`).
+  3. `Sem base` sobra so para equipe legada sem Base gravada.
+  - O texto `Sem projeto` NAO aparece mais nesta coluna. Ele era erro de categoria: a coluna
+    responde "qual base executou", e ausencia de projeto nao e nome de base. Como `Projeto` e
+    opcional nesta tela, a coluna vinha vazia de sentido em praticamente toda linha.
+  - A resolucao vive em `resolveMeasurementOrderServiceCenter` (`medicao/normalizers.ts`), usada
+    pela listagem (`list.ts`) e pelo detalhe (`queries.ts`), entao tela e CSVs nunca divergem.
+  - A leitura da Base e `fetchTeamServiceCenterMap` (`server/modules/teams/lookups.ts`), que
+    deduplica as equipes e fatia com `loadRowsInChunks` -- o teto de 1.000 linhas do PostgREST
+    nao corta em silencio nem numa exportacao grande.
+  - Vale para a Medicao TECNICA tambem, e la muda so a ordem `Sem producao` sem projeto, que e o
+    unico caso tecnico sem projeto. Ordem com projeto nao muda em lugar nenhum.
+
+Permissao
+---------
+- `page_key`: `medicao-comercial`
+- Todos os endpoints da tela (leitura, meta, catalogos, exportacao e escrita) usam ESTE `page_key`. Nenhum deles exige `medicao`.
+- Nasce liberada apenas para administrador (`default_user_access = false`, padrao da migration 245). A liberacao para os demais perfis e feita na tela `Permissoes`.
+- A chave NAO entra em `DEFAULT_USER_PAGE_ACCESS` de `src/lib/auth/authorization.ts`.
+
+Validacao manual
+----------------
+- Filtro `Incidencia`: digitar um TRECHO de uma Incidencia existente e confirmar que a ordem
+  aparece; conferir que a busca ignora caixa; exportar os dois CSVs e conferir que sairam
+  filtrados junto.
+- Filtro `Eletricista`: buscar pela MATRICULA de um integrante e confirmar a ordem na lista;
+  repetir buscando por parte do NOME; conferir que a ordem aparece tanto quando a pessoa e o
+  `Eletricista 1` quanto quando e o `Eletricista 2`.
+- Filtro `Eletricista` com termo que nao casa com ninguem: a lista precisa vir VAZIA, nunca
+  completa -- ignorar o filtro seria devolver tudo como se ele nao existisse.
+- Filtro `Eletricista` com uma letra so, num tenant com muita gente: confirmar a mensagem
+  pedindo mais caracteres em vez de resultado cortado.
+- Combinar os dois filtros com `Data inicial`/`Data final` e `Equipe`, e conferir que o total da
+  paginacao bate com a lista.
+- `Limpar` precisa zerar os dois campos novos junto com os demais.
+- Abrir a `Medicao` tecnica e confirmar que NENHUM dos dois filtros aparece la.
+- Cadastrar equipe `COMERCIAL` em `Equipes` sem encarregado e com supervisor; confirmar que salva.
+- Abrir `Medicao Comercial` e confirmar que o select de `Equipe` lista somente equipes comerciais.
+- Salvar uma ordem com Processo e horarios; tentar salvar com `Hora termino` menor ou igual a `Hora inicio` e confirmar o bloqueio.
+- Conferir que `Encarregado`, `Composicao equipe`, `Programacao` e `Status execucao` nao aparecem em lugar nenhum da tela, nem nos dois CSVs.
+- Salvar uma ordem `Com producao` SEM projeto; conferir `Sem projeto` e a `Incidencia` na lista, no detalhe e nos CSVs de resumo e de detalhamento.
+- Salvar outra `Com producao` COM projeto; conferir que continua funcionando (taxa sugerida, badges de uso de atividade) e que a `Incidencia` aparece do mesmo jeito.
+- Tentar salvar sem `Incidencia` e confirmar o bloqueio: ela e obrigatoria desde a migration 419, inclusive em `Sem producao`.
+- Digitar um codigo de projeto inexistente e confirmar que o salvamento e recusado, mesmo com o campo opcional.
+- Salvar uma ordem `Com producao` com dois eletricistas; conferir a coluna `Integrantes` na lista e no detalhe.
+- Editar essa ordem e confirmar que os dois campos reabrem com os integrantes gravados.
+- Digitar a matricula de um eletricista ativo e confirmar que o campo seleciona a pessoa correta.
+- Tentar salvar com o mesmo eletricista nos dois campos e confirmar o bloqueio.
+- Salvar uma segunda ordem em seguida (sem recarregar a tela) e confirmar que os integrantes foram limpos pelo reset do formulario.
+- Abrir `Medicao` (tecnica) e confirmar que as ordens comerciais NAO aparecem, e vice-versa.
+- Com usuario que so tem `medicao-visualizacao`, confirmar que `Visualizacao Medicao` continua carregando (o endpoint compartilhado aceita `medicao` OU `medicao-visualizacao`).
+- Editar uma ordem comercial alterando somente `Incidencia`; abrir `Historico` e confirmar que a linha de `Edicao` mostra `Incidencia` com `De/Para`.
+- Editar Processo, horarios e eletricistas; abrir `Historico` e confirmar que aparecem `Processo`, `Hora inicio`, `Hora termino`, `Eletricista 1` e `Eletricista 2`.
+
+Boas praticas
+-------------
+- Nao clonar `MeasurementPageView` para novas variantes: acrescentar campo em `MeasurementVariantConfig`.
+- Nao tornar `Projeto` opcional na `Medicao` tecnica: sugestao de taxa, uso de atividades por projeto, garantia minima e os relatorios por projeto dependem do vinculo.
+
+Pendencia conhecida
+-------------------
+- A ordem comercial grava na MESMA tabela `project_measurement_orders` das ordens tecnicas, e SEIS consumidores leem essa tabela sem recorte por categoria de equipe:
+  `Dashboard Medicao`, `Meta`, `Apuracao de Fator Minimo`, `Dash Operacional Faturamento`, `Dashboard Carteira Operacional` e `Composicao de Equipe`.
+- A partir da primeira ordem comercial salva, ela entra nas metas por tipo de equipe, na pontuacao e nos comparativos por projeto -- e ordem comercial pode nao ter projeto nenhum.
+- Decisao tomada: nao mexer nesses consumidores agora. A direcao acordada e dar a eles um FILTRO `Tecnica`/`Comercial`, em tarefa propria. Registrado tambem em `TASKS.md`.
+- Nao duplicar `save_project_measurement_order`: a RPC comercial e um envelope que delega.
+- Toda query da tela continua filtrando por `tenant_id` no servidor, com RLS como ultima barreira.
+- FORMATO DA `Incidencia` -- PEDIDO REGISTRADO, NAO IMPLEMENTADO (2026-09-09):
+  - Regra desejada: somente digitos, exatamente 8, e recusar as que comecam com `00`.
+    Expressao equivalente: circunflexo, (?!00), [0-9]{8}, cifrao.
+  - Hoje o campo aceita texto livre ate 120 caracteres; a unica validacao e nao estar em
+    branco, nas tres camadas (formulario, rota e trigger `enforce_commercial_measurement_fields`).
+  - Decisao do usuario: a regra NAO deve ser cravada no codigo. Ela pertence a uma tela de
+    configuracao de regras a ser criada. Chave proposta: `medicao_comercial.incidencia_formato`.
+  - Impacto no banco: nenhum. Nao existe `CHECK` de formato sobre `commercial_order_ref`, e
+    o indice unico da migration 419 vale independentemente do formato.
+  - CUIDADO NA IMPLANTACAO: a regra APERTA o formato. Incidencia ja gravada que nao casar com o
+    padrao passa a ser invalida, e editar essa ordem passa a falhar. Medir quantas linhas nao
+    passam ANTES de ligar a regra.
+  - Levantamento completo, com a expressao escrita por extenso:
+    `docs/arquitetura/regras-configuraveis-por-tenant-revisao-2026-09.md` (secao 7).
+- CENTRO DE SERVICOS NOS CSVs -- RESOLVIDO em 2026-09-09. Ver a secao `Filtros e listagem`.
+
+Atualizacao 2026-09-09 - Historico dos campos comerciais
+---------------------------------------------------------
+- Sintoma: em `Historico`, editar a Medicao Comercial salvava a ordem, mas a linha de `Edicao` mostrava principalmente `Quantidade de itens`; alteracoes em `Incidencia` nao apareciam.
+- Causa: `save_project_commercial_measurement_order` chamava `save_project_measurement_order`, e a RPC tecnica gravava `project_measurement_order_history` antes de a RPC comercial preencher `commercial_order_ref`, `commercial_process_*`, horarios e integrantes.
+- Correcao: migration `422_commercial_measurement_history_fields.sql` recria somente a RPC comercial para capturar o estado anterior, montar `commercialOrderRef`, `commercialProcessName`, `commercialStartTime`, `commercialEndTime`, `commercialEmployee1Name` e `commercialEmployee2Name`, anexar esses campos ao mesmo historico criado pela RPC tecnica e retornar o `updated_at` final.
+- Front: `HISTORY_FIELD_LABELS` em `utils.ts` recebeu os rotulos legiveis desses campos, entao o modal mostra `Incidencia`, `Processo`, `Hora inicio`, `Hora termino`, `Eletricista 1` e `Eletricista 2`, em vez de chaves tecnicas.
+- Backend HTTP: `buildMeasurementChangedFields` em `src/server/modules/medicao/handlers.ts` tambem passou a comparar os campos comerciais quando uma edicao volta 409 por concorrencia.
+- Sem nova tabela, coluna, rota ou permissao. A RPC continua `SECURITY DEFINER` com `EXECUTE` apenas para `service_role`, e o historico segue filtrado por `tenant_id`.
+
+Atualizacao 2026-09-09 - Autor do historico em usuario multi-tenant
+--------------------------------------------------------------------
+- Sintoma: o modal de `Historico` mostrava data/hora corretamente, mas o autor aparecia como `Nao identificado`.
+- Causa provavel confirmada no codigo: o historico grava `created_by = app_users.id`; em usuario/admin multi-tenant, esse `app_users.id` pode pertencer ao tenant home do usuario, enquanto a operacao roda no tenant ativo via `app_user_tenants`. A leitura antiga de Medicao buscava o nome apenas em `app_users.tenant_id = tenant ativo`, entao nao encontrava o registro.
+- Correcao: `fetchAppUserMap` em `src/server/modules/medicao/queries.ts` agora usa o helper compartilhado `fetchTenantLinkedAppUsers`: resolve primeiro por `app_users.tenant_id` como antes; para ids faltantes, aceita usuario com vinculo ativo em `app_user_tenants` para o tenant da tela e entao carrega `display/login_name`. O mesmo helper foi aplicado nas outras telas editaveis que exibem historico/autoria.
+- Nao abre leitura livre de usuarios: o fallback so roda para ids ja presentes em registros de Medicao do tenant atual e exige vinculo ativo com esse tenant.
+
+Atualizacao 2026-09-08 - Eletricistas por matricula e equipe comercial pelo operacional
+--------------------------------------------------------------------------------------
+- `Eletricista 1` e `Eletricista 2` passaram a usar busca digitavel (`input + datalist`), aceitando nome ou matricula (`people.matriculation`) do cadastro de Pessoas.
+- `/api/medicao-comercial/meta` retorna `matriculation` junto de `id` e `name` para eletricistas ativos do tenant.
+- As equipes comerciais da tela agora sao resolvidas pelo `Tipo operacional = COMERCIAL`, com fallback para `Tipo de equipe = COMERCIAL` quando essa classificacao opcional existir.
+- Arquivos alterados: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`,
+  `src/modules/dashboard/medicao/MeasurementPageView.tsx`,
+  `src/modules/dashboard/medicao/variant.ts`,
+  `src/server/modules/medicao/teamMode.ts`,
+  `src/server/modules/medicao/metaHandler.ts`,
+  `src/server/modules/medicao/programmingSourcesHandler.ts`,
+  `src/server/modules/medicao/list.ts`,
+  `src/server/modules/medicao/routeConfig.ts` e
+  `supabase/migrations/415_team_categories_and_commercial_measurement.sql`.
+
+Atualizacao 2026-09-08 - Correcao: a tela nunca conseguiu salvar (migration 418)
+-------------------------------------------------------------------------------
+- Sintoma: toda tentativa de salvar voltava "Falha ao salvar ordem de medicao.", sem mais nenhuma informacao.
+- Evidencia no banco antes da correcao: 971 ordens de medicao no total, ZERO de equipe comercial, ZERO com `commercial_process_id` e ZERO linhas em `project_commercial_measurement_order_members`. Nenhuma Medicao Comercial jamais foi gravada.
+- Causa: `trg_enforce_commercial_measurement_fields` (415) validava o `new` do EVENTO, nao o estado final da transacao. Como a ordem comercial nasce em dois passos (INSERT com colunas comerciais NULL + UPDATE que as preenche), o evento de INSERT disparava no COMMIT ainda com `commercial_process_id` NULL, caia no ramo comercial e levantava `commercial_process_required`. A transacao inteira fazia rollback -- por isso nao sobrava nem ordem nem lixo parcial.
+- Ordem TECNICA nunca quebrou: `is_commercial_team` e falso e todas as colunas comerciais sao NULL, entao ela cai no ramo de saida limpa do trigger.
+- Correcao (418): `enforce_commercial_measurement_fields()` passa a RELER a linha por `id` e validar esse estado. Os dois eventos (INSERT e UPDATE) leem a MESMA linha, entao a checagem virou idempotente em vez de contraditoria. O trigger continua deferido e a regra de negocio validada nao mudou.
+- Por que o erro era ilegivel: `saveMeasurementOrder` descartava `error.message` da RPC e a mensagem generica nao batia com nenhuma palavra-chave de `measurementModuleMigrationHint`, entao o `hint` saia vazio. Agora o detalhe tecnico vai para o log do servidor (`console.error("[medicao] RPC ... falhou.", ...)`, mesmo padrao de `programacao-normalizada/rpc.ts`) e a resposta diz explicitamente que a ordem NAO foi gravada. Vale tambem para o lote e para a troca de status.
+- Sem backfill: nenhuma linha comercial chegou a existir.
+- Arquivos alterados: `supabase/migrations/418_fix_deferred_commercial_measurement_validation.sql` e
+  `src/server/modules/medicao/handlers.ts`.
+
+Atualizacao 2026-09-08 - Ordem obrigatoria e unica por Ordem + Equipe + Data (migration 419)
+--------------------------------------------------------------------------------------------
+- Problema: a ordem comercial nao tinha NENHUMA trava de duplicidade no caso mais comum da tela. As duas barreiras existentes vem da 382 e usam uma chave que nao conhece `Ordem`: o trigger `enforce_project_measurement_order_context_unique` tem early-return para `project_id is null and measurement_kind <> 'SEM_PRODUCAO'`, e o pre-check da RPC so procura duplicata entre linhas `SEM_PRODUCAO`. Como a equipe comercial normalmente nao tem projeto, a tela aceitava gravar a mesma execucao quantas vezes o usuario clicasse.
+- Decisoes de negocio desta tarefa:
+  1. `Ordem` obrigatoria nos dois tipos de medicao (`Com producao` e `Sem producao`).
+  2. As regras SOMAM: a chave nova (Ordem + Equipe + Data) e adicionada, e as regras da 382 continuam como estao. Consequencia aceita: duas Ordens diferentes no mesmo projeto + equipe + data seguem bloqueadas pela regra antiga.
+  3. Ordem CANCELADA libera a reutilizacao da mesma `Ordem`.
+- Barreira: UNIQUE INDEX parcial, nao checagem otimista (`guia_sql.md`, regras 6 e 10). Diferente do pre-check da 382, o indice nao tem janela TOCTOU. A normalizacao `upper(btrim(...))` e proposital: sem ela a regra cai no primeiro dia com `1234` vs `1234 ` vs `1234A`.
+- Por que a RPC comercial NAO foi recriada: o indice ja e a barreira, e restatir `save_project_commercial_measurement_order` inteira (cerca de 200 linhas) so criaria risco de drift com a 415. A traducao do erro para 409 legivel vive em `handlers.ts`.
+- Front: o campo `Ordem` saiu do `MeasurementPageView` para `CommercialOrderRefField.tsx`. Motivo duplo -- o PageView e legado e esta no ratchet de tamanho (`guia_frontend.md` regra 15), e a checagem de duplicidade e busca de dados, que a regra 12 manda tirar do PageView. O componente dispara a consulta ao SAIR do campo (nao a cada tecla, que so produziria "duplicada" falso no meio da digitacao) e derruba sozinho o aviso quando o texto do campo deixa de corresponder ao que foi conferido -- por isso o PageView nao precisa resetar esse estado em `resetForm()` nem ao carregar outra ordem para edicao.
+- Ratchet: `npm run lint:size:accept -- src/modules/dashboard/medicao/MeasurementPageView.tsx`, de 3.560 para 3.572 (+12). O que ficou no PageView e so fiacao (import, um estado, a troca do JSX e cinco linhas de validacao); campo, fetch e validacao vivem no componente novo.
+- Permissao: `/api/medicao-comercial/order-ref-check` usa `authorizeMeasurementVariantReadOrExportAction(..., "read", true)`, o mesmo `page_key` `medicao-comercial` da tela visivel. Quem abre a tela usa a checagem sem permissao extra.
+- Arquivos alterados: `supabase/migrations/419_commercial_measurement_order_ref_required_and_unique.sql`,
+  `src/server/modules/medicao/orderRefCheckHandler.ts`,
+  `src/app/api/medicao-comercial/order-ref-check/route.ts`,
+  `src/server/modules/medicao/handlers.ts`,
+  `src/modules/dashboard/medicao/CommercialOrderRefField.tsx`,
+  `src/modules/dashboard/medicao/MeasurementPageView.tsx` e
+  `file-size-baseline.json`.
+
+Atualizacao 2026-09-08 - Categoria da equipe passa a ser a unica fonte (migration 420)
+---------------------------------------------------------------------------------------
+- `src/server/modules/medicao/teamMode.ts` classificava a equipe pelo atalho
+  `team_types.name = 'COMERCIAL'` com fallback para a categoria, e tratava TECNICA por
+  exclusao. Essa e a regra PRE-420: a migration 420 tornou `teams.team_category_id`
+  NOT NULL, tirou o atalho por nome do trigger e da RPC e realinhou as equipes que
+  eram comerciais so pelo nome do tipo operacional. O arquivo (e este TXT) ficaram
+  divergindo do banco desde entao.
+- Agora as duas telas resolvem a categoria SO por `teams.team_category_id` ->
+  `team_categories.code`, com recorte positivo: `Medicao Comercial` lista equipe
+  COMERCIAL, `Medicao` lista equipe TECNICA, e equipe sem categoria resolvivel nao
+  entra em nenhuma das duas.
+- O select de `Equipe` desta tela ja estava correto -- o defeito visivel estava na
+  `Medicao` tecnica, que listava todas as equipes ativas. Detalhe completo da causa e
+  da correcao em `docs/Tela_Medicao_SaaS.txt`, secao
+  `Atualizacao 2026-09-08 - Select de Equipe restrito a equipe TECNICA`.
+- `fetchTeamsByCategory` deixou de devolver lista vazia quando o recorte por categoria
+  falha: agora propaga o erro e a rota responde 500 com mensagem. Vazio silencioso e
+  indistinguivel de "nenhuma equipe comercial cadastrada".
+- Arquivos alterados: `src/server/modules/medicao/teamMode.ts`,
+  `src/server/modules/medicao/programmingSourcesHandler.ts`,
+  `docs/Tela_Medicao_SaaS.txt`, `docs/Tela_Medicao_Comercial_SaaS.txt` e `TASKS.md`.
+- Validacao executada: `npx tsc --noEmit`, `npm run lint`, `npm run build`.

@@ -68,6 +68,19 @@ async function fetchSessionAccess(accessToken: string) {
   };
 }
 
+async function clearActiveTenantCookie(accessToken?: string | null) {
+  if (typeof window === "undefined") return;
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  await fetch("/api/auth/active-tenant", {
+    method: "DELETE",
+    cache: "no-store",
+    headers,
+  }).catch(() => null);
+}
+
 async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
   const response = await fetch(`${baseUrl()}/functions/v1/auth-login-web`, {
     method: "POST",
@@ -95,6 +108,13 @@ async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
   const resolvedRole = String(access?.user.role ?? data.role ?? "");
   const resolvedRoleId = access?.user.roleId ? String(access.user.roleId) : data.role_id ? String(data.role_id) : null;
   const resolvedLoginName = String(access?.user.loginName ?? data.login_name ?? payload.loginName);
+  const resolvedTenantName = access?.user.tenantName
+    ? String(access.user.tenantName)
+    : data.tenant_name
+      ? String(data.tenant_name)
+      : data.active_tenant_name
+        ? String(data.active_tenant_name)
+        : null;
   const hasAccessDisplayName = Boolean(
     access?.user && Object.prototype.hasOwnProperty.call(access.user, "displayName"),
   );
@@ -117,6 +137,7 @@ async function remoteLogin(payload: LoginPayload): Promise<LoginResponse> {
       role: resolvedRole,
       roleId: resolvedRoleId,
       tenantId: String(access?.user.tenantId ?? data.tenant_id ?? ""),
+      tenantName: resolvedTenantName,
       activeTenantId: access?.user.activeTenantId ? String(access.user.activeTenantId) : undefined,
       availableTenantIds: Array.isArray(access?.user.availableTenantIds)
         ? access?.user.availableTenantIds.map((value) => String(value))
@@ -180,6 +201,7 @@ async function localLogin(payload: LoginPayload): Promise<LoginResponse> {
       role,
       roleId: data.role_id ? String(data.role_id) : null,
       tenantId: String(data.tenant_id ?? "local-tenant"),
+      tenantName: data.tenant_name ? String(data.tenant_name) : "Contrato local",
       loginName: String(data.login_name ?? payload.loginName),
       displayName: data.display_name ? String(data.display_name) : String(data.login_name ?? payload.loginName),
       pageAccess: resolveDefaultPageAccess(role),
@@ -303,6 +325,8 @@ export async function hydrateSessionAccess(currentAppSession: AuthSession) {
   }
 
   const hasAccessDisplayName = Object.prototype.hasOwnProperty.call(access.user, "displayName");
+  const hasAccessTenantName = Object.prototype.hasOwnProperty.call(access.user, "tenantName");
+  const hasAccessActiveTenantId = Object.prototype.hasOwnProperty.call(access.user, "activeTenantId");
   const nextSession: AuthSession = {
     ...currentAppSession,
     user: {
@@ -311,8 +335,15 @@ export async function hydrateSessionAccess(currentAppSession: AuthSession) {
       role: String(access.user.role ?? currentAppSession.user.role),
       roleId: access.user.roleId ? String(access.user.roleId) : currentAppSession.user.roleId,
       tenantId: String(access.user.tenantId ?? currentAppSession.user.tenantId),
-      activeTenantId: access.user.activeTenantId
-        ? String(access.user.activeTenantId)
+      tenantName: hasAccessTenantName
+        ? access.user.tenantName
+          ? String(access.user.tenantName)
+          : null
+        : currentAppSession.user.tenantName,
+      activeTenantId: hasAccessActiveTenantId
+        ? access.user.activeTenantId
+          ? String(access.user.activeTenantId)
+          : undefined
         : currentAppSession.user.activeTenantId,
       availableTenantIds: Array.isArray(access.user.availableTenantIds)
         ? access.user.availableTenantIds.map((value) => String(value))
@@ -561,6 +592,7 @@ export async function clearPersistedSession(options: ClearSessionOptions = {}) {
   }
 
   clearLocalAppSessionStorage();
+  await clearActiveTenantCookie(session?.accessToken);
   writeAuthFeedback(options.feedbackMessage);
 
   return {

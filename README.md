@@ -17,10 +17,14 @@ Aplicacao web multi-tenant para operacao, almoxarifado, medicao, faturamento, pr
 - TypeScript
 - CSS Modules
 - Vercel
+- Vercel Web Analytics (`@vercel/analytics`)
+- Vercel Speed Insights (`@vercel/speed-insights`)
 - Supabase JS
 - Supabase Edge Functions
+- Supabase Storage
 - TanStack React Query
 - SheetJS (XLSX)
+- Docxtemplater + PizZip (DOCX)
 - ESLint
 
 ---
@@ -154,6 +158,9 @@ vercel --prod
   - `(dashboard)/entrada/page.tsx`: rota da tela unica de Movimentacao de Estoque com operacoes `Entrada`, `Saida` e `Transferencia`, finalidade `Movimentacao normal` ou `Correcao de saldo`, cadastro manual com lista local de materiais antes do save, checkbox `CMD` para `RELIGADOR`, importacao CSV em massa, pendencia de identificacao para materiais rastreaveis sem LP quando permitido e estorno individual ou atomico em lote.
   - `(dashboard)/composicao-equipe/page.tsx`: rota da Composicao de Equipe com painel diario filtravel por data, equipes pendentes/concluidas, registro por um ou mais projetos/equipe, situacao `Atuando` ou `Nao atuou` sem projeto, integrantes, presenca, filtros por periodo/projeto/equipe/situacao, acao `Fazer medicao`, detalhes, historico e CSV.
   - `(dashboard)/controle-apr/page.tsx`: rota do Controle de APR com cadastro por projeto/equipe/data, ID APR globalmente unico, vinculo automatico com a Programacao do dia, conferencia, divergencia, cancelamento, filtros, lista paginada e extracao Excel.
+  - `(dashboard)/permissao-intervencao/page.tsx`: listagem das PIs, filtrada e paginada, com o fluxo Nova PI nos dois caminhos (a partir de uma etapa da Programacao ou sem Programacao).
+  - `(dashboard)/permissao-intervencao/[id]/page.tsx`: formulario da PI com as oito secoes do documento, plano de execucao ordenavel, comparacao com a Programacao, historico e as acoes de status (pronta, reabrir, emitir e cancelar).
+  - `(dashboard)/modelo-pi/page.tsx`: rota de Cadastro Base com as versoes do template Word da PI: upload com conferencia das 129 tags, ativacao de uma unica versao por contrato e geracao de documento de demonstracao para conferir o layout no Word.
   - `(dashboard)/saida/page.tsx`: rota da tela `Operacoes de Equipe` com `Requisicao`, `Devolucao` e `Retorno de campo`, usando `CAMPO / INSTALADO` como origem tecnica do retorno, preservando snapshot do encarregado e permitindo estorno individual ou atomico dos materiais agrupados pela mesma requisicao.
   - `(dashboard)/requisicao-solicitacao/page.tsx`: rota de Solicitacao de Requisicao para abertura de pedidos de material ao almoxarifado.
   - `(dashboard)/requisicao-atendimento/page.tsx`: rota de Atendimento de Requisicoes para aceitar, reduzir ou recusar itens solicitados.
@@ -193,6 +200,16 @@ vercel --prod
   - `api/locacao/activities/catalog/route.ts`: pesquisa atividades ativas por codigo/descricao para inclusao na locacao.
   - `api/medicao/route.ts`: lista, detalha, historiza, salva, fecha/cancela e importa em massa ordens de medicao, incluindo os modos `Com producao` e `Sem producao`, filtros por Tipo de Servico e Atividade, exclusao de obras de teste das consolidacoes de ordens/valor e cruzamento ativo com a Composicao de Equipe por tenant, projeto principal legado, equipe e data de execucao.
   - `api/controle-apr/route.ts`: carrega projetos/equipes, lista APRs do tenant, salva por RPC, vincula a Programacao do dia, confere, marca divergencia, cancela e fornece os dados para extracao Excel.
+  - `api/permissao-intervencao/route.ts`: lista as PIs com filtros e paginacao, e cria ou edita pela RPC.
+  - `api/permissao-intervencao/meta/route.ts`: catalogos de area e tensao, etapas padrao, valores iniciais do contrato e o diagnostico de prontidao para emissao.
+  - `api/permissao-intervencao/programacoes/route.ts`: etapas do projeto oferecidas no fluxo `Criar a partir da Programacao`.
+  - `api/permissao-intervencao/[id]/route.ts`: detalhe da PI, com areas, tensoes, plano de execucao e a comparacao com a Programacao de origem.
+  - `api/permissao-intervencao/[id]/historico/route.ts`: historico da PI.
+  - `api/permissao-intervencao/[id]/status/route.ts`: transicoes READY, REOPEN, ISSUE e CANCEL.
+  - `api/permissao-intervencao/[id]/vinculo/route.ts`: vinculo explicito com uma etapa da Programacao.
+  - `api/permissao-intervencao/[id]/plano/route.ts`: substitui o Plano de Execucao inteiro.
+  - `api/permissao-intervencao/templates/route.ts`: lista as versoes do template da PI, recebe upload `.docx` com conferencia de tags antes de gravar no Storage e ativa uma versao por RPC.
+  - `api/permissao-intervencao/templates/preview/route.ts`: gera o DOCX de demonstracao a partir do template ativo do tenant, com dados montados no servidor.
   - `api/medicao/meta/route.ts`: carrega motivos ativos de `Sem producao`, tipos de servico ativos dos projetos e catalogo de Estado Trabalho por tenant; com `?includeSources=1` devolve tambem projetos e equipes ativos para os filtros da tela Visualizacao Medicao.
   - `api/medicao/export/route.ts`: gera server-side os CSVs `summary`, `details` e `score` da Medicao a partir dos filtros da tela, aceitando a permissao `medicao/export` ou `medicao-visualizacao/export`.
   - `api/medicao/activities/catalog/route.ts`: pesquisa atividades ativas para inclusao manual ou importacao da Medicao.
@@ -321,6 +338,17 @@ vercel --prod
 - `src/modules/dashboard/controle-apr/`
   - `AprControlPageView.tsx`: cadastro, filtros, lista, validacao, divergencia, cancelamento e extracao `.xlsx` do Controle de APR.
   - `AprControlPageView.module.css`: estilos da tela no padrao visual da Medicao.
+- `src/modules/dashboard/permissao-intervencao/`
+  - `PermissionInterventionPageView.tsx`: listagem das PIs com filtros, paginacao e avisos de pendencia de configuracao.
+  - `components/NewPiModal.tsx`: fluxo Nova PI em dois passos, com a lista de etapas da Programacao.
+  - `PiFormPageView.tsx`: formulario da PI, com as acoes de salvar, marcar como pronta, reabrir, emitir e cancelar.
+  - `usePiForm.ts`: estado do formulario, carga, gravacao e transicoes de status, com concorrencia otimista.
+  - `components/PiFormFields.tsx`, `components/PiExecutionPlan.tsx` e `components/PiSidePanels.tsx`: secoes 1 a 6 e 8, Plano de Execucao, e os paineis de comparacao e historico.
+  - `PermissionInterventionPageView.module.css`, `api.ts`, `types.ts`, `constants.ts` e `index.ts`: estilos, cliente HTTP, contratos, rotulos e fachada publica.
+- `src/modules/dashboard/modelo-pi/`
+  - `PiTemplatePageView.tsx`: painel de versoes do template Word da PI, com upload, relatorio de conferencia das tags, ativacao e geracao do documento de demonstracao.
+  - `PiTemplatePageView.module.css`: estilos da tela.
+  - `api.ts`, `types.ts` e `index.ts`: cliente HTTP, contratos e fachada publica do modulo.
 - `src/modules/dashboard/composicao-equipe/`
   - `TeamCompositionPageView.tsx`: composicao diaria de equipes por data, projeto, integrantes, presenca, historico, exportacao e atalho para Medicao.
   - `TeamCompositionPageView.module.css`: estilos da tela de Composicao de Equipe.
@@ -429,6 +457,7 @@ vercel --prod
   - `appUsersAdmin.ts`: resolve sessao autenticada, usuario e tenant ativo nas rotas server-side.
   - `apiHelpers.ts`: helpers de resposta e autenticacao usados por Route Handlers.
   - `concurrency.ts`: normaliza `expectedUpdatedAt` e padroniza respostas `409` para conflitos de concorrencia.
+  - `docxTemplate.ts`: copia um `.docx` e preenche as tags, lista as tags declaradas e varre o resultado atras de tag nao resolvida. Infraestrutura pura, sem regra de dominio.
   - `idempotency.ts`: controle server-side de idempotencia por tenant, usuario, rota e hash do payload.
   - `locationPlanning.ts`: consolida bootstrap, leitura, apoio de execucao, riscos, wrappers das RPCs e historico tecnico da locacao.
   - `materialCatalog.ts`: consultas server-side do catalogo de materiais.
@@ -453,6 +482,16 @@ vercel --prod
   - `authorization.ts`: autorizacao compartilhada de leitura/extracao da Medicao, aceitando a permissao `medicao` ou `medicao-visualizacao`.
 - `src/server/modules/cronograma-solicitacoes/`
   - `handlers.ts`, `queries.ts`, `normalizers.ts`, `authorization.ts` e `types.ts`: backend do Cronograma de Solicitacoes.
+- `src/server/modules/permissao-intervencao/`
+  - `piTemplateTags.ts`: contrato das 129 tags do template Word da Permissao de Intervencao, lista de tags obrigatorias e regra de ativacao de versao.
+  - `types.ts`: `PiDocumentData`, modelo de dominio do documento — fronteira entre o banco e o Word.
+  - `piTemplateMapper.ts`: traduz `PiDocumentData` nas 129 tags, com helper de caixa de selecao, formatacao de data/hora e distribuicao das 23 linhas do Plano de Execucao.
+  - `piTemplateStorage.ts`: acesso ao bucket privado `pi-templates`, com o caminho derivado no servidor a partir do tenant, upload com `contentType` explicito, download e limpeza de objeto orfao.
+  - `piDemoDocument.ts`: conjunto de demonstracao usado pela rota de preview e por `scripts/diagnosticos/pi-docx-verify.mjs`.
+  - `templates.ts`: listagem, upload com conferencia de tags, ativacao de versao e geracao do DOCX de demonstracao.
+  - `queries.ts`: leituras da PI (listagem com filtros, detalhe, historico, etapas da Programacao oferecidas na criacao, catalogos) e a comparacao Programacao x PI contra o snapshot.
+  - `handlers.ts`: handlers da tela da PI — listagem, detalhe, historico, meta, etapas, cadastro, plano de execucao, status e vinculo.
+  - `index.ts`: fachada publica do modulo server-side.
 - `src/server/modules/warehouse-addressing/`
   - `handlers.ts` e `types.ts`: backend compartilhado do Mapa do Almoxarifado e da Configuracao do mapa.
 - `src/services/auth/`
@@ -479,6 +518,7 @@ vercel --prod
   - `xlsx.d.ts`: declaracao local para destravar type-check do pacote `xlsx`.
 - `public/`
   - `indica.png`: logo da tela de login.
+  - `Modelo_PI_Template_Tags.docx`: template Word da Permissao de Intervencao, mantido no repositorio como fixture da verificacao local. O template oficial em uso fica no bucket privado `pi-templates` do Supabase Storage.
   - demais `.svg`: assets padrao do scaffold.
 - `docs/`
   - `00_Indice_SaaS.txt`: indice do material de handoff.
@@ -507,6 +547,8 @@ vercel --prod
   - `Tela_Visualizacao_Programacao_SaaS.txt`: documentacao da visualizacao semanal da Programacao.
   - `Tela_Mapa_Programacao_SaaS.txt`: documentacao do Mapa de Programacao.
   - `Tela_Cronograma_Solicitacoes_SaaS.txt`: documentacao do Cronograma de Solicitacoes.
+  - `Tela_Permissao_Intervencao_SaaS.txt`: documentacao do cadastro da Permissao de Intervencao, com as decisoes de negocio travadas e as fases pendentes.
+  - `Tela_Modelo_PI_SaaS.txt`: documentacao do Modelo de PI (template Word, conferencia de tags e geracao do documento).
   - `Tela_Medicao_SaaS.txt`: documentacao da tela de Ordem de Medicao com cadastro, lista, importacao em massa e regras operacionais do modulo.
   - `Tela_Medicao_Asbuilt_SaaS.txt`: documentacao da Medicao Asbuilt.
   - `Tela_Faturamento_SaaS.txt`: documentacao da tela de Faturamento.
@@ -563,6 +605,15 @@ vercel --prod
 - `supabase/migrations/240_merge_split_stock_transfer_import_batches.sql`: une os blocos históricos que a migration 239 separou por segundo, usando continuidade de ate 2 segundos sem alterar lotes novos.
 - `supabase/migrations/247_allow_pending_serial_identification.sql`: adiciona pendencia de identificacao de serial para Entrada/Transferencia de materiais rastreaveis sem LP quando permitido, mantendo `TRAFO` com `Serial + LP` obrigatorios e Operacoes de Equipe com serial obrigatorio.
 - `supabase/migrations/339_add_cmd_to_serial_stock_movements.sql`: adiciona `CMD` aos itens de Movimentacao de Estoque e ao estado atual de unidades serializadas, sincronizando a marcacao para Rastreio de SERIAL.
+- `supabase/migrations/426_create_pi_document_template_and_page.sql`: bucket privado `pi-templates`, tabela `pi_document_template` com uma unica versao ativa por contrato, RPCs de registro e ativacao, e a tela da Permissao de Intervencao em `app_pages`.
+- `supabase/migrations/427_split_pi_template_screen.sql`: separa a administracao do template na tela `Modelo de PI` (`/modelo-pi`, Cadastro Base), herdando o acesso de quem ja tinha `permissao-intervencao`.
+- `supabase/migrations/428_create_pi_catalogs_and_settings.sql`: configuracao da PI por contrato (`pi_settings`), catalogos de Area de Atuacao e Nivel de Tensao com codigo fechado, modelo de etapas padrao e o contador do sequencial.
+- `supabase/migrations/429_create_permission_intervention.sql`: entidade `permission_intervention` e filhas (areas, tensoes, plano de execucao e historico), com vinculo a Programacao por UUID da etapa, uma PI viva por projeto+data e RLS por tenant.
+- `supabase/migrations/431_pi_settings_roles_and_contact_source.sql`: configuracao da PI por contrato (origem do contato da distribuidora, limite de equipes que torna o Supervisor obrigatorio) e os cargos que habilitam cada papel, com as RPCs de escrita.
+- `supabase/migrations/432_pi_prefill_and_supervisor_rule.sql`: PI nasce com contrato e contato preenchidos, `Descricao das atividades` herda a descricao do servico da etapa, e o Supervisor vira condicional ao numero de equipes.
+- `supabase/migrations/433_fix_pi_prefill_column_types.sql`: cast para `text` no pre-preenchimento; `contract.telefone_corporativo` e numeric e quebrava a criacao da PI.
+- `supabase/migrations/434_fix_pi_prefill_unassigned_record.sql`: troca os `record` do pre-preenchimento por escalares; `record` nao atribuido estourava ao editar a PI.
+- `supabase/migrations/430_create_permission_intervention_rpcs.sql`: RPCs de escrita da PI (salvar, plano de execucao, status/emissao com sequencial sob lock e vinculo explicito com a Programacao), todas `SECURITY DEFINER` liberadas apenas ao `service_role` e sem nenhuma escrita na Programacao.
 
 ---
 
@@ -657,6 +708,16 @@ D:\Fabricio\Projetos SaaS\API-Estoque\supabasebackup
 npm run lint
 npx tsc --noEmit
 npm run build
+```
+- Verificacoes da Permissao de Intervencao, no padrao dos demais `scripts/*.mjs`:
+```bash
+# Template DOCX: contrato de tags, mapper, render e varredura. Puro em memoria.
+node scripts/diagnosticos/pi-docx-verify.mjs
+node scripts/diagnosticos/pi-docx-verify.mjs --storage   # usa o template ativo do bucket
+
+# RPCs da PI. ESCREVE no banco ligado: cria uma PI de teste e a remove no fim.
+node scripts/diagnosticos/pi-rpc-smoke.mjs
+node scripts/diagnosticos/pi-rpc-smoke.mjs --issue       # inclui a emissao e restaura o estado
 ```
 - `npm run lint` executa ESLint (`npm run lint:eslint`) e o ratchet de tamanho de arquivo (`npm run lint:size`).
 - O ratchet compara cada `.ts`/`.tsx` de `src/` contra os limites da secao 5 do `CLAUDE.md` (1.500 linhas para `route.ts`/`controller.ts`/`handlers.ts`, 1.000 para os demais) e contra `file-size-baseline.json`, que registra os arquivos legados que ja estavam acima do limite. Falha com exit code 1.

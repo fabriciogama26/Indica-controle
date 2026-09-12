@@ -12,6 +12,12 @@ type TypeServiceActivityRow = {
   name: string;
 };
 
+type ActivityGroupRow = {
+  id: string;
+  name: string;
+  unit_value: number | string;
+};
+
 function normalizeName(value: string | null | undefined) {
   return String(value ?? "").trim();
 }
@@ -28,7 +34,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
-    const [teamTypesResult, categoriesResult] = await Promise.all([
+    const [teamTypesResult, categoriesResult, groupsResult] = await Promise.all([
       supabase
         .from("team_types")
         .select("id, name")
@@ -43,9 +49,16 @@ export async function GET(request: NextRequest) {
         .eq("ativo", true)
         .order("name", { ascending: true })
         .returns<TypeServiceActivityRow[]>(),
+      supabase
+        .from("activity_groups")
+        .select("id, name, unit_value")
+        .eq("tenant_id", appUser.tenant_id)
+        .eq("ativo", true)
+        .order("name", { ascending: true })
+        .returns<ActivityGroupRow[]>(),
     ]);
 
-    if (teamTypesResult.error || categoriesResult.error) {
+    if (teamTypesResult.error || categoriesResult.error || groupsResult.error) {
       return NextResponse.json({ message: "Falha ao carregar metadados de atividades." }, { status: 500 });
     }
 
@@ -55,6 +68,9 @@ export async function GET(request: NextRequest) {
         .filter((item) => Boolean(item.id) && Boolean(item.name)),
       categories: (categoriesResult.data ?? [])
         .map((item) => ({ id: item.id, name: normalizeName(item.name) }))
+        .filter((item) => Boolean(item.id) && Boolean(item.name)),
+      groups: (groupsResult.data ?? [])
+        .map((item) => ({ id: item.id, name: normalizeName(item.name), unitValue: Number(item.unit_value ?? 0) }))
         .filter((item) => Boolean(item.id) && Boolean(item.name)),
     });
   } catch {

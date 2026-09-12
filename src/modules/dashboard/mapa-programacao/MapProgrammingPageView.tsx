@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { downloadCsvFile } from "@/lib/utils/csv";
+import { getMonthWindow, useActiveBlockedDates } from "@/modules/dashboard/datas-bloqueadas";
 import {
   buildDeadlineCsvContent,
   DEADLINE_CAROUSEL_PAGE_SIZE,
@@ -20,6 +21,7 @@ import {
   type DeadlineStatus,
   type DeadlineViewMode,
 } from "./deadline";
+import { BlockedDatesMonthPanel } from "./components/BlockedDatesMonthPanel";
 import { ProgrammingDeadlineModal } from "./components/ProgrammingDeadlineModal";
 import { ProgrammingDeadlinePanel } from "./components/ProgrammingDeadlinePanel";
 import { ProjectMiniCard } from "./components/ProjectMiniCard";
@@ -34,6 +36,8 @@ import type {
   StatusCard,
 } from "./types";
 import styles from "./MapProgrammingPageView.module.css";
+
+const TEAM_PAGE_SIZE = 30;
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -107,6 +111,14 @@ export function MapProgrammingPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("mapa_programacao");
   const today = useMemo(() => toIsoDate(new Date()), []);
+  // Mes VIGENTE, nao o periodo filtrado: o pedido e avisar o que nao se pode
+  // programar neste mes, independente da janela que o usuario esta olhando.
+  const currentMonthWindow = useMemo(() => getMonthWindow(today), [today]);
+  const { blockedDates: monthBlockedDates, isLoading: isLoadingBlockedDates } = useActiveBlockedDates({
+    accessToken: session?.accessToken ?? null,
+    from: currentMonthWindow.from,
+    to: currentMonthWindow.to,
+  });
   const [draftFilters, setDraftFilters] = useState<FilterState>({
     startDate: "",
     endDate: "",
@@ -129,6 +141,7 @@ export function MapProgrammingPageView() {
   const [selectedCardPage, setSelectedCardPage] = useState(1);
   const [priorityPage, setPriorityPage] = useState(1);
   const [neverProgrammedPage, setNeverProgrammedPage] = useState(1);
+  const [teamPage, setTeamPage] = useState(1);
   const [deadlineViewMode, setDeadlineViewMode] = useState<DeadlineViewMode>("15");
   const [deadlineCarouselPage, setDeadlineCarouselPage] = useState(0);
   const [isDeadlineModalOpen, setIsDeadlineModalOpen] = useState(false);
@@ -343,6 +356,7 @@ export function MapProgrammingPageView() {
   useEffect(() => {
     setPriorityPage(1);
     setNeverProgrammedPage(1);
+    setTeamPage(1);
     setSelectedCardPage(1);
   }, [activeFilters.projectSearch, activeFilters.serviceCenter, activeFilters.teamSearch]);
 
@@ -365,10 +379,19 @@ export function MapProgrammingPageView() {
     return (data?.teamsWithoutProgramming ?? []).filter((team) => {
       if (activeFilters.serviceCenter && team.serviceCenter !== activeFilters.serviceCenter) return false;
       if (!search) return true;
-      return normalizeSearch(`${team.name} ${team.foremanName} ${team.serviceCenter} ${team.teamType} ${team.vehiclePlate}`)
+      return normalizeSearch(`${team.date} ${formatDate(team.date)} ${team.name} ${team.foremanName} ${team.serviceCenter} ${team.teamType} ${team.vehiclePlate}`)
         .includes(search);
     });
   }, [activeFilters.serviceCenter, activeFilters.teamSearch, data]);
+  const totalTeamPages = Math.max(1, Math.ceil(filteredTeams.length / TEAM_PAGE_SIZE));
+  const pagedTeams = useMemo(
+    () => filteredTeams.slice((teamPage - 1) * TEAM_PAGE_SIZE, teamPage * TEAM_PAGE_SIZE),
+    [filteredTeams, teamPage],
+  );
+
+  useEffect(() => {
+    setTeamPage((current) => Math.min(Math.max(current, 1), totalTeamPages));
+  }, [totalTeamPages]);
 
   const periodLabel = activeFilters.startDate && activeFilters.endDate
     ? `${formatDate(activeFilters.startDate)} a ${formatDate(activeFilters.endDate)}`
@@ -517,14 +540,14 @@ export function MapProgrammingPageView() {
 
     exportCsv(
       `mapa_programacao_equipes_sem_programacao_${today}.csv`,
-      ["Equipe", "Tipo", "Centro de servico", "Encarregado", "Placa", "Periodo"],
+      ["Data", "Equipe", "Tipo", "Centro de servico", "Encarregado", "Placa"],
       filteredTeams.map((team) => [
+        formatDate(team.date),
         team.name,
         team.teamType,
         team.serviceCenter,
         team.foremanName,
         team.vehiclePlate,
-        periodLabel,
       ]),
     );
   }
@@ -570,6 +593,12 @@ export function MapProgrammingPageView() {
           </button>
         </div>
       </article>
+
+      <BlockedDatesMonthPanel
+        blockedDates={monthBlockedDates}
+        monthStartDate={currentMonthWindow.from}
+        isLoading={isLoadingBlockedDates}
+      />
 
       <article className={styles.card}>
         <div className={styles.filterGrid}>
@@ -683,9 +712,10 @@ export function MapProgrammingPageView() {
           </div>
           <div className={styles.teamList}>
             {data?.filters?.teamPeriodEnabled ? (
-              filteredTeams.length ? filteredTeams.map((team) => (
-                <article key={team.id} className={styles.teamItem}>
+              filteredTeams.length ? pagedTeams.map((team) => (
+                <article key={`${team.id}-${team.date}`} className={styles.teamItem}>
                   <strong>{team.name}</strong>
+                  <span>Sem programacao em {formatDate(team.date)}</span>
                   <span>{team.teamType} | {team.serviceCenter}</span>
                   <span>{team.foremanName}</span>
                   <small>{team.vehiclePlate || "-"}</small>
@@ -697,6 +727,17 @@ export function MapProgrammingPageView() {
               <div className={styles.emptyState}>Periodo nao informado.</div>
             )}
           </div>
+          {data?.filters?.teamPeriodEnabled && filteredTeams.length > TEAM_PAGE_SIZE ? (
+            <div className={styles.paginationBar}>
+              <button type="button" className={styles.ghostButton} onClick={() => setTeamPage((page) => Math.max(1, page - 1))} disabled={teamPage === 1}>
+                Anterior
+              </button>
+              <span>Pagina {teamPage} de {totalTeamPages}</span>
+              <button type="button" className={styles.ghostButton} onClick={() => setTeamPage((page) => Math.min(totalTeamPages, page + 1))} disabled={teamPage === totalTeamPages}>
+                Proxima
+              </button>
+            </div>
+          ) : null}
         </article>
       </div>
 

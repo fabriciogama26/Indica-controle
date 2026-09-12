@@ -4,8 +4,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import {
+  fetchProgrammedTeamDatesInPeriod,
   fetchProgrammingStagesForMap,
-  fetchTeamIdsProgrammedInPeriod,
   type ProgrammingMapStageRow,
 } from "@/server/modules/programacao-normalizada";
 
@@ -111,6 +111,23 @@ function normalizeIsoDate(value: unknown) {
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function buildDateRange(startDate: string, endDate: string) {
+  const dates: string[] = [];
+  const current = new Date(`${startDate}T00:00:00.000Z`);
+  const end = Date.parse(`${endDate}T00:00:00.000Z`);
+
+  while (Number.isFinite(current.getTime()) && Number.isFinite(end) && current.getTime() <= end) {
+    dates.push(toIsoDate(current));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+
+  return dates;
+}
+
+function buildTeamDateKey(teamId: string, date: string) {
+  return `${teamId}|${date}`;
 }
 
 function diffInDays(targetDate: string, baseDate: string) {
@@ -407,7 +424,17 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
       const latest = projectRows.at(-1) ?? null;
       const latestDate = normalizeIsoDate(latest?.execution_date) ?? "";
       const daysSinceLatest = latestDate ? diffInDays(today, latestDate) : null;
-      const latestWorkCompletion = projectRows
+      // Estado Trabalho DA OBRA sai so das etapas comuns (`is_pendencia = false`).
+      // Regra do banco: a conclusao do projeto e a etapa ativa CONCLUIDO NAO
+      // pendencia — a migration 321 chega a criar o indice unico parcial
+      // `programming_one_active_completion_per_project` com `is_pendencia = false`,
+      // e a 318 (item 4) diz que concluir uma pendencia "nao conta como a conclusao
+      // do projeto". Sem este recorte, uma pendencia concluida (que costuma ter data
+      // posterior, logo e a ultima linha apontada) fazia a obra aparecer em
+      // `Concluidas` e sumir de `Para reprogramar`, `Parciais` e `Pendentes`.
+      const commonRows = projectRows.filter((row) => row.is_pendencia !== true);
+      const latestCommon = commonRows.at(-1) ?? null;
+      const latestWorkCompletion = commonRows
         .filter((row) => normalizeToken(row.work_completion_status))
         .at(-1) ?? null;
       const workCompletionStatus = latestWorkCompletion?.work_completion_status
@@ -427,13 +454,14 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
       // Etapa (linha de `programming`) tem N equipes em `programming_team`, nao
       // mais uma so (achado da auditoria: mostrar uma equipe so escondia as
       // demais quando a etapa tinha mais de uma equipe ativa).
-      const latestActiveTeamIds = (latest?.programming_team ?? [])
-        .filter((team) => team.status === "ATIVA")
-        .map((team) => normalizeText(team.team_id))
-        .filter(Boolean);
+      const latestActiveTeams = (latest?.programming_team ?? [])
+        .filter((team) => team.status === "ATIVA" && normalizeText(team.team_id));
+      const latestActiveTeamIds = latestActiveTeams.map((team) => normalizeText(team.team_id));
       const latestTeamNames = Array.from(new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.name ?? teamId)));
       const latestForemanNames = Array.from(
-        new Set(latestActiveTeamIds.map((teamId) => teamMap.get(teamId)?.foremanName ?? "Sem encarregado")),
+        new Set(
+          latestActiveTeams.map((team) => normalizeText(team.programmed_foreman_name_snapshot) || teamMap.get(normalizeText(team.team_id))?.foremanName || "Sem encarregado"),
+        ),
       );
       // `programmingCount` (linhas legadas, uma por equipe) e `stageCount`
       // (chaves distintas de etapa) colapsam no modelo normalizado: uma linha
@@ -443,21 +471,45 @@ function consolidateProjects(projects: ProjectRow[], context: ConsolidationConte
         projectRows.flatMap((row) => (row.programming_team ?? []).map((team) => normalizeText(team.team_id)).filter(Boolean)),
       );
       // Pendencia (achado da auditoria): a migration 318 tirou PENDENCIA de
-      // `work_completion_status` e virou a flag `is_pendencia`. "Aberta" segue a
-      // mesma definicao usada no chip da lista de Programacao Normalizada
-      // (queries.ts): flag ligada, etapa ativa e ainda nao concluida.
-      const hasOpenPendencia = projectRows.some(
-        (row) => row.is_pendencia && isActiveProgrammingStatus(row.status) && normalizeToken(row.work_completion_status) !== "CONCLUIDO",
+      // `work_completion_status` e virou a flag `is_pendencia`. A etapa so conta
+      // como pendencia aberta com a flag ligada, status ativo e Estado Trabalho
+      // que nao seja conclusao nem beneficio atingido — os dois encerram o
+      // trabalho da etapa, entao a pendencia dela ja nao esta em aberto.
+      const hasOpenPendenciaStage = projectRows.some(
+        (row) =>
+          row.is_pendencia
+          && isActiveProgrammingStatus(row.status)
+          && !isCompletedWorkStatus(row.work_completion_status)
+          && !isBenefitReachedWorkStatus(row.work_completion_status),
       );
       const hasFutureActiveProgramming = projectRows.some((row) => {
         const executionDate = normalizeIsoDate(row.execution_date);
         return Boolean(executionDate && executionDate >= today && isActiveProgrammingStatus(row.status));
       });
       const completed = isCompletedWorkStatus(workCompletionStatus);
+      const benefitReached = isBenefitReachedWorkStatus(workCompletionStatus);
+      // A obra sai de `Pendentes` quando o ULTIMO Estado Trabalho valido dela e
+      // conclusao ou beneficio atingido, mesmo que uma etapa anterior tenha ficado
+      // com a flag de pendencia: nesse caso a obra ja e contada em `Concluidas` ou
+      // em `Beneficio atingido` e nao ha pendencia a cobrar.
+      const hasOpenPendencia = hasOpenPendenciaStage && !completed && !benefitReached;
       const interrupted = latest
         ? (isInterruptedStatus(latest.status) || isInterruptedStatus(workCompletionStatus)) && !completed
         : false;
-      const withoutStatus = Boolean(latest && !workCompletionStatus && (!latestDate || (daysSinceLatest !== null && daysSinceLatest > 0)));
+      // `Sem Estado Trabalho` julga a ETAPA COMUM mais recente, nao o consolidado da
+      // obra: com `!workCompletionStatus` (consolidado) bastava um apontamento
+      // antigo em qualquer etapa para uma etapa nova, vencida e sem apontamento
+      // ficar invisivel — o card so pegava obra que nunca teve apontamento nenhum.
+      // Exige etapa ativa porque etapa ADIADA/CANCELADA nao pode ter apontamento
+      // (migrations 284 e 326) e pendencia aberta e cobrada no card `Pendentes`.
+      const latestCommonDate = normalizeIsoDate(latestCommon?.execution_date) ?? "";
+      const daysSinceLatestCommon = latestCommonDate ? diffInDays(today, latestCommonDate) : null;
+      const withoutStatus = Boolean(
+        latestCommon
+        && isActiveProgrammingStatus(latestCommon.status)
+        && !normalizeToken(latestCommon.work_completion_status)
+        && (!latestCommonDate || (daysSinceLatestCommon !== null && daysSinceLatestCommon > 0)),
+      );
       const actionRequired = !completed && (!hasFutureActiveProgramming || interrupted || withoutStatus);
 
       return {
@@ -598,8 +650,19 @@ export async function GET(request: NextRequest) {
         consolidatedProjects,
       ),
       buildCard("CONCLUDED", "Concluidas", "Ultimo Estado Trabalho valido concluido.", consolidatedProjects.filter((project) => project.completed)),
-      buildCard("TO_REPROGRAM", "Para reprogramar", "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa.", consolidatedProjects.filter((project) => !project.neverProgrammed && project.actionRequired)),
-      buildCard("PENDING", "Pendentes", "Programacao ativa com pendencia aberta (nao concluida).", consolidatedProjects.filter((project) => project.hasOpenPendencia)),
+      // Obra interrompida sem continuidade futura sai daqui: ela e contada em
+      // `Canceladas/adiadas`, que e o card dela. O recorte excluido e exatamente o
+      // filtro daquele card, entao os dois ficam disjuntos e a obra nao e cobrada
+      // duas vezes na mesma carteira.
+      buildCard(
+        "TO_REPROGRAM",
+        "Para reprogramar",
+        "Ultimo Estado Trabalho valido nao concluido e sem programacao futura ativa, fora canceladas/adiadas.",
+        consolidatedProjects.filter(
+          (project) => !project.neverProgrammed && project.actionRequired && !(project.interrupted && !project.hasFutureActiveProgramming),
+        ),
+      ),
+      buildCard("PENDING", "Pendentes", "Programacao ativa com pendencia aberta, sem conclusao nem beneficio atingido.", consolidatedProjects.filter((project) => project.hasOpenPendencia)),
       buildCard("PARTIAL_PLANNED", "Parcial planejada", "Ultimo Estado Trabalho valido parcial planejado.", consolidatedProjects.filter((project) => isPartialPlannedWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("PARTIAL", "Parciais nao planejada", "Ultimo Estado Trabalho valido parcial nao planejado.", consolidatedProjects.filter((project) => isPartialWorkStatus(project.latestWorkCompletionStatus))),
       buildCard("BENEFIT_REACHED", "Beneficio atingido", "Beneficio atingido sem conclusao marcada.", consolidatedProjects.filter((project) => !project.completed && isBenefitReachedWorkStatus(project.latestWorkCompletionStatus))),
@@ -618,16 +681,21 @@ export async function GET(request: NextRequest) {
     ];
 
     const activeTeams = Array.from(teamMap.values()).filter((team) => team.active);
-    const programmedTeamIds = hasTeamPeriod && startDate && endDate
-      ? await fetchTeamIdsProgrammedInPeriod({
+    const programmedTeamDateKeys = hasTeamPeriod && startDate && endDate
+      ? await fetchProgrammedTeamDatesInPeriod({
           supabase: resolution.supabase,
           tenantId: resolution.appUser.tenant_id,
           startDate,
           endDate,
         })
       : new Set<string>();
+    const teamPeriodDates = hasTeamPeriod && startDate && endDate ? buildDateRange(startDate, endDate) : [];
     const teamsWithoutProgramming = hasTeamPeriod
-      ? activeTeams.filter((team) => !programmedTeamIds.has(team.id))
+      ? teamPeriodDates.flatMap((date) =>
+          activeTeams
+            .filter((team) => !programmedTeamDateKeys.has(buildTeamDateKey(team.id, date)))
+            .map((team) => ({ ...team, date })),
+        )
       : [];
 
     return NextResponse.json({

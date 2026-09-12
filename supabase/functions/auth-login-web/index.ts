@@ -4,13 +4,8 @@
 
 import { serve } from 'https://deno.land/std@0.177.1/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/http.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-session-id',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  'Content-Type': 'application/json; charset=utf-8',
-}
 
 const respond = (
   status: number,
@@ -24,14 +19,21 @@ const respond = (
 
 const normalizeLoginName = (value: unknown) => String(value ?? '').trim().toLowerCase()
 
+// A ordem aqui e de seguranca, nao de conveniencia: cf-connecting-ip e escrito
+// pelo proxy da Supabase e o cliente nao consegue forjar. Ja o x-forwarded-for
+// e uma lista onde a entrada MAIS A ESQUERDA e exatamente o que o cliente
+// mandou — usar essa entrada como chave de rate limit permite trocar o valor a
+// cada request e anular o limite. Por isso o fallback pega a entrada mais a
+// direita, que e a que o proxy mais proximo anexou.
 const getClientIp = (req: Request) => {
-  const forwarded = req.headers.get('x-forwarded-for')
-  if (forwarded) {
-    const ip = forwarded.split(',')[0]?.trim()
-    if (ip) return ip
-  }
+  const connecting = (req.headers.get('cf-connecting-ip') || '').trim()
+  if (connecting) return connecting
 
-  return req.headers.get('cf-connecting-ip') || req.headers.get('x-real-ip') || ''
+  const forwarded = req.headers.get('x-forwarded-for') || ''
+  const hops = forwarded.split(',').map((value) => value.trim()).filter(Boolean)
+  if (hops.length > 0) return hops[hops.length - 1]
+
+  return (req.headers.get('x-real-ip') || '').trim()
 }
 
 const sha256Hex = async (value: string) => {
@@ -101,6 +103,34 @@ serve(async (req) => {
   const rateResult = Array.isArray(rateData) ? rateData[0] : rateData
   if (rateResult?.allowed === false) {
     const retryAfterSeconds = Number(rateResult.retry_after) || 60
+    return respond(
+      429,
+      { success: false, message: `Limite de requisicoes excedido. Tente em ${retryAfterSeconds} segundos.` },
+      { 'Retry-After': String(retryAfterSeconds) },
+    )
+  }
+
+  // Segunda barreira, so por login_name. O limite por (ip|login) acima protege
+  // contra um atacante unico; este protege a CONTA quando as tentativas vem
+  // distribuidas por muitos IPs, caso em que a primeira chave nunca satura.
+  // Janela maior e teto menor porque login legitimo nao erra 10 vezes em 15 min.
+  const { data: loginRateData, error: loginRateError } = await supabaseAdmin.rpc('rate_limit_check_and_hit', {
+    p_scope: 'auth',
+    p_route: 'auth.login.web.identity',
+    p_identity_hash: await sha256Hex(`login|${loginName}`),
+    p_owner_id: null,
+    p_ip_hash: null,
+    p_max_hits: 10,
+    p_window_seconds: 900,
+  })
+
+  if (loginRateError) {
+    return respond(500, { success: false, message: 'Falha ao validar limite de requisicoes.' })
+  }
+
+  const loginRateResult = Array.isArray(loginRateData) ? loginRateData[0] : loginRateData
+  if (loginRateResult?.allowed === false) {
+    const retryAfterSeconds = Number(loginRateResult.retry_after) || 900
     return respond(
       429,
       { success: false, message: `Limite de requisicoes excedido. Tente em ${retryAfterSeconds} segundos.` },

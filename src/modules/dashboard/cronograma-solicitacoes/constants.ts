@@ -9,6 +9,11 @@ export const CRONOGRAMA_TIPO_DEFAULTS_ENDPOINT = "/api/cronograma-solicitacoes/t
 
 export const PAGE_SIZE = 20;
 
+// Tamanho de pagina da EXPORTACAO, casado com o `maxPageSize: 100` do servidor
+// (`src/server/modules/cronograma-solicitacoes/handlers.ts`). Pedir mais nao adianta:
+// o servidor capa em silencio e a exportacao sairia curta achando que leu tudo.
+export const EXPORT_PAGE_SIZE = 100;
+
 export const TIPO_LABEL: Record<TipoSolicitacao, string> = {
   INSPECAO: "Fiscalizacao",
   AS_BUILT: "As Built",

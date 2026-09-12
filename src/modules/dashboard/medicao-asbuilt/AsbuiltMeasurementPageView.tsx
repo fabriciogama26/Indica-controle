@@ -8,7 +8,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
-import { ASBUILT_MEASUREMENT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
+import { ASBUILT_MEASUREMENT_PAGE_SIZE, EXPORT_PAGE_SIZE, HISTORY_FIELD_LABELS, HISTORY_PAGE_SIZE, IMPORT_TEMPLATE_HEADERS, INITIAL_FILTERS, INITIAL_FORM } from "./constants";
 import type {
   ActivityOption,
   AsbuiltMeasurementCatalogResponse,
@@ -92,7 +92,7 @@ const MASS_IMPORT_HEADER_ALIASES: Record<string, string[]> = {
   codigo_atividade: ["codigo_atividade", "codigo", "atividade", "voz", "code"],
   quantidade: ["quantidade", "qtd", "qty"],
   taxa: ["taxa", "rate"],
-  observacao: ["observacao", "obs", "observacao_item"],
+  observacao_item: ["observacao_item", "observacao", "obs"],
 };
 
 function buildRowId() {
@@ -152,12 +152,8 @@ export function AsbuiltMeasurementPageView() {
     if (session?.accessToken) {
       headers.Authorization = `Bearer ${session.accessToken}`;
     }
-    const tenantId = session?.user.activeTenantId ?? session?.user.tenantId;
-    if (tenantId) {
-      headers["x-tenant-id"] = tenantId;
-    }
     return headers;
-  }, [session?.accessToken, session?.user.activeTenantId, session?.user.tenantId]);
+  }, [session?.accessToken]);
 
   const formTotalAmount = useMemo(
     () => form.items.reduce((sum, item) => sum + calculateItemTotal(item), 0),
@@ -585,18 +581,34 @@ export function AsbuiltMeasurementPageView() {
     }
     setIsExporting(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "10000" });
-      if (filters.projectId) params.set("projectId", filters.projectId);
-      if (filters.status !== "TODOS") params.set("status", filters.status);
-      if (filters.asbuiltMeasurementKind !== "TODOS") params.set("asbuiltMeasurementKind", filters.asbuiltMeasurementKind);
-      if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-      const response = await fetch(`/api/medicao-asbuilt?${params.toString()}`, { headers: authHeaders });
-      const payload = (await response.json().catch(() => ({}))) as AsbuiltMeasurementListResponse;
-      if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar medicoes asbuilt.");
+      // `pageSize=10000` era recusado em silencio: `parsePagination` capa em
+      // `maxPageSize: 500`, entao a exportacao trazia UMA pagina de 500 linhas e se dava
+      // por completa. Agora percorre as paginas ate alcancar `pagination.total`.
+      const exported: AsbuiltMeasurementListResponse["orders"] = [];
+      let exportPage = 1;
+      let total = 0;
+
+      for (;;) {
+        const params = new URLSearchParams({ page: String(exportPage), pageSize: String(EXPORT_PAGE_SIZE) });
+        if (filters.projectId) params.set("projectId", filters.projectId);
+        if (filters.status !== "TODOS") params.set("status", filters.status);
+        if (filters.asbuiltMeasurementKind !== "TODOS") params.set("asbuiltMeasurementKind", filters.asbuiltMeasurementKind);
+        if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
+        const response = await fetch(`/api/medicao-asbuilt?${params.toString()}`, { headers: authHeaders });
+        const payload = (await response.json().catch(() => ({}))) as AsbuiltMeasurementListResponse;
+        if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar medicoes asbuilt.");
+
+        const pageOrders = payload.orders ?? [];
+        total = payload.pagination?.total ?? total;
+        exported.push(...pageOrders);
+
+        if (!pageOrders.length || exported.length >= total) break;
+        exportPage += 1;
+      }
 
       downloadCsv("medicao_asbuilt.csv", [
         ["numero", "projeto", "servicos_considerados_ate", "tipo", "motivo_sem_producao", "status", "itens", "valor_total", "observacao", "atualizado_em"],
-        ...(payload.orders ?? []).map((order) => [
+        ...exported.map((order) => [
           order.asbuiltMeasurementNumber,
           order.projectCode,
           formatDate(order.serviceCoverageEndDate),
@@ -785,7 +797,7 @@ export function AsbuiltMeasurementPageView() {
         const activityInput = readImportField(row, headerMap, "codigo_atividade");
         const quantityInput = readImportField(row, headerMap, "quantidade");
         const rateInput = readImportField(row, headerMap, "taxa");
-        const observation = readImportField(row, headerMap, "observacao");
+        const itemObservation = readImportField(row, headerMap, "observacao_item");
         const project = findProjectOption(projectInput);
         const serviceCoverageEndDate = parseDateInput(serviceCoverageEndDateInput);
         const asbuiltMeasurementKind = normalizeAsbuiltMeasurementKind(kindInput);
@@ -810,14 +822,14 @@ export function AsbuiltMeasurementPageView() {
           continue;
         }
 
-        const groupKey = [project.id, serviceCoverageEndDate, asbuiltMeasurementKind, reason?.id ?? "", observation].join("|");
+        const groupKey = [project.id, serviceCoverageEndDate, asbuiltMeasurementKind, reason?.id ?? ""].join("|");
         const group = groups.get(groupKey) ?? {
           rowNumbers: [],
           projectId: project.id,
           serviceCoverageEndDate,
           asbuiltMeasurementKind,
           noProductionReasonId: reason?.id ?? "",
-          notes: observation,
+          notes: "",
           items: [],
         };
 
@@ -827,7 +839,7 @@ export function AsbuiltMeasurementPageView() {
         }
 
         group.rowNumbers.push(rowNumber);
-        group.items.push({ activityId: activity.id, quantity, rate, observation });
+        group.items.push({ activityId: activity.id, quantity, rate, observation: itemObservation });
         groups.set(groupKey, group);
       }
 
@@ -1208,7 +1220,7 @@ export function AsbuiltMeasurementPageView() {
                   <span className={styles.importStepNumber}>2</span>
                   <div>
                     <strong>Preencha a planilha</strong>
-                    <p>Colunas do modelo: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao. Obrigatorias: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, codigo_atividade, quantidade e taxa. Motivo e obrigatorio somente em Sem producao.</p>
+                    <p>Colunas do modelo: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, motivo_sem_producao, codigo_atividade, quantidade, taxa, observacao_item. Obrigatorias: projeto, servicos_considerados_ate, tipo_medicao_asbuilt, codigo_atividade, quantidade e taxa. Motivo e obrigatorio somente em Sem producao.</p>
                   </div>
                 </div>
               </section>

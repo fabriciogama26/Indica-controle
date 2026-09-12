@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchWorkCompletionByProject } from "@/server/modules/programacao-normalizada";
@@ -541,20 +542,28 @@ async function loadOrderIds(params: {
     return orders.map((item) => item.id);
   }
 
-  let query = params.supabase
-    .from(params.table)
-    .select("id")
-    .eq("tenant_id", params.tenantId)
-    .eq("project_id", params.projectId)
-    .eq("is_active", true)
-    .neq("status", "CANCELADA")
-    .limit(5000);
+  // Antes: `.limit(5000)` sem `.order()`. Dois defeitos somados — o PostgREST corta
+  // em 1.000 sem sinalizar, e sem ordem estavel o Postgres nao garante QUAIS 1.000
+  // voltam, entao o mesmo projeto podia gerar dois `Resumo por categoria` diferentes
+  // em dois cliques. `loadAllRows` pagina por `.range()` e le tudo.
+  const { data, error } = await loadAllRows<OrderIdRow>((from, to) => {
+    let query = params.supabase
+      .from(params.table)
+      .select("id")
+      .eq("tenant_id", params.tenantId)
+      .eq("project_id", params.projectId)
+      .eq("is_active", true)
+      .neq("status", "CANCELADA")
+      .order("id", { ascending: true })
+      .range(from, to);
 
-  if (params.table === "project_measurement_orders") {
-    query = query.eq("measurement_kind", "COM_PRODUCAO");
-  }
+    if (params.table === "project_measurement_orders") {
+      query = query.eq("measurement_kind", "COM_PRODUCAO");
+    }
 
-  const { data, error } = await query.returns<OrderIdRow[]>();
+    return query.returns<OrderIdRow[]>();
+  });
+
   if (error) {
     throw new Error("Falha ao carregar ordens do dashboard.");
   }

@@ -266,3 +266,16 @@ Ajuda contextual
   - Atualizacao (2026-05): antes o bloco `Materiais do projeto` exibia todas as linhas retornadas pela API; depois permite filtrar localmente por quantidades diferentes de zero e por situacao, inclusive na exportacao.
   - Atualizacao (2026-05): antes `Em estoque` ficava apos `Desvio`; depois fica antes de `Quantidade prevista`.
   - Atualizacao 2026-07-04: `src/modules/dashboard/consumo-projeto/ProjectConsumptionPageView.tsx` passou a controlar `isExporting` no `exportRows`; o botao `Extrair Excel` usa `CsvExportButton` e exibe o modal compartilhado `Gerando...`. Sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-08-21 - Teto de 1.000 linhas nas movimentacoes do projeto
+--------------------------------------------------------------------------
+- Correcao aplicada em 2026-08-21 (ver `Auditoria/14-exportacoes-csv.md`): toda leitura desta
+  tela que pedia mais de 1.000 linhas numa unica resposta passou a usar `loadAllRows`, com
+  ordem total (desempate por `id`). O PostgREST corta em 1.000 sem sinalizar, entao o
+  `.limit()` anterior devolvia resultado incompleto com status 200 — numero errado
+  apresentado como certo, nunca erro na tela.
+- Consulta corrigida: `loadProjectTransfers` em `src/app/api/consumo-projeto/route.ts`, que lia
+  `stock_transfers` com `.limit(5000)`. Projeto com mais de 1.000 movimentacoes exibia e
+  exportava consumo por material SUBESTIMADO, sem nenhum aviso.
+- Efeito: o CSV desta tela e os numeros de requisicao/devolucao/liquido podem mudar para
+  projetos grandes. O valor novo e o correto.

@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { isAdminRole } from "@/lib/auth/authorization";
 import { consumeAuthFeedback, requestPasswordRecovery } from "@/services/auth/auth.service";
 import styles from "./LoginPageView.module.css";
 
 export function LoginPageView() {
   const router = useRouter();
-  const { login, isAuthenticated, isLoading } = useAuth();
+  const { login, isAuthenticated, isLoading, session } = useAuth();
   const [loginName, setLoginName] = useState("");
   const [password, setPassword] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -20,7 +21,6 @@ export function LoginPageView() {
     mutationFn: () => login({ loginName, password }),
     onSuccess: (result) => {
       if (result.success) {
-        router.replace("/home");
         return;
       }
       setFeedback(result.message);
@@ -42,9 +42,10 @@ export function LoginPageView() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace("/home");
+      const shouldSelectTenant = session?.source === "remote" && isAdminRole(session.user.role);
+      router.replace(shouldSelectTenant ? "/selecionar-contrato" : "/home");
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, router, session?.source, session?.user.role]);
 
   useEffect(() => {
     const authFeedback = consumeAuthFeedback();
@@ -128,7 +129,9 @@ export function LoginPageView() {
               {recoveryMutation.isPending ? "Enviando recuperacao..." : "Esqueci minha senha"}
             </button>
 
-            {feedback ? <div className={styles.errorBox}>{feedback}</div> : null}
+            <div className={styles.feedbackSlot} aria-live="polite">
+              {feedback ? <div className={styles.errorBox}>{feedback}</div> : null}
+            </div>
 
             <button type="submit" className={styles.submitButton} disabled={loginMutation.isPending}>
               {loginMutation.isPending ? "Entrando..." : "Entrar"}

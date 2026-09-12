@@ -8,6 +8,7 @@ Visao geral
 - O formulario de cadastro/edicao trabalha apenas com `Projeto (SOB)`, sem limite maximo de caracteres e sem padrao fixo de prefixo por prioridade.
 - O fluxo operacional da tela nao expõe nem exige `FOB`.
 - Mantem padrao visual com blocos separados: cadastro, filtros e lista em colunas.
+- O bloco `Cadastro de Projeto` inclui cadastro em massa por CSV para criacao de varios projetos do tenant.
 - Inclui aba `Materiais previstos` para manter a lista inicial de materiais planejados por projeto, com importacao em massa e inclusao manual.
 - Inclui aba `Atividades previstas` para manter a base operacional de atividades planejadas por projeto, com importacao em massa, inclusao manual e edicao em linha.
 - Mantem indicador operacional `has_locacao` no projeto para consumo futuro em visoes gerais e cruzamentos com `Locacao`.
@@ -17,6 +18,7 @@ Arquitetura
 - Rota: `src/app/(dashboard)/projetos/page.tsx`
 - View: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
 - Estilo: `src/modules/dashboard/projetos/ProjectsPageView.module.css`
+- Parser CSV do cadastro em massa principal: `src/modules/dashboard/projetos/massImport.ts`
 - API de projetos: `src/app/api/projects/route.ts`
 - API de metadados/filtros: `src/app/api/projects/meta/route.ts`
 - API de materiais previstos (listagem): `src/app/api/projects/forecast/route.ts`
@@ -46,6 +48,7 @@ Arquitetura
 - Banco (RPC transacional da tela principal): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Banco (remocao da constraint de formato por prioridade no SOB): `supabase/migrations/118_remove_project_sob_priority_format_constraint.sql`
 - Banco (marcador retirado da carteira): `supabase/migrations/174_add_project_is_withdrawn.sql`
+- Banco (tela dos responsaveis/gestores da distribuidora): `supabase/migrations/410_create_utility_distributor_contact_page.sql`
 
 Cadastro
 --------
@@ -62,6 +65,8 @@ Cadastro
   - `Municipio`
   - `Logradouro`
   - `Bairro`
+  - `Latitude`
+  - `Longitude`
 - Campos opcionais:
   - `Nivel de Tensao`
   - `Porte`
@@ -73,6 +78,9 @@ Cadastro
 - `Centro de Servico` e preenchido automaticamente quando o `SOB` informado ja existe no catalogo do tenant.
 - `Parceira` nao aparece no frontend; o backend preenche automaticamente com `contract.name` do tenant ativo.
 - `Valor estimado` aceita digitacao monetaria em formato brasileiro (`22.035,33`) e formatos compactos equivalentes (`22.03533`, `22035,33`), normalizando para numero decimal antes de salvar em `project.estimated_value numeric(14,2)`.
+- `Latitude` e `Longitude` sao gravadas em graus decimais (formato que o Google Maps aceita) em `project.latitude`/`project.longitude` `numeric(9,6)`, com CHECK de faixa no banco (-90..90 e -180..180).
+- Colar o par copiado do Google Maps (`-23.550520, -46.633308`) no campo `Latitude` preenche `Latitude` e `Longitude` de uma vez; o campo `Longitude` aceita somente um numero.
+- Virgula decimal (`-23,550520`) e aceita na digitacao de um campo isolado; a normalizacao acontece em `parseLatitude`/`parseLongitude` de `src/lib/utils/parsers.ts`, usadas pelo frontend, pelo parser do CSV e pela API.
 - Campos carregados de tabelas de dominio:
   - `Prioridade`
   - `Centro de Servico`
@@ -82,7 +90,17 @@ Cadastro
   - `Municipio`
   - `Responsavel Distribuidora`
   - `Gestor de campo Distribuidora`
+- O select de `Prioridade` usa apenas o catalogo ativo do tenant retornado por `/api/projects/meta`; nao ha lista fixa no frontend.
+- O select `Responsavel Distribuidora` usa `project_utility_responsibles`; o select `Gestor de campo Distribuidora` usa `project_utility_field_managers`. Ambos sao mantidos pela tela `/responsavel-distribuidora` e carregados por tenant em `/api/projects/meta`.
 - Campo `Responsavel Contratada` carregado de `people` ativo, filtrando apenas cargos `SUPERVISOR` em `job_titles`.
+- Cadastro em massa principal:
+  - Botao `Cadastro em massa` aparece no bloco `Cadastro de Projeto` apenas fora do modo edicao.
+  - Baixa modelo CSV separado por ponto e virgula com as colunas do formulario principal.
+  - Aceita `data_limite` em `dd/mm/aaaa` ou `aaaa-mm-dd`.
+  - Valida no frontend que os nomes de prioridade, centro de servico, tipo de servico, responsaveis, gestor, municipio, nivel de tensao e porte existem nos catalogos ativos carregados para o tenant.
+  - Envia `POST /api/projects` com `action = BATCH_IMPORT`; o backend valida novamente por tenant e grava cada linha pela RPC transacional `save_project_record`.
+  - Processamento e parcial por linha: linhas validas sao cadastradas e linhas invalidas entram no CSV de erros (`linha;coluna;valor;erro`).
+  - Limite por arquivo segue `MASS_IMPORT_ROW_LIMIT` (`500` linhas).
 - Regra de validacao do `SOB` antes do banco:
   - O campo aceita texto livre (normalizado em maiusculas), sem validacao de prefixo por prioridade.
   - `SOB` duplicado no mesmo tenant nao pode ser cadastrado.
@@ -134,6 +152,7 @@ Filtros, auto-complete e listagem
   - `Situacao da carteira` (select com `Todos`, `Cancelados`, `Retirados da carteira` e `Terceiros`)
   - `Estado Trabalho` (`Todos`, opcoes do catalogo do tenant e `Nao informado`)
   - `Tipo SGD` (`Todos` + itens ativos do catalogo `programming_sgd_types`)
+  - `Observacao` (texto, busca parcial sem diferenciar maiuscula de minuscula)
 - Auto-complete implementado para:
   - `SOB`
   - `Prioridade`
@@ -178,6 +197,8 @@ Boas praticas
 - Sempre filtrar e gravar com `tenant_id` no backend.
 - Usar validacao de campos obrigatorios na API antes de gravar.
 - Manter `Projeto (SOB)` sem limite fixo de caracteres e sem regra de prefixo por prioridade no frontend e na API.
+- Cadastro em massa do projeto principal usa a permissao granular `projetos/import`; cadastro unitario continua em `projetos/create`.
+- O import principal deriva `tenant_id` e usuario da sessao, nao aceita `tenant_id` do CSV/body e confirma todos os catalogos no servidor antes da RPC.
 - Manter paginacao server-side para listas grandes.
 - Garantir auditoria em `project` com `created_by`, `updated_by`, `created_at` e `updated_at`.
 - Exigir `expectedUpdatedAt` na edicao e no cancelamento/ativacao para evitar `last-write-wins`.
@@ -276,9 +297,11 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/ProjectsPageView.tsx`
-  - Responsavel por: estado da tela, cadastro, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento, incluindo envio de `expectedUpdatedAt` no save e no status.
+  - Responsavel por: estado da tela, cadastro, cadastro em massa principal, edicao, filtros, paginacao, listagem e modais de detalhes/historico/cancelamento, incluindo envio de `expectedUpdatedAt` no save e no status.
+- Caminho: `src/modules/dashboard/projetos/massImport.ts`
+  - Responsavel por: modelo CSV, leitura, aliases, validacao de catalogos e normalizacao de datas/valores/flags do cadastro em massa de projetos.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
+  - Responsavel por: validar payload, importar projetos em massa, inserir, editar, cancelar, listar e consultar historico por projeto, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
@@ -345,7 +368,7 @@ Constantes e configuracoes
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: resolver sessao autenticada e contexto de tenant para as rotas API.
-  - Suporta selecao de tenant por requisicao via header `x-tenant-id` (quando o usuario possui vinculo em `app_user_tenants`).
+  - Usa o cookie server-side `INDICA.activeTenantId` como contexto de tenant ativo; `x-tenant-id` nao e fonte operacional padrao.
 - Caminho: `src/hooks/useAuth.ts`
   - Responsavel por: expor `accessToken` para chamadas autenticadas no frontend.
 - Caminho: `src/lib/server/concurrency.ts`
@@ -835,3 +858,115 @@ Atualizacao 2026-08-15 (2) - Formulario nao e mais apagado em conflito de concor
 - Depois: `resetFormState()` so roda apos sucesso; a lista continua sendo recarregada,
   mas o formulario fica preenchido e a mensagem de erro fica visivel.
 - Arquivos alterados: `src/modules/dashboard/projetos/ProjectsPageView.tsx`.
+
+Atualizacao 2026-09 - Cadastro em massa de Projetos
+----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/modules/dashboard/projetos/massImport.ts`
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/app/api/projects/route.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `buildProjectMassImportTemplateCsv`
+  - `parseProjectMassImportCsv`
+  - `projectMassImport`
+  - `submitProjectMassImport`
+  - `importProjectBatch`
+  - `POST /api/projects`
+- Comportamento antes/depois:
+  - Antes: a tela principal cadastrava projetos apenas um a um; o texto `Cadastro em massa` existia somente nas abas de `Materiais previstos` e `Atividades previstas`.
+  - Depois: o bloco `Cadastro de Projeto` exibe o botao `Cadastro em massa` fora do modo edicao, baixa modelo CSV e importa ate 500 projetos por arquivo.
+  - Depois: o CSV usa as mesmas colunas do formulario principal, valida catalogos ativos do tenant no frontend e confirma tudo novamente no backend antes de gravar.
+  - Depois: `POST /api/projects` aceita `action = BATCH_IMPORT`, cobra `projetos/import`, processa parcialmente por linha e retorna `results` para gerar CSV de erros.
+  - Depois: cada linha valida continua sendo gravada pela RPC `save_project_record`, preservando auditoria e preenchimento automatico da parceira pelo contrato ativo.
+- Multi-tenant e permissao:
+  - `tenant_id` e usuario continuam derivados da sessao por `resolveAuthenticatedAppUser`.
+  - Nenhum valor de tenant e aceito do CSV/body.
+  - Cadastro unitario permanece em `projetos/create`; importacao em massa usa `projetos/import`.
+
+Atualizacao 2026-09-02 - Prioridade sem fallback global no frontend
+-------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/massImport.ts`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `priorityOptions`
+  - `buildProjectMassImportTemplateCsv`
+- Comportamento antes/depois:
+  - Antes: o select de `Prioridade` sempre mesclava o catalogo do tenant com uma lista fixa (`GRUPO B - FLUXO`, `DRP / DRC`, `GRUPO A - FLUXO`, `FUSESAVER`), fazendo esses nomes aparecerem mesmo quando nao vinham de `/api/projects/meta`.
+  - Depois: o select usa somente `meta.priorities`, carregado de `project_priorities` com filtro por `tenant_id` no backend.
+  - Depois: o modelo CSV deixa de sugerir uma prioridade operacional fixa quando o catalogo do tenant esta vazio, usando placeholder generico.
+- Multi-tenant e permissao:
+  - A API de metadados continua filtrando `project_priorities` por `appUser.tenant_id`.
+  - Nenhum `tenant_id` e aceito do client.
+
+Atualizacao 2026-09-10 - Latitude e longitude obrigatorias no Cadastro de Projeto
+---------------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/425_add_project_latitude_longitude.sql` (novo)
+  - `src/lib/utils/parsers.ts`
+  - `src/app/api/projects/route.ts`
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `src/modules/dashboard/projetos/massImport.ts`
+  - `file-size-baseline.json`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `parseDecimalDegrees`, `parseLatitude`, `parseLongitude`, `splitDecimalDegreesPair`, `formatDecimalDegrees` (novas em `src/lib/utils/parsers.ts`)
+  - `parseProjectInput`, `validateRequiredProjectFields`, `buildProjectWritePayload`, `buildProjectUpdateChanges`, `formatCoordinateChange`, `toCoordinateNumber`, `saveProjectViaRpc`, `isMissingOptionalProjectColumns`, `PROJECT_SELECT_WITH_LOCATION`
+  - `FormState`, `INITIAL_FORM`, `HISTORY_FIELD_LABELS`, `toFormState`, `updateLatitudeField`, `handleSubmit`, `buildProjectsCsv`, modal de detalhes
+  - `REQUIRED_HEADERS`, `PROJECT_MASS_IMPORT_COLUMNS_HINT`, `buildProjectMassImportTemplateCsv`, `parseProjectMassImportCsv`, `ProjectImportRow`
+  - RPC `save_project_record` (nova assinatura com `p_latitude`/`p_longitude`) e view `project_with_labels`
+- Comportamento antes/depois:
+  - Antes: o endereco do projeto tinha apenas `Municipio`, `Logradouro` e `Bairro`; nao havia coordenada em lugar nenhum do sistema.
+  - Depois: o bloco `Cadastro de Projeto` tem os campos `Latitude` e `Longitude`, os dois obrigatorios, em graus decimais (formato que o Google Maps aceita, ex.: -23.550520 e -46.633308).
+  - Depois: colar o par completo copiado do Google Maps (`-23.550520, -46.633308`) no campo `Latitude` preenche os dois campos; o campo `Longitude` aceita somente um numero.
+  - Depois: a validacao acontece no frontend (antes do fetch) e de novo no backend em `validateRequiredProjectFields`, valendo para POST, PUT e `BATCH_IMPORT` — inclusive ao editar projeto legado, que so salva depois de informar as coordenadas.
+  - Depois: o CSV de cadastro em massa passa a exigir as colunas `latitude` e `longitude`; linha sem coordenada valida vira erro por linha e nao e importada.
+  - Depois: coordenada entra no historico de alteracoes com 6 casas decimais (`formatCoordinateChange`), porque `formatComparableValue` arredondaria para 2 casas.
+  - Depois: a exportacao CSV da listagem e o modal de detalhes exibem `Latitude` e `Longitude`.
+- Banco:
+  - `public.project` ganhou `latitude numeric(9,6)` e `longitude numeric(9,6)`, com CHECK de faixa (-90..90 e -180..180).
+  - As colunas aceitam NULL de proposito: projeto ja cadastrado nao tem coordenada de origem real e backfill inventaria dado no historico. A obrigatoriedade vive na API, e a edicao pela tela vai preenchendo o legado.
+  - `project_with_labels` foi recriada com `security_invoker = true` projetando as duas colunas novas.
+  - `save_project_record` foi recriada com `p_latitude`/`p_longitude`; a assinatura anterior foi dropada e o EXECUTE ficou so com `service_role` (padrao das migrations 210/251/309).
+  - Sem indice novo: latitude/longitude nao sao filtro de listagem.
+  - `saveProjectViaRpc` mantem degradacao por assinatura: se o banco ainda nao aplicou a 425, a chamada e repetida sem `p_latitude`/`p_longitude` e, nesse caso, a coordenada nao e gravada.
+- Multi-tenant e permissao:
+  - `tenant_id` e usuario continuam derivados da sessao por `resolveAuthenticatedAppUser`; nenhuma coordenada altera o contrato de tenant.
+  - Permissao inalterada: `projetos/create` no cadastro unitario, `projetos/update` na edicao e `projetos/import` na importacao em massa. Nao ha permissao granular nova.
+- Plano de modularizacao (obrigatorio: os dois arquivos seguem acima do teto):
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx` (4.232 linhas, teto 1.000). Ordem proposta: (1) extrair as abas `Materiais previstos` e `Atividades previstas` para `components/ForecastTab.tsx` e `components/ActivityForecastTab.tsx`; (2) extrair os modais de detalhe, historico e cancelamento para `components/`; (3) mover `buildProjectsCsv`/`buildForecastCsv` e os normalizadores para `utils.ts`; (4) mover os tipos para `types.ts` e os fetchs para `hooks/`.
+  - `src/app/api/projects/route.ts` (1.862 linhas, teto 1.500). Ordem proposta: (1) criar `src/server/modules/projects/repository.ts` com os `*Compat` de leitura; (2) `validator.ts` com `parseProjectInput`, `validateRequiredProjectFields` e os normalizadores; (3) `service.ts` com `saveProjectViaRpc`, `importProjectBatch` e `setProjectStatusViaRpc`, deixando a rota so como delegacao.
+  - Enquanto o plano nao roda, o crescimento desta tarefa foi aceito arquivo a arquivo por `npm run lint:size:accept` (route.ts 1812 -> 1862, PageView.tsx 4148 -> 4232); o diff de `file-size-baseline.json` e a evidencia.
+
+Atualizacao 2026-09-10 (2) - Filtro por Observacao na listagem de Projetos
+--------------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/projects/route.ts`
+  - `src/modules/dashboard/projetos/ProjectsPageView.tsx`
+  - `file-size-baseline.json`
+  - `docs/Tela_Projetos_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/hooks/constantes tocadas:
+  - `FilterState`, `INITIAL_FILTERS`, `buildQuery` e o bloco `Filtros` em `ProjectsPageView.tsx`
+  - `fetchProjectsPageCompat`, `fetchProjectsSummaryCompat` e a leitura de query params do `GET` em `route.ts`
+- Comportamento antes/depois:
+  - Antes: `Observacao` so aparecia como coluna da lista, no modal de detalhes e na exportacao CSV; nao havia como filtrar por ela.
+  - Depois: o bloco `Filtros` tem o campo texto `Observacao` (ultimo do grid), aplicado pelo botao `Aplicar` junto com os demais filtros e zerado pelo `Limpar`.
+  - Depois: o valor vai como `observation` na query string de `/api/projects` e o backend aplica `ilike` em `project_with_labels.observation`, sempre dentro do `tenant_id` da sessao.
+  - Depois: o filtro entra tambem no resumo `Status da Carteira de Projetos` (`Total de projetos` e `Concluidas`) e na exportacao CSV, que reutiliza `buildQuery` com os filtros ativos.
+  - Depois: os tres ramos de compatibilidade de `fetchProjectsSummaryCompat` (consulta principal, fallback sem colunas opcionais e fallback legado) receberam o mesmo `ilike`, para que lista e totais nunca divirjam.
+  - Projeto sem observacao (`NULL`) fica de fora quando o filtro esta preenchido, porque `ilike` sobre `NULL` nao casa. Filtro vazio nao restringe nada.
+- Banco:
+  - Nenhuma migration. A coluna `observation` ja existe em `public.project` e ja e projetada por `project_with_labels`.
+  - Sem indice novo: o filtro usa `ilike '%texto%'`, que nao aproveita btree, exatamente como o filtro `Projeto (SOB)` ja se comporta hoje. A varredura fica limitada ao tenant. Se o volume crescer a ponto de doer, o caminho e um indice `gin` com `pg_trgm` cobrindo `sob` e `observation` de uma vez, decidido em tarefa propria.
+- Multi-tenant e permissao:
+  - Filtro puramente de leitura; `tenant_id` continua vindo de `resolveAuthenticatedAppUser` e nenhum valor de tenant e aceito do client.
+  - Permissao inalterada: o `GET` continua exigindo `projetos`/`read` via `authorizeProjectsAction`, sem permissao granular nova.
+- Plano de modularizacao (obrigatorio: os dois arquivos seguem acima do teto):
+  - Plano inalterado em relacao ao registrado na `Atualizacao 2026-09-10`; nada foi extraido nesta tarefa.
+  - Crescimento aceito arquivo a arquivo por `npm run lint:size:accept` (route.ts 1862 -> 1879, PageView.tsx 4232 -> 4247); o diff de `file-size-baseline.json` e a evidencia.

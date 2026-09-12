@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 
 import { useErrorLogger } from "@/hooks/useErrorLogger";
+import { useActiveBlockedDates } from "@/modules/dashboard/datas-bloqueadas";
 
+import { BlockedDateNotice } from "./components/BlockedDateNotice";
 import { StageCard, StageFormPanel } from "./components";
 import {
   AddTeamModal,
@@ -29,7 +31,7 @@ import {
 } from "./hooks";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { buildReasonText, isFormReadyToSave, isTimeRangeValid } from "./validators";
-import { findActiveCompletedStage, isOnHoldStage, sortStagesByDate, toIsoDate } from "./utils";
+import { addDaysIso, findActiveCompletedStage, isOnHoldStage, sortStagesByDate, toIsoDate } from "./utils";
 import type { FeedbackState, ProgrammingStage, StageDocument, StageTeam } from "./types";
 
 function findDocumentEntry(documents: StageDocument[], documentType: StageDocument["documentType"]) {
@@ -44,13 +46,17 @@ function findDocumentEntry(documents: StageDocument[], documentType: StageDocume
 // Usado tanto por Editar (mesma data) quanto por "Nova etapa a partir desta"
 // (mesmo cadastro, data em branco para o usuario preencher).
 function buildFormFromStage(stage: ProgrammingStage, params: { executionDate: string }) {
+  const activeTeams = stage.teams.filter((team) => team.status === "ATIVA");
+
   return {
     projectId: stage.projectId,
     projectSearch: "",
     executionDate: params.executionDate,
     isPendencia: false,
-    teamIds: stage.teams.filter((team) => team.status === "ATIVA").map((team) => team.teamId),
+    teamIds: activeTeams.map((team) => team.teamId),
+    teamForemanIds: Object.fromEntries(activeTeams.map((team) => [team.teamId, team.programmedForemanPersonId ?? ""])),
     teamSearch: "",
+    teamCategoryCode: "",
     serviceDescription: stage.serviceDescription,
     period: stage.period ?? ("INTEGRAL" as const),
     startTime: (stage.startTime ?? "").slice(0, 5),
@@ -83,6 +89,7 @@ function buildFormFromStage(stage: ProgrammingStage, params: { executionDate: st
       pi: findDocumentEntry(stage.documents, "PI"),
       pep: findDocumentEntry(stage.documents, "PEP"),
     },
+    historyReason: "",
   };
 }
 
@@ -135,6 +142,7 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
 
   const [addTeamTarget, setAddTeamTarget] = useState<ProgrammingStage | null>(null);
   const [addTeamSelectedId, setAddTeamSelectedId] = useState("");
+  const [addTeamSelectedForemanId, setAddTeamSelectedForemanId] = useState("");
 
   const { canComplete, canPendencia, canCorrectDate } = useProgrammingGranularPermissions();
   const { meta } = useProgrammingMeta({ accessToken, onError: logError });
@@ -147,7 +155,38 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
   const teams = meta?.teams ?? [];
   const reasonOptions = meta?.reasonOptions ?? [];
   const sortedStages = useMemo(() => sortStagesByDate(stages), [stages]);
+  const editingStage = useMemo(() => stages.find((item) => item.id === editingStageId) ?? null, [editingStageId, stages]);
   const activeCompletedStage = useMemo(() => findActiveCompletedStage(stages), [stages]);
+  const allowBlankForemanTeamIds = useMemo(
+    () =>
+      editingStage
+        ? editingStage.teams
+            .filter((team) => team.status === "ATIVA" && !team.programmedForemanPersonId)
+            .map((team) => team.teamId)
+        : [],
+    [editingStage],
+  );
+  const canSubmitTeamForemen = useMemo(() => {
+    const blankAllowed = new Set(allowBlankForemanTeamIds);
+    return form.teamIds.every((teamId) => Boolean(form.teamForemanIds[teamId]) || blankAllowed.has(teamId));
+  }, [allowBlankForemanTeamIds, form.teamForemanIds, form.teamIds]);
+  // Janela das datas bloqueadas: um mes para tras (corrigir data aceita passado)
+  // e um ano para frente. Fica dentro do teto de 400 dias do endpoint.
+  const blockedDatesWindow = useMemo(
+    () => ({ from: addDaysIso(today, -30), to: addDaysIso(today, 365) }),
+    [today],
+  );
+  const { blockedDates } = useActiveBlockedDates({
+    accessToken,
+    from: blockedDatesWindow.from,
+    to: blockedDatesWindow.to,
+  });
+  // Municipio do projeto: e ele que decide se uma data MUNICIPAL avisa aqui.
+  const projectCity = useMemo(
+    () => meta?.projects.find((item) => item.id === projectId)?.city ?? null,
+    [meta?.projects, projectId],
+  );
+
   const addTeamAvailableTeams = addTeamTarget
     ? teams.filter((team) => !addTeamTarget.teams.some((active) => active.teamId === team.id && active.status === "ATIVA"))
     : [];
@@ -157,16 +196,24 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
   function openAddTeamModal(stage: ProgrammingStage) {
     setAddTeamTarget(stage);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
   }
 
   function closeAddTeamModal() {
     setAddTeamTarget(null);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
+  }
+
+  function selectTeamToAdd(teamId: string) {
+    const selectedTeam = teams.find((team) => team.id === teamId);
+    setAddTeamSelectedId(teamId);
+    setAddTeamSelectedForemanId(selectedTeam?.foremanId ?? "");
   }
 
   async function confirmAddTeam() {
-    if (!addTeamTarget || !addTeamSelectedId) return;
-    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId);
+    if (!addTeamTarget || !addTeamSelectedId || !addTeamSelectedForemanId) return;
+    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, addTeamSelectedForemanId);
     if (result.ok) closeAddTeamModal();
   }
 
@@ -191,6 +238,11 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         ? {
             ...createInitialForm(today),
             teamIds: lastStage.teams.filter((team) => team.status === "ATIVA").map((team) => team.teamId),
+            teamForemanIds: Object.fromEntries(
+              lastStage.teams
+                .filter((team) => team.status === "ATIVA")
+                .map((team) => [team.teamId, team.programmedForemanPersonId ?? ""]),
+            ),
             serviceDescription: lastStage.serviceDescription,
             period: lastStage.period ?? "INTEGRAL",
             startTime: (lastStage.startTime ?? "").slice(0, 5),
@@ -228,6 +280,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       trafoQty: form.trafoQty,
       redeQty: form.redeQty,
       note: form.note,
+      historyReason: form.historyReason,
+      teamForemanIds: form.teamForemanIds,
       // Sem a permissao a checkbox nem e renderizada; forcar false aqui garante
       // que nenhum caminho de reset/heranca de formulario mande a flag invisivel
       // para o backend (padrao de permissao granular do CLAUDE.md, item 2).
@@ -237,9 +291,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
     };
 
     if (editingStageId) {
-      const currentStage = stages.find((item) => item.id === editingStageId);
       const result = await actions.saveStage(
-        { ...baseFields, executionDate: form.executionDate, programmingId: editingStageId, expectedUpdatedAt: currentStage?.updatedAt },
+        { ...baseFields, executionDate: form.executionDate, programmingId: editingStageId, expectedUpdatedAt: editingStage?.updatedAt },
         true,
       );
       if (result.ok) cancelEdit();
@@ -425,6 +478,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         </div>
       ) : null}
 
+      <BlockedDateNotice blockedDates={blockedDates} isoDate={form.executionDate} cityName={projectCity} />
+
       <div className={styles.board}>
         <StageFormPanel
           form={form}
@@ -443,8 +498,11 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
               campoEletrico: form.campoEletrico,
               serviceDescription: form.serviceDescription,
             }) && isTimeRangeValid(form.startTime, form.endTime)
+              && canSubmitTeamForemen
           }
           teamOptions={teams}
+          foremanOptions={meta?.foremen ?? []}
+          allowBlankForemanTeamIds={allowBlankForemanTeamIds}
           sgdTypes={meta?.sgdTypes ?? []}
           electricalEqCatalog={meta?.electricalEqCatalog ?? []}
           supportOptions={meta?.supportOptions ?? []}
@@ -494,6 +552,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         reasonNotes={postponeReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice blockedDates={blockedDates} isoDate={postponeDate} cityName={projectCity} />
+        }
         onClose={() => setPostponeTarget(null)}
         onConfirm={confirmPostpone}
         onModeChange={setPostponeMode}
@@ -523,6 +584,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         reasonNotes={postponeTeamReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice blockedDates={blockedDates} isoDate={postponeTeamDate} cityName={projectCity} />
+        }
         onClose={() => setPostponeTeamTarget(null)}
         onConfirm={confirmPostponeTeam}
         onNewDateChange={setPostponeTeamDate}
@@ -559,6 +623,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         newDate={correctDateValue}
         reason={correctDateReason}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice blockedDates={blockedDates} isoDate={correctDateValue} cityName={projectCity} />
+        }
         onClose={() => setCorrectDateTarget(null)}
         onConfirm={confirmCorrectDate}
         onNewDateChange={setCorrectDateValue}
@@ -592,7 +659,9 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
       <AddTeamModal
         isOpen={Boolean(addTeamTarget)}
         availableTeams={addTeamAvailableTeams}
+        foremanOptions={meta?.foremen ?? []}
         selectedTeamId={addTeamSelectedId}
+        selectedForemanId={addTeamSelectedForemanId}
         isSubmitting={actions.isSubmitting}
         executionDate={addTeamTarget?.executionDate ?? null}
         startTime={addTeamTarget?.startTime ?? null}
@@ -600,7 +669,8 @@ export function ProjectPlanView(props: { accessToken: string | null; projectId: 
         check={addTeamCheck}
         onClose={closeAddTeamModal}
         onConfirm={confirmAddTeam}
-        onSelectedTeamIdChange={setAddTeamSelectedId}
+        onSelectedTeamIdChange={selectTeamToAdd}
+        onSelectedForemanIdChange={setAddTeamSelectedForemanId}
       />
 
       <DetailsModal target={detailsTarget} onClose={() => setDetailsTarget(null)} />

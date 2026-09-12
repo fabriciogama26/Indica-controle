@@ -8,6 +8,7 @@ import {
   fetchProgrammingSgdTypes,
   fetchProgrammingSupportItems,
   fetchProgrammingWorkCompletionCatalog,
+  fetchForemen,
   fetchProjects,
   fetchTeams,
 } from "@/server/modules/programacao-normalizada/catalogs";
@@ -27,9 +28,10 @@ export async function GET(request: NextRequest) {
   const authorizationError = await authorizeProgrammingNormalizadaAction(resolution, "read");
   if (authorizationError) return authorizationError;
 
-  const [projects, teams, sgdTypes, eqCatalog, workCompletionCatalog, reasonOptions, supportOptions] = await Promise.all([
+  const [projects, teams, foremen, sgdTypes, eqCatalog, workCompletionCatalog, reasonOptions, supportOptions] = await Promise.all([
     fetchProjects(resolution.supabase, resolution.appUser.tenant_id),
     fetchTeams(resolution.supabase, resolution.appUser.tenant_id),
+    fetchForemen(resolution.supabase, resolution.appUser.tenant_id),
     fetchProgrammingSgdTypes(resolution.supabase, resolution.appUser.tenant_id),
     fetchProgrammingEqCatalog(resolution.supabase, resolution.appUser.tenant_id),
     fetchProgrammingWorkCompletionCatalog(resolution.supabase, resolution.appUser.tenant_id),
@@ -55,6 +57,10 @@ export async function GET(request: NextRequest) {
       district: normalizeText(item.neighborhood),
     })),
     teams,
+    foremen: foremen.map((item) => ({
+      id: item.id,
+      name: normalizeText(item.nome),
+    })),
     sgdTypes: sgdTypes.map((item) => ({
       id: item.id,
       description: normalizeText(item.description),

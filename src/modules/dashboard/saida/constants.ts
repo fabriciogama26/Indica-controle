@@ -2,7 +2,6 @@ import type { FilterState, FormState } from "./types";
 import { toIsoDate } from "./utils";
 
 export const HISTORY_PAGE_SIZE = 15;
-export const HISTORY_EXPORT_PAGE_SIZE = 100;
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {
   operationKind: "Operacao",
@@ -68,6 +67,8 @@ export const INITIAL_FILTERS: FilterState = {
   teamId: "",
   projectId: "",
   materialCode: "",
+  categoryId: "",
+  subcategoryId: "",
   entryType: "TODOS",
   reversalStatus: "TODOS",
 };

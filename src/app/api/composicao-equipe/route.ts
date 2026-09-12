@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { SupabaseClient } from "@supabase/supabase-js";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import {
   buildConcurrencyConflictResponse,
   hasUpdatedAtConflict,
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type CompositionRow = {
   id: string;
@@ -18,6 +19,7 @@ type CompositionRow = {
   project_service_center_snapshot: string | null;
   team_name_snapshot: string;
   vehicle_plate_snapshot: string | null;
+  foreman_person_id: string | null;
   foreman_name_snapshot: string | null;
   work_status?: "WORKING" | "NOT_WORKING";
   sector: string;
@@ -83,7 +85,6 @@ type TeamRow = {
   name: string;
   vehicle_plate: string | null;
   service_center_id: string | null;
-  foreman_person_id: string;
   ativo: boolean;
 };
 
@@ -143,6 +144,7 @@ type CompositionPayload = {
   projectId?: string;
   projectIds?: unknown;
   teamId?: string;
+  foremanPersonId?: string;
   workStatus?: string;
   sector?: string;
   yard?: string | null;
@@ -384,6 +386,7 @@ function mapComposition(
     projectServiceCenter: projectsWithMeasurement.map((project) => project.serviceCenter).filter(Boolean).join(", ") || (row.project_service_center_snapshot ?? ""),
     teamName: row.team_name_snapshot,
     vehiclePlate: row.vehicle_plate_snapshot ?? "",
+    foremanId: row.foreman_person_id,
     foremanName: row.foreman_name_snapshot ?? "",
     workStatus: row.work_status ?? "WORKING",
     sector: row.sector,
@@ -445,7 +448,7 @@ async function fetchProjectsByIds(supabase: SupabaseClient, tenantId: string, pr
 async function fetchTeamById(supabase: SupabaseClient, tenantId: string, teamId: string) {
   const { data, error } = await supabase
     .from("teams")
-    .select("id, name, vehicle_plate, service_center_id, foreman_person_id, ativo")
+    .select("id, name, vehicle_plate, service_center_id, ativo")
     .eq("tenant_id", tenantId)
     .eq("id", teamId)
     .maybeSingle<TeamRow>();
@@ -465,25 +468,11 @@ async function fetchTeamById(supabase: SupabaseClient, tenantId: string, teamId:
     serviceCenterName = normalizeText(serviceCenterResult.data?.name);
   }
 
-  let foremanPhone: string | null = null;
-  if (data.foreman_person_id) {
-    const foremanResult = await supabase
-      .from("people")
-      .select("phone")
-      .eq("tenant_id", tenantId)
-      .eq("id", data.foreman_person_id)
-      .eq("ativo", true)
-      .maybeSingle<{ phone: string | null }>();
-    foremanPhone = foremanResult.data?.phone ?? null;
-  }
-
   return {
     id: data.id,
     name: normalizeText(data.name),
     vehiclePlate: normalizeText(data.vehicle_plate),
     serviceCenterName,
-    foremanId: data.foreman_person_id,
-    foremanPhone,
   };
 }
 
@@ -541,7 +530,7 @@ async function fetchPeopleSnapshots(supabase: SupabaseClient, tenantId: string, 
 async function fetchCompositionById(supabase: SupabaseClient, tenantId: string, compositionId: string) {
   const { data, error } = await supabase
     .from("team_compositions")
-    .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by")
+    .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_person_id, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by")
     .eq("tenant_id", tenantId)
     .eq("id", compositionId)
     .maybeSingle<CompositionRow>();
@@ -784,22 +773,24 @@ export async function GET(request: NextRequest) {
 
     if (coverageDate) {
       const [teamsResult, compositionsResult] = await Promise.all([
-        supabase
+        loadAllRows<CoverageTeamRow>((from, to) => supabase
           .from("teams")
           .select("id")
           .eq("tenant_id", appUser.tenant_id)
           .eq("ativo", true)
           .order("name", { ascending: true })
-          .limit(5000)
-          .returns<CoverageTeamRow[]>(),
-        supabase
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<CoverageTeamRow[]>()),
+        loadAllRows<CoverageCompositionRow>((from, to) => supabase
           .from("team_compositions")
           .select("team_id, work_status")
           .eq("tenant_id", appUser.tenant_id)
           .eq("composition_date", coverageDate)
           .eq("is_active", true)
-          .limit(5000)
-          .returns<CoverageCompositionRow[]>(),
+          .order("team_id", { ascending: true })
+          .range(from, to)
+          .returns<CoverageCompositionRow[]>()),
       ]);
 
       if (teamsResult.error || compositionsResult.error) {
@@ -859,10 +850,8 @@ export async function GET(request: NextRequest) {
       }
 
       const userIds = Array.from(new Set((data ?? []).map((item) => item.created_by).filter((item): item is string => Boolean(item))));
-      const { data: users } = userIds.length
-        ? await supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
-        : { data: [] as AppUserRow[] };
-      const userMap = buildUserMap(users ?? []);
+      const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
+      const userMap = buildUserMap(users);
 
       return NextResponse.json({
         history: (data ?? []).map((entry) => ({
@@ -897,12 +886,10 @@ export async function GET(request: NextRequest) {
       }
 
       const userIds = [composition.created_by, composition.updated_by].filter((item): item is string => Boolean(item));
-      const { data: users } = userIds.length
-        ? await supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
-        : { data: [] as AppUserRow[] };
+      const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
       return NextResponse.json({
-        composition: mapComposition(composition, members, buildUserMap(users ?? []), compositionProjects),
+        composition: mapComposition(composition, members, buildUserMap(users), compositionProjects),
       });
     }
 
@@ -916,13 +903,14 @@ export async function GET(request: NextRequest) {
 
     let projectCompositionIds: string[] | null = null;
     if (projectId) {
-      const projectLinks = await supabase
+      const projectLinks = await loadAllRows<{ composition_id: string }>((from, to) => supabase
         .from("team_composition_projects")
         .select("composition_id")
         .eq("tenant_id", appUser.tenant_id)
         .eq("project_id", projectId)
-        .limit(5000)
-        .returns<Array<{ composition_id: string }>>();
+        .order("composition_id", { ascending: true })
+        .range(from, to)
+        .returns<Array<{ composition_id: string }>>());
 
       if (!projectLinks.error) {
         projectCompositionIds = Array.from(new Set((projectLinks.data ?? []).map((item) => item.composition_id)));
@@ -958,7 +946,7 @@ export async function GET(request: NextRequest) {
     const fetchCompositionPage = (skipWorkStatusFilter = false) => {
       let query = supabase
         .from("team_compositions")
-        .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by", { count: "exact" })
+        .select("id, composition_date, project_id, team_id, project_code_snapshot, project_service_center_snapshot, team_name_snapshot, vehicle_plate_snapshot, foreman_person_id, foreman_name_snapshot, work_status, sector, yard, start_time, notes, is_active, created_at, updated_at, created_by, updated_by", { count: "exact" })
         .eq("tenant_id", appUser.tenant_id)
         .eq("is_active", true);
 
@@ -1021,12 +1009,10 @@ export async function GET(request: NextRequest) {
     const userIds = Array.from(
       new Set(compositions.flatMap((item) => [item.created_by, item.updated_by]).filter((item): item is string => Boolean(item))),
     );
-    const [members, compositionProjects, usersResult] = await Promise.all([
+    const [members, compositionProjects, users] = await Promise.all([
       loadCompositionMembers(supabase, appUser.tenant_id, compositionIds),
       loadCompositionProjects(supabase, appUser.tenant_id, compositionIds),
-      userIds.length
-        ? supabase.from("app_users").select("id, display, login_name").eq("tenant_id", appUser.tenant_id).in("id", userIds).returns<AppUserRow[]>()
-        : Promise.resolve({ data: [] as AppUserRow[], error: null }),
+      fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds),
     ]);
 
     if (!members) {
@@ -1036,11 +1022,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao carregar projetos das composicoes." }, { status: 500 });
     }
 
-    if (usersResult.error) {
-      return NextResponse.json({ message: "Falha ao carregar usuarios das composicoes." }, { status: 500 });
-    }
-
-    const userMap = buildUserMap(usersResult.data ?? []);
+    const userMap = buildUserMap(users);
     const memberMap = new Map<string, MemberRow[]>();
     for (const member of members) {
       memberMap.set(member.composition_id, [...(memberMap.get(member.composition_id) ?? []), member]);
@@ -1092,6 +1074,11 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "composicao-equipe", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const { supabase, appUser } = resolution;
   const body = (await request.json().catch(() => ({}))) as CompositionPayload;
   const compositionId = normalizeUuid(body.id);
@@ -1101,6 +1088,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   const payloadProjectIds = normalizeUuidList(body.projectIds);
   const projectIds = payloadProjectIds.length ? payloadProjectIds : (legacyProjectId ? [legacyProjectId] : []);
   const teamId = normalizeUuid(body.teamId);
+  const foremanPersonId = normalizeUuid(body.foremanPersonId);
   const workStatus = normalizeWorkStatus(body.workStatus);
   const sector = normalizeText(body.sector) || "OBRA";
   const startTime = normalizeTime(body.startTime);
@@ -1119,6 +1107,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     !compositionDate ? "Data" : "",
     workStatus === "WORKING" && !projectIds.length ? "Projeto" : "",
     !teamId ? "Equipe" : "",
+    !foremanPersonId ? "Encarregado" : "",
     !workStatus ? "Situacao da equipe" : "",
     !sector ? "Setor" : "",
     !startTime ? "Hora inicial" : "",
@@ -1140,6 +1129,10 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "Projeto ou equipe invalida para salvar." }, { status: 400 });
   }
 
+  if (!foremanPersonId) {
+    return NextResponse.json({ message: "Campos obrigatorios pendentes: Encarregado." }, { status: 400 });
+  }
+
   if (projectIds.length !== new Set(projectIds).size) {
     return NextResponse.json({ message: "O mesmo projeto nao pode aparecer duas vezes na composicao." }, { status: 400 });
   }
@@ -1154,9 +1147,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   }
 
   const [selectedProjects, team, peopleMap] = await Promise.all([
-    workStatus === "NOT_WORKING"
-      ? Promise.resolve([] as Array<{ id: string; code: string; serviceCenter: string }>)
-      : fetchProjectsByIds(supabase, appUser.tenant_id, projectIds),
+    fetchProjectsByIds(supabase, appUser.tenant_id, projectIds),
     fetchTeamById(supabase, appUser.tenant_id, teamId),
     fetchPeopleSnapshots(supabase, appUser.tenant_id, uniqueMemberPersonIds),
   ]);
@@ -1164,11 +1155,8 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   if (!selectedProjects) {
     return NextResponse.json({ message: "Falha ao validar projetos da composicao." }, { status: 500 });
   }
-  if (workStatus === "WORKING" && selectedProjects.length !== projectIds.length) {
+  if (selectedProjects.length !== projectIds.length) {
     return NextResponse.json({ message: "Um ou mais projetos sao invalidos ou inativos para o tenant atual." }, { status: 422 });
-  }
-  if (workStatus === "NOT_WORKING" && projectIds.length) {
-    return NextResponse.json({ message: "Projeto nao deve ser informado quando a equipe nao atuou." }, { status: 400 });
   }
   const primaryProject = selectedProjects[0] ?? null;
   if (!team) {
@@ -1188,6 +1176,20 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "Uma ou mais pessoas estao inativas ou nao pertencem ao tenant atual." }, { status: 422 });
   }
 
+  const foreman = peopleMap.get(foremanPersonId);
+  if (!foreman) {
+    return NextResponse.json(
+      { message: "O encarregado selecionado deve constar como integrante da composicao." },
+      { status: 400 },
+    );
+  }
+  if (!isForemanRole(foreman.jobTitleName)) {
+    return NextResponse.json(
+      { message: "A pessoa selecionada como encarregado nao possui cargo de Encarregado." },
+      { status: 422 },
+    );
+  }
+
   const memberRows = rawMembers
     .map((member, index) => {
       const personId = normalizeUuid(member.personId) as string;
@@ -1201,7 +1203,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
         person_name_snapshot: person.name,
         matriculation_snapshot: person.matriculation,
         cpf_snapshot: person.cpf,
-        phone_snapshot: team.foremanPhone,
+        phone_snapshot: foreman.phone,
         job_title_snapshot: person.jobTitleName,
         is_present: member.isPresent !== false,
         sort_order: index + 1,
@@ -1232,12 +1234,12 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     workStatus === "NOT_WORKING"
     && (
       memberRows.length !== 1
-      || memberRows[0]?.person_id !== team.foremanId
+      || memberRows[0]?.person_id !== foremanPersonId
       || memberRows[0]?.is_present !== false
     )
   ) {
     return NextResponse.json(
-      { message: "Equipe que nao atuou deve possuir somente o encarregado da equipe, marcado como nao presente." },
+      { message: "Equipe que nao atuou deve possuir somente o encarregado selecionado, marcado como nao presente." },
       { status: 400 },
     );
   }
@@ -1285,6 +1287,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     addChange(changes, "compositionDate", currentComposition.composition_date, compositionDate);
     addChange(changes, "projectCode", currentComposition.project_code_snapshot, selectedProjects.map((project) => project.code).join(", ") || null);
     addChange(changes, "teamName", currentComposition.team_name_snapshot, team.name);
+    addChange(changes, "foremanName", currentComposition.foreman_name_snapshot, foreman.name);
     addChange(changes, "workStatus", currentComposition.work_status ?? "WORKING", workStatus);
     addChange(changes, "sector", currentComposition.sector, sector);
     addChange(changes, "yard", currentComposition.yard, yard);
@@ -1298,9 +1301,10 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     p_actor_user_id: appUser.id,
     p_composition_id: method === "PUT" ? compositionId : null,
     p_composition_date: compositionDate,
-    p_project_id: workStatus === "NOT_WORKING" ? null : primaryProject?.id ?? null,
-    p_project_ids: workStatus === "NOT_WORKING" ? [] : selectedProjects.map((project) => project.id),
+    p_project_id: primaryProject?.id ?? null,
+    p_project_ids: selectedProjects.map((project) => project.id),
     p_team_id: teamId,
+    p_foreman_person_id: foremanPersonId,
     p_work_status: workStatus,
     p_sector: sector,
     p_start_time: startTime,
@@ -1324,6 +1328,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
       || normalizedError.includes("p_yard")
       || normalizedError.includes("p_work_status")
       || normalizedError.includes("p_project_ids")
+      || normalizedError.includes("p_foreman_person_id")
       || rpcError.code === "PGRST202";
     const detail = [rawMessage, rawDetails, rawHint].filter(Boolean).join(" ");
 
@@ -1338,7 +1343,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     }
 
     const message = isMissingOrStaleRpc
-      ? "Falha ao salvar composicao de equipe. Aplique a migration 266_allow_multiple_projects_team_composition.sql e recarregue o cache do Supabase/PostgREST."
+      ? "Falha ao salvar composicao de equipe. Aplique a migration 373_team_composition_foreman_override.sql e recarregue o cache do Supabase/PostgREST."
       : `Falha ao salvar composicao de equipe.${detail ? ` Detalhe: ${detail}` : ""}`;
 
     return NextResponse.json(
@@ -1353,14 +1358,15 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
 
   const saveResult = (rpcData ?? {}) as SaveTeamCompositionRpcResult;
   if (saveResult.success !== true) {
-    const requiresProjectlessMigration = workStatus === "NOT_WORKING"
-      && ["INVALID_PROJECT", "PROJECT_REQUIRED"].includes(normalizeText(saveResult.reason).toUpperCase());
+    const requiresOptionalProjectMigration = workStatus === "NOT_WORKING"
+      && projectIds.length > 0
+      && normalizeText(saveResult.reason).toUpperCase() === "PROJECT_NOT_ALLOWED";
     return NextResponse.json(
       {
-        message: requiresProjectlessMigration
-          ? "Aplique a migration 225_allow_not_working_composition_without_project.sql para salvar equipe sem atuacao e sem Projeto."
+        message: requiresOptionalProjectMigration
+          ? "Aplique a migration 405_allow_not_working_composition_with_optional_project.sql para salvar equipe sem atuacao com Projeto opcional."
           : saveResult.message ?? "Falha ao salvar composicao de equipe.",
-        reason: requiresProjectlessMigration ? "RPC_SCHEMA_OUTDATED" : saveResult.reason ?? null,
+        reason: requiresOptionalProjectMigration ? "RPC_SCHEMA_OUTDATED" : saveResult.reason ?? null,
       },
       { status: Number(saveResult.status ?? 400) },
     );
@@ -1383,6 +1389,7 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
         compositionDate: { from: null, to: compositionDate },
         projectCode: { from: null, to: selectedProjects.map((project) => project.code).join(", ") || null },
         teamName: { from: null, to: team.name },
+        foremanName: { from: null, to: foreman.name },
         workStatus: { from: null, to: workStatus },
         members: { from: null, to: `${memberRows.length} integrante(s)` },
       }

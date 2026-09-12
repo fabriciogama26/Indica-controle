@@ -30,6 +30,7 @@ Filtros, auto-complete e listagem
   - Data inicio
   - Data fim
   - Status (`FECHADA`, `ABERTA`, `TODOS` ativos)
+  - Tipo (`Todos`, `Obras`, `Manutencao`), com a mesma regra do Dashboard Carteira Operacional
   - Tipo de servico do Projeto
   - Projeto, com selecao por `Adicionar` e suporte a mais de um projeto
   - Equipe, com selecao por `Adicionar` e suporte a mais de uma equipe
@@ -203,3 +204,24 @@ Atualizacao 2026-08-11 - Cartao `Meta financeira total`, ajuda nos cartoes e CSV
   derivado das mesmas linhas ja filtradas por `tenant_id`.
 - Pendencia conhecida fora do escopo desta tela: outras telas ainda gravam moeda formatada no
   CSV (ex.: `meta/MetaPageView.tsx`), com o mesmo problema de soma no Excel.
+
+Atualizacao 2026-08-21 - Filtro `Tipo` igual ao Dashboard Carteira Operacional:
+- Arquivos alterados:
+  - `src/app/api/apuracao-fator-minimo/route.ts`
+  - `src/modules/dashboard/apuracao-fator-minimo/MinimumFactorAnalysisPageView.tsx`
+  - `docs/Tela_Apuracao_Fator_Minimo_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/campos tocados: `FilterState`, `buildQuery`, `clearFilters`,
+  `normalizeServiceScope`, `isMaintenanceServiceType`, `fetchEligibleProjects` e
+  `buildAnalysis`.
+- Antes: a tela tinha apenas o filtro `Tipo de servico`, vinculado ao cadastro especifico do
+  projeto, e nao oferecia o recorte amplo `Todos / Obras / Manutencao` usado na Carteira
+  Operacional.
+- Depois: o card `Filtros` possui tambem o filtro `Tipo` com `Todos`, `Obras` e
+  `Manutencao`. O valor e enviado em toda simulacao e tambem no detalhe da linha aberta.
+- Depois: a API aplica o recorte antes de buscar as ordens de Medicao, filtrando os projetos
+  elegiveis por `project_with_labels.service_type_text`.
+- Regra: `Manutencao` casa por texto normalizado contendo `MANUTENCAO` ou `EMERGENCIAL`;
+  `Obras` e o complemento; `Todos` preserva a leitura misturada.
+- Multi-tenant: nao houve schema, migration, grant ou permissao nova; todas as consultas
+  continuam filtradas pelo `tenant_id` do usuario autenticado.

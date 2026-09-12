@@ -1,0 +1,1 @@
+export { SerialPolicyPageView } from "./SerialPolicyPageView";

@@ -76,6 +76,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
   gap: 12px;
+  min-height: 236px;
 }
 
 .coverageCard {
@@ -127,6 +128,15 @@
 .coverageMessage {
   margin: 0;
   color: #5b6a85;
+}
+
+.coverageMessageLoading {
+  min-height: 236px;
+  border-radius: 16px;
+  border: 1px dashed rgba(23, 52, 122, 0.16);
+  background: #f6f8fc;
+  display: grid;
+  place-items: center;
 }
 
 .formGrid,
@@ -329,6 +339,10 @@
   border-radius: 16px;
   border: 1px solid rgba(23, 52, 122, 0.12);
   background: #ffffff;
+}
+
+.compositionsTableWrapper {
+  min-height: 360px;
 }
 
 .table {

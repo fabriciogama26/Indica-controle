@@ -3,7 +3,8 @@ Tela: Atividades SaaS
 Visao geral
 -----------
 - Tela de cadastro de atividades para contratos e servicos por tenant.
-- Permite registrar e editar atividades com foco em: `codigo`, `descricao`, `tipo`, `categoria`, `grupo`, `valor`, `pontos` e `unidade`.
+- Permite registrar e editar atividades com foco em: `codigo`, `Cod. SAP`, `descricao`, `tipo`, `categoria`, `grupo`, `valor` herdado do grupo, `pontos` e `unidade`.
+- Cadastro, lista, detalhes e exportacao exibem `Cod. SAP` com origem em `service_activities.code_idd`.
 - `grupo` e obrigatorio no cadastro/edicao; `alcance` permanece opcional.
 - Lista atividades cadastradas com filtro por codigo, descricao, tipo, categoria e status (`Ativo/Inativo`).
 - Lista atividades com paginacao no servidor e botao `Exportar Excel (CSV)`.
@@ -27,6 +28,9 @@ Arquitetura
 - Banco (desativacao por escopo da carga 147): `supabase/migrations/149_deactivate_service_activities_not_in_147.sql`
 - Banco (cadastro/edicao de pontos): `supabase/migrations/171_update_service_activity_voice_point_rpc.sql`
 - Banco (grupo obrigatorio em atividades): `supabase/migrations/180_require_service_activity_group_in_rpc.sql`
+- Banco (cadastro/edicao de Cod. SAP): `supabase/migrations/372_update_service_activity_code_idd_rpc.sql`
+- Banco (correcao de drift do Cod. SAP): `supabase/migrations/406_fix_service_activities_code_idd_text.sql`
+- Banco (valor por grupo): `supabase/migrations/411_activity_groups_unit_value_source.sql`
 - Banco (RPC transacional de escrita/status): `supabase/migrations/077_create_admin_write_rpcs.sql`
 - Navegacao e guard de acesso: `src/components/layout/AppShell.tsx`
 - Guard de rota por permissao: `src/lib/auth/authorization.ts`
@@ -40,12 +44,14 @@ Cadastro
   - `Tipo`
   - `Categoria`
   - `Grupo`
-  - `Valor`
   - `Pontos`
   - `Unidade`
+- Campo opcional:
+  - `Cod. SAP`
 - Regras:
   - `Codigo` e salvo em caixa alta.
-  - `Valor` deve ser numerico e maior ou igual a zero.
+  - `Cod. SAP` e opcional; texto vazio e salvo como `NULL`.
+  - `Valor` e preenchido automaticamente pelo `Grupo` selecionado, a partir de `activity_groups.unit_value`.
   - `Pontos` deve ser numerico e maior que zero.
   - `Grupo` deve ser preenchido.
   - `Tipo` deve existir e estar ativo em `team_types` no mesmo tenant.
@@ -70,6 +76,7 @@ Filtros, auto-complete e listagem
 - As opcoes de `Categoria` sao carregadas em ordem alfabetica pelo nome.
 - Listagem em tabela com colunas:
   - `Codigo`
+  - `Cod. SAP`
   - `Descricao`
   - `Tipo`
   - `Categoria`
@@ -269,9 +276,9 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
-  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao com `Grupo`, `Alcance` e `Pontos`, filtros (incluindo `Status`), listagem paginada com `Pontos`, detalhes com `Grupo`, `Alcance` e `Pontos`, exportacao CSV, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
+  - Responsavel por: estado da tela, metadados de tipo/categoria, cadastro/edicao com `Cod. SAP`, `Grupo`, `Alcance` e `Pontos`, filtros (incluindo `Status`), listagem paginada com `Pontos` e `Cod. SAP`, detalhes com `Grupo`, `Alcance`, `Pontos` e `Cod. SAP`, exportacao CSV, historico e cancelamento/ativacao, incluindo envio de `expectedUpdatedAt` e refresh em caso de conflito.
 - Caminho: `src/app/api/activities/route.ts`
-  - Responsavel por: validar payload, validar `team_type_id`, `category_id`, `group` e `voicePoint`, listar com paginacao/historico, retornar `Grupo`, `Alcance` e `voicePoint` da atividade, aplicar filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
+  - Responsavel por: validar payload, validar `team_type_id`, `category_id`, `group` e `voicePoint`, normalizar `codeIdd`, listar com paginacao/historico, retornar `Grupo`, `Alcance`, `voicePoint` e `code_idd` da atividade, aplicar filtro opcional por status (`ativo`), executar pre-check de codigo e delegar cadastro/edicao/status para as RPCs `save_service_activity_record` e `set_service_activity_record_status`.
 - Caminho: `src/app/api/activities/meta/route.ts`
   - Responsavel por: retornar opcoes de `Tipo` (`team_types`) e `Categoria` (`types_service_activities`) ativas do tenant, ordenando categorias alfabeticamente por nome.
 
@@ -298,6 +305,8 @@ Constantes e configuracoes
   - Responsavel por: atualizar `save_service_activity_record` para persistir `voice_point` no cadastro/edicao e manter historico por `p_changes`.
 - Caminho: `supabase/migrations/180_require_service_activity_group_in_rpc.sql`
   - Responsavel por: atualizar `save_service_activity_record` para rejeitar cadastro/edicao de atividade sem `group_name`, mantendo `scope` opcional.
+- Caminho: `supabase/migrations/372_update_service_activity_code_idd_rpc.sql`
+  - Responsavel por: atualizar `save_service_activity_record` para persistir `code_idd` no cadastro/edicao e manter historico por `p_changes`.
 - Caminho: `supabase/migrations/077_create_admin_write_rpcs.sql`
   - Responsavel por: criar `save_service_activity_record` e `set_service_activity_record_status` para escrita transacional da tela de atividades.
 - Caminho: `src/lib/auth/authorization.ts`
@@ -383,3 +392,164 @@ Atualizacao 2026-08-15 - Formulario nao e mais apagado em conflito de concorrenc
 - Arquivos alterados: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`.
 - Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; baseline reduzido via
   `npm run lint:size:update`).
+
+Atualizacao 2026-08-17 - Cod. SAP no cadastro, lista e detalhes
+---------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/activities/route.ts`
+  - `src/modules/dashboard/atividades/ActivitiesPageView.tsx`
+  - `docs/Tela_Atividades_SaaS.txt`
+  - `TASKS.md`
+  - `file-size-baseline.json`
+  - `supabase/migrations/372_update_service_activity_code_idd_rpc.sql`
+  - `supabase/migrations/README.txt`
+- Funcoes/hooks/constantes tocadas:
+  - `ActivityItem.codeIdd`
+  - `ActivityFormState.codeIdd`
+  - `buildActivitiesCsv`
+  - `handleSubmit`
+  - `GET /api/activities`
+  - `POST /api/activities`
+  - `PUT /api/activities`
+  - `ActivityRow.code_idd`
+  - `save_service_activity_record`
+- Comportamento antes/depois:
+  - Antes: `GET /api/activities` nao retornava `service_activities.code_idd`, a lista/modal de detalhes nao exibiam o codigo SAP e o formulario nao permitia cadastrar/editar esse campo.
+  - Depois: a API retorna `codeIdd`, o formulario permite cadastrar/editar `Cod. SAP`, a lista de Cadastro de Atividades exibe a coluna, o modal `Detalhes da Atividade` exibe o mesmo campo, e a exportacao CSV inclui `Cod. SAP`.
+  - Depois: alteracoes em `Cod. SAP` entram em `p_changes.codeIdd` e sao registradas em `app_entity_history` no historico da tela.
+  - Multi-tenant: leitura e escrita continuam filtradas por `tenant_id` derivado da sessao, sem confiar em dados do cliente; a migration 372 restringe a RPC nova a `service_role`.
+
+Cadastro em massa
+-----------------
+- Botao `Cadastro em massa` aparece no bloco de cadastro quando nao esta em modo de edicao, e fica desabilitado enquanto os catalogos da tela carregam.
+- Modelo CSV: `codigo;cod_sap;descricao;tipo_equipe;categoria;grupo;pontos;unidade;alcance`.
+- Colunas obrigatorias: `codigo`, `descricao`, `tipo_equipe`, `categoria`, `grupo`, `pontos` e `unidade`. `cod_sap` e `alcance` sao opcionais.
+- `tipo_equipe` e `categoria` sao informados pelo nome e resolvidos contra os catalogos ativos do tenant.
+- `valor` nao e informado no CSV: vem do cadastro do `grupo`; `pontos` exige valor maior que zero.
+- `codigo` e normalizado para maiusculo e codigo repetido dentro do arquivo e recusado.
+- Envio: `POST /api/activities` com `action = BATCH_IMPORT` e `rows`.
+- O backend revalida tipo, categoria e o pre-check de codigo duplicado (`precheck_activity_code_conflict`) antes de chamar `saveActivityViaRpc` linha a linha.
+- Erros parciais geram CSV de retorno com `linha`, `coluna`, `valor` e `erro`; as linhas validas sao salvas mesmo assim.
+- Infraestrutura compartilhada do cadastro em massa:
+  - Modal: `src/components/ui/MassImportModal.tsx` (3 etapas: baixar modelo, preencher, enviar).
+  - Orquestracao: `src/hooks/useMassImport.ts` (le o arquivo, chama o parser de dominio, envia o lote e monta o CSV de erros).
+  - Helpers de CSV: `src/lib/utils/massImport.ts` (`readMassImportCsv`, `buildMassImportTemplateCsv`, `createMassImportErrorReport`).
+  - O parser compartilhado respeita campos entre aspas com quebras de linha, para permitir descricoes longas em `alcance`.
+  - Teto por arquivo: `MASS_IMPORT_ROW_LIMIT` = 500 linhas (`src/lib/constants/massImport.ts`).
+
+Atualizacao 2026-08-25 - Cadastro em massa
+--------------------------------------------------------------------------------------------
+- `Atividades` passa a ter cadastro em massa por CSV, no mesmo padrao ja existente em `Materiais` e `Pessoas`.
+- Antes: so era possivel cadastrar uma atividade por vez pelo formulario.
+- Depois: o CSV cadastra ate 500 atividades por arquivo, com pre-validacao no frontend e CSV de erros por linha.
+- `src/app/api/activities/route.ts`: novo `importActivityBatch`, que reaproveita `parseActivityInput`, `fetchTeamTypeById`,
+  `fetchTypeServiceById`, `precheck_activity_code_conflict` e `saveActivityViaRpc`, com cache por id para nao repetir a mesma
+  consulta de catalogo a cada linha do arquivo.
+- `buildActivitiesCsv` saiu para `src/modules/dashboard/atividades/csv.ts` e os formatadores (`formatMoney`, `formatPoints`,
+  `toInputMoney`, `toInputPoints`, `formatHistoryValue`) para `src/modules/dashboard/atividades/formatters.ts`,
+  mantendo a view dentro do baseline.
+- Arquivos alterados/criados: `src/app/api/activities/route.ts`, `src/modules/dashboard/atividades/ActivitiesPageView.tsx`,
+  `src/modules/dashboard/atividades/massImport.ts`, `src/modules/dashboard/atividades/csv.ts`,
+  `src/modules/dashboard/atividades/formatters.ts`.
+- Validado com `npx tsc --noEmit`, `npm run lint` e `npm run build`. Validacao manual pendente:
+  (1) importar CSV valido e conferir as atividades na lista; (2) importar CSV com `pontos` igual a zero e conferir o CSV de erros;
+  (3) importar CSV com categoria inexistente e conferir a recusa da linha.
+
+Atualizacao 2026-08-31 - Tipo passa a ter tela propria de cadastro
+-----------------------------------------------------------------
+- Etapa 1 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo` de `Atividades`.
+- Nenhum arquivo de `Atividades` foi alterado nesta etapa: o campo `Tipo` ja era um `select` alimentado por
+  `team_types` atraves de `/api/activities/meta`, e continua igual.
+- Antes: o catalogo por tras do campo `Tipo` nao tinha tela nenhuma; incluir ou renomear um tipo exigia acesso direto ao banco.
+- Depois: a tela `/tipo-equipe` (Cadastro Base) cadastra, edita, cancela/ativa e audita esse catalogo.
+  Detalhe completo em `docs/Tela_Tipo_Equipe_SaaS.txt`.
+- A tela chegou a ser publicada como `/tipo-atividade` (migration `401`), mas foi consolidada em `/tipo-equipe`
+  pela migration `402`: `Tipo de Atividade` e `Tipo de Equipe` sao a MESMA informacao, as duas liam
+  `public.team_types`. O campo `Tipo` de `Atividades` e o campo `Tipo` de `Equipes` compartilham o catalogo.
+- Efeito colateral esperado no formulario: um tipo cancelado em `/tipo-equipe` some do `select` `Tipo`, porque
+  `/api/activities/meta` ja filtrava por `ativo = true`. Para evitar que uma atividade antiga fique impossivel de
+  reeditar, a RPC `set_team_type_record_status` recusa o cancelamento (`TEAM_TYPE_IN_USE`) enquanto houver atividade
+  ativa apontando para o tipo.
+- Situacao dos outros dois campos nesta etapa:
+  - `Categoria`: continua lendo `types_service_activities`, ainda sem tela (etapa 2).
+  - `Grupo`: continua texto livre em `service_activities.group_name` (etapa 3).
+
+Atualizacao 2026-08-31 - Categoria passa a ter tela propria de cadastro
+-----------------------------------------------------------------------
+- Etapa 2 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo`.
+- Nenhum arquivo de `Atividades` foi alterado nesta etapa: o campo `Categoria` ja era um `select`
+  alimentado por `types_service_activities` atraves de `/api/activities/meta`, e continua igual.
+- Antes: o catalogo por tras do campo `Categoria` nao tinha tela nenhuma; incluir ou renomear uma
+  categoria exigia acesso direto ao banco.
+- Depois: a tela `/categoria-atividade` (Cadastro Base) cadastra, edita, cancela/ativa e audita esse
+  catalogo. Detalhe completo em `docs/Tela_Categoria_Atividade_SaaS.txt`.
+- Nao foi reaproveitada a rota `/tipo-servico`: aquele placeholder e de `project_service_types`, o Tipo
+  de Servico do PROJETO, outro dominio com outros leitores.
+- Efeito colateral esperado no formulario: uma categoria cancelada em `/categoria-atividade` some do
+  `select` `Categoria`, porque `/api/activities/meta` ja filtrava por `ativo = true`. Como `Categoria` e
+  campo obrigatorio, a RPC `set_activity_category_record_status` recusa o cancelamento
+  (`ACTIVITY_CATEGORY_IN_USE`) enquanto houver atividade ativa apontando para a categoria.
+- Situacao do campo restante:
+  - `Grupo`: continua texto livre em `service_activities.group_name` (etapa 3).
+
+Atualizacao 2026-08-31 - Grupo passa a ser catalogo (conclui as 3 etapas)
+-------------------------------------------------------------------------
+- Etapa 3 do trabalho de dar tela de Cadastro Base aos campos `Tipo`, `Categoria` e `Grupo`.
+  Diferente das etapas 1 e 2, esta ALTERA a tela `Atividades`.
+- Antes: `Grupo` era `input` de texto livre gravado em `service_activities.group_name`; cada usuario
+  digitava a sua variante, sem catalogo nem validacao.
+- Depois: `Grupo` e `select` obrigatorio alimentado pela tabela nova `activity_groups`, mantida em
+  `/grupo-atividade`. Detalhe completo em `docs/Tela_Grupo_Atividade_SaaS.txt`.
+- `service_activities` ganhou `group_id` (FK composta com `tenant_id`), e `group_name` PERMANECE como
+  snapshot do nome escolhido. Isso preserva intactos a RPC de faturamento minimo (`212`, que casa por
+  `normalize_minimum_billing_token(group_name)`), `/api/locacao/activities/catalog` e
+  `/api/apuracao-fator-minimo`.
+- Quem grava as duas colunas e a RPC: a tela manda so o id e `save_service_activity_record` resolve o nome
+  no catalogo, entao nao existe par id/nome inconsistente.
+- Contrato da API mudou:
+  - `POST`/`PUT /api/activities` passam a exigir `groupId` no lugar de `group`.
+  - `GET /api/activities` devolve `groupId` e `groupName` (antes devolvia `group`).
+  - `GET /api/activities/meta` passa a devolver `groups`.
+  - Grupo invalido ou inativo devolve `422` com `INVALID_GROUP`.
+- Importacao em massa: a coluna `grupo` do CSV continua sendo o NOME, resolvido contra o catalogo. Nome fora
+  do catalogo agora e recusado com "Grupo invalido ou inativo" em vez de virar um grupo novo em texto.
+- Efeito colateral esperado: um grupo cancelado em `/grupo-atividade` some do `select`. Como `Grupo` e
+  obrigatorio, a RPC `set_activity_group_record_status` recusa o cancelamento (`ACTIVITY_GROUP_IN_USE`)
+  enquanto houver atividade ativa vinculada.
+- Renomear um grupo na tela de cadastro propaga o novo nome para o `group_name` das atividades vinculadas.
+- `CatalogSelectField` foi extraido de `ActivitiesPageView`: os campos `Tipo`, `Categoria` e `Grupo` tinham
+  marcacao identica. A extracao devolveu o espaco do campo novo — o arquivo caiu de 1267 para 1244 linhas e
+  o baseline do ratchet foi travado para baixo com `npm run lint:size:update`.
+- Com esta etapa, os tres campos de catalogo de `Atividades` tem tela propria em `Cadastro Base`:
+  `Tipo` -> `/tipo-equipe`, `Categoria` -> `/categoria-atividade`, `Grupo` -> `/grupo-atividade`.
+
+Atualizacao 2026-09-01 - CSV de erros do cadastro em massa
+----------------------------------------------------------
+- Ajustado o tratamento de erro do cadastro em massa de `Atividades` para nao retornar apenas
+  "Falha ao salvar atividade." quando a RPC `save_service_activity_record` falha tecnicamente.
+- Depois: erros conhecidos de salvamento sao mapeados para mensagens especificas e codigos de dominio:
+  `ACTIVITY_RPC_SCHEMA_MISMATCH`, `ACTIVITY_CODE_IDD_TYPE_MISMATCH`, `DUPLICATE_ACTIVITY_CODE`,
+  `INVALID_TEAM_TYPE`, `INVALID_CATEGORY`, `INVALID_GROUP` e `INVALID_ACTIVITY`.
+- Depois: o CSV de erros aponta a coluna mais provavel (`codigo`, `tipo_equipe`, `categoria`, `grupo`,
+  `cod_sap`, `dados` ou `salvamento`) conforme o codigo retornado pela API.
+- Causa real do erro `42804`: em banco vivo, `service_activities.code_idd` estava como `bigint`, enquanto a
+  RPC e a tela tratam `Cod. SAP` como `text`. A migration `406_fix_service_activities_code_idd_text.sql`
+  converte a coluna para `text` e valida o tipo final.
+- Para `ACTIVITY_CODE_IDD_TYPE_MISMATCH`, a mensagem devolvida ao CSV inclui o `EVENT MESSAGE` do Postgres
+  com limite de tamanho, porque esse erro ja esta mapeado e o texto identifica a coluna com drift.
+- Analise do arquivo `modelo_atividades_cadastro_em_massa (1).csv` em 2026-09-01: o CSV tinha 129 linhas
+  reais e campos obrigatorios preenchidos, mas a coluna `alcance` continha textos multilinha entre aspas.
+  Antes da correcao, `readMassImportCsv` dividia o arquivo por `\n` antes de interpretar aspas, gerando
+  centenas de linhas falsas com campos obrigatorios vazios. Depois: `parseCsvRows` interpreta o CSV inteiro
+  e so separa registros fora de aspas.
+- Sem mudanca de RLS, grants ou permissao. O `tenant_id` continua derivado da sessao no backend.
+
+Atualizacao 2026-09-02 - Valor passa a vir do Grupo
+---------------------------------------------------
+- `activity_groups` passa a carregar `unit_value`, mantido pela tela `/grupo-atividade`.
+- Em `Atividades`, o campo `Valor` continua visivel para conferencia, mas fica preenchido automaticamente pelo grupo selecionado e nao e editado diretamente.
+- `POST`/`PUT /api/activities` deixam de aceitar `value` no payload: o campo saiu de `CreateActivityPayload` e de `parseActivityInput` (o helper `normalizeDecimal` da rota ficou sem uso e foi removido) e o backend resolve o grupo ativo do tenant para usar `activity_groups.unit_value`.
+- A RPC `save_service_activity_record` continua gravando `service_activities.unit_value` como snapshot para faturamento, medicao, locacao e apuracao, mas a fonte de verdade passa a ser o cadastro de Grupos.
+- Cadastro em massa de Atividades deixa de exigir a coluna `valor`; o CSV informa `grupo` por nome e o valor e herdado do catalogo.
+- Arquivos alterados/criados: `src/modules/dashboard/atividades/ActivitiesPageView.tsx`, `src/modules/dashboard/atividades/massImport.ts`, `src/app/api/activities/route.ts`, `src/app/api/activities/meta/route.ts`, `supabase/migrations/411_activity_groups_unit_value_source.sql`.
+- Multi-tenant: leitura e escrita continuam filtradas por `tenant_id` derivado da sessao; `activity_groups.unit_value` e lido somente no tenant atual.

@@ -8,8 +8,8 @@ import {
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
-import { normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { allowsPendingSerialIdentification, normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 
 const WITHOUT_UMB_FILTER = "__SEM_UMB__";
 
@@ -17,10 +17,13 @@ type MaterialRow = {
   id: string;
   codigo: string;
   descricao: string;
+  category_id: string | null;
+  subcategory_id: string | null;
   umb: string | null;
   tipo: string;
   is_transformer: boolean;
   serial_tracking_type: SerialTrackingType | null;
+  allow_pending_serial_identification: boolean | null;
   unit_price: number;
   stock_minimum: number;
   stock_maximum: number | null;
@@ -48,6 +51,17 @@ type MaterialUmbOptionRow = {
   code: string;
 };
 
+type MaterialCategoryRow = {
+  id: string;
+  name: string;
+};
+
+type MaterialSubcategoryRow = {
+  id: string;
+  category_id: string;
+  name: string;
+};
+
 type AppUserRow = {
   id: string;
   display: string | null;
@@ -57,6 +71,8 @@ type AppUserRow = {
 type CreateMaterialPayload = {
   codigo: string;
   descricao: string;
+  categoryId?: string | null;
+  subcategoryId?: string | null;
   umb?: string | null;
   tipo: string;
   unitPrice?: string | number | null;
@@ -64,6 +80,7 @@ type CreateMaterialPayload = {
   stockMaximum?: string | number | null;
   isTransformer?: boolean;
   serialTrackingType?: SerialTrackingType | string | null;
+  allowPendingSerialIdentification?: boolean | null;
 };
 
 type MaterialBatchImportPayload = {
@@ -99,6 +116,8 @@ type HistoryChange = {
 type MaterialInput = {
   codigo: string;
   descricao: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
   umb: string | null;
   tipo: string;
   unitPrice: number;
@@ -106,6 +125,7 @@ type MaterialInput = {
   stockMaximum: number | null;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification: boolean;
 };
 
 type MaterialCodePrecheckResult = {
@@ -208,26 +228,35 @@ async function authorizeMaterialsAction(
 }
 
 function parseMaterialInput(payload: Partial<CreateMaterialPayload>): MaterialInput {
+  const serialTrackingType = normalizeSerialTrackingType(
+    payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
+  );
+
   return {
     codigo: normalizeCode(payload.codigo),
     descricao: normalizeText(payload.descricao),
+    categoryId: normalizeNullableText(payload.categoryId),
+    subcategoryId: normalizeNullableText(payload.subcategoryId),
     umb: normalizeCode(payload.umb) || null,
     tipo: normalizeMaterialType(payload.tipo),
     unitPrice: normalizePrice(payload.unitPrice),
     stockMinimum: normalizeOptionalNonNegativeNumber(payload.stockMinimum) ?? 0,
     stockMaximum: normalizeOptionalNonNegativeNumber(payload.stockMaximum),
-    serialTrackingType: normalizeSerialTrackingType(
-      payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
+    serialTrackingType,
+    isTransformer: serialTrackingType === "TRAFO",
+    // Pendencia so existe para material rastreado sem LP obrigatorio. Normalizar
+    // aqui evita que um estado antigo do formulario mande `true` junto de TRAFO;
+    // a RPC ainda recusa a combinacao, como ultima barreira para chamada direta.
+    allowPendingSerialIdentification: allowsPendingSerialIdentification(
+      serialTrackingType,
+      normalizeBoolean(payload.allowPendingSerialIdentification),
     ),
-    isTransformer: normalizeSerialTrackingType(
-      payload.serialTrackingType ?? (normalizeBoolean(payload.isTransformer) ? "TRAFO" : "NONE"),
-    ) === "TRAFO",
   };
 }
 
 function validateRequiredMaterialFields(input: MaterialInput) {
-  if (!input.codigo || !input.descricao || !input.tipo || !input.umb) {
-    return "Preencha os campos obrigatorios: Codigo, Descricao, Tipo e UMB.";
+  if (!input.codigo || !input.descricao || !input.categoryId || !input.subcategoryId || !input.tipo || !input.umb) {
+    return "Preencha os campos obrigatorios: Codigo, Descricao, Categoria, Subcategoria, Tipo e UMB.";
   }
 
   if (input.tipo !== "NOVO" && input.tipo !== "SUCATA") {
@@ -247,6 +276,88 @@ function validateRequiredMaterialFields(input: MaterialInput) {
   }
 
   return null;
+}
+
+async function loadMaterialClassificationSelection(
+  supabase: SupabaseClient,
+  tenantId: string,
+  categoryId: string | null,
+  subcategoryId: string | null,
+) {
+  if (!categoryId || !subcategoryId) {
+    return {
+      ok: false,
+      status: 400,
+      message: "Categoria e subcategoria sao obrigatorias para cadastro de material.",
+    } as const;
+  }
+
+  const [categoryResult, subcategoryResult] = await Promise.all([
+    supabase
+      .from("material_categories")
+      .select("id, name")
+      .eq("tenant_id", tenantId)
+      .eq("id", categoryId)
+      .eq("is_active", true)
+      .maybeSingle<MaterialCategoryRow>(),
+    supabase
+      .from("material_subcategories")
+      .select("id, category_id, name")
+      .eq("tenant_id", tenantId)
+      .eq("id", subcategoryId)
+      .eq("category_id", categoryId)
+      .eq("is_active", true)
+      .maybeSingle<MaterialSubcategoryRow>(),
+  ]);
+
+  if (categoryResult.error || subcategoryResult.error) {
+    return { ok: false, status: 500, message: "Falha ao validar categoria do material." } as const;
+  }
+
+  if (!categoryResult.data || !subcategoryResult.data) {
+    return { ok: false, status: 400, message: "Categoria ou subcategoria invalida para o tenant atual." } as const;
+  }
+
+  return {
+    ok: true,
+    categoryName: categoryResult.data.name,
+    subcategoryName: subcategoryResult.data.name,
+  } as const;
+}
+
+async function loadMaterialClassificationNames(
+  supabase: SupabaseClient,
+  tenantId: string,
+  categoryId: string | null,
+  subcategoryId: string | null,
+) {
+  const [categoryResult, subcategoryResult] = await Promise.all([
+    categoryId
+      ? supabase
+          .from("material_categories")
+          .select("id, name")
+          .eq("tenant_id", tenantId)
+          .eq("id", categoryId)
+          .maybeSingle<MaterialCategoryRow>()
+      : Promise.resolve({ data: null, error: null }),
+    subcategoryId
+      ? supabase
+          .from("material_subcategories")
+          .select("id, category_id, name")
+          .eq("tenant_id", tenantId)
+          .eq("id", subcategoryId)
+          .maybeSingle<MaterialSubcategoryRow>()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+
+  if (categoryResult.error || subcategoryResult.error) {
+    return { categoryName: null, subcategoryName: null };
+  }
+
+  return {
+    categoryName: categoryResult.data?.name ?? null,
+    subcategoryName: subcategoryResult.data?.name ?? null,
+  };
 }
 
 async function loadActiveMaterialUmbCodes(supabase: SupabaseClient, tenantId: string) {
@@ -387,7 +498,7 @@ async function fetchMaterialById(
   const { data, error } = await supabase
     .from("materials")
     .select(
-      "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+      "id, codigo, descricao, category_id, subcategory_id, umb, tipo, is_transformer, serial_tracking_type, allow_pending_serial_identification, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
     )
     .eq("tenant_id", tenantId)
     .eq("id", materialId)
@@ -449,6 +560,8 @@ async function saveMaterialViaRpc(params: {
   materialId: string | null;
   codigo: string;
   descricao: string;
+  categoryId: string | null;
+  subcategoryId: string | null;
   umb: string | null;
   tipo: string;
   unitPrice: number;
@@ -456,6 +569,7 @@ async function saveMaterialViaRpc(params: {
   stockMaximum: number | null;
   isTransformer: boolean;
   serialTrackingType: SerialTrackingType;
+  allowPendingSerialIdentification: boolean;
   changes?: Record<string, HistoryChange>;
   expectedUpdatedAt?: string | null;
 }) {
@@ -465,6 +579,8 @@ async function saveMaterialViaRpc(params: {
     p_material_id: params.materialId,
     p_codigo: params.codigo,
     p_descricao: params.descricao,
+    p_category_id: params.categoryId,
+    p_subcategory_id: params.subcategoryId,
     p_umb: params.umb,
     p_tipo: params.tipo,
     p_is_transformer: params.isTransformer,
@@ -474,6 +590,7 @@ async function saveMaterialViaRpc(params: {
     p_expected_updated_at: params.expectedUpdatedAt ?? null,
     p_stock_minimum: params.stockMinimum,
     p_stock_maximum: params.stockMaximum,
+    p_allow_pending_serial_identification: params.allowPendingSerialIdentification,
   });
 
   if (error) {
@@ -525,13 +642,21 @@ async function importMaterialBatch(params: {
     const input = parseMaterialInput(row);
     const validationError = validateRequiredMaterialFields(input);
     const umbValidationError = validationError ? null : validateMaterialUmbOption(input, params.allowedUmbCodes);
+    const classification = validationError
+      ? null
+      : await loadMaterialClassificationSelection(
+          params.supabase,
+          params.tenantId,
+          input.categoryId,
+          input.subcategoryId,
+        );
 
-    if (validationError || umbValidationError) {
+    if (validationError || umbValidationError || (classification && !classification.ok)) {
       results.push({
         rowNumber,
         success: false,
-        message: validationError ?? umbValidationError ?? "UMB invalida.",
-        code: umbValidationError ? "INVALID_UMB" : undefined,
+        message: validationError ?? umbValidationError ?? classification?.message ?? "Categoria invalida.",
+        code: umbValidationError ? "INVALID_UMB" : classification && !classification.ok ? "INVALID_CATEGORY" : undefined,
       });
       continue;
     }
@@ -554,10 +679,13 @@ async function importMaterialBatch(params: {
       materialId: null,
       codigo: input.codigo,
       descricao: input.descricao,
+      categoryId: input.categoryId,
+      subcategoryId: input.subcategoryId,
       umb: input.umb,
       tipo: input.tipo,
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
+      allowPendingSerialIdentification: input.allowPendingSerialIdentification,
       unitPrice: input.unitPrice,
       stockMinimum: input.stockMinimum,
       stockMaximum: input.stockMaximum,
@@ -671,19 +799,7 @@ export async function GET(request: NextRequest) {
         new Set((historyData ?? []).map((entry) => entry.created_by).filter((value): value is string => Boolean(value))),
       );
 
-      let users: AppUserRow[] = [];
-      if (userIds.length > 0) {
-        const usersResult = await supabase
-          .from("app_users")
-          .select("id, display, login_name")
-          .eq("tenant_id", appUser.tenant_id)
-          .in("id", userIds)
-          .returns<AppUserRow[]>();
-
-        if (!usersResult.error) {
-          users = usersResult.data ?? [];
-        }
-      }
+      const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
       const userDisplayMap = buildUserDisplayMap(users);
 
@@ -712,6 +828,10 @@ export async function GET(request: NextRequest) {
 
     const codeFilter = normalizeText(request.nextUrl.searchParams.get("codigo"));
     const descriptionFilter = normalizeText(request.nextUrl.searchParams.get("descricao"));
+    const categoryFilter = normalizeText(request.nextUrl.searchParams.get("categoria"));
+    const subcategoryFilter = normalizeText(request.nextUrl.searchParams.get("subcategoria"));
+    const categoryIdFilter = normalizeText(request.nextUrl.searchParams.get("categoryId"));
+    const subcategoryIdFilter = normalizeText(request.nextUrl.searchParams.get("subcategoryId"));
     const umbFilter = normalizeText(request.nextUrl.searchParams.get("umb"));
     const typeFilter = normalizeType(request.nextUrl.searchParams.get("tipo"));
     const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toLowerCase();
@@ -719,7 +839,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("materials")
       .select(
-        "id, codigo, descricao, umb, tipo, is_transformer, serial_tracking_type, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
+        "id, codigo, descricao, category_id, subcategory_id, umb, tipo, is_transformer, serial_tracking_type, allow_pending_serial_identification, unit_price, stock_minimum, stock_maximum, is_active, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
         { count: "exact" },
       )
       .eq("tenant_id", appUser.tenant_id)
@@ -732,6 +852,46 @@ export async function GET(request: NextRequest) {
     }
     if (descriptionFilter) {
       query = query.ilike("descricao", `%${descriptionFilter}%`);
+    }
+    if (categoryIdFilter) {
+      query = query.eq("category_id", categoryIdFilter);
+    } else if (categoryFilter) {
+      const categoryResult = await supabase
+        .from("material_categories")
+        .select("id")
+        .eq("tenant_id", appUser.tenant_id)
+        .ilike("name", `%${categoryFilter}%`)
+        .returns<{ id: string }[]>();
+
+      if (categoryResult.error) {
+        return NextResponse.json({ message: "Falha ao filtrar categorias dos materiais." }, { status: 500 });
+      }
+
+      const categoryIds = (categoryResult.data ?? []).map((item) => item.id);
+      if (!categoryIds.length) {
+        return NextResponse.json({ materials: [], pagination: { page, pageSize, total: 0 } });
+      }
+      query = query.in("category_id", categoryIds);
+    }
+    if (subcategoryIdFilter) {
+      query = query.eq("subcategory_id", subcategoryIdFilter);
+    } else if (subcategoryFilter) {
+      const subcategoryResult = await supabase
+        .from("material_subcategories")
+        .select("id")
+        .eq("tenant_id", appUser.tenant_id)
+        .ilike("name", `%${subcategoryFilter}%`)
+        .returns<{ id: string }[]>();
+
+      if (subcategoryResult.error) {
+        return NextResponse.json({ message: "Falha ao filtrar subcategorias dos materiais." }, { status: 500 });
+      }
+
+      const subcategoryIds = (subcategoryResult.data ?? []).map((item) => item.id);
+      if (!subcategoryIds.length) {
+        return NextResponse.json({ materials: [], pagination: { page, pageSize, total: 0 } });
+      }
+      query = query.in("subcategory_id", subcategoryIds);
     }
     if (umbFilter) {
       query = umbFilter === WITHOUT_UMB_FILTER
@@ -800,24 +960,52 @@ export async function GET(request: NextRequest) {
       ),
     );
 
-    let users: AppUserRow[] = [];
-    if (userIds.length > 0) {
-      const usersResult = await supabase
-        .from("app_users")
-        .select("id, display, login_name")
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", userIds)
-        .returns<AppUserRow[]>();
-
-      if (!usersResult.error) {
-        users = usersResult.data ?? [];
-      }
-    }
+    const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
 
     const userDisplayMap = buildUserDisplayMap(users);
     const userLoginNameMap = buildUserLoginNameMap(users);
     const materialIds = (data ?? []).map((item) => item.id);
+    const categoryIds = Array.from(
+      new Set((data ?? []).map((item) => item.category_id).filter((value): value is string => Boolean(value))),
+    );
+    const subcategoryIds = Array.from(
+      new Set((data ?? []).map((item) => item.subcategory_id).filter((value): value is string => Boolean(value))),
+    );
+    const categoryNameById = new Map<string, string>();
+    const subcategoryNameById = new Map<string, string>();
     const serialTrackingUsageMaterialIds = new Set<string>();
+
+    if (categoryIds.length > 0 || subcategoryIds.length > 0) {
+      const [categoriesResult, subcategoriesResult] = await Promise.all([
+        categoryIds.length
+          ? supabase
+              .from("material_categories")
+              .select("id, name")
+              .eq("tenant_id", appUser.tenant_id)
+              .in("id", categoryIds)
+              .returns<MaterialCategoryRow[]>()
+          : Promise.resolve({ data: [], error: null }),
+        subcategoryIds.length
+          ? supabase
+              .from("material_subcategories")
+              .select("id, category_id, name")
+              .eq("tenant_id", appUser.tenant_id)
+              .in("id", subcategoryIds)
+              .returns<MaterialSubcategoryRow[]>()
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      if (categoriesResult.error || subcategoriesResult.error) {
+        return NextResponse.json({ message: "Falha ao carregar categorias dos materiais." }, { status: 500 });
+      }
+
+      for (const row of categoriesResult.data ?? []) {
+        categoryNameById.set(row.id, row.name);
+      }
+      for (const row of subcategoriesResult.data ?? []) {
+        subcategoryNameById.set(row.id, row.name);
+      }
+    }
 
     if (materialIds.length > 0) {
       const [instancesResult, serializedItemsResult] = await Promise.all([
@@ -853,12 +1041,17 @@ export async function GET(request: NextRequest) {
         id: item.id,
         codigo: item.codigo,
         descricao: item.descricao,
+        categoryId: item.category_id,
+        subcategoryId: item.subcategory_id,
+        categoryName: categoryNameById.get(item.category_id ?? "") ?? null,
+        subcategoryName: subcategoryNameById.get(item.subcategory_id ?? "") ?? null,
         umb: umbFilter === WITHOUT_UMB_FILTER
           ? null
           : normalizeNullableText(item.umb) ?? umbFallbackByMaterialId.get(item.id) ?? null,
         tipo: item.tipo,
         isTransformer: Boolean(item.is_transformer),
         serialTrackingType: normalizeSerialTrackingType(item.serial_tracking_type ?? (item.is_transformer ? "TRAFO" : "NONE")),
+        allowPendingSerialIdentification: Boolean(item.allow_pending_serial_identification),
         hasSerialTrackingUsage: serialTrackingUsageMaterialIds.has(item.id),
         unitPrice: item.unit_price,
         stockMinimum: Number(item.stock_minimum ?? 0),
@@ -947,6 +1140,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: umbValidationError, code: "INVALID_UMB" }, { status: 400 });
     }
 
+    const classification = await loadMaterialClassificationSelection(
+      supabase,
+      appUser.tenant_id,
+      input.categoryId,
+      input.subcategoryId,
+    );
+    if (!classification.ok) {
+      return NextResponse.json({ message: classification.message, code: "INVALID_CATEGORY" }, { status: classification.status });
+    }
+
     const unitPrice = input.unitPrice;
 
     const precheck = await precheckMaterialCodeConflict(supabase, appUser.tenant_id, null, input.codigo);
@@ -961,10 +1164,13 @@ export async function POST(request: NextRequest) {
       materialId: null,
       codigo: input.codigo,
       descricao: input.descricao,
+      categoryId: input.categoryId,
+      subcategoryId: input.subcategoryId,
       umb: input.umb,
       tipo: input.tipo,
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
+      allowPendingSerialIdentification: input.allowPendingSerialIdentification,
       unitPrice,
       stockMinimum: input.stockMinimum,
       stockMaximum: input.stockMaximum,
@@ -1030,6 +1236,16 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ message: umbValidationError, code: "INVALID_UMB" }, { status: 400 });
     }
 
+    const classification = await loadMaterialClassificationSelection(
+      supabase,
+      appUser.tenant_id,
+      input.categoryId,
+      input.subcategoryId,
+    );
+    if (!classification.ok) {
+      return NextResponse.json({ message: classification.message, code: "INVALID_CATEGORY" }, { status: classification.status });
+    }
+
     const currentMaterial = await fetchMaterialById(supabase, appUser.tenant_id, materialId);
 
     if (!currentMaterial) {
@@ -1073,8 +1289,16 @@ export async function PUT(request: NextRequest) {
     }
 
     const changes: Record<string, HistoryChange> = {};
+    const currentClassification = await loadMaterialClassificationNames(
+      supabase,
+      appUser.tenant_id,
+      currentMaterial.category_id,
+      currentMaterial.subcategory_id,
+    );
     addChange(changes, "codigo", currentMaterial.codigo, input.codigo);
     addChange(changes, "descricao", currentMaterial.descricao, input.descricao);
+    addChange(changes, "categoryId", currentClassification.categoryName, classification.categoryName);
+    addChange(changes, "subcategoryId", currentClassification.subcategoryName, classification.subcategoryName);
     addChange(changes, "umb", currentMaterial.umb, input.umb);
     addChange(changes, "tipo", currentMaterial.tipo, input.tipo);
     addChange(changes, "isTransformer", currentMaterial.is_transformer, input.isTransformer);
@@ -1083,6 +1307,12 @@ export async function PUT(request: NextRequest) {
       "serialTrackingType",
       currentSerialTrackingType,
       input.serialTrackingType,
+    );
+    addChange(
+      changes,
+      "allowPendingSerialIdentification",
+      Boolean(currentMaterial.allow_pending_serial_identification),
+      input.allowPendingSerialIdentification,
     );
     addChange(changes, "unitPrice", currentMaterial.unit_price, unitPrice);
     addChange(changes, "stockMinimum", currentMaterial.stock_minimum, input.stockMinimum);
@@ -1099,10 +1329,13 @@ export async function PUT(request: NextRequest) {
       materialId,
       codigo: input.codigo,
       descricao: input.descricao,
+      categoryId: input.categoryId,
+      subcategoryId: input.subcategoryId,
       umb: input.umb,
       tipo: input.tipo,
       isTransformer: input.isTransformer,
       serialTrackingType: input.serialTrackingType,
+      allowPendingSerialIdentification: input.allowPendingSerialIdentification,
       unitPrice,
       stockMinimum: input.stockMinimum,
       stockMaximum: input.stockMaximum,

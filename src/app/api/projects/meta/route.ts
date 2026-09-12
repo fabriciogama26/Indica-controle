@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
 
@@ -79,15 +80,16 @@ export async function GET(request: NextRequest) {
       workCompletionCatalogResult,
       sgdTypesResult,
     ] = await Promise.all([
-      supabase
+      loadAllRows<ProjectMetaRow>((from, to) => supabase
         .from("project_with_labels")
         .select(
           "sob, service_center_text, priority_text, service_type_text, voltage_level_text, project_size_text, city_text, contractor_responsible_text, utility_responsible_text, utility_field_manager_text",
         )
         .eq("tenant_id", appUser.tenant_id)
         .order("updated_at", { ascending: false })
-        .limit(5000)
-        .returns<ProjectMetaRow[]>(),
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<ProjectMetaRow[]>()),
       supabase
         .from("project_priorities")
         .select("name")

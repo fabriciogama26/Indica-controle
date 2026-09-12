@@ -1,0 +1,276 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.successFeedback,
+.errorFeedback {
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.successFeedback {
+  border: 1px solid #9ad0a2;
+  background: #eef8ef;
+  color: #1f6b2b;
+}
+
+.errorFeedback {
+  border: 1px solid #e0a3a3;
+  background: #fff0f0;
+  color: #9b1c1c;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  border: 1px solid #dde3ea;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.filters label,
+.notesField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #3e4c59;
+  font-size: 0.84rem;
+}
+
+.filters input,
+.filters select,
+.notesField textarea {
+  min-height: 36px;
+  border: 1px solid #c9d3df;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #1f2933;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.filterActions,
+.actionBar,
+.pagination {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.filters button,
+.pagination button,
+.actionBar button,
+.tableWrapper button {
+  min-height: 34px;
+  border: 1px solid #b8c5d1;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #243447;
+  padding: 7px 11px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.filters button:disabled,
+.pagination button:disabled,
+.actionBar button:disabled,
+.tableWrapper button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.85fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.listPanel,
+.detailPanel {
+  min-width: 0;
+  border: 1px solid #dde3ea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.detailPanel {
+  position: sticky;
+  top: 12px;
+  padding: 14px;
+}
+
+.panelHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-bottom: 1px solid #e6ebf0;
+}
+
+.detailPanel .panelHeader {
+  padding: 0 0 12px;
+}
+
+.panelHeader h2 {
+  margin: 0;
+  color: #1f2933;
+  font-size: 1rem;
+}
+
+.panelHeader span {
+  color: #607080;
+  font-size: 0.86rem;
+}
+
+.tableWrapper,
+.itemsTableWrapper {
+  overflow-x: auto;
+}
+
+.tableWrapper table,
+.itemsTableWrapper table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tableWrapper th,
+.tableWrapper td,
+.itemsTableWrapper th,
+.itemsTableWrapper td {
+  border-bottom: 1px solid #edf1f5;
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+  color: #243447;
+  font-size: 0.86rem;
+}
+
+.tableWrapper th,
+.itemsTableWrapper th {
+  background: #f6f8fa;
+  color: #52616f;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.selectedRow {
+  background: #f0f7ff;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  background: #edf2f7;
+  color: #394b59;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.statusPENDENTE {
+  background: #fff7db;
+  color: #8a6200;
+}
+
+.statusEM_ANALISE {
+  background: #e6f0ff;
+  color: #1d4f91;
+}
+
+.statusEXECUTADO {
+  background: #e8f6ed;
+  color: #1f6b3a;
+}
+
+.statusRECUSADO,
+.statusFALHA_EXECUCAO {
+  background: #ffecec;
+  color: #9b1c1c;
+}
+
+.emptyState,
+.emptyDetail {
+  color: #607080;
+  padding: 24px;
+  text-align: center;
+}
+
+.pagination {
+  justify-content: flex-end;
+  padding: 12px 14px;
+}
+
+.pagination span {
+  color: #52616f;
+  font-size: 0.86rem;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 14px;
+  color: #243447;
+  font-size: 0.9rem;
+}
+
+.detailGrid strong {
+  color: #52616f;
+}
+
+.itemsBlock {
+  margin-top: 16px;
+}
+
+.itemsBlock h3 {
+  margin: 0 0 8px;
+  color: #1f2933;
+  font-size: 0.95rem;
+}
+
+.notesField {
+  margin-top: 16px;
+}
+
+.notesField textarea {
+  resize: vertical;
+}
+
+.actionBar {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.actionBar .primaryAction {
+  border-color: #2864b4;
+  background: #2864b4;
+  color: #ffffff;
+}
+
+.actionBar .dangerAction {
+  border-color: #c24141;
+  background: #c24141;
+  color: #ffffff;
+}
+
+@media (max-width: 1100px) {
+  .filters,
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .detailPanel {
+    position: static;
+  }
+}

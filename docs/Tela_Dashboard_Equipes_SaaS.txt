@@ -54,6 +54,7 @@ Cadastro
 Filtros, auto-complete e listagem
 ---------------------------------
 - Filtros gerais planejados:
+  - Tipo operacional (`Tecnica`, `Comercial`)
   - Ciclo
   - Data inicial
   - Data final
@@ -473,3 +474,161 @@ Atualizacao 2026-07-21 - Carga inicial do ciclo
   - Sem alteracao de schema, migration, RLS ou grants.
   - `/api/dashboard-equipes` continua exigindo `dashboard-equipes/read`.
   - Todas as consultas continuam filtradas por `tenant_id` resolvido pela sessao autenticada.
+
+Atualizacao 2026-09-08 - Filtro Tipo operacional (Tecnica / Comercial)
+----------------------------------------------------------------------
+- Mesma mudanca do Dashboard Medicao, porque `/api/dashboard-equipes` e
+  `/api/dashboard-medicao` delegam ao MESMO `handleDashboardMeasurementGet`. O detalhe
+  do backend esta em `docs/Tela_Dashboard_Medicao_SaaS.txt`, secao de mesma data.
+- O card `Filtros do Dashboard Equipes` ganhou o select `Tipo operacional` como
+  primeiro campo, alimentado pelo catalogo `team_categories`.
+- Padrao `TECNICA`: abrir a tela sem escolher nada entrega o mesmo recorte de antes.
+- O select passa pelo botao `Filtrar`, como os demais filtros da tela. O que ele NAO
+  carrega junto e a selecao anterior: ao trocar a operacao no rascunho, `Ciclo`,
+  `Projeto`, `MK / Equipe`, `Encarregado` e `Supervisor` sao limpos. Todos pertencem ao
+  universo da operacao anterior; sem a limpeza, um `teamId` tecnico continuaria no
+  estado e seria enviado na consulta mesmo com o select nao mostrando mais a opcao. Os
+  filtros locais de semana sao zerados no `Filtrar`, porque as semanas sao as do ciclo.
+- `Data inicial` e `Data final` NAO sao limpas: valem nas duas operacoes.
+- Permissao: filtro DENTRO da tela, coberto por `dashboard-equipes/read`.
+- Ratchet: nenhum arquivo do modulo passou do teto. Sem `lint:size:accept`.
+- Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants.
+
+Atualizacao 2026-09-08 - Eletricista 1 / Eletricista 2 na visao Comercial
+-------------------------------------------------------------------------
+- Motivo: equipe COMERCIAL nao tem encarregado (migration 415 -- `sync_team_foreman_history`
+  nao abre periodo e `resolve_team_foreman_snapshot` devolve NULL). Quem executou sao os
+  DOIS eletricistas escolhidos ordem a ordem, gravados em
+  `project_commercial_measurement_order_members` com `sort_order` 1 e 2. Sem esta
+  mudanca, a visao `Comercial` mostraria `Nao identificado` em toda a coluna.
+- Na visao `Comercial`, e SOMENTE nela, a tela troca encarregado por eletricista:
+  - o filtro `Encarregado` vira `Eletricista` e lista os eletricistas das ordens do
+    recorte; a ordem entra no resultado se QUALQUER um dos dois integrantes casar;
+  - a coluna `Encarregado(s)` de `Equipes no ciclo` vira `Eletricista(s)` e lista cada
+    eletricista separadamente, nao a dupla concatenada;
+  - o bloco `Encarregados no ciclo` vira `Eletricistas no ciclo`, e a coluna
+    `Encarregado` da tabela vira DUAS colunas, `Eletricista 1` e `Eletricista 2`;
+  - o modal de detalhe do MK e os DOIS CSVs acompanham as mesmas colunas, e o token do
+    nome do arquivo exportado passa de `encarregado` para `eletricista`.
+- UNIDADE DE AGREGACAO: a linha e por MK + DUPLA, nao por eletricista. O valor da ordem
+  fica inteiro na dupla e nao e rateado entre os dois. Foi decisao deliberada: contar a
+  ordem cheia para cada um dos dois faria `Participacao no MK` fechar em 200%, e dividir
+  50/50 inventaria uma regra de rateio que o negocio nao definiu. Com a dupla como chave,
+  a soma das contribuicoes continua sendo exatamente o realizado do MK.
+- A chave interna da linha continua em `foremanName`, agora no formato `A / B`; os nomes
+  separados vem em `memberNames`, na ordem dos slots.
+- Backend:
+  - `fetchCommercialMemberNamesByOrder` em
+    `src/server/modules/dashboard-measurement/queries.ts`, fatiada em blocos de 200
+    ordens. O PostgREST corta em 1.000 linhas sem avisar, e sao ate 2 integrantes por
+    ordem -- um `in (...)` unico devolveria dupla faltando com status 200.
+  - A consulta so roda na operacao COMERCIAL; na tecnica a tabela e vazia por definicao.
+  - `TeamPerformanceOrder.memberNames` e `TeamForemanContributionRow.memberNames` em
+    `src/server/modules/team-performance/contracts.ts`.
+  - `resolveTeamForemanNameForDate` devolve string vazia na operacao comercial: sem isso
+    o historico de encarregado inexistente encheria a coluna de `Nao identificado`.
+- Ratchet: `controller.ts` foi de 1.492 para 1.375 linhas com a extracao dos leitores
+  Supabase para `src/server/modules/dashboard-measurement/queries.ts`. Sem
+  `lint:size:accept`.
+- Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants. A leitura de
+  `project_commercial_measurement_order_members` filtra por `tenant_id` e a RLS da
+  tabela (415) segue como ultima barreira.
+
+Atualizacao 2026-09-09 - Incidencia na tela, CSV do bloco de eletricistas e contagem
+de projetos sem projeto vinculado
+-------------------------------------------------------------------------
+- Motivo: a ordem COMERCIAL nao exige projeto. `project_measurement_orders.project_id`
+  e NULL nessas ordens (migration 415) e o identificador do trabalho e a `Incidencia`,
+  gravada em `commercial_order_ref`. A tela tratava `project_id` como sempre presente,
+  entao um `Set` de projetos recebia `null` e devolvia `size` 1 para um recorte sem
+  nenhum projeto vinculado. A tela tambem nao exibia a Incidencia em lugar nenhum.
+- CONTAGEM DE PROJETOS: todo `projectIds.add` em
+  `src/server/modules/team-performance/calculations.ts` passou a ser condicionado a
+  `order.projectId`, e os `Set` de `project_id` do `controller.ts` filtram nulo antes do
+  `.size`. Recorte so com ordem sem projeto agora mostra `0`, nao `1`. Afeta as colunas
+  `Projetos` de `Equipes no ciclo`, de `Eletricistas no ciclo` e do modal do MK, o
+  rodape do modal de projetos e o ticket medio por projeto.
+- ORDEM SEM PROJETO NA LISTA: `addProjectProduction` agrupa essas ordens sob a chave
+  interna `__NO_PROJECT__` e devolve `projectId: null` com `projectCode` `Sem projeto`.
+  A linha continua aparecendo na lista de projetos, com o valor e as ordens dela, mas
+  NAO entra na contagem. Foi decisao deliberada: esconder a linha sumiria com valor
+  realizado que existe, e conta-la como projeto era exatamente o bug relatado.
+- GRANULARIDADE DO MODAL DE PROJETOS: na visao `Comercial` a linha da tabela e a
+  INCIDENCIA, nao o projeto. Sem isso o modal virava uma linha unica `Sem projeto` com
+  dezenas de Incidencias concatenadas numa celula so, ilegivel e sem valor por
+  Incidencia. `TeamPerformanceProjectDetail.commercialOrders` traz
+  `{ orderRef, totalValue, orderCount }` por Incidencia, e `buildProjectDetailRows`
+  (PageView) expande projeto -> Incidencia para a tabela e para o CSV, das mesmas
+  linhas, para o arquivo nao divergir da tela.
+  - A ordem SEM Incidencia preenchida (`commercial_order_ref` e opcional na 415) entra
+    numa linha propria rotulada `Sem incidencia`, ordenada por ultimo. Descarta-la
+    faria a soma das linhas nao fechar com o total do projeto.
+  - Incidencia repetida em varias ordens vira UMA linha, somando valor e ordens.
+  - Na visao tecnica a coluna nao existe e a linha continua sendo o projeto.
+- TOTAL: o rodape do modal de projetos e o `Total MK` do modal de detalhe mostram a
+  QUANTIDADE de Incidencias distintas, nao a lista. Lista concatenada em linha de total
+  nao informa nada e estoura a largura da celula. A contagem ignora a linha
+  `Sem incidencia`, que nao e uma Incidencia. Nas linhas de detalhe do modal do MK a
+  lista continua, porque ali ela e o recorte daquela dupla.
+- CSV DO BLOCO `Eletricistas no ciclo`: botao `Extrair CSV` no cabecalho do bloco, so na
+  visao `Comercial`, exportando as linhas ja filtradas pela semana selecionada
+  (`exportDashboardTeamForemenCsv`). Respeita o mesmo `exportCooldown` dos outros CSVs.
+  O nome do arquivo usa o rotulo do periodo do bloco, nao o do filtro global, porque o
+  bloco tem filtro de semana proprio.
+- Os tres CSVs da tela agora saem por `buildCsvContent`/`downloadCsvFile` de
+  `src/lib/utils/csv.ts`, no lugar de tres copias locais de escape e download. O CSV do
+  modal de projetos acompanha a granularidade da tela (coluna `Incidencia`, uma linha
+  por Incidencia); os CSVs de contribuicao ganharam `Lista de projetos` e `Incidencias`
+  por linha, e a linha de total leva a contagem distinta. Coluna de Incidencia so e
+  emitida quando a exportacao e da visao `Comercial`.
+- Validacao: `npx tsc --noEmit` e `npm run lint` limpos. Sem suite automatizada, a
+  reconciliacao foi conferida executando `calculateTeamPerformanceWindow` compilada
+  fora do app, com 5 ordens sem projeto (uma Incidencia repetida e uma ordem sem
+  Incidencia): `projectCount` 0, 4 linhas por Incidencia, soma das linhas igual ao total
+  do projeto e 3 Incidencias distintas no total. Teste manual da tela pendente: caminho
+  longo na visao `Comercial` (abrir MK, conferir Incidencia por dupla, trocar a semana
+  do bloco, extrair os tres CSVs) e na visao tecnica (confirmar que a coluna nao
+  aparece em tela nem no CSV).
+- Permissao: nenhuma nova. Tudo dentro de `dashboard-equipes/read`, coberto pelo
+  `page_key` da tela visivel.
+- Ratchet: nenhum arquivo do modulo passou do teto. Sem `lint:size:accept`.
+- Impacto multi-tenant: sem alteracao de schema, migration, RLS ou grants. A leitura de
+  `commercial_order_ref` e uma coluna a mais em `select` que ja filtra por `tenant_id`.
+
+Atualizacao 2026-09-11 - Rotulos EQUIPE na visao Comercial
+-------------------------------------------------------------------------
+- Motivo: na visao `Comercial`, o usuario espera que textos visiveis nao usem mais a
+  nomenclatura `MK`; quando o filtro `Tipo operacional` aplicado for `COMERCIAL`, a
+  unidade exibida deve ser `EQUIPE`.
+- Frontend:
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx` passou a
+    derivar labels de `isCommercialView`, baseado em `appliedTeamCategoryCode`.
+  - Graficos oficiais, filtro de equipe, subtitulos, modal de detalhe e rodape total
+    mostram `EQUIPE` na visao Comercial e preservam `MK` na visao tecnica.
+  - O subtitulo do shell em `src/components/layout/AppShell.tsx` ficou generico:
+    `Desempenho por equipes, profissionais e supervisores no ciclo.`, cobrindo a
+    leitura tecnica e comercial antes de a tela carregar o filtro aplicado.
+  - A troca usa a resposta aplicada, nao o rascunho do filtro, para evitar renomear a
+    tela antes de os dados mudarem.
+- CSV:
+  - `src/modules/dashboard/dashboard-equipes/utils.ts` passou a emitir `EQUIPE`,
+    `Participacao na EQUIPE (%)` e `TOTAL EQUIPE` nas exportacoes comerciais.
+  - Exportacoes tecnicas continuam com `MK / Equipe`, `Participacao no MK (%)` e
+    `TOTAL MK`.
+- Dashboard Medicao:
+  - Conferido o codigo vivo em `src/modules/dashboard/dashboard-medicao`: nao ha
+    ocorrencia textual de `MK` para trocar quando o `Tipo operacional` muda para
+    `COMERCIAL`; as ocorrencias restantes estao em documentacao historica ou em outros
+    modulos fora desta tela.
+- Permissao: nenhuma nova. Tudo dentro de `dashboard-equipes/read`, coberto pelo
+  `page_key` da tela visivel.
+- Impacto multi-tenant: sem alteracao de API, schema, migration, RLS ou grants.
+
+Atualizacao 2026-09-11 - Cor da Meta ciclo trabalhado
+-------------------------------------------------------------------------
+- Motivo: no bullet de meta, `Meta ciclo trabalhado` precisava ser exibida em amarelo
+  para diferenciar melhor dos demais modos selecionados.
+- Frontend:
+  - `src/modules/dashboard/dashboard-equipes/DashboardTeamsPageView.tsx` trocou
+    `metaColors.worked` para `#f2c94c`.
+- Sem mudanca de calculo, filtro, API, schema, RLS, grants ou permissao.

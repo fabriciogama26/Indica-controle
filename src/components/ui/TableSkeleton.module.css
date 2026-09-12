@@ -1,0 +1,37 @@
+/* Ocupa uma linha de texto: mantem a altura da celula igual a da tabela com dados. */
+.bar {
+  display: block;
+  height: 0.85em;
+  width: 70%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #e8ecf4 25%, #f2f5fa 50%, #e8ecf4 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

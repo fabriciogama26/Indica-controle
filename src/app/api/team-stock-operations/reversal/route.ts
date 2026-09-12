@@ -4,7 +4,7 @@ import { resolveAuthenticatedAppUser, type AuthenticatedAppUserContext } from "@
 import { withIdempotency } from "@/lib/server/idempotency";
 import { requirePageAction } from "@/lib/server/pageAuthorization";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
-import { reverseTeamStockOperationViaRpc } from "@/lib/server/teamStockOperations";
+import { createStockReversalRequestViaRpc } from "@/lib/server/stockReversalRequests";
 import { BLOCKED_REVERSAL_REASON_CODES } from "@/lib/business/reversalRules";
 
 type ReversalPayload = {
@@ -14,6 +14,7 @@ type ReversalPayload = {
   reversalReasonNotes?: unknown;
   reversalDate?: unknown;
   mode?: unknown;
+  itemIds?: unknown;
 };
 
 type TransferItemRow = {
@@ -45,6 +46,11 @@ type FullReversalRow = {
   original_stock_transfer_id: string;
   reversal_stock_transfer_id: string;
 };
+
+function normalizeIdList(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value.map((item) => normalizeText(item)).filter(Boolean)));
+}
 
 async function resolveReversalContext(
   request: NextRequest,
@@ -407,15 +413,18 @@ async function handleReversal(request: NextRequest): Promise<Response> {
       }
     }
 
-    const reversalResult = await reverseTeamStockOperationViaRpc(supabase, {
+    const reversalResult = await createStockReversalRequestViaRpc(supabase, {
       tenantId: appUser.tenant_id,
       actorUserId: appUser.id,
+      actorName: appUser.display ?? appUser.login_name,
+      source: "TEAM_OPERATION",
+      mode,
       originalTransferId: transferId,
       originalTransferItemId: mode === "ITEM" ? transferItemId : null,
-      reverseBatch: mode === "BATCH",
       reversalReasonCode,
       reversalReasonNotes,
       reversalDate,
+      itemIds: mode === "ITEM" ? [transferItemId] : normalizeIdList(payload.itemIds),
     });
 
     if (!reversalResult.ok) {
@@ -431,12 +440,11 @@ async function handleReversal(request: NextRequest): Promise<Response> {
 
     return NextResponse.json({
       success: true,
-      transferId: reversalResult.transferId,
-      reversedItemCount: reversalResult.reversedItemCount,
-      results: reversalResult.results,
+      requestId: reversalResult.requestId,
+      itemCount: reversalResult.itemCount,
       message: reversalResult.message,
-    });
+    }, { status: 201 });
   } catch {
-    return NextResponse.json({ message: "Falha ao estornar operacao de equipe." }, { status: 500 });
+    return NextResponse.json({ message: "Falha ao solicitar estorno da operacao de equipe." }, { status: 500 });
   }
 }

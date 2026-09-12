@@ -582,6 +582,7 @@ export function StageListTable(props: {
   }, [expandedProjectId, loadExpandedStages]);
 
   const isAnyExporting = isExportingCsv || isExportingEnel || isExportingEnelNovo;
+  const loadingRows = Array.from({ length: 8 }, (_, index) => index);
   const exportButtons = (
     <div className={styles.tableActions}>
       <CsvExportButton
@@ -616,7 +617,29 @@ export function StageListTable(props: {
           <h3 className={styles.cardTitle}>Programacoes</h3>
           {exportButtons}
         </div>
-        <p className={styles.emptyHint}>Carregando lista...</p>
+        <div className={`${styles.listTable} ${styles.listTableLoading}`} role="table" aria-busy="true" aria-label="Carregando programacoes">
+          <div className={`${styles.projectRow} ${styles.listHeaderRow}`} role="row">
+            <span className={styles.expandColumnHeader}>Plano</span>
+            <span>Id</span>
+            <span>Projeto</span>
+            <span>Etapas</span>
+            <span>Equipes</span>
+            <span className={styles.listActionsHeader}>Acoes</span>
+          </div>
+          {loadingRows.map((row) => (
+            <div key={row} className={`${styles.projectRow} ${styles.skeletonProjectRow}`} role="row">
+              <span className={styles.skeletonDot} />
+              <span className={styles.skeletonLine} />
+              <span className={styles.skeletonLineStrong} />
+              <span className={styles.skeletonLineShort} />
+              <span className={styles.skeletonChipRow}>
+                <span className={styles.skeletonChip} />
+                <span className={styles.skeletonChip} />
+              </span>
+              <span className={styles.skeletonAction} />
+            </div>
+          ))}
+        </div>
       </article>
     );
   }

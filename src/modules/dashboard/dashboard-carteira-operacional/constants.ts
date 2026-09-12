@@ -5,6 +5,7 @@ export const EMPTY_DASHBOARD_PORTFOLIO_FILTERS = {
   project: "",
   serviceCenterId: "",
   portfolioScope: "ACTIVE",
+  serviceScope: "ALL",
 } as const;
 
 export const PORTFOLIO_PROJECT_PAGE_SIZE = 50;

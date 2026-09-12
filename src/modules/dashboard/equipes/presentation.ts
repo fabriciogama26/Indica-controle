@@ -1,0 +1,310 @@
+// Tipos, constantes e normalizadores da tela Equipes.
+//
+// Vieram de `TeamsPageView.tsx`, que ficou acima do baseline de linhas do
+// CLAUDE.md ao ganhar o campo Tipo de Equipe. Sao dados puros, sem React.
+import { DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE, DEFAULT_PAGE_SIZE } from "@/lib/constants/pagination";
+import { formatDateTime } from "@/lib/utils/formatters";
+
+export type TeamFilterState = {
+  name: string;
+  vehiclePlate: string;
+  serviceCenterId: string;
+  teamTypeId: string;
+  teamCategoryId: string;
+  foremanId: string;
+  supervisorId: string;
+};
+
+export const HISTORY_FIELD_LABELS: Record<string, string> = {
+  name: "Nome da equipe",
+  vehiclePlate: "Placa do veiculo",
+  serviceCenterName: "Base",
+  stockCenterName: "Centro de estoque proprio",
+  teamTypeName: "Tipo operacional",
+  teamCategoryName: "Tipo de equipe",
+  foremanName: "Encarregado",
+  supervisorName: "Supervisor",
+  isActive: "Status",
+  cancellationReason: "Motivo do cancelamento",
+  canceledAt: "Data do cancelamento",
+  activationReason: "Motivo da ativacao",
+};
+
+export const INITIAL_FILTERS: TeamFilterState = {
+  name: "",
+  vehiclePlate: "",
+  serviceCenterId: "",
+  teamTypeId: "",
+  teamCategoryId: "",
+  foremanId: "",
+  supervisorId: "",
+};
+
+export function buildQuery(filters: TeamFilterState, page: number, pageSize = DEFAULT_PAGE_SIZE) {
+  const params = new URLSearchParams();
+  if (filters.name.trim()) {
+    params.set("name", filters.name.trim());
+  }
+  if (filters.vehiclePlate.trim()) {
+    params.set("vehiclePlate", filters.vehiclePlate.trim());
+  }
+  if (filters.serviceCenterId.trim()) {
+    params.set("serviceCenterId", filters.serviceCenterId.trim());
+  }
+  if (filters.teamTypeId.trim()) {
+    params.set("teamTypeId", filters.teamTypeId.trim());
+  }
+  if (filters.teamCategoryId.trim()) {
+    params.set("teamCategoryId", filters.teamCategoryId.trim());
+  }
+  if (filters.foremanId.trim()) {
+    params.set("foremanId", filters.foremanId.trim());
+  }
+  if (filters.supervisorId.trim()) {
+    params.set("supervisorId", filters.supervisorId.trim());
+  }
+  params.set("page", String(page));
+  params.set("pageSize", String(pageSize));
+  return params.toString();
+}
+
+export function formatHistoryValue(field: string, value: string | null) {
+  if (!value) {
+    return "-";
+  }
+
+  if (field === "isActive") {
+    return value === "true" ? "Ativo" : "Inativo";
+  }
+
+  if (field === "canceledAt") {
+    return formatDateTime(value);
+  }
+
+  return value;
+}
+
+
+export type TeamItem = {
+  id: string;
+  name: string;
+  vehiclePlate: string;
+  serviceCenterId: string | null;
+  serviceCenterName: string;
+  stockCenterId: string | null;
+  stockCenterName: string;
+  teamTypeId: string;
+  teamTypeName: string;
+  teamCategoryId: string | null;
+  teamCategoryCode: string;
+  teamCategoryName: string;
+  foremanId: string | null;
+  foremanName: string;
+  supervisorId: string | null;
+  supervisorName: string;
+  isActive: boolean;
+  cancellationReason: string | null;
+  canceledAt: string | null;
+  canceledByName: string | null;
+  createdByName: string;
+  updatedByName: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TeamHistoryEntry = {
+  id: string;
+  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
+  reason: string | null;
+  createdAt: string;
+  createdByName: string;
+  changes: Record<string, { from: string | null; to: string | null }>;
+};
+
+export type ForemanOption = {
+  id: string;
+  name: string;
+};
+
+export type SupervisorOption = ForemanOption;
+
+export type TeamTypeOption = {
+  id: string;
+  name: string;
+  teamCategoryId: string | null;
+};
+
+export type TeamCategoryOption = {
+  id: string;
+  code: string;
+  name: string;
+};
+
+export type ServiceCenterOption = {
+  id: string;
+  name: string;
+};
+
+export type TeamFormState = {
+  id: string | null;
+  name: string;
+  vehiclePlate: string;
+  serviceCenterId: string;
+  teamTypeId: string;
+  teamCategoryId: string;
+  foremanId: string;
+  supervisorId: string;
+  updatedAt: string;
+};
+
+export type TeamsListResponse = {
+  teams?: TeamItem[];
+  pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
+export type TeamsMetaResponse = {
+  foremen?: ForemanOption[];
+  supervisors?: SupervisorOption[];
+  teamTypes?: TeamTypeOption[];
+  teamCategories?: TeamCategoryOption[];
+  serviceCenters?: ServiceCenterOption[];
+  message?: string;
+};
+
+export type TeamHistoryResponse = {
+  history?: TeamHistoryEntry[];
+  pagination?: { page: number; pageSize: number; total: number };
+  message?: string;
+};
+
+
+export const PAGE_SIZE = DEFAULT_PAGE_SIZE;
+export const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
+export const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
+
+export const INITIAL_FORM: TeamFormState = {
+  id: null,
+  name: "",
+  vehiclePlate: "",
+  serviceCenterId: "",
+  teamTypeId: "",
+  teamCategoryId: "",
+  foremanId: "",
+  supervisorId: "",
+  updatedAt: "",
+};
+
+export function normalizeText(value: string) {
+  return String(value ?? "").trim();
+}
+
+export function normalizePlate(value: string) {
+  return normalizeText(value).toUpperCase();
+}
+
+/**
+ * Natureza da equipe vem SO do Tipo de equipe (migration 420). Ate a 419 valia
+ * tambem `teamTypeName === "COMERCIAL"`; com o campo obrigatorio, aquele atalho
+ * so criava o caminho em que a tela pedia encarregado e o banco apagava o valor.
+ */
+export function isCommercialTeamItem(team: Pick<TeamItem, "teamCategoryCode">) {
+  return normalizeText(team.teamCategoryCode).toUpperCase() === "COMERCIAL";
+}
+
+function isCommercialTeamCategoryOption(category: TeamCategoryOption | null) {
+  return normalizeText(category?.code ?? "").toUpperCase() === "COMERCIAL";
+}
+
+/**
+ * `teamCategoryId` do tipo operacional e anulavel (migration 416). Quando esta
+ * preenchido, o Tipo de equipe tem que ser o mesmo \u2014 o backend recusa a
+ * gravacao, e aqui o usuario ve o erro antes de mandar o request.
+ */
+function hasTeamTypeCategoryMismatch(teamType: TeamTypeOption | null, teamCategory: TeamCategoryOption | null) {
+  const teamTypeCategoryId = normalizeText(teamType?.teamCategoryId ?? "");
+  return Boolean(teamTypeCategoryId) && teamTypeCategoryId !== normalizeText(teamCategory?.id ?? "");
+}
+
+/**
+ * Flags derivadas do formulario de Equipes.
+ *
+ * `isCommercialTeam` sai SO do Tipo de equipe (TECNICA/COMERCIAL) \u2014 e ele que
+ * decide se Encarregado ou Supervisor e obrigatorio, desde a migration 420.
+ */
+export function resolveTeamFormSelection(
+  form: TeamFormState,
+  teamTypes: TeamTypeOption[],
+  teamCategories: TeamCategoryOption[],
+) {
+  const teamType = teamTypes.find((item) => item.id === form.teamTypeId) ?? null;
+  const teamCategory = teamCategories.find((item) => item.id === form.teamCategoryId) ?? null;
+  return {
+    isCommercialTeam: isCommercialTeamCategoryOption(teamCategory),
+    hasCategoryMismatch: hasTeamTypeCategoryMismatch(teamType, teamCategory),
+  };
+}
+
+/**
+ * Troca do Tipo de equipe no formulario.
+ *
+ * Equipe comercial nao renderiza Encarregado. Sem limpar o campo aqui, o estado
+ * guardaria um encarregado invisivel: o select mostraria outra coisa, o submit
+ * enviaria o valor escondido e o backend recusaria a operacao.
+ */
+export function applyTeamCategoryChange(
+  current: TeamFormState,
+  teamCategoryId: string,
+  teamCategories: TeamCategoryOption[],
+): TeamFormState {
+  const teamCategory = teamCategories.find((item) => item.id === teamCategoryId) ?? null;
+  return {
+    ...current,
+    teamCategoryId,
+    foremanId: isCommercialTeamCategoryOption(teamCategory) ? "" : current.foremanId,
+  };
+}
+
+export function scrollDashboardContentToTop() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const content = document.querySelector<HTMLElement>('[data-main-content-scroll="true"]');
+  if (content) {
+    content.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+/**
+ * Pre-requisitos de cadastro que faltam para o formulario de Equipes.
+ *
+ * Depende do Tipo de equipe escolhido: COMERCIAL exige supervisor e desativa
+ * encarregado; TECNICA segue exigindo encarregado. Enquanto o Tipo de equipe
+ * nao foi escolhido, nao da para saber qual dos dois cobrar — o formulario ja
+ * bloqueia o submit pelo `required` do campo.
+ */
+export function buildMissingTeamMetaReasons(params: {
+  isLoadingMeta: boolean;
+  serviceCenterCount: number;
+  teamTypeCount: number;
+  teamCategoryCount: number;
+  foremanCount: number;
+  supervisorCount: number;
+  isCommercialTeam: boolean;
+}) {
+  if (params.isLoadingMeta) {
+    return [] as string[];
+  }
+
+  const reasons: string[] = [];
+  if (params.serviceCenterCount === 0) reasons.push("Base (Centro de Servico)");
+  if (params.teamTypeCount === 0) reasons.push("Tipo operacional");
+  if (params.teamCategoryCount === 0) reasons.push("Tipo de equipe");
+  if (!params.isCommercialTeam && params.foremanCount === 0) reasons.push("Encarregado");
+  if (params.isCommercialTeam && params.supervisorCount === 0) reasons.push("Supervisor");
+  return reasons;
+}

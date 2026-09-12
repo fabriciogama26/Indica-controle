@@ -4,23 +4,37 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import styles from "./ActivitiesPageView.module.css";
-import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
+import { CatalogSelectField } from "./CatalogSelectField";
+import { buildActivitiesCsv } from "./csv";
+import { formatHistoryValue, formatMoney, formatPoints, toInputMoney, toInputPoints } from "./formatters";
+import {
+  ACTIVITY_MASS_IMPORT_COLUMNS_HINT,
+  buildActivityMassImportTemplateCsv,
+  parseActivityMassImportCsv,
+  type ActivityImportRow,
+} from "./massImport";
 
 type ActivityItem = {
   id: string;
   code: string;
+  codeIdd: string;
   description: string;
   teamTypeId: string;
   teamTypeName: string;
   categoryId: string;
   categoryName: string;
-  group: string;
+  groupId: string;
+  groupName: string;
   value: number;
   voicePoint: number | null;
   unit: string;
@@ -45,17 +59,8 @@ type ActivityHistoryEntry = {
 };
 
 type ActivityFormState = {
-  id: string | null;
-  code: string;
-  description: string;
-  teamTypeId: string;
-  categoryId: string;
-  group: string;
-  value: string;
-  voicePoint: string;
-  unit: string;
-  scope: string;
-  updatedAt: string;
+  id: string | null; code: string; codeIdd: string; description: string; teamTypeId: string; categoryId: string;
+  groupId: string; value: string; voicePoint: string; unit: string; scope: string; updatedAt: string;
 };
 
 type ActivityFilterState = {
@@ -71,10 +76,9 @@ type TeamTypeOption = {
   name: string;
 };
 
-type CategoryOption = {
-  id: string;
-  name: string;
-};
+type CategoryOption = TeamTypeOption;
+
+type ActivityGroupOption = TeamTypeOption & { unitValue: number };
 
 type ActivitiesListResponse = {
   activities?: ActivityItem[];
@@ -91,15 +95,15 @@ type ActivityHistoryResponse = {
 type ActivitiesMetaResponse = {
   teamTypes?: TeamTypeOption[];
   categories?: CategoryOption[];
+  groups?: ActivityGroupOption[];
   message?: string;
 };
 
-const PAGE_SIZE = DEFAULT_PAGE_SIZE;
-const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
-const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE, HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE, EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   code: "Codigo",
+  codeIdd: "Cod. SAP",
   description: "Descricao",
   teamTypeName: "Tipo",
   categoryName: "Categoria",
@@ -115,17 +119,8 @@ const HISTORY_FIELD_LABELS: Record<string, string> = {
 };
 
 const INITIAL_FORM: ActivityFormState = {
-  id: null,
-  code: "",
-  description: "",
-  teamTypeId: "",
-  categoryId: "",
-  group: "",
-  value: "",
-  voicePoint: "",
-  unit: "",
-  scope: "",
-  updatedAt: "",
+  id: null, code: "", codeIdd: "", description: "", teamTypeId: "", categoryId: "",
+  groupId: "", value: "", voicePoint: "", unit: "", scope: "", updatedAt: "",
 };
 
 const INITIAL_FILTERS: ActivityFilterState = {
@@ -140,9 +135,7 @@ function normalizeText(value: string) {
   return String(value ?? "").trim();
 }
 
-function normalizeCode(value: string) {
-  return normalizeText(value).toUpperCase();
-}
+function normalizeCode(value: string) { return normalizeText(value).toUpperCase(); }
 
 function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_SIZE) {
   const params = new URLSearchParams();
@@ -166,97 +159,6 @@ function buildQuery(filters: ActivityFilterState, page: number, pageSize = PAGE_
   return params.toString();
 }
 
-function buildActivitiesCsv(activityItems: ActivityItem[]) {
-  const header = [
-    "Codigo",
-    "Descricao",
-    "Tipo",
-    "Categoria",
-    "Grupo",
-    "Valor",
-    "Pontos",
-    "Unidade",
-    "Alcance",
-    "Status",
-    "Registrado por",
-    "Registrado em",
-    "Atualizado por",
-    "Atualizado em",
-  ];
-  const rows = activityItems.map((activity) => [
-    activity.code,
-    activity.description,
-    activity.teamTypeName,
-    activity.categoryName,
-    activity.group || "",
-    activity.value.toFixed(2),
-    formatPoints(activity.voicePoint),
-    activity.unit,
-    activity.scope || "",
-    activity.isActive ? "Ativo" : "Inativo",
-    formatAuditActor(activity.createdByName),
-    formatDateTime(activity.createdAt),
-    formatAuditActor(activity.updatedByName),
-    formatDateTime(activity.updatedAt),
-  ]);
-
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function formatMoney(value: number) {
-  return Number(value ?? 0).toLocaleString("pt-BR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatPoints(value: number | null | undefined) {
-  if (value === null || value === undefined || !Number.isFinite(value)) {
-    return "-";
-  }
-
-  return Number(value).toLocaleString("pt-BR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 6,
-  });
-}
-
-function toInputMoney(value: number) {
-  return String(Number(value ?? 0).toFixed(2));
-}
-
-function toInputPoints(value: number | null | undefined) {
-  const numericValue = Number(value ?? "");
-  return Number.isFinite(numericValue) && numericValue > 0 ? String(numericValue) : "";
-}
-
-function formatHistoryValue(field: string, value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  if (field === "value") {
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? formatMoney(numericValue) : value;
-  }
-
-  if (field === "voicePoint") {
-    const numericValue = Number(value);
-    return Number.isFinite(numericValue) ? formatPoints(numericValue) : value;
-  }
-
-  if (field === "isActive") {
-    return value === "true" ? "Ativo" : "Inativo";
-  }
-
-  if (field === "canceledAt") {
-    return formatDateTime(value);
-  }
-
-  return value;
-}
-
 function scrollDashboardContentToTop() {
   if (typeof window === "undefined") {
     return;
@@ -278,6 +180,7 @@ export function ActivitiesPageView() {
   const [activeFilters, setActiveFilters] = useState<ActivityFilterState>(INITIAL_FILTERS);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [groups, setGroups] = useState<ActivityGroupOption[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
@@ -319,6 +222,7 @@ export function ActivitiesPageView() {
       if (!response.ok) {
         setTeamTypes([]);
         setCategories([]);
+        setGroups([]);
         setFeedback({
           type: "error",
           message: data.message ?? "Falha ao carregar metadados de atividades.",
@@ -328,9 +232,11 @@ export function ActivitiesPageView() {
 
       setTeamTypes(data.teamTypes ?? []);
       setCategories(data.categories ?? []);
+      setGroups(data.groups ?? []);
     } catch {
       setTeamTypes([]);
       setCategories([]);
+      setGroups([]);
       setFeedback({
         type: "error",
         message: "Falha ao carregar metadados de atividades.",
@@ -439,6 +345,62 @@ export function ActivitiesPageView() {
     void loadActivities(page, activeFilters);
   }, [activeFilters, loadActivities, page]);
 
+  const parseMassImportCsv = useCallback(
+    (content: string, fileName: string) => parseActivityMassImportCsv({ content, fileName, teamTypes, categories, groups }),
+    [categories, groups, teamTypes],
+  );
+
+  const submitMassImport = useCallback(
+    async (rows: ActivityImportRow[]) => {
+      if (!session?.accessToken) {
+        return { ok: false, message: "Sessao invalida para importar atividades em massa.", savedCount: 0, results: [] };
+      }
+
+      const response = await fetch("/api/activities", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const massImport = useMassImport<ActivityImportRow>({
+    entityLabel: "atividades",
+    errorFilePrefix: "atividades",
+    templateFileName: "modelo_atividades_cadastro_em_massa.csv",
+    buildTemplateCsv: buildActivityMassImportTemplateCsv,
+    parse: parseMassImportCsv,
+    submit: submitMassImport,
+    resolveErrorColumn: (code) => {
+      if (code === "DUPLICATE_ACTIVITY_CODE") return "codigo";
+      if (code === "INVALID_TEAM_TYPE") return "tipo_equipe";
+      if (code === "INVALID_CATEGORY") return "categoria";
+      if (code === "INVALID_GROUP") return "grupo";
+      return code === "INVALID_ACTIVITY" ? "dados" : code === "ACTIVITY_CODE_IDD_TYPE_MISMATCH" ? "cod_sap" : "salvamento";
+    },
+    onImported: async () => {
+      await loadActivities(1, activeFilters);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+  });
+
   const formTitle = useMemo(() => (isEditing ? "Editar Atividade" : "Cadastro de Atividades"), [isEditing]);
 
   function resetForm() {
@@ -447,6 +409,11 @@ export function ActivitiesPageView() {
 
   function updateFilterField(field: keyof ActivityFilterState, value: string) {
     setFilterDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateGroupField(groupId: string) {
+    const selectedGroup = groups.find((group) => group.id === groupId);
+    setForm((current) => ({ ...current, groupId, value: selectedGroup ? toInputMoney(selectedGroup.unitValue) : "" }));
   }
 
   function applyFilters() {
@@ -466,10 +433,11 @@ export function ActivitiesPageView() {
     setForm({
       id: activity.id,
       code: activity.code,
+      codeIdd: activity.codeIdd,
       description: activity.description,
       teamTypeId: activity.teamTypeId,
       categoryId: activity.categoryId,
-      group: activity.group,
+      groupId: activity.groupId,
       value: toInputMoney(activity.value),
       voicePoint: toInputPoints(activity.voicePoint),
       unit: activity.unit,
@@ -525,11 +493,11 @@ export function ActivitiesPageView() {
       const payload = {
         id: form.id,
         code: normalizeCode(form.code),
+        codeIdd: normalizeText(form.codeIdd) || null,
         description: normalizeText(form.description),
         teamTypeId: normalizeText(form.teamTypeId),
         categoryId: normalizeText(form.categoryId),
-        group: normalizeText(form.group),
-        value: form.value,
+        groupId: normalizeText(form.groupId),
         voicePoint: form.voicePoint,
         unit: normalizeText(form.unit),
         scope: normalizeText(form.scope) || null,
@@ -742,6 +710,16 @@ export function ActivitiesPageView() {
             />
           </label>
 
+          <label className={styles.field}>
+            <span>Cod. SAP</span>
+            <input
+              type="text"
+              value={form.codeIdd}
+              onChange={(event) => setForm((current) => ({ ...current, codeIdd: event.target.value }))}
+              placeholder="Codigo SAP"
+            />
+          </label>
+
           <label className={`${styles.field} ${styles.fieldWide}`}>
             <span>
               Descricao <span className="requiredMark">*</span>
@@ -755,60 +733,29 @@ export function ActivitiesPageView() {
             />
           </label>
 
-          <label className={styles.field}>
-            <span>
-              Tipo <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.teamTypeId}
-              onChange={(event) => setForm((current) => ({ ...current, teamTypeId: event.target.value }))}
-              required
-              disabled={isLoadingMeta}
-            >
-              <option value="" disabled>
-                {isLoadingMeta ? "Carregando..." : "Selecione"}
-              </option>
-              {teamTypes.map((teamType) => (
-                <option key={teamType.id} value={teamType.id}>
-                  {teamType.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CatalogSelectField
+            label="Tipo"
+            value={form.teamTypeId}
+            options={teamTypes}
+            isLoading={isLoadingMeta}
+            onChange={(teamTypeId) => setForm((current) => ({ ...current, teamTypeId }))}
+          />
 
-          <label className={styles.field}>
-            <span>
-              Categoria <span className="requiredMark">*</span>
-            </span>
-            <select
-              value={form.categoryId}
-              onChange={(event) => setForm((current) => ({ ...current, categoryId: event.target.value }))}
-              required
-              disabled={isLoadingMeta}
-            >
-              <option value="" disabled>
-                {isLoadingMeta ? "Carregando..." : "Selecione"}
-              </option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          <CatalogSelectField
+            label="Categoria"
+            value={form.categoryId}
+            options={categories}
+            isLoading={isLoadingMeta}
+            onChange={(categoryId) => setForm((current) => ({ ...current, categoryId }))}
+          />
 
-          <label className={styles.field}>
-            <span>
-              Grupo <span className="requiredMark">*</span>
-            </span>
-            <input
-              type="text"
-              value={form.group}
-              onChange={(event) => setForm((current) => ({ ...current, group: event.target.value }))}
-              placeholder="Grupo da atividade"
-              required
-            />
-          </label>
+          <CatalogSelectField
+            label="Grupo"
+            value={form.groupId}
+            options={groups}
+            isLoading={isLoadingMeta}
+            onChange={updateGroupField}
+          />
 
           <label className={`${styles.field} ${styles.fieldWide}`}>
             <span>Alcance</span>
@@ -824,15 +771,7 @@ export function ActivitiesPageView() {
             <span>
               Valor <span className="requiredMark">*</span>
             </span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.value}
-              onChange={(event) => setForm((current) => ({ ...current, value: event.target.value }))}
-              placeholder="0,00"
-              required
-            />
+            <input type="number" value={form.value} placeholder="Selecione o grupo" readOnly />
           </label>
 
           <label className={styles.field}>
@@ -872,6 +811,11 @@ export function ActivitiesPageView() {
             <button type="submit" className={styles.primaryButton} disabled={isSaving}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={massImport.open} disabled={isLoadingMeta}>
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -971,6 +915,7 @@ export function ActivitiesPageView() {
             <thead>
               <tr>
                 <th>Codigo</th>
+                <th>Cod. SAP</th>
                 <th>Descricao</th>
                 <th>Tipo</th>
                 <th>Categoria</th>
@@ -991,6 +936,7 @@ export function ActivitiesPageView() {
                         {!activity.isActive ? <span className={styles.statusTag}>Inativo</span> : null}
                       </div>
                     </td>
+                    <td>{activity.codeIdd || "-"}</td>
                     <td>{activity.description}</td>
                     <td>{activity.teamTypeName}</td>
                     <td>{activity.categoryName}</td>
@@ -1089,7 +1035,7 @@ export function ActivitiesPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyRow}>
+                  <td colSpan={10} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando atividades..." : "Nenhuma atividade encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1128,10 +1074,11 @@ export function ActivitiesPageView() {
               <div className={styles.detailGrid}>
                 <div><strong>Status:</strong> {detailActivity.isActive ? "Ativo" : "Inativo"}</div>
                 <div><strong>Codigo:</strong> {detailActivity.code}</div>
+                <div><strong>Cod. SAP:</strong> {detailActivity.codeIdd || "-"}</div>
                 <div><strong>Descricao:</strong> {detailActivity.description}</div>
                 <div><strong>Tipo:</strong> {detailActivity.teamTypeName}</div>
                 <div><strong>Categoria:</strong> {detailActivity.categoryName}</div>
-                <div><strong>Grupo:</strong> {detailActivity.group || "-"}</div>
+                <div><strong>Grupo:</strong> {detailActivity.groupName || "-"}</div>
                 <div><strong>Valor:</strong> {formatMoney(detailActivity.value)}</div>
                 <div><strong>Pontos:</strong> {formatPoints(detailActivity.voicePoint)}</div>
                 <div><strong>Unidade:</strong> {detailActivity.unit}</div>
@@ -1288,6 +1235,8 @@ export function ActivitiesPageView() {
           </article>
         </div>
       ) : null}
+
+      <MassImportModal controller={massImport} entityLabel="atividades" columnsHint={ACTIVITY_MASS_IMPORT_COLUMNS_HINT} />
     </section>
   );
 }

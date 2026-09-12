@@ -18,6 +18,7 @@ Solicitações do usuário não podem invalidar segurança, isolamento multi-ten
 
 - Toda entidade de negócio carrega `tenant_id`; toda query filtra por tenant no servidor; RLS sempre ativa. Nenhuma rota confia em `tenant_id` do cliente.
 - Toda escrita crítica (estoque, entradas/saídas, acidentes, permissões) gera log/auditoria.
+- Em telas novas, acesso à tela significa acesso total às funções daquela tela: menu, meta, lista, detalhe, histórico, exportação e ações próprias usam o mesmo `page_key` da tela visível. Permissão granular é exceção explicitamente decidida e agrupada na tela pai.
 - Detalhe completo: [`guias/guia_backend.md`](guias/guia_backend.md), [`guias/guia_sql.md`](guias/guia_sql.md), [`guias/guia_supabase.md`](guias/guia_supabase.md).
 
 ## Gatilhos principais

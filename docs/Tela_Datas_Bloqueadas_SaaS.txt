@@ -1,0 +1,357 @@
+Tela: Datas Bloqueadas SaaS
+
+Visao geral
+-----------
+- Tela de Cadastro Base para manter o catalogo `programming_blocked_dates` por tenant.
+- Registra as datas em que a operacao NAO deve programar: feriado nacional, feriado
+  municipal, ponto facultativo ou bloqueio administrativo.
+- O catalogo alimenta sinalizacao visual em tres telas consumidoras: `Programacao`,
+  `Mapa de Programacao` e `Visualizacao Programacao`.
+- Permite cadastrar, editar, consultar, cancelar/ativar, exportar CSV e auditar alteracoes.
+
+DECISAO DE ESCOPO: AVISO, NAO TRAVA
+------------------------------------
+- Decisao do usuario na abertura da tarefa: o cadastro AVISA, nao impede.
+- Nenhuma RPC de escrita da Programacao foi alterada. `save_project_programming_stage`,
+  `postpone_project_programming_stage`, `postpone_project_programming_team` e
+  `correct_project_programming_stage_date` continuam aceitando qualquer data.
+- Consequencia: nao existe estado de banco que dependa deste catalogo. Inativar uma
+  data so faz o aviso sumir; etapa ja gravada naquela data continua valida.
+- Transformar em trava e uma tarefa separada, que precisaria alterar aquelas quatro
+  funcoes e definir a excecao para emergencia.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/datas-bloqueadas/page.tsx`
+- View: `src/modules/dashboard/datas-bloqueadas/BlockedDatesPageView.tsx`
+- Tipos e rotulos: `src/modules/dashboard/datas-bloqueadas/types.ts`
+- Regras de casamento data/municipio: `src/modules/dashboard/datas-bloqueadas/blockedDates.ts`
+- Hook de leitura das telas consumidoras: `src/modules/dashboard/datas-bloqueadas/useActiveBlockedDates.ts`
+- CSV: `src/modules/dashboard/datas-bloqueadas/csv.ts`
+- Fachada frontend: `src/modules/dashboard/datas-bloqueadas/index.ts`
+- API do cadastro: `src/app/api/blocked-dates/route.ts`
+- API de leitura das consumidoras: `src/app/api/blocked-dates/vigentes/route.ts`
+- Backend: `src/server/modules/blocked-dates/controller.ts`
+- Fachada backend: `src/server/modules/blocked-dates/index.ts`
+- Autorizacao multi-tela: `src/lib/server/routeAuthorization.ts` (`authorizeAnyPageAction`)
+- Banco, RPCs e permissao da tela: `supabase/migrations/424_create_blocked_dates_page_and_rpcs.sql`
+- Historico generico: `app_entity_history`, criada por
+  `supabase/migrations/051_create_app_entity_history_and_activity_status.sql`
+
+Cadastro
+--------
+- Campos obrigatorios:
+  - `Data`
+  - `Descricao`
+  - `Abrangencia` (`NACIONAL` ou `MUNICIPAL`)
+  - `Municipio` (somente quando a abrangencia e `MUNICIPAL`)
+- Campo opcional:
+  - `Tipo` (`FERIADO`, `PONTO_FACULTATIVO` ou `OUTRO`; default `FERIADO`).
+    E descritivo: nao muda nenhuma regra, so ajuda a distinguir feriado de bloqueio
+    administrativo na listagem.
+- Regras:
+  - `NACIONAL` nao aceita municipio e `MUNICIPAL` nao aceita ficar sem, garantido por
+    `programming_blocked_dates_scope_municipality_check`.
+  - Trocar a abrangencia para `NACIONAL` limpa o municipio no MESMO passo em que o
+    select some da tela (padrao de permissao granular do CLAUDE.md aplicado a campo
+    condicional: o estado nunca guarda valor que a UI nao renderiza). A RPC tambem
+    descarta o municipio nesse caso, em vez de recusar.
+  - `Municipio` so lista municipios ATIVOS de `project_municipalities` do tenant.
+  - Unicidade por abrangencia, via dois indices parciais:
+    `programming_blocked_dates_national_unique` em `(tenant_id, blocked_date)` para
+    `NACIONAL` e `programming_blocked_dates_municipal_unique` em
+    `(tenant_id, blocked_date, municipality_id)` para `MUNICIPAL`.
+    Sao parciais porque `municipality_id` e nulo em `NACIONAL` e um unique comum
+    trataria cada nulo como distinto.
+  - Os indices NAO filtram por `is_active`: data inativada mantem o lugar e
+    recadastrar a mesma data se faz reativando o registro, para preservar o historico
+    daquela data numa linha so.
+  - SEM recorrencia anual: cada linha e uma data exata. Natal de 2027 exige cadastro
+    novo. Decisao tomada na abertura da tarefa.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+- Cadastro em massa:
+  - Botao `Cadastro em massa` ao lado de `Cadastrar`, escondido durante a edicao.
+  - CSV separado por ponto e virgula. Colunas: `data`, `descricao`, `abrangencia`
+    (obrigatorias) e `municipio`, `tipo` (opcionais conforme a abrangencia).
+  - `data` aceita `DD/MM/AAAA` e `AAAA-MM-DD`; o calendario e conferido, entao
+    `31/02/2027` e recusado em vez de rolar para marco.
+  - `municipio` e informado pelo NOME e resolvido no CLIENTE contra a lista de
+    municipios ativos que a propria listagem devolve, mesmo padrao do import de
+    Equipes. O backend recebe o id ja resolvido e nunca busca por nome.
+  - `tipo` vazio assume FERIADO; valor preenchido e invalido vira erro de linha.
+  - Abrangencia NACIONAL ignora o `municipio` preenchido em vez de recusar a
+    linha, igual ao formulario, que limpa o campo ao trocar a abrangencia.
+  - Duplicidade e checada por `data + abrangencia + municipio`, a mesma chave dos
+    dois indices unicos parciais: a mesma data pode entrar como NACIONAL e como
+    MUNICIPAL de dois municipios distintos no mesmo arquivo.
+  - Teto de `MASS_IMPORT_ROW_LIMIT` (500) linhas por arquivo.
+  - Linha invalida NAO derruba o arquivo: o lote nao e transacao unica e o
+    resultado volta linha a linha, virando o CSV de erros com o numero da linha
+    original.
+  - Exige a acao `import` do page_key `datas-bloqueadas`.
+- Fluxos:
+  - `POST /api/blocked-dates` para cadastro.
+  - `POST /api/blocked-dates` com `action: "BATCH_IMPORT"` e `rows` para o
+    cadastro em massa; cada linha passa pela MESMA RPC do cadastro unitario,
+    entao nao existe caminho de escrita alternativo.
+  - `PUT /api/blocked-dates` para edicao.
+  - `PATCH /api/blocked-dates` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_blocked_date_record`.
+  - `PATCH` chama `set_blocked_date_record_status`.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Filtros:
+  - `Descricao`
+  - `Abrangencia`
+  - `Data inicial` e `Data final`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Data, Descricao, Abrangencia, Municipio, Tipo, Status, Atualizado em, Acoes.
+  - Ordenacao: ativos primeiro, depois data decrescente, depois descricao.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Botao `Exportar Excel (CSV)` no cabecalho, com `mode=export` e permissao `export`.
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+  - A resposta da listagem tras tambem `municipalities`, que alimenta o select do
+    formulario. Isso evita chamar `/api/municipalities`, que exige o `page_key`
+    `municipio` e quebraria a tela para quem so tem `datas-bloqueadas`.
+- Historico:
+  - Fonte: `app_entity_history`
+  - `module_key`: `datas-bloqueadas`
+  - `entity_table`: `programming_blocked_dates`
+  - `entity_code`: a data em `YYYY-MM-DD`
+  - Modal com paginacao fixa de `5` registros por pagina.
+
+Consumo pelas telas de Programacao
+----------------------------------
+- Endpoint proprio: `GET /api/blocked-dates/vigentes?from=&to=`.
+  - Devolve somente datas ATIVAS da janela.
+  - Janela obrigatoria e limitada a 400 dias: as tres telas trabalham com mes ou
+    semana, e sem teto um parametro errado varreria o catalogo inteiro do tenant.
+- Permissao: `authorizeAnyPageAction` libera quando QUALQUER um destes `page_key`
+  permite `read`: `datas-bloqueadas`, `programacao-normalizada`,
+  `programacao-visualizacao`, `mapa-programacao`.
+  Isso cumpre o "Padrao de permissao por tela" do CLAUDE.md: quem abre o Mapa nao
+  precisa da permissao do cadastro para ver o painel do proprio Mapa.
+- CASAMENTO POR NOME DE MUNICIPIO, nao por id. As telas consumidoras conhecem o
+  municipio do projeto como TEXTO (`project_with_labels.city_text`, exposto como
+  `city` no catalogo da Programacao e em `StageListItem`). Os dois lados leem
+  `project_municipalities.name` ao vivo, entao renomear um municipio move os dois
+  juntos, e `unique (tenant_id, name_normalized)` impede homonimos no tenant.
+- Regra de exibicao: `NACIONAL` sempre avisa; `MUNICIPAL` so avisa quando o
+  municipio do projeto casa. Sem municipio conhecido, as municipais ficam de fora —
+  e melhor nao avisar do que avisar sobre feriado de outra cidade.
+
+- Programacao (`/programacao-normalizada` e `/programacao`):
+  - `BlockedDateNotice` aparece em QUATRO campos de data: o formulario de etapa,
+    `Adiar etapa` (so no modo `Nova data`), `Adiar equipe` e `Corrigir data`.
+  - Janela carregada: de hoje menos 30 dias ate hoje mais 365 dias. Data escolhida
+    fora dessa janela nao recebe aviso.
+  - O aviso nao desabilita botao nem invalida formulario.
+- Mapa de Programacao (`/mapa-programacao`):
+  - `BlockedDatesMonthPanel` no topo, listando as datas do MES VIGENTE — nao do
+    periodo filtrado, porque o pedido e avisar o que nao se pode programar no mes.
+  - Aqui NAO da para filtrar pelo municipio do projeto: o Mapa e visao de carteira,
+    com obras de varios municipios na mesma tela. As datas municipais aparecem todas,
+    com o municipio no rotulo.
+- Visualizacao Programacao (`/programacao-visualizacao`):
+  - Cartao vermelho no Calendario Semanal, com dois niveis de marcacao porque a grade
+    e equipe x dia e nao carrega municipio:
+    - `NACIONAL` pinta a coluna inteira, celula vazia inclusive.
+    - `MUNICIPAL` marca o cabecalho do dia (com o nome do municipio) e so pinta as
+      celulas cujo projeto e daquele municipio, que sao as unicas em que a informacao
+      existe. Celula vazia so pode afirmar bloqueio nacional.
+  - Janela carregada: a semana EXIBIDA, nao uma janela fixa em torno de hoje — o
+    usuario navega o calendario livremente.
+  - Item novo na legenda: `Data bloqueada`.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela usa `useAuth()` como unica fonte de sessao no client.
+- Erros da tela sao registrados com `useErrorLogger("datas-bloqueadas")`.
+- Icones de acoes reutilizam `ActionIcon`.
+- Exportacao reutiliza `CsvExportButton` e `downloadCsvFile`.
+- A tela usa `page_key = datas-bloqueadas`; menu, lista, detalhe, historico,
+  exportacao e acoes proprias usam o mesmo `page_key`. Nao ha permissao granular.
+- A migration cadastra `default_user_access = false`, entao a tela nasce bloqueada
+  para nao administradores e depende de liberacao explicita em `Permissoes`.
+- Leituras de lista usam `loadAllRows` onde o resultado pode passar de 1.000 linhas
+  (municipios ativos e datas da janela), nunca `.limit()` acima do teto do PostgREST.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento/ativacao usa o campo `is_active` de `programming_blocked_dates`.
+- O motivo fica registrado em `app_entity_history`, pois a tabela base nao possui
+  colunas `cancellation_reason`, `canceled_at` e `canceled_by`.
+- NAO existe checagem de uso no cancelamento: nenhuma tabela referencia
+  `programming_blocked_dates` e o catalogo e apenas sinalizacao visual.
+- Saldo:
+  - Nao se aplica ao modulo.
+
+Atalhos
+-------
+- Rota principal: `/datas-bloqueadas`
+- API:
+  - `GET/POST/PUT/PATCH /api/blocked-dates`
+  - `GET /api/blocked-dates/vigentes`
+
+Atualizacao 2026-09
+-------------------
+- Tela `Datas Bloqueadas` criada em Cadastro Base.
+- Antes: nao havia onde registrar feriado ou dia sem programacao; a Programacao
+  aceitava qualquer data sem nenhuma sinalizacao.
+- Depois: `/datas-bloqueadas` permite cadastrar, editar, listar, detalhar, consultar
+  historico, cancelar/ativar e exportar as datas do tenant.
+- Depois: `Programacao`, `Mapa de Programacao` e `Visualizacao Programacao` sinalizam
+  as datas bloqueadas nos pontos descritos acima.
+- Depois: `authorizeAnyPageAction` entra em `src/lib/server/routeAuthorization.ts`
+  para que um catalogo lido por varias telas nao exija a permissao do cadastro.
+- Criada a migration `424_create_blocked_dates_page_and_rpcs.sql` com
+  `save_blocked_date_record` e `set_blocked_date_record_status`, ambas
+  `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`.
+- A migration tambem adiciona `unique (id, tenant_id)` em `project_municipalities`,
+  que faltava e sem a qual a FK do municipio nao poderia ser amarrada ao tenant.
+- DESVIO DO PLANO APROVADO: o campo `Ordem` foi descartado. Data ja se ordena
+  sozinha, e um `sort_order` manual seria campo morto no formulario.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/datas-bloqueadas/page.tsx`
+  - Responsavel por: montar a view operacional da rota `Datas Bloqueadas`.
+- Caminho: `src/modules/dashboard/datas-bloqueadas/BlockedDatesPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/modules/dashboard/datas-bloqueadas/blockedDates.ts`
+  - Responsavel por: `normalizeMunicipalityName`, `findBlockedDatesFor`,
+    `formatBlockedDateLabel`, `formatBlockedDateShort`, `getMonthWindow`.
+- Caminho: `src/modules/dashboard/datas-bloqueadas/useActiveBlockedDates.ts`
+  - Responsavel por: carregar a janela de datas ativas para as telas consumidoras.
+    A carga fica num `useCallback` e o efeito so a dispara, porque
+    `react-hooks/set-state-in-effect` recusa setState direto no corpo do efeito.
+- Caminho: `src/app/api/blocked-dates/route.ts`
+  - Responsavel por: expor os handlers HTTP do cadastro.
+- Caminho: `src/app/api/blocked-dates/vigentes/route.ts`
+  - Responsavel por: expor a leitura consumida pelas tres telas de programacao.
+- Caminho: `src/server/modules/blocked-dates/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, paginar listagem, resolver
+    nomes de municipio e chamar as RPCs transacionais.
+- Caminho: `src/modules/dashboard/programacao-normalizada/components/BlockedDateNotice.tsx`
+  - Responsavel por: renderizar o aviso nos campos de data da Programacao.
+- Caminho: `src/modules/dashboard/mapa-programacao/components/BlockedDatesMonthPanel.tsx`
+  - Responsavel por: listar as datas bloqueadas do mes vigente no Mapa.
+- Caminho: `supabase/migrations/424_create_blocked_dates_page_and_rpcs.sql`
+  - Responsavel por: tabela, RLS, indices, RPCs de escrita/status, historico na mesma
+    transacao e cadastro da pagina em `app_pages`.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/datas-bloqueadas/BlockedDatesPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`,
+    `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+- Caminho: `src/modules/dashboard/datas-bloqueadas/types.ts`
+  - Responsavel por: `BLOCKED_DATE_SCOPE_LABELS`, `BLOCKED_DATE_KIND_LABELS`.
+- Caminho: `src/server/modules/blocked-dates/controller.ts`
+  - Responsavel por: `BLOCKED_DATES_PAGE_KEY`, `BLOCKED_DATES_CONSUMER_PAGE_KEYS`,
+    `BLOCKED_DATE_SCOPES`, `BLOCKED_DATE_KINDS`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: menu e titulo da rota `/datas-bloqueadas`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/datas-bloqueadas` para `page_key = datas-bloqueadas`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: exibir a tela na matriz de permissoes.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/modules/dashboard/datas-bloqueadas/csv.ts`
+  - Responsavel por: montar o CSV de datas bloqueadas.
+- Caminho: `src/modules/dashboard/datas-bloqueadas/massImport.ts`
+  - Responsavel por: `buildBlockedDateMassImportTemplateCsv`, `parseImportDate` e
+    `parseBlockedDateMassImportCsv` (validacao de data, abrangencia, municipio,
+    tipo e duplicidade dentro do arquivo).
+- Caminho: `src/modules/dashboard/datas-bloqueadas/useBlockedDatesMassImport.ts`
+  - Responsavel por: fiacao do `useMassImport`, envio do lote e traducao do codigo
+    de erro do backend para a coluna do CSV de erros.
+- Caminho: `src/lib/utils/massImport.ts` e `src/hooks/useMassImport.ts`
+  - Responsavel por: leitura do CSV, modelo, relatorio de erros e o controlador do
+    modal, compartilhados com os demais cadastros.
+- Caminho: `src/lib/server/apiHelpers.ts`
+  - Responsavel por: `loadAllRows`, `parsePagination`, `normalizeHistoryChanges`.
+- Caminho: `src/lib/server/concurrency.ts`
+  - Responsavel por: normalizar e comparar `expectedUpdatedAt`.
+- Caminho: `src/hooks/useErrorLogger.ts`
+  - Responsavel por: registrar falhas da tela com tag `datas-bloqueadas`.
+
+Servicos e integracoes externas
+- Supabase Postgres com RLS.
+- Next.js Route Handlers (`/api/blocked-dates` e `/api/blocked-dates/vigentes`).
+
+Ajuda contextual
+- Arquivos criados:
+  - `src/app/(dashboard)/datas-bloqueadas/page.tsx`
+  - `src/app/api/blocked-dates/route.ts`
+  - `src/app/api/blocked-dates/vigentes/route.ts`
+  - `src/modules/dashboard/datas-bloqueadas/BlockedDatesPageView.tsx`
+  - `src/modules/dashboard/datas-bloqueadas/blockedDates.ts`
+  - `src/modules/dashboard/datas-bloqueadas/csv.ts`
+  - `src/modules/dashboard/datas-bloqueadas/index.ts`
+  - `src/modules/dashboard/datas-bloqueadas/massImport.ts`
+  - `src/modules/dashboard/datas-bloqueadas/useBlockedDatesMassImport.ts`
+  - `src/modules/dashboard/datas-bloqueadas/types.ts`
+  - `src/modules/dashboard/datas-bloqueadas/useActiveBlockedDates.ts`
+  - `src/modules/dashboard/mapa-programacao/components/BlockedDatesMonthPanel.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/BlockedDateNotice.tsx`
+  - `src/server/modules/blocked-dates/controller.ts`
+  - `src/server/modules/blocked-dates/index.ts`
+  - `supabase/migrations/424_create_blocked_dates_page_and_rpcs.sql`
+  - `docs/Tela_Datas_Bloqueadas_SaaS.txt`
+- Arquivos alterados:
+  - `src/components/layout/AppShell.tsx`
+  - `src/lib/auth/authorization.ts`
+  - `src/lib/server/routeAuthorization.ts`
+  - `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
+  - `src/modules/dashboard/programacao-normalizada/ProgrammingNormalizedPageView.tsx`
+  - `src/modules/dashboard/programacao-normalizada/ProjectPlanView.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/ProgrammingWeeklyCalendarPanel.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/ProgrammingWeeklyCalendar.module.css`
+  - `src/modules/dashboard/programacao-normalizada/components/modals/PostponeModal.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/modals/PostponeTeamModal.tsx`
+  - `src/modules/dashboard/programacao-normalizada/components/modals/CorrectDateModal.tsx`
+  - `docs/Tela_Cadastro_Base_SaaS.txt`
+  - `docs/Tela_Programacao_Normalizada_SaaS.txt`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `docs/Tela_Visualizacao_Programacao_SaaS.txt`
+  - `supabase/migrations/README.txt`
+  - `TASKS.md`
+- Comportamento antes/depois:
+  - Antes: nenhuma data era sinalizada; feriado so existia na cabeca de quem programa.
+  - Depois: catalogo proprio, com aviso na Programacao, painel do mes no Mapa e cartao
+    vermelho no Calendario Semanal da Visualizacao. A gravacao continua permitida.
+
+Atualizacao 2026-09-10 - Cadastro em massa
+-------------------------------------------
+- A tela ganhou `Cadastro em massa` por CSV, no mesmo padrao ja usado em Cargo,
+  Categoria de Atividade, Atividades, Equipes e Projetos.
+- Nada de infraestrutura nova: reusa `src/lib/utils/massImport.ts`,
+  `src/hooks/useMassImport.ts` e `src/components/ui/MassImportModal.tsx`.
+- Backend: `POST /api/blocked-dates` passou a aceitar `action: "BATCH_IMPORT"`
+  com `rows`, sob a acao `import` do page_key `datas-bloqueadas` e teto de 500
+  linhas (`MASS_IMPORT_ROW_LIMIT`). Nenhuma migration: a RPC
+  `save_blocked_date_record` ja existia e e a MESMA usada pelo cadastro unitario.
+- `save_user_permissions` (migration 386) grava as sete flags granulares a partir
+  do `enabled` da tela, entao liberar `Datas Bloqueadas` em `Permissoes` ja libera
+  o import junto. Administrador passa direto por `role.isAdmin`.
+- O lote NAO e transacao unica de proposito: uma linha ruim no meio do arquivo nao
+  pode descartar as boas. O resultado volta linha a linha e vira o CSV de erros.
+- A fiacao ficou em `useBlockedDatesMassImport.ts`, fora do `BlockedDatesPageView`,
+  porque a tela estava em 952 linhas e o teto do `lint:size` e 1.000.
+- Validacao do parser executada com o modulo transpilado, cobrindo: o proprio
+  modelo gerado, data em ISO e em DD/MM/AAAA, cabecalho com acento, tipo em caixa
+  baixa e com espaco, tipo vazio, data inexistente (31/02), mes 13, descricao
+  vazia, municipio ausente/inexistente, tipo e abrangencia invalidos, duplicidade
+  no arquivo, a mesma data valendo em abrangencias diferentes, NACIONAL com
+  municipio preenchido e arquivo sem coluna obrigatoria.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros, 2 warnings
+  legados) e `npm run build`.

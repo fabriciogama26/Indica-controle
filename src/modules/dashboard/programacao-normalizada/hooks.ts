@@ -365,9 +365,11 @@ export function useProgrammingStageActions(params: {
     );
   }
 
-  async function addTeam(programmingId: string, teamId: string) {
+  async function addTeam(programmingId: string, teamId: string, programmedForemanPersonId?: string | null) {
     if (!accessToken) return { ok: false as const, data: null };
-    return runAction<SaveStageResponse>("add_team", { programmingId, teamId }, () => addProgrammingTeam({ accessToken, programmingId, teamId }));
+    return runAction<SaveStageResponse>("add_team", { programmingId, teamId }, () =>
+      addProgrammingTeam({ accessToken, programmingId, teamId, programmedForemanPersonId }),
+    );
   }
 
   async function removeTeam(programmingTeamId: string, expectedUpdatedAt: string) {

@@ -7,6 +7,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatWorksheetDateColumn } from "@/lib/utils/xlsx";
+import { useActiveBlockedDates } from "@/modules/dashboard/datas-bloqueadas";
 
 import {
   AddTeamModal,
@@ -29,6 +30,7 @@ import {
   useProgrammingStageActions,
   useProgrammingStageList,
 } from "./hooks";
+import { BlockedDateNotice } from "./components/BlockedDateNotice";
 import { ListFiltersBar, SobEntryBar, StageListTable } from "./listComponents";
 import styles from "./ProgrammingNormalizedPageView.module.css";
 import { ProgrammingWeeklyCalendarPanel } from "./components/ProgrammingWeeklyCalendarPanel";
@@ -86,6 +88,7 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
 
   const [addTeamTarget, setAddTeamTarget] = useState<StageListItem | null>(null);
   const [addTeamSelectedId, setAddTeamSelectedId] = useState("");
+  const [addTeamSelectedForemanId, setAddTeamSelectedForemanId] = useState("");
 
   const [detailsTarget, setDetailsTarget] = useState<ProgrammingStage | null>(null);
 
@@ -103,7 +106,7 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
   const addTeamCheck = useAddTeamPrecheck({ accessToken, programmingId: addTeamTarget?.id ?? null, teamId: addTeamSelectedId });
 
   const projects = meta?.projects ?? [];
-  const teams = meta?.teams ?? [];
+  const teams = useMemo(() => meta?.teams ?? [], [meta?.teams]);
   const reasonOptions = meta?.reasonOptions ?? [];
   const sgdTypes = meta?.sgdTypes ?? [];
   const electricalEqCatalog = meta?.electricalEqCatalog ?? [];
@@ -183,6 +186,24 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
 
     return map;
   }, [isConsultaMode, weekStages, weekDates]);
+  // Duas janelas, cada uma so onde e usada.
+  // Modais de data (modo cadastro): um mes atras ate um ano a frente.
+  // Calendario Semanal (modo consulta): a semana EXIBIDA, que o usuario navega
+  // livremente — uma janela fixa em torno de hoje deixaria de avisar assim que
+  // ele passasse do intervalo.
+  const { blockedDates } = useActiveBlockedDates({
+    accessToken,
+    from: addDaysIso(today, -30),
+    to: addDaysIso(today, 365),
+    enabled: !isConsultaMode,
+  });
+  const { blockedDates: weekBlockedDates } = useActiveBlockedDates({
+    accessToken,
+    from: weekStartDate,
+    to: addDaysIso(weekStartDate, 6),
+    enabled: isConsultaMode,
+  });
+
   const calendarTeams = useMemo(
     () => [...teams].sort((left, right) => left.name.localeCompare(right.name)),
     [teams],
@@ -428,16 +449,24 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
   function openAddTeamModal(stage: StageListItem) {
     setAddTeamTarget(stage);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
   }
 
   function closeAddTeamModal() {
     setAddTeamTarget(null);
     setAddTeamSelectedId("");
+    setAddTeamSelectedForemanId("");
+  }
+
+  function selectTeamToAdd(teamId: string) {
+    const selectedTeam = teams.find((team) => team.id === teamId);
+    setAddTeamSelectedId(teamId);
+    setAddTeamSelectedForemanId(selectedTeam?.foremanId ?? "");
   }
 
   async function confirmAddTeam() {
-    if (!addTeamTarget || !addTeamSelectedId) return;
-    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId);
+    if (!addTeamTarget || !addTeamSelectedId || !addTeamSelectedForemanId) return;
+    const result = await actions.addTeam(addTeamTarget.id, addTeamSelectedId, addTeamSelectedForemanId);
     if (result.ok) closeAddTeamModal();
   }
 
@@ -520,6 +549,7 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
           weekDates={weekDates}
           calendarTeams={calendarTeams}
           weeklyStageMap={weeklyStageMap}
+          blockedDates={weekBlockedDates}
           sgdTypes={sgdTypes}
           isLoading={isLoadingWeek}
           onPreviousWeek={() => setWeekStartDate((current) => addDaysIso(current, -7))}
@@ -598,6 +628,13 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
         reasonNotes={postponeReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice
+            blockedDates={blockedDates}
+            isoDate={postponeDate}
+            cityName={postponeTarget?.city ?? null}
+          />
+        }
         onClose={() => setPostponeTarget(null)}
         onConfirm={confirmPostpone}
         onModeChange={setPostponeMode}
@@ -639,6 +676,13 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
         reasonNotes={postponeTeamReasonNotes}
         reasonOptions={reasonOptions}
         isSubmitting={actions.isSubmitting}
+        blockedDateNotice={
+          <BlockedDateNotice
+            blockedDates={blockedDates}
+            isoDate={postponeTeamDate}
+            cityName={postponeTeamTarget?.stage.city ?? null}
+          />
+        }
         onClose={() => setPostponeTeamTarget(null)}
         onConfirm={confirmPostponeTeam}
         onNewDateChange={setPostponeTeamDate}
@@ -658,7 +702,9 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
       <AddTeamModal
         isOpen={Boolean(addTeamTarget)}
         availableTeams={addTeamAvailableTeams}
+        foremanOptions={meta?.foremen ?? []}
         selectedTeamId={addTeamSelectedId}
+        selectedForemanId={addTeamSelectedForemanId}
         isSubmitting={actions.isSubmitting}
         executionDate={addTeamTarget?.executionDate ?? null}
         startTime={addTeamTarget?.startTime ?? null}
@@ -666,7 +712,8 @@ export function ProgrammingNormalizedPageView({ mode = "cadastro" }: { mode?: Pr
         check={addTeamCheck}
         onClose={closeAddTeamModal}
         onConfirm={confirmAddTeam}
-        onSelectedTeamIdChange={setAddTeamSelectedId}
+        onSelectedTeamIdChange={selectTeamToAdd}
+        onSelectedForemanIdChange={setAddTeamSelectedForemanId}
       />
 
       <HistoryModal

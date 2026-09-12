@@ -837,3 +837,114 @@ Atualizacao 2026-08 - Filtro por descricao de material
   - `src/app/api/stock-transfers/route.ts`
   - `docs/Tela_Entrada_SaaS.txt`
   - `TASKS.md`
+
+Atualizacao 2026-08-20 (Correcao: classificacao de estorno truncava em 1.000 linhas)
+--------------------------------------------------------------------------------------
+- Problema:
+  - `preloadTransferReversalSets` e `preloadTeamOpTransferIds` liam as tabelas de estorno e de
+    operacoes de equipe com `.limit(10000)` numa unica consulta. O PostgREST deste projeto entrega
+    no maximo 1.000 linhas por resposta (`db-max-rows`) e NAO sinaliza o corte — devolve 200 com
+    menos linhas do que o SQL produziu.
+  - Os tres Sets montados a partir dessas leituras classificam TODA linha da listagem. Truncados,
+    o efeito nao e "faltam linhas na tela": e movimentacao ESTORNADA aparecendo como ativa, e
+    operacao de equipe aparecendo como movimentacao comum. Dado errado, nao dado faltante — pior
+    de detectar, porque a tela parece coerente.
+  - O corte comecava a valer a partir da milesima linha de `stock_transfer_reversals`,
+    `stock_transfer_item_reversals` ou `stock_transfer_team_operations` do tenant.
+- Correcao:
+  - Novo helper compartilhado `loadAllRows` em `src/lib/server/apiHelpers.ts`, com a constante
+    `SUPABASE_RESPONSE_ROW_CAP = 1000`. Ele pagina por `.range()`, para em pagina VAZIA (nunca em
+    "pagina menor que a pedida") e avanca o offset pelo numero de linhas REALMENTE recebidas.
+    As duas regras existem porque a alternativa obvia falha em silencio quando o teto do servidor
+    e menor que o bloco pedido — foi exatamente assim que a exportacao de `/saida` truncou.
+  - As tres leituras passaram a usar `loadAllRows` com `.order()` estavel (`id` nas tabelas de
+    estorno, `transfer_id` em `stock_transfer_team_operations`). Sem ordem definida o Postgres nao
+    garante a mesma sequencia entre chamadas e a paginacao por offset repete ou perde linhas.
+- O que NAO virou leitura completa, de proposito:
+  - `preloadTransferIdsForMaterial` continua com teto de uma pagina. O retorno dela ja e cortado em
+    200 ids logo abaixo (`.slice(0, 200)`) — e um filtro de busca best-effort, nao fonte de verdade.
+    O que mudou foi so a honestidade do numero: o teto declarado era 5 mil, valor que o PostgREST
+    nunca entregou. Transformar isso em busca exaustiva seria mudanca de comportamento de produto,
+    nao correcao de bug, e fica registrada aqui como decisao consciente.
+- Como validar:
+  - Abrir `/entrada` num tenant com mais de 1.000 estornos e conferir que movimentacoes estornadas
+    aparecem marcadas como tal. Antes da correcao, as que estivessem alem da milesima linha da
+    tabela de estornos apareciam como ativas.
+  - Conferir que operacoes de equipe continuam sendo excluidas/identificadas corretamente na
+    listagem de Entrada.
+  - `npx tsc --noEmit`, `npm run lint`, `npm run build`.
+- Impacto multi-tenant: nenhum. Todas as consultas continuam filtrando `tenant_id` da sessao; o que
+  mudou foi so quantas linhas sao lidas.
+- Contexto: este e o quarto caso do mesmo teto de 1.000 no repositorio (Dashboard Estoque em
+  `loadTransfers`, listagem de `/saida` no commit 98783c9, exportacao de `/saida`, e agora a
+  classificacao de `/entrada`). Restam 21 pontos com `.limit()` acima de 1.000 sem `.range()`,
+  mapeados em `TASKS.md`.
+
+Atualizacao 2026-08 - Estorno com fila de atendimento
+-----------------------------------------------------
+- O botao `Estornar` e o modal de selecao visual permanecem na tela.
+- Mudanca de efeito: confirmar o modal nao executa mais a reversao imediatamente.
+- `POST /api/stock-transfers/reversal` passa a criar pedido em `stock_reversal_requests` e itens em
+  `stock_reversal_request_items`, retornando `requestId`.
+- A execucao real do estorno ocorre somente em `/estorno-atendimento`, pela acao `Aprovar e executar`.
+- Em lote, o frontend envia `itemIds` com os itens ativos exibidos no modal, preservando exatamente o
+  escopo solicitado pelo usuario.
+- A migration `384_harden_stock_reversal_request_flow.sql` reforca essa regra no banco: `BATCH`
+  sem `itemIds` explicitos e rejeitado, evitando ampliar uma selecao parcial por payload adulterado.
+- A tela nao marca a linha como `Estornada` apos a solicitacao; esse status continua derivado das
+  tabelas reais de estorno depois da aprovacao.
+- Arquivos alterados:
+  - `src/app/api/stock-transfers/reversal/route.ts`
+  - `src/modules/dashboard/entrada/StockTransfersPageView.tsx`
+  - `src/lib/server/stockReversalRequests.ts`
+  - `supabase/migrations/383_create_stock_reversal_request_flow.sql`
+  - `supabase/migrations/384_harden_stock_reversal_request_flow.sql`
+- Comportamento antes/depois:
+  - Antes: `Usuario -> Estornar -> saldo alterado`.
+  - Depois: `Usuario -> Estornar -> pedido pendente -> Atendimento de Estornos -> Aprovar/Recusar`.
+
+Atualizacao 2026-09-03 - Pendencia de serial passa a ser configuravel no cadastro do material
+--------------------------------------------------------------------------------------------
+- A regra de pendencia desta tela nao mudou. O que mudou e a origem do valor que ela le.
+- Antes: `materials.allow_pending_serial_identification` so podia ser alterada por SQL
+  direto. Na pratica, RELIGADOR/CHAVE cadastrados depois da migration 247 nasciam com
+  `false` e exigiam Serial em Entrada, Saida e Transferencia, enquanto os cadastrados antes
+  aceitavam pendencia -- dois materiais do mesmo tipo com comportamentos diferentes nesta
+  tela, sem explicacao visivel para o usuario.
+- Depois: a flag e um checkbox no cadastro de Materiais (`docs/Tela_Materiais_SaaS.txt`,
+  atualizacao 2026-09-03), visivel apenas para `RELIGADOR` e `CHAVE`.
+- Continua valendo, sem alteracao:
+  - `ENTRY` e `TRANSFER` aceitam item sem `serial_number` quando o material permite;
+    `EXIT` continua exigindo Serial informado, identificando a unidade a partir do saldo
+    pendente do centro `DE` quando o serial ainda nao existir em `trafo_instances`.
+  - TRAFO exige `Serial + LP` em qualquer movimentacao.
+  - Operacoes de Equipe e Requisicao seguem exigindo Serial sempre, sem excecao de
+    pendencia.
+- Efeito colateral util: material com saldo pendente em aberto nao pode mais ter o rastreio
+  trocado nem a pendencia desligada pelo cadastro (`PENDING_SERIAL_BALANCE_OPEN`, 409). Isso
+  protege o saldo de `stock_serial_pending_balances` que so esta tela e as Operacoes de
+  Equipe conseguem liquidar.
+- Arquivos alterados nesta tela: nenhum. A mudanca e de cadastro e de RPC de material.
+
+Atualizacao 2026-09-09 - Pendencia de serial passa a ser configuravel por contrato
+--------------------------------------------------------------------------------------------
+- Antes: em quais movimentos a pendencia podia ser criada era decisao fixa no codigo
+  (`ENTRY` e `TRANSFER` sim, `EXIT` nao), replicada na UI, na API e na importacao CSV.
+- Depois: a regra vem de `tenant_stock_serial_policy`, configurada na tela `Politica de
+  Serial` (Cadastro Base). Ver `docs/Tela_Politica_Serial_SaaS.txt`.
+- O backfill da migration 421 grava exatamente o trio anterior para todo tenant, e a leitura
+  cai no mesmo default quando nao houver linha, entao nenhum contrato muda de comportamento
+  no deploy desta tela.
+- A politica vale em AND com `materials.allow_pending_serial_identification`: a pendencia so
+  e aceita quando o material permite E o contrato permite aquele movimento.
+- `GET /api/stock-transfers/meta` passa a devolver `serialPolicy`; o formulario usa esse
+  valor para habilitar o campo Serial e escolher o texto de ajuda.
+- Quando o item e recusado por falta de Serial, a mensagem distingue os dois motivos: material
+  que nao aceita pendencia versus contrato que nao aceita pendencia naquele movimento.
+- O estorno nao e afetado: ele roda por `/api/stock-transfers/reversal` e pela RPC propria,
+  sem passar pelo caminho de criacao de movimento onde a politica e aplicada. Estorno
+  reproduz fato ja ocorrido e nao pode ser barrado pela regra vigente hoje.
+- Operacoes de Equipe e Requisicao continuam exigindo Serial sempre, sem excecao.
+- Arquivos alterados nesta tela: `StockTransfersPageView.tsx` (le a politica da meta e a passa
+  para `canCreatePendingSerialEntry`), com os helpers de CSV extraidos para
+  `src/modules/dashboard/entrada/csv.ts` para caber no ratchet de tamanho.

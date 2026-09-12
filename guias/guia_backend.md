@@ -39,6 +39,8 @@ Para regras específicas de SQL/PL-pgSQL/RLS/migrations, ver [`guia_sql.md`](gui
 8. Toda rota/API/Edge Function valida `page_key` e a ação (`read`, `create`, `update`, `cancel`, `reverse`, `import`, `export`) no servidor via `requirePageAction`. Esconder menu ou desabilitar botão no frontend não é autorização.
 9. Rotas com service role executam o guard antes de qualquer SELECT/RPC/escrita.
 10. Nenhuma rota aceita `tenant_id`, `actor_user_id`, role ou auditoria vindos do body/cliente como fonte de verdade — sempre derivados da sessão (`resolveAuthenticatedAppUser`).
+- Tela nova segue permissão total por tela: todo endpoint interno que sustenta a tela visível (meta/catálogo, lista, detalhe, histórico, exportação e ações próprias) deve aceitar o mesmo `page_key` da tela. Não criar fluxo em que o usuário passa pelo menu mas recebe `403` ao carregar ou usar função normal da própria tela.
+- API ou componente reutilizado por tela de consulta/cadastro deve receber contexto de autorização claro ou ser separado. Ex.: uma tela read-only não pode exigir `page_key` da tela de cadastro se sua permissão visível é outra.
 
 ### Escrita, transação e concorrência
 11. Valor final, campos complementares, histórico essencial e snapshots obrigatórios são gravados na mesma RPC/transação. Proibido salvar o valor e corrigir campo complementar depois do commit, ou atualizar registro e gravar histórico essencial em chamada posterior.
@@ -57,7 +59,7 @@ Para regras específicas de SQL/PL-pgSQL/RLS/migrations, ver [`guia_sql.md`](gui
 
 ### Performance — banco de dados
 22. Proibido `.select("*")` — sempre listar as colunas necessárias.
-23. Proibido `.limit()` acima de 1.000 em rota de listagem; acima de 1.000 exige justificativa documentada no TXT da tela. `.limit(50000)` ou mais indica que a lógica deve virar RPC de agregação.
+23. Proibido `.limit()` acima de 1.000 em qualquer consulta — **não existe justificativa possível**, e a regra anterior ("acima de 1.000 exige justificativa documentada") estava factualmente errada. O PostgREST deste projeto entrega no máximo 1.000 linhas por resposta (`db-max-rows`) e **não sinaliza o corte**: devolve 200 com menos linhas do que o SQL produziu. Pedir 5.000 não traz 5.000 com uma ressalva; traz 1.000 fingindo ser o total. O sintoma não é erro nem tela vazia — é número errado apresentado como certo. Enforcement automático via `npm run lint:rowlimit` (`scripts/qualidade/check-row-limit.mjs` + `row-limit-baseline.json`), que resolve constantes além de literais e ignora comentários. Para ler tudo, usar `loadAllRows` de `src/lib/server/apiHelpers.ts`; para um teto **proposital**, `loadAllRows(..., { maxRows })`, que aplica o teto de verdade e deixa o chamador detectar que bateu nele. Volume que só cabe em RPC de agregação continua indicando que a lógica não é listagem.
 24. Filtros sempre no banco — proibido `data.filter(...)` sobre lista completa trazida para o Node.
 25. Filtro **nativo** (existe como coluna, ou resolvível via `.in("id", [...])` antes da query principal) vai direto ao banco. Filtro **derivado** (calculado em runtime cruzando tabelas, sem coluna própria) vira pós-filtro aplicado **somente nos itens da página já retornada** — nunca sobre o dataset completo. Quando isso deixa o `total` aproximado, documentar o trade-off no TXT da tela.
 26. Toda query de histórico/auditoria tem `.limit()` explícito: **50** para histórico exibido em modal/tela; até **500** para listas de cruzamento de IDs de uso interno.

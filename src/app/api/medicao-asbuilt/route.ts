@@ -1,8 +1,9 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 import { fetchProjectServiceCenterMap, PROJECT_SERVICE_CENTER_FALLBACK } from "@/server/modules/projects/serviceCenters";
 
 type AsbuiltMeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
@@ -100,6 +101,16 @@ type SaveAsbuiltMeasurementBatchPayload = {
   }>;
 };
 
+type NormalizedAsbuiltMeasurementBatchRow = {
+  rowNumbers: number[];
+  projectId: string | null;
+  serviceCoverageEndDate: string | null;
+  asbuiltMeasurementKind: AsbuiltMeasurementKind;
+  noProductionReasonId: string | null;
+  notes: null;
+  items: ReturnType<typeof normalizeAsbuiltMeasurementItems>;
+};
+
 type UpdateStatusPayload = {
   id?: string;
   action?: "FECHAR" | "CANCELAR" | "ABRIR";
@@ -131,14 +142,6 @@ type SaveAsbuiltMeasurementBatchRpcResult = {
     message?: string;
     asbuiltMeasurementOrderId?: string;
   }>;
-};
-
-type BatchPreValidationResult = {
-  rowNumbers: number[];
-  success: false;
-  reason: string;
-  message: string;
-  asbuiltMeasurementOrderId: null;
 };
 
 type SetAsbuiltMeasurementStatusRpcResult = {
@@ -310,6 +313,41 @@ function buildProjectCoverageKey(projectId: string, serviceCoverageEndDate: stri
   return `${projectId}|${serviceCoverageEndDate}`;
 }
 
+function buildBatchMeasurementKey(row: NormalizedAsbuiltMeasurementBatchRow) {
+  if (!row.projectId || !row.serviceCoverageEndDate) return null;
+  return [
+    row.projectId,
+    row.serviceCoverageEndDate,
+    row.asbuiltMeasurementKind,
+    row.noProductionReasonId ?? "",
+  ].join("|");
+}
+
+function mergeAsbuiltMeasurementBatchRows(rows: NormalizedAsbuiltMeasurementBatchRow[]) {
+  const mergedRows: NormalizedAsbuiltMeasurementBatchRow[] = [];
+  const rowByKey = new Map<string, NormalizedAsbuiltMeasurementBatchRow>();
+
+  for (const row of rows) {
+    const key = buildBatchMeasurementKey(row);
+    if (!key) {
+      mergedRows.push(row);
+      continue;
+    }
+
+    const existing = rowByKey.get(key);
+    if (!existing) {
+      rowByKey.set(key, row);
+      mergedRows.push(row);
+      continue;
+    }
+
+    existing.rowNumbers = normalizePositiveIntegerArray([...existing.rowNumbers, ...row.rowNumbers]);
+    existing.items.push(...row.items);
+  }
+
+  return mergedRows;
+}
+
 async function loadExistingAsbuiltProjectCoverageKeySet(params: {
   supabase: AuthenticatedAppUserContext["supabase"];
   tenantId: string;
@@ -428,18 +466,8 @@ async function fetchAppUserMap(params: {
   tenantId: string;
   ids: string[];
 }) {
-  if (!params.ids.length) {
-    return new Map<string, AppUserRow>();
-  }
-
-  const { data } = await params.supabase
-    .from("app_users")
-    .select("id, display, login_name")
-    .eq("tenant_id", params.tenantId)
-    .in("id", params.ids)
-    .returns<AppUserRow[]>();
-
-  return new Map((data ?? []).map((item) => [item.id, item]));
+  const users = await fetchTenantLinkedAppUsers<AppUserRow>(params.supabase, params.tenantId, params.ids);
+  return new Map(users.map((item) => [item.id, item]));
 }
 
 async function fetchAsbuiltMeasurementOrderDetail(params: {
@@ -744,6 +772,11 @@ async function saveAsbuiltMeasurementOrder(request: NextRequest, method: "POST" 
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "medicao-asbuilt", method === "POST" ? "create" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const payload = (await request.json().catch(() => null)) as SaveAsbuiltMeasurementPayload | null;
   const orderId = normalizeUuid(payload?.id);
   const projectId = normalizeUuid(payload?.projectId);
@@ -880,6 +913,11 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
   }
 
+  const authorizationError = await authorizePageAction(resolution, "medicao-asbuilt", "import");
+  if (authorizationError) {
+    return authorizationError;
+  }
+
   const payload = (await request.json().catch(() => null)) as SaveAsbuiltMeasurementBatchPayload | null;
   const rowsInput = Array.isArray(payload?.rows) ? payload.rows : [];
   if (!rowsInput.length) {
@@ -892,7 +930,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     serviceCoverageEndDate: normalizeIsoDate(row.serviceCoverageEndDate),
     asbuiltMeasurementKind: normalizeAsbuiltMeasurementKind(row.asbuiltMeasurementKind),
     noProductionReasonId: normalizeUuid(row.noProductionReasonId),
-    notes: normalizeText(row.notes) || null,
+    notes: null,
     items: hasInvalidAsbuiltMeasurementItemValues(row.items) ? [] : normalizeAsbuiltMeasurementItems(row.items),
   }));
 
@@ -923,35 +961,24 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
     }));
   const rowsWithActiveProjects = rowsWithCoverageDate.filter((row) => !row.projectId || activeProjectIds.has(row.projectId));
 
-  const seenBatchProjectCoverageKeys = new Set<string>();
-  const duplicateProjectResults: BatchPreValidationResult[] = [];
-  const rowsWithUniqueProjects: typeof rows = [];
-  for (const row of rowsWithActiveProjects) {
-    const projectCoverageKey = row.projectId && row.serviceCoverageEndDate
-      ? buildProjectCoverageKey(row.projectId, row.serviceCoverageEndDate)
-      : null;
-    if (projectCoverageKey && seenBatchProjectCoverageKeys.has(projectCoverageKey)) {
-      duplicateProjectResults.push({
-        rowNumbers: row.rowNumbers,
-        success: false,
-        reason: "PROJECT_ASBUILT_MEASUREMENT_COVERAGE_DUPLICATE_IN_BATCH",
-        message: "Projeto e data de corte repetidos no mesmo lote de Medicao Asbuilt.",
-        asbuiltMeasurementOrderId: null,
-      });
-      continue;
-    }
-    if (projectCoverageKey) {
-      seenBatchProjectCoverageKeys.add(projectCoverageKey);
-    }
-    rowsWithUniqueProjects.push(row);
-  }
+  const rowsMergedByMeasurement = mergeAsbuiltMeasurementBatchRows(rowsWithActiveProjects);
+  const duplicateActivityResults = rowsMergedByMeasurement
+    .filter((row) => Boolean(findDuplicateActivityId(row.items)))
+    .map((row) => ({
+      rowNumbers: row.rowNumbers,
+      success: false,
+      reason: "DUPLICATE_ASBUILT_MEASUREMENT_ACTIVITY",
+      message: "A mesma atividade nao pode ser repetida no medicao-asbuilt.",
+      asbuiltMeasurementOrderId: null,
+    }));
+  const rowsWithUniqueActivities = rowsMergedByMeasurement.filter((row) => !findDuplicateActivityId(row.items));
 
   const existingProjectCoverageKeys = await loadExistingAsbuiltProjectCoverageKeySet({
     supabase: resolution.supabase,
     tenantId: resolution.appUser.tenant_id,
-    projectIds: rowsWithUniqueProjects.map((row) => row.projectId),
+    projectIds: rowsWithUniqueActivities.map((row) => row.projectId),
   });
-  const existingProjectCoverageResults = rowsWithUniqueProjects
+  const existingProjectCoverageResults = rowsWithUniqueActivities
     .filter((row) => row.projectId && row.serviceCoverageEndDate
       && existingProjectCoverageKeys.has(buildProjectCoverageKey(row.projectId, row.serviceCoverageEndDate)))
     .map((row) => ({
@@ -961,7 +988,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
       message: "Projeto ja possui Medicao Asbuilt nesta data de corte.",
       asbuiltMeasurementOrderId: null,
     }));
-  const rowsReadyToSave = rowsWithUniqueProjects.filter((row) => (
+  const rowsReadyToSave = rowsWithUniqueActivities.filter((row) => (
     !row.projectId
     || !row.serviceCoverageEndDate
     || !existingProjectCoverageKeys.has(buildProjectCoverageKey(row.projectId, row.serviceCoverageEndDate))
@@ -969,7 +996,7 @@ async function saveAsbuiltMeasurementOrderBatchPartial(request: NextRequest) {
   const preValidationResults = [
     ...missingCoverageDateResults,
     ...inactiveProjectResults,
-    ...duplicateProjectResults,
+    ...duplicateActivityResults,
     ...existingProjectCoverageResults,
   ];
 
@@ -1047,6 +1074,11 @@ export async function PATCH(request: NextRequest) {
   const action = normalizeText(payload?.action).toUpperCase();
   const expectedUpdatedAt = normalizeText(payload?.expectedUpdatedAt) || null;
   const reason = normalizeText(payload?.reason) || null;
+
+  const authorizationError = await authorizePageAction(resolution, "medicao-asbuilt", action === "CANCELAR" ? "cancel" : "update");
+  if (authorizationError) {
+    return authorizationError;
+  }
 
   if (!orderId || (action !== "FECHAR" && action !== "CANCELAR" && action !== "ABRIR")) {
     return NextResponse.json({ message: "Informe medicao-asbuilt e acao valida para atualizar o status." }, { status: 400 });

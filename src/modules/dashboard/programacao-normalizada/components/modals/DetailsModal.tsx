@@ -42,6 +42,15 @@ export function DetailsModal(props: { target: ProgrammingStage | null; onClose: 
           <span><strong>Rede:</strong> {target.redeQty}</span>
           <span className={styles.fieldFullRow}><strong>Descricao:</strong> {target.serviceDescription || "-"}</span>
           <span className={styles.fieldFullRow}><strong>Anotacao:</strong> {target.note || "-"}</span>
+          <span className={styles.fieldFullRow}>
+            <strong>Equipes:</strong>{" "}
+            {target.teams.filter((team) => team.status === "ATIVA").length
+              ? target.teams
+                  .filter((team) => team.status === "ATIVA")
+                  .map((team) => `${team.teamName} (${team.programmedForemanName || "Sem encarregado"})`)
+                  .join(" / ")
+              : "-"}
+          </span>
           {target.cancellationReason ? (
             <span className={styles.fieldFullRow}><strong>Motivo cancelamento:</strong> {target.cancellationReason}</span>
           ) : null}

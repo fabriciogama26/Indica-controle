@@ -258,7 +258,10 @@ export function ReversalsPageView() {
 
     setIsExporting(true);
     try {
-      const params = buildSearchParams(activeFilters, 1, 50000);
+      const params = buildSearchParams(activeFilters, 1, PAGE_SIZE);
+      params.set("mode", "export");
+      params.delete("page");
+      params.delete("pageSize");
       const response = await fetch(`/api/estornos?${params.toString()}`, {
         cache: "no-store",
         headers: {

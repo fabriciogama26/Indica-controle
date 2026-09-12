@@ -6,6 +6,7 @@ let _adminClient: SupabaseClient | null = null;
 
 // --- Cache de auth por token+tenant com TTL de 45s ---
 const AUTH_CACHE_TTL_MS = 45_000;
+const ACTIVE_TENANT_COOKIE_NAME = "INDICA.activeTenantId";
 
 type AuthCacheEntry = {
   result: AuthenticatedAppUserContext;
@@ -59,6 +60,9 @@ type CurrentRoleRow = {
 type ResolveAuthenticatedAppUserOptions = {
   invalidSessionMessage?: string;
   inactiveMessage?: string;
+  ignoreActiveTenantCookie?: boolean;
+  allowAdminWithoutActiveTenant?: boolean;
+  allowTenantHeader?: boolean;
 };
 
 export type AdminOperatorContext = {
@@ -79,6 +83,8 @@ export type AuthenticatedAppUserContext = {
   tenantAccess: {
     activeTenantId: string;
     availableTenantIds: string[];
+    hasSelectedActiveTenant: boolean;
+    hasInvalidActiveTenantCookie: boolean;
   };
   role: {
     roleKey: string;
@@ -153,8 +159,17 @@ export async function resolveAuthenticatedAppUser(
     };
   }
 
-  const requestedTenantId = normalizeHeaderTenantId(request.headers.get("x-tenant-id"));
-  const cacheKey = `${token}:${requestedTenantId ?? ""}`;
+  const headerTenantId = normalizeHeaderTenantId(request.headers.get("x-tenant-id"));
+  const cookieTenantId = options.ignoreActiveTenantCookie
+    ? null
+    : normalizeHeaderTenantId(request.cookies.get(ACTIVE_TENANT_COOKIE_NAME)?.value ?? null);
+  const cacheKey = [
+    token,
+    headerTenantId ?? "",
+    cookieTenantId ?? "",
+    options.allowAdminWithoutActiveTenant ? "admin-optional" : "strict",
+    options.allowTenantHeader ? "header-ok" : "header-blocked",
+  ].join(":");
   const cached = getCachedAuth(cacheKey);
   if (cached) return cached;
 
@@ -212,9 +227,6 @@ export async function resolveAuthenticatedAppUser(
     };
   }
 
-  let availableTenantIds = [currentUser.tenant_id];
-  let activeTenantId = currentUser.tenant_id;
-
   const { data: tenantLinks, error: tenantLinksError } = await supabase
     .from("app_user_tenants")
     .select("tenant_id, is_default, ativo")
@@ -222,17 +234,54 @@ export async function resolveAuthenticatedAppUser(
     .eq("ativo", true)
     .returns<CurrentUserTenantLinkRow[]>();
 
-  if (!tenantLinksError && (tenantLinks ?? []).length > 0) {
-    const uniqueTenantIds = Array.from(new Set((tenantLinks ?? []).map((item) => item.tenant_id).filter(Boolean)));
-    if (uniqueTenantIds.length > 0) {
-      availableTenantIds = uniqueTenantIds;
-      const defaultTenant = (tenantLinks ?? []).find((item) => item.is_default) ?? null;
-      activeTenantId = defaultTenant?.tenant_id ?? uniqueTenantIds[0];
-    }
+  if (tenantLinksError) {
+    return {
+      error: {
+        status: 403,
+        message: "Falha ao carregar contratos vinculados ao usuario.",
+      },
+    };
   }
 
-  if (requestedTenantId) {
-    if (!availableTenantIds.includes(requestedTenantId)) {
+  const linkedTenantIds = Array.from(new Set((tenantLinks ?? []).map((item) => item.tenant_id).filter(Boolean)));
+  const roleKey = String(currentRole.role_key ?? "user");
+  const roleName = String(currentRole.name ?? "User");
+  const isAdmin = Boolean(currentRole.is_admin);
+  let availableTenantIds = [currentUser.tenant_id];
+  let activeTenantId = currentUser.tenant_id;
+  let hasSelectedActiveTenant = false;
+  let hasInvalidActiveTenantCookie = false;
+
+  if (isAdmin) {
+    if (linkedTenantIds.length === 0) {
+      return {
+        error: {
+          status: 403,
+          message: "Administrador sem contrato ativo vinculado.",
+        },
+      };
+    }
+
+    availableTenantIds = linkedTenantIds;
+    const defaultTenant = (tenantLinks ?? []).find((item) => item.is_default && linkedTenantIds.includes(item.tenant_id));
+    activeTenantId = defaultTenant?.tenant_id ?? linkedTenantIds[0] ?? "";
+  } else if (linkedTenantIds.length > 0) {
+    availableTenantIds = linkedTenantIds;
+    const defaultTenant = (tenantLinks ?? []).find((item) => item.is_default && linkedTenantIds.includes(item.tenant_id));
+    activeTenantId = defaultTenant?.tenant_id ?? linkedTenantIds[0] ?? currentUser.tenant_id;
+  }
+
+  if (headerTenantId && !options.allowTenantHeader) {
+    return {
+      error: {
+        status: 403,
+        message: "Troca de tenant por header nao permitida para esta rota.",
+      },
+    };
+  }
+
+  if (headerTenantId && options.allowTenantHeader) {
+    if (!availableTenantIds.includes(headerTenantId)) {
       return {
         error: {
           status: 403,
@@ -240,7 +289,28 @@ export async function resolveAuthenticatedAppUser(
         },
       };
     }
-    activeTenantId = requestedTenantId;
+    activeTenantId = headerTenantId;
+    hasSelectedActiveTenant = true;
+  } else if (cookieTenantId && isAdmin && availableTenantIds.includes(cookieTenantId)) {
+    activeTenantId = cookieTenantId;
+    hasSelectedActiveTenant = true;
+  } else if (cookieTenantId) {
+    hasInvalidActiveTenantCookie = true;
+    if (isAdmin && !options.allowAdminWithoutActiveTenant) {
+      return {
+        error: {
+          status: 428,
+          message: "Selecione um contrato antes de operar como administrador.",
+        },
+      };
+    }
+  } else if (isAdmin && !options.allowAdminWithoutActiveTenant) {
+    return {
+      error: {
+        status: 428,
+        message: "Selecione um contrato antes de operar como administrador.",
+      },
+    };
   }
 
   const result: AuthenticatedAppUserContext = {
@@ -253,11 +323,13 @@ export async function resolveAuthenticatedAppUser(
     tenantAccess: {
       activeTenantId,
       availableTenantIds,
+      hasSelectedActiveTenant,
+      hasInvalidActiveTenantCookie,
     },
     role: {
-      roleKey: String(currentRole.role_key ?? "user"),
-      roleName: String(currentRole.name ?? "User"),
-      isAdmin: Boolean(currentRole.is_admin),
+      roleKey,
+      roleName,
+      isAdmin,
     },
   };
 

@@ -4,240 +4,55 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { MassImportModal } from "@/components/ui/MassImportModal";
 import { Pagination } from "@/components/ui/Pagination";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
+import { useMassImport } from "@/hooks/useMassImport";
 import { usePagination } from "@/hooks/usePagination";
 import styles from "./TeamsPageView.module.css";
-import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
-import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import type { MassImportRowResult } from "@/lib/utils/massImport";
+import { buildTeamsCsv } from "./csv";
+import {
+  buildMissingTeamMetaReasons,
+  HISTORY_FIELD_LABELS,
+  INITIAL_FILTERS,
+  applyTeamCategoryChange,
+  buildQuery,
+  formatHistoryValue,
+  resolveTeamFormSelection,
+  type TeamFilterState,
+} from "./presentation";
+import {
+  TEAM_MASS_IMPORT_COLUMNS_HINT,
+  buildTeamMassImportTemplateCsv,
+  parseTeamMassImportCsv,
+  type TeamImportRow,
+} from "./massImport";
 
-type TeamItem = {
-  id: string;
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string | null;
-  serviceCenterName: string;
-  stockCenterId: string | null;
-  stockCenterName: string;
-  teamTypeId: string;
-  teamTypeName: string;
-  foremanId: string;
-  foremanName: string;
-  supervisorId: string | null;
-  supervisorName: string;
-  isActive: boolean;
-  cancellationReason: string | null;
-  canceledAt: string | null;
-  canceledByName: string | null;
-  createdByName: string;
-  updatedByName: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type TeamHistoryEntry = {
-  id: string;
-  changeType: "UPDATE" | "CANCEL" | "ACTIVATE";
-  reason: string | null;
-  createdAt: string;
-  createdByName: string;
-  changes: Record<string, { from: string | null; to: string | null }>;
-};
-
-type ForemanOption = {
-  id: string;
-  name: string;
-};
-
-type SupervisorOption = ForemanOption;
-
-type TeamTypeOption = {
-  id: string;
-  name: string;
-};
-
-type ServiceCenterOption = {
-  id: string;
-  name: string;
-};
-
-type TeamFormState = {
-  id: string | null;
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string;
-  teamTypeId: string;
-  foremanId: string;
-  supervisorId: string;
-  updatedAt: string;
-};
-
-type TeamFilterState = {
-  name: string;
-  vehiclePlate: string;
-  serviceCenterId: string;
-  teamTypeId: string;
-  foremanId: string;
-  supervisorId: string;
-};
-
-type TeamsListResponse = {
-  teams?: TeamItem[];
-  pagination?: { page: number; pageSize: number; total: number };
-  message?: string;
-};
-
-type TeamsMetaResponse = {
-  foremen?: ForemanOption[];
-  supervisors?: SupervisorOption[];
-  teamTypes?: TeamTypeOption[];
-  serviceCenters?: ServiceCenterOption[];
-  message?: string;
-};
-
-type TeamHistoryResponse = {
-  history?: TeamHistoryEntry[];
-  pagination?: { page: number; pageSize: number; total: number };
-  message?: string;
-};
-
-const PAGE_SIZE = DEFAULT_PAGE_SIZE;
-const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
-const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
-
-const HISTORY_FIELD_LABELS: Record<string, string> = {
-  name: "Nome da equipe",
-  vehiclePlate: "Placa do veiculo",
-  serviceCenterName: "Base",
-  stockCenterName: "Centro de estoque proprio",
-  teamTypeName: "Tipo",
-  foremanName: "Encarregado",
-  supervisorName: "Supervisor",
-  isActive: "Status",
-  cancellationReason: "Motivo do cancelamento",
-  canceledAt: "Data do cancelamento",
-  activationReason: "Motivo da ativacao",
-};
-
-const INITIAL_FORM: TeamFormState = {
-  id: null,
-  name: "",
-  vehiclePlate: "",
-  serviceCenterId: "",
-  teamTypeId: "",
-  foremanId: "",
-  supervisorId: "",
-  updatedAt: "",
-};
-
-const INITIAL_FILTERS: TeamFilterState = {
-  name: "",
-  vehiclePlate: "",
-  serviceCenterId: "",
-  teamTypeId: "",
-  foremanId: "",
-  supervisorId: "",
-};
-
-function normalizeText(value: string) {
-  return String(value ?? "").trim();
-}
-
-function normalizePlate(value: string) {
-  return normalizeText(value).toUpperCase();
-}
-
-function buildQuery(filters: TeamFilterState, page: number, pageSize = PAGE_SIZE) {
-  const params = new URLSearchParams();
-  if (filters.name.trim()) {
-    params.set("name", filters.name.trim());
-  }
-  if (filters.vehiclePlate.trim()) {
-    params.set("vehiclePlate", filters.vehiclePlate.trim());
-  }
-  if (filters.serviceCenterId.trim()) {
-    params.set("serviceCenterId", filters.serviceCenterId.trim());
-  }
-  if (filters.teamTypeId.trim()) {
-    params.set("teamTypeId", filters.teamTypeId.trim());
-  }
-  if (filters.foremanId.trim()) {
-    params.set("foremanId", filters.foremanId.trim());
-  }
-  if (filters.supervisorId.trim()) {
-    params.set("supervisorId", filters.supervisorId.trim());
-  }
-  params.set("page", String(page));
-  params.set("pageSize", String(pageSize));
-  return params.toString();
-}
-
-function buildTeamsCsv(teamItems: TeamItem[]) {
-  const header = [
-    "Nome da equipe",
-    "Placa do veiculo",
-    "Base",
-    "Centro de estoque proprio",
-    "Tipo",
-    "Encarregado",
-    "Supervisor",
-    "Status",
-    "Registrado por",
-    "Registrado em",
-    "Atualizado por",
-    "Atualizado em",
-  ];
-  const rows = teamItems.map((team) => [
-    team.name,
-    team.vehiclePlate,
-    team.serviceCenterName,
-    team.stockCenterName,
-    team.teamTypeName,
-    team.foremanName,
-    team.supervisorName,
-    team.isActive ? "Ativo" : "Inativo",
-    formatAuditActor(team.createdByName),
-    formatDateTime(team.createdAt),
-    formatAuditActor(team.updatedByName),
-    formatDateTime(team.updatedAt),
-  ]);
-
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}`;
-}
-
-function formatHistoryValue(field: string, value: string | null) {
-  if (!value) {
-    return "-";
-  }
-
-  if (field === "isActive") {
-    return value === "true" ? "Ativo" : "Inativo";
-  }
-
-  if (field === "canceledAt") {
-    return formatDateTime(value);
-  }
-
-  return value;
-}
-
-function scrollDashboardContentToTop() {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  const content = document.querySelector<HTMLElement>('[data-main-content-scroll="true"]');
-  if (content) {
-    content.scrollTo({ top: 0, behavior: "smooth" });
-    return;
-  }
-
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
+import {
+  EXPORT_PAGE_SIZE,
+  HISTORY_PAGE_SIZE,
+  INITIAL_FORM,
+  PAGE_SIZE,
+  isCommercialTeamItem,
+  normalizePlate,
+  normalizeText,
+  scrollDashboardContentToTop,
+  type ForemanOption,
+  type ServiceCenterOption,
+  type SupervisorOption,
+  type TeamCategoryOption,
+  type TeamFormState,
+  type TeamHistoryEntry,
+  type TeamHistoryResponse,
+  type TeamItem,
+  type TeamTypeOption,
+  type TeamsListResponse,
+  type TeamsMetaResponse,
+} from "./presentation";
 export function TeamsPageView() {
   const { session } = useAuth();
   const logError = useErrorLogger("equipes");
@@ -247,6 +62,7 @@ export function TeamsPageView() {
   const [foremen, setForemen] = useState<ForemanOption[]>([]);
   const [supervisors, setSupervisors] = useState<SupervisorOption[]>([]);
   const [teamTypes, setTeamTypes] = useState<TeamTypeOption[]>([]);
+  const [teamCategories, setTeamCategories] = useState<TeamCategoryOption[]>([]);
   const [serviceCenters, setServiceCenters] = useState<ServiceCenterOption[]>([]);
   const [teams, setTeams] = useState<TeamItem[]>([]);
   const [isLoadingMeta, setIsLoadingMeta] = useState(false);
@@ -287,23 +103,22 @@ export function TeamsPageView() {
   );
   const canSubmitForemanSwap =
     Boolean(swapTeam?.id) && Boolean(selectedSwapTargetTeam?.id) && Boolean(swapReason.trim()) && !isSwappingForeman;
-  const missingTeamMetaReasons = useMemo(() => {
-    if (isLoadingMeta) {
-      return [] as string[];
-    }
-
-    const reasons: string[] = [];
-    if (serviceCenters.length === 0) {
-      reasons.push("Base (Centro de Servico)");
-    }
-    if (teamTypes.length === 0) {
-      reasons.push("Tipo de Equipe");
-    }
-    if (foremen.length === 0) {
-      reasons.push("Encarregado");
-    }
-    return reasons;
-  }, [foremen.length, isLoadingMeta, serviceCenters.length, teamTypes.length]);
+  const { isCommercialTeam, hasCategoryMismatch } = useMemo(
+    () => resolveTeamFormSelection(form, teamTypes, teamCategories),
+    [form, teamCategories, teamTypes],
+  );
+  const missingTeamMetaReasons = useMemo(
+    () => buildMissingTeamMetaReasons({
+      isLoadingMeta,
+      serviceCenterCount: serviceCenters.length,
+      teamTypeCount: teamTypes.length,
+      teamCategoryCount: teamCategories.length,
+      foremanCount: foremen.length,
+      supervisorCount: supervisors.length,
+      isCommercialTeam,
+    }),
+    [foremen.length, isCommercialTeam, isLoadingMeta, serviceCenters.length, supervisors.length, teamCategories.length, teamTypes.length],
+  );
   const canSubmitTeamForm = missingTeamMetaReasons.length === 0 && !isSaving;
 
   const loadMeta = useCallback(async () => {
@@ -325,6 +140,7 @@ export function TeamsPageView() {
         setForemen([]);
         setSupervisors([]);
         setTeamTypes([]);
+        setTeamCategories([]);
         setServiceCenters([]);
         setFeedback({
           type: "error",
@@ -336,11 +152,13 @@ export function TeamsPageView() {
       setForemen(data.foremen ?? []);
       setSupervisors(data.supervisors ?? []);
       setTeamTypes(data.teamTypes ?? []);
+      setTeamCategories(data.teamCategories ?? []);
       setServiceCenters(data.serviceCenters ?? []);
     } catch (error) {
       setForemen([]);
       setSupervisors([]);
       setTeamTypes([]);
+      setTeamCategories([]);
       setServiceCenters([]);
       setFeedback({
         type: "error",
@@ -453,6 +271,66 @@ export function TeamsPageView() {
     void loadTeams(page, activeFilters);
   }, [activeFilters, loadTeams, page]);
 
+  const parseMassImportCsv = useCallback(
+    (content: string, fileName: string) =>
+      parseTeamMassImportCsv({ content, fileName, serviceCenters, teamTypes, teamCategories, foremen, supervisors }),
+    [foremen, serviceCenters, supervisors, teamCategories, teamTypes],
+  );
+
+  const submitMassImport = useCallback(
+    async (rows: TeamImportRow[]) => {
+      if (!session?.accessToken) {
+        return { ok: false, message: "Sessao invalida para importar equipes em massa.", savedCount: 0, results: [] };
+      }
+
+      const response = await fetch("/api/teams", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({ action: "BATCH_IMPORT", rows }),
+      });
+
+      const data = (await response.json().catch(() => null)) as
+        | { savedCount?: number; results?: MassImportRowResult[]; message?: string }
+        | null;
+
+      return {
+        ok: response.ok,
+        message: data?.message,
+        savedCount: Number(data?.savedCount ?? 0),
+        results: data?.results ?? [],
+      };
+    },
+    [session?.accessToken],
+  );
+
+  const massImport = useMassImport<TeamImportRow>({
+    entityLabel: "equipes",
+    errorFilePrefix: "equipes",
+    templateFileName: "modelo_equipes_cadastro_em_massa.csv",
+    buildTemplateCsv: buildTeamMassImportTemplateCsv,
+    parse: parseMassImportCsv,
+    submit: submitMassImport,
+    resolveErrorColumn: (code) => {
+      if (code === "DUPLICATE_TEAM_COMBINATION") return "nome";
+      if (code === "INVALID_SERVICE_CENTER") return "base";
+      if (code === "INVALID_TEAM_TYPE") return "tipo_operacional";
+      if (code === "INVALID_TEAM_CATEGORY" || code === "TEAM_TYPE_CATEGORY_MISMATCH") return "tipo_equipe";
+      if (code === "INVALID_FOREMAN" || code === "FOREMAN_ALREADY_LINKED" || code === "MISSING_FOREMAN") return "encarregado";
+      if (code === "INVALID_SUPERVISOR" || code === "MISSING_SUPERVISOR") return "supervisor";
+      return "salvamento";
+    },
+    onImported: async () => {
+      await loadTeams(1, activeFilters);
+      setPage(1);
+    },
+    onFeedback: setFeedback,
+    onError: (error) => logError("Falha ao importar equipes em massa.", error),
+  });
+
   const formTitle = useMemo(() => (isEditing ? "Editar Equipe" : "Cadastro de Equipes"), [isEditing]);
 
   function resetForm() {
@@ -477,13 +355,15 @@ export function TeamsPageView() {
   }
 
   function startEdit(team: TeamItem) {
+    const commercialTeam = isCommercialTeamItem(team);
     setForm({
       id: team.id,
       name: team.name,
       vehiclePlate: team.vehiclePlate,
       serviceCenterId: team.serviceCenterId ?? "",
       teamTypeId: team.teamTypeId,
-      foremanId: team.foremanId,
+      teamCategoryId: team.teamCategoryId ?? "",
+      foremanId: commercialTeam ? "" : team.foremanId ?? "",
       supervisorId: team.supervisorId ?? "",
       updatedAt: team.updatedAt,
     });
@@ -556,7 +436,7 @@ export function TeamsPageView() {
         targetPage += 1;
       }
 
-      setSwapTeamOptions(allTeams.filter((team) => team.isActive && team.id !== sourceTeamId));
+      setSwapTeamOptions(allTeams.filter((team) => team.isActive && team.id !== sourceTeamId && !isCommercialTeamItem(team) && team.foremanId));
     } catch (error) {
       setFeedback({
         type: "error",
@@ -614,6 +494,26 @@ export function TeamsPageView() {
       return;
     }
 
+    if (!form.teamCategoryId) {
+      setFeedback({ type: "error", message: "Tipo de equipe e obrigatorio." });
+      return;
+    }
+
+    if (hasCategoryMismatch) {
+      setFeedback({ type: "error", message: "O tipo de equipe escolhido nao pertence ao tipo operacional da equipe." });
+      return;
+    }
+
+    if (!isCommercialTeam && !form.foremanId) {
+      setFeedback({ type: "error", message: "Encarregado e obrigatorio para equipe tecnica." });
+      return;
+    }
+
+    if (isCommercialTeam && !form.supervisorId) {
+      setFeedback({ type: "error", message: "Supervisor e obrigatorio para equipe comercial." });
+      return;
+    }
+
     setIsSaving(true);
     setFeedback(null);
 
@@ -624,7 +524,8 @@ export function TeamsPageView() {
         vehiclePlate: normalizePlate(form.vehiclePlate),
         serviceCenterId: normalizeText(form.serviceCenterId),
         teamTypeId: normalizeText(form.teamTypeId),
-        foremanId: normalizeText(form.foremanId),
+        teamCategoryId: normalizeText(form.teamCategoryId),
+        foremanId: isCommercialTeam ? null : normalizeText(form.foremanId) || null,
         supervisorId: normalizeText(form.supervisorId) || null,
         ...(form.id ? { expectedUpdatedAt: form.updatedAt } : {}),
       };
@@ -958,7 +859,7 @@ export function TeamsPageView() {
 
           <label className={styles.field}>
             <span>
-              Tipo <span className="requiredMark">*</span>
+              Tipo operacional <span className="requiredMark">*</span>
             </span>
             <select
               value={form.teamTypeId}
@@ -978,17 +879,38 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>
-              Encarregado <span className="requiredMark">*</span>
-            </span>
+            <span>Tipo de equipe <span className="requiredMark">*</span></span>
             <select
-              value={form.foremanId}
-              onChange={(event) => setForm((current) => ({ ...current, foremanId: event.target.value }))}
+              value={form.teamCategoryId}
+              onChange={(event) =>
+                setForm((current) => applyTeamCategoryChange(current, event.target.value, teamCategories))
+              }
               required
               disabled={isLoadingMeta}
             >
               <option value="" disabled>
                 {isLoadingMeta ? "Carregando..." : "Selecione"}
+              </option>
+              {teamCategories.map((teamCategory) => (
+                <option key={teamCategory.id} value={teamCategory.id}>
+                  {teamCategory.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
+            <span>
+              Encarregado {!isCommercialTeam ? <span className="requiredMark">*</span> : null}
+            </span>
+            <select
+              value={form.foremanId}
+              onChange={(event) => setForm((current) => ({ ...current, foremanId: event.target.value }))}
+              required={!isCommercialTeam}
+              disabled={isLoadingMeta || isCommercialTeam}
+            >
+              <option value="">
+                {isLoadingMeta ? "Carregando..." : isCommercialTeam ? "Desativado para comercial" : "Selecione"}
               </option>
               {foremen.map((foreman) => (
                 <option key={foreman.id} value={foreman.id}>
@@ -999,10 +921,11 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Supervisor</span>
+            <span>Supervisor {isCommercialTeam ? <span className="requiredMark">*</span> : null}</span>
             <select
               value={form.supervisorId}
               onChange={(event) => setForm((current) => ({ ...current, supervisorId: event.target.value }))}
+              required={isCommercialTeam}
               disabled={isLoadingMeta}
             >
               <option value="">{isLoadingMeta ? "Carregando..." : "Sem supervisor"}</option>
@@ -1023,6 +946,11 @@ export function TeamsPageView() {
             <button type="submit" className={styles.primaryButton} disabled={!canSubmitTeamForm}>
               {isSaving ? "Salvando..." : isEditing ? "Atualizar" : "Cadastrar"}
             </button>
+            {!isEditing ? (
+              <button type="button" className={styles.secondaryButton} onClick={massImport.open} disabled={isLoadingMeta}>
+                Cadastro em massa
+              </button>
+            ) : null}
           </div>
         </form>
       </article>
@@ -1068,6 +996,22 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
+            <span>Tipo operacional</span>
+            <select
+              value={filterDraft.teamTypeId}
+              onChange={(event) => updateFilterField("teamTypeId", event.target.value)}
+              disabled={isLoadingMeta}
+            >
+              <option value="">Todos</option>
+              {teamTypes.map((teamType) => (
+                <option key={teamType.id} value={teamType.id}>
+                  {teamType.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={styles.field}>
             <span>Supervisor</span>
             <select
               value={filterDraft.supervisorId}
@@ -1100,16 +1044,16 @@ export function TeamsPageView() {
           </label>
 
           <label className={styles.field}>
-            <span>Tipo</span>
+            <span>Tipo de equipe</span>
             <select
-              value={filterDraft.teamTypeId}
-              onChange={(event) => updateFilterField("teamTypeId", event.target.value)}
+              value={filterDraft.teamCategoryId}
+              onChange={(event) => updateFilterField("teamCategoryId", event.target.value)}
               disabled={isLoadingMeta}
             >
               <option value="">Todos</option>
-              {teamTypes.map((teamType) => (
-                <option key={teamType.id} value={teamType.id}>
-                  {teamType.name}
+              {teamCategories.map((teamCategory) => (
+                <option key={teamCategory.id} value={teamCategory.id}>
+                  {teamCategory.name}
                 </option>
               ))}
             </select>
@@ -1145,7 +1089,8 @@ export function TeamsPageView() {
                 <th>Placa do veiculo</th>
                 <th>Base</th>
                 <th>Centro de estoque proprio</th>
-                <th>Tipo</th>
+                <th>Tipo operacional</th>
+                <th>Tipo de equipe</th>
                 <th>Encarregado</th>
                 <th>Supervisor</th>
                 <th>Registrado em</th>
@@ -1166,6 +1111,7 @@ export function TeamsPageView() {
                     <td>{team.serviceCenterName}</td>
                     <td>{team.stockCenterName}</td>
                     <td>{team.teamTypeName}</td>
+                    <td>{team.teamCategoryName || "-"}</td>
                     <td>{team.foremanName}</td>
                     <td>{team.supervisorName}</td>
                     <td>{formatDateTime(team.createdAt)}</td>
@@ -1216,7 +1162,7 @@ export function TeamsPageView() {
                           onClick={() => openForemanSwapModal(team)}
                           title="Permutar encarregado"
                           aria-label="Permutar encarregado da equipe"
-                          disabled={!team.isActive}
+                          disabled={!team.isActive || isCommercialTeamItem(team) || !team.foremanId}
                         >
                           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                             <path
@@ -1279,7 +1225,7 @@ export function TeamsPageView() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan={9} className={styles.emptyRow}>
+                  <td colSpan={10} className={styles.emptyRow}>
                     {isLoadingList ? "Carregando equipes..." : "Nenhuma equipe encontrada para os filtros informados."}
                   </td>
                 </tr>
@@ -1332,7 +1278,10 @@ export function TeamsPageView() {
                   <strong>Centro de estoque proprio:</strong> {detailTeam.stockCenterName}
                 </div>
                 <div>
-                  <strong>Tipo:</strong> {detailTeam.teamTypeName}
+                  <strong>Tipo operacional:</strong> {detailTeam.teamTypeName}
+                </div>
+                <div>
+                  <strong>Tipo de equipe:</strong> {detailTeam.teamCategoryName || "-"}
                 </div>
                 <div>
                   <strong>Encarregado:</strong> {detailTeam.foremanName}
@@ -1624,6 +1573,8 @@ export function TeamsPageView() {
           </article>
         </div>
       ) : null}
+
+      <MassImportModal controller={massImport} entityLabel="equipes" columnsHint={TEAM_MASS_IMPORT_COLUMNS_HINT} />
     </section>
   );
 }

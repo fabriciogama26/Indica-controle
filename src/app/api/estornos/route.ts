@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
-import { parsePagination } from "@/lib/server/apiHelpers";
+import { fetchTenantLinkedAppUsers, loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
 type ReversalSource = "ESTOQUE" | "EQUIPE";
 type ReversalType = "ITEM" | "INTEGRAL";
@@ -213,40 +213,59 @@ async function resolveReversalsContext(request: NextRequest) {
   return resolution;
 }
 
+// Teto INTENCIONAL de leitura: esta rota cruza estornos, transferencias, itens e operacoes de
+// equipe em memoria, entao nao pode crescer sem limite. Ate a correcao de 2026-08-20 ele nao
+// funcionava — era um teto de 5 mil declarado numa consulta unica, e o PostgREST entrega 1.000
+// linhas por resposta sem sinalizar o corte. Na pratica o teto real era 1.000 e o aviso de
+// resultado parcial (`isTruncated`, comparado com 5000) nunca podia disparar.
 const REVERSAL_QUERY_LIMIT = 5000;
 
 async function loadItemReversals(context: AuthenticatedAppUserContext, startDate: string | null, endDate: string | null) {
-  let query = context.supabase
-    .from("stock_transfer_item_reversals")
-    .select(
-      "original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, reversal_reason_code, reversal_reason_notes, created_at, created_by",
-    )
-    .eq("tenant_id", context.appUser.tenant_id)
-    .order("created_at", { ascending: false })
-    .limit(REVERSAL_QUERY_LIMIT);
+  const { data, error } = await loadAllRows<ItemReversalRow>(
+    (from, to) => {
+      let query = context.supabase
+        .from("stock_transfer_item_reversals")
+        .select(
+          "original_stock_transfer_id, original_stock_transfer_item_id, reversal_stock_transfer_id, reversal_stock_transfer_item_id, reversal_reason, reversal_reason_code, reversal_reason_notes, created_at, created_by",
+        )
+        .eq("tenant_id", context.appUser.tenant_id)
+        // `created_at` repete entre estornos do mesmo lote; sem o desempate por `id` a ordem entre
+        // chamadas nao e determinada e a paginacao por offset repete ou perde linhas.
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
 
-  if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
-  if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);
+      if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
+      if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);
 
-  const { data, error } = await query.returns<ItemReversalRow[]>();
+      return query.range(from, to).returns<ItemReversalRow[]>();
+    },
+    { maxRows: REVERSAL_QUERY_LIMIT },
+  );
+
   if (error) throw new Error("Falha ao carregar estornos por item.");
   return data ?? [];
 }
 
 async function loadFullReversals(context: AuthenticatedAppUserContext, startDate: string | null, endDate: string | null) {
-  let query = context.supabase
-    .from("stock_transfer_reversals")
-    .select(
-      "original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, reversal_reason_code, reversal_reason_notes, created_at, created_by",
-    )
-    .eq("tenant_id", context.appUser.tenant_id)
-    .order("created_at", { ascending: false })
-    .limit(REVERSAL_QUERY_LIMIT);
+  const { data, error } = await loadAllRows<FullReversalRow>(
+    (from, to) => {
+      let query = context.supabase
+        .from("stock_transfer_reversals")
+        .select(
+          "original_stock_transfer_id, reversal_stock_transfer_id, reversal_reason, reversal_reason_code, reversal_reason_notes, created_at, created_by",
+        )
+        .eq("tenant_id", context.appUser.tenant_id)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
 
-  if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
-  if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);
+      if (startDate) query = query.gte("created_at", `${startDate}T00:00:00`);
+      if (endDate) query = query.lte("created_at", `${endDate}T23:59:59.999`);
 
-  const { data, error } = await query.returns<FullReversalRow[]>();
+      return query.range(from, to).returns<FullReversalRow[]>();
+    },
+    { maxRows: REVERSAL_QUERY_LIMIT },
+  );
+
   if (error) throw new Error("Falha ao carregar estornos integrais.");
   return data ?? [];
 }
@@ -519,8 +538,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: context.error.message }, { status: context.error.status });
   }
 
+  const mode = normalizeText(request.nextUrl.searchParams.get("mode")).toLowerCase();
+  const isExportRequest = mode === "export";
   const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
-    maxPageSize: REVERSAL_QUERY_LIMIT * 2,
+    maxPageSize: isExportRequest ? REVERSAL_QUERY_LIMIT * 2 : 100,
   });
   const reversalStartDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalStartDate"));
   const reversalEndDate = normalizeDateInput(request.nextUrl.searchParams.get("reversalEndDate"));
@@ -577,7 +598,9 @@ export async function GET(request: NextRequest) {
       loadLookupMap<StockCenterRow>(context.supabase, "stock_centers", context.appUser.tenant_id, stockCenterIds, "id, name"),
       loadLookupMap<ProjectRow>(context.supabase, "project", context.appUser.tenant_id, projectIds, "id, sob"),
       loadLookupMap<MaterialRow>(context.supabase, "materials", context.appUser.tenant_id, materialIds, "id, codigo, descricao, umb, tipo"),
-      loadLookupMap<AppUserRow>(context.supabase, "app_users", context.appUser.tenant_id, userIds, "id, display, login_name"),
+      fetchTenantLinkedAppUsers<AppUserRow>(context.supabase, context.appUser.tenant_id, userIds).then(
+        (users) => new Map(users.map((user) => [user.id, user])),
+      ),
     ]);
 
     const itemRows = itemReversals.flatMap((reversal) => {
@@ -629,7 +652,7 @@ export async function GET(request: NextRequest) {
     );
     const filteredRows = applyFilters(allRows, request);
     const from = (page - 1) * pageSize;
-    const pagedRows = filteredRows.slice(from, from + pageSize);
+    const responseRows = isExportRequest ? filteredRows : filteredRows.slice(from, from + pageSize);
 
     const users = Array.from(
       new Map(
@@ -649,11 +672,11 @@ export async function GET(request: NextRequest) {
     ).sort((left, right) => left.label.localeCompare(right.label, "pt-BR"));
 
     return NextResponse.json({
-      rows: pagedRows,
+      rows: responseRows,
       summary: buildSummary(filteredRows),
       pagination: {
-        page,
-        pageSize,
+        page: isExportRequest ? 1 : page,
+        pageSize: isExportRequest ? filteredRows.length : pageSize,
         total: filteredRows.length,
       },
       filters: {

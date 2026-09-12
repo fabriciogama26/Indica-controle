@@ -2,6 +2,10 @@
 import { DEFAULT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
 export const ASBUILT_MEASUREMENT_PAGE_SIZE = DEFAULT_PAGE_SIZE;
+
+// Teto real do servidor para esta rota (`parsePagination` com `maxPageSize: 500`).
+// A exportacao pagina com este tamanho; pedir mais e recusado em silencio.
+export const EXPORT_PAGE_SIZE = 500;
 export const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
 
 export const INITIAL_FORM: AsbuiltMeasurementFormState = {
@@ -36,7 +40,7 @@ export const IMPORT_TEMPLATE_HEADERS = [
   "codigo_atividade",
   "quantidade",
   "taxa",
-  "observacao",
+  "observacao_item",
 ] as const;
 
 export const HISTORY_FIELD_LABELS: Record<string, string> = {

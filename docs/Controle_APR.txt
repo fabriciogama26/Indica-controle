@@ -197,3 +197,48 @@ Atualizacao 2026-08-15 - Lock canonico por projeto (achado MEDIO da auditoria de
 - Validado por leitura estrutural do SQL; `db:lint`/`db:migration-list` bloqueados pelo
   mesmo 403 ja registrado acima. Validacao manual pendente: duas abas, cancelar o
   projeto numa e criar/editar APR para o mesmo projeto na outra quase ao mesmo tempo.
+
+
+Atualizacao 2026-08 - Encarregado resolvido pela Composicao de Equipe
+---------------------------------------------------------------------
+- Arquivos alterados/criados:
+  - `supabase/migrations/374_resolve_team_foreman_from_composition.sql` (novo)
+  - `src/app/api/controle-apr/route.ts`
+  - `src/modules/dashboard/controle-apr/AprControlPageView.tsx`
+- Funcoes/hooks/constantes tocadas:
+  - `resolve_team_foreman_snapshot` (nova cadeia de resolucao)
+  - `apply_apr_team_snapshot` + trigger `trg_apply_apr_team_snapshot` (novos)
+  - `loadMeta`, `GET /api/controle-apr` (`route.ts`)
+  - `foremanOptions`, `FormState`, `createForm`, `startEdit` (`AprControlPageView.tsx`)
+- Comportamento antes/depois:
+  - Antes: `foreman_name_snapshot` era gravado pela RPC `save_project_apr_control`
+    a partir de `teams.foreman_person_id`, ou seja, o encarregado do cadastro da
+    equipe no momento do salvamento.
+  - Depois: um trigger `before insert or update` resolve o snapshot pela cadeia
+    composicao do dia -> `team_foreman_history` -> cadastro da equipe. A RPC nao
+    precisou ser reescrita; o trigger sobrescreve o valor que ela grava, no mesmo
+    padrao que a Medicao ja usa desde a migration 161.
+  - Depois: o filtro `Encarregado` deixou de ser montado a partir do cadastro das
+    equipes e passou a listar todas as pessoas ativas com cargo contendo
+    `ENCARREGADO`. Sem isso o filtro nao encontraria os encarregados que entram
+    pela composicao e nao estao vinculados a nenhuma equipe no cadastro.
+  - Depois: o campo `Encarregado` do formulario nao exibe mais o encarregado do
+    cadastro da equipe. Em cadastro novo fica vazio com o texto
+    `Definido pela composicao da data ao salvar`; em edicao exibe o valor ja
+    gravado no registro.
+  - Mantido: o rotulo do select de `Equipe` continua mostrando
+    `NOME_DA_EQUIPE - ENCARREGADO_DO_CADASTRO`, porque ali o nome serve para
+    identificar a equipe, nao para declarar o responsavel do dia.
+- Regra de atualizacao:
+  - O snapshot e resolvido na ESCRITA. Editar somente a observacao nao reescreve
+    o encarregado gravado; trocar equipe ou data do servico dispara nova
+    resolucao. Consequencia: APR salva ANTES de a composicao daquele dia existir
+    congela o encarregado do cadastro e nao passa a seguir a composicao depois.
+- Impacto multi-tenant:
+  - A funcao de resolucao filtra por `tenant_id` em `teams`, `team_compositions`,
+    `team_foreman_history` e `people`.
+  - `resolve_team_foreman_snapshot` teve o EXECUTE de `authenticated` revogado e
+    ficou restrito a `service_role`: nenhum consumidor cliente existe e todos os
+    callers sao funcoes `SECURITY DEFINER`, que executam no contexto do dono.
+  - `apply_apr_team_snapshot` e `SECURITY DEFINER` com revoke de
+    `public`/`anon`/`authenticated`.

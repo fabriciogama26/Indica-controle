@@ -1,6 +1,13 @@
 # Regras Configuráveis por Tenant — Pré-Implantação
 Gerado em: 2026-06-27
 
+> **AVISO (2026-09-09).** Este documento e de 2026-06-27 e parou na migration ~275. O repositorio esta na 420.
+> Os itens marcados `[x]` foram confirmados contra o schema de junho e precisam ser reconferidos.
+> Antes de usar qualquer numero, nome de tabela ou referencia de linha daqui, ler
+> [`regras-configuraveis-por-tenant-revisao-2026-09.md`](regras-configuraveis-por-tenant-revisao-2026-09.md),
+> que lista as divergencias confirmadas e refaz o levantamento por tela.
+
+
 Todos os campos abaixo foram preenchidos com base na leitura direta das migrations e código-fonte do repositório, não por presunção.
 
 ---

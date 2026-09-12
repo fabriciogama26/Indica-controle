@@ -120,6 +120,32 @@ Ordem de aplicacao
 284. 284_clear_interrupted_programming_work_completion_status.sql
 366. 366_create_material_umb_options.sql
 367. 367_update_materials_umb_cjt_to_un.sql
+387. 387_programming_history_tenant_created_index.sql
+388. 388_harden_project_billing_rpc_grants.sql
+389. 389_project_billing_unique_semantic_key.sql
+390. 390_create_service_center_rpcs.sql
+391. 391_create_municipality_rpcs.sql
+392. 392_advisor_tenant_first_performance_indexes.sql
+393. 393_close_authenticated_write_surface.sql
+394. 394_harden_function_search_path_post_210.sql
+395. 395_harden_admin_pin_storage.sql
+396. 396_drop_legacy_admin_pin_hash.sql
+397. 397_fix_admin_pin_search_path.sql
+398. 398_stock_requisition_requested_by_date_index.sql
+399. 399_create_missing_foreign_key_indexes_post_301.sql
+400. 400_programming_team_programmed_foreman_snapshot.sql
+401. 401_create_activity_type_page_and_team_type_rpcs.sql
+402. 402_move_team_type_screen_to_tipo_equipe.sql
+403. 403_create_activity_category_page_and_rpcs.sql
+404. 404_create_activity_group_catalog_and_page.sql
+405. 405_allow_not_working_composition_with_optional_project.sql
+406. 406_fix_service_activities_code_idd_text.sql
+407. 407_create_no_production_reason_page_and_rpcs.sql
+408. 408_create_stock_center_page_and_rpcs.sql
+409. 409_contract_control_fields_and_rpc.sql
+410. 410_create_utility_distributor_contact_page.sql
+411. 411_activity_groups_unit_value_source.sql
+412. 412_allow_measurement_uncancel_status_action.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1080,3 +1106,588 @@ Observacao
 - `postpone_project_programming_team` (Adiar equipe) continua recusando etapa em espera de proposito: a operacao parte da data da etapa de origem, que a etapa em espera nao tem. A UI esconde essa opcao do menu do chip nesse caso.
 - `add_project_programming_team` tambem segue bloqueado (317): sem `execution_date`, `programming_team_schedule_conflict` nao casa nada e a alocacao entraria sem checagem nenhuma.
 - A guarda LAST_ACTIVE_TEAM vale igual para etapa em espera. Nao altera schema, RLS, policies nem indices; grants reaplicados para `service_role` apenas, com validacao pos-execucao.
+
+372_update_service_activity_code_idd_rpc.sql
+- Republica `save_service_activity_record` para receber `p_code_idd` e persistir `service_activities.code_idd` no cadastro/edicao de Atividades.
+- `code_idd` permanece opcional: texto vazio e normalizado para `NULL`.
+- Mantem escrita transacional, historico por `p_changes`, controle de concorrencia por `p_expected_updated_at` e validacoes existentes de categoria, grupo, pontos, status e codigo duplicado.
+- A coluna ja existe pela migration 353; esta migration nao altera RLS, policies, indices ou constraints.
+- Assinatura nova fica com EXECUTE apenas para `service_role`, pois a tela grava pela API backend.
+
+373_team_composition_foreman_override.sql
+- Adiciona `team_compositions.foreman_person_id` (FK composta `(foreman_person_id, tenant_id) -> people(id, tenant_id)`), permitindo que a Composicao de Equipe registre um encarregado diferente do cadastro da equipe naquele dia, sem reescrever `teams.foreman_person_id`, que vale para todas as datas.
+- Backfill resolve o encarregado vigente na data pela `team_foreman_history` (161), com fallback para o cadastro da equipe. Linhas ativas que colidiriam no indice unico novo ficam com `foreman_person_id` nulo de proposito e continuam resolvendo pela cadeia atual — nenhuma composicao legada muda de comportamento.
+- Nova constraint `team_compositions_foreman_single_team_per_date` (EXCLUDE via btree_gist, parcial em `is_active = true and foreman_person_id is not null`): o mesmo encarregado nao pode responder por EQUIPES DIFERENTES na mesma data. Duas composicoes ativas da MESMA equipe na mesma data continuam permitidas — `ux_team_compositions_context_active` (200) ja as autoriza por projeto principal distinto e a operacao usa isso hoje —, e nao ambiguizam a resolucao inversa encarregado + data -> equipe, porque a resposta e a mesma equipe. UNIQUE nao serve: a regra exige "iguais em tenant/data/encarregado E diferentes em equipe". Fecha tambem a brecha do fluxo `Nao atuou`, em que o encarregado entra como `is_present = false` e escapava da trava da 354.
+- Republica `save_team_composition_record` com `p_foreman_person_id`. A RPC recusa encarregado inativo, de outro tenant, sem cargo contendo `ENCARREGADO`, ou ausente da lista de integrantes (`FOREMAN_NOT_MEMBER`); `NOT_WORKING` passa a exigir o encarregado SELECIONADO como unico integrante nao presente. O bloco `exception` trata `exclusion_violation` como `FOREMAN_DATE_CONFLICT` (409) e `unique_violation` como `DUPLICATE_CONTEXT` (409).
+- A assinatura anterior (14 argumentos) e removida com `drop function` para nao deixar sobrecarga ambigua no PostgREST. Nao altera RLS, policies ou triggers; grants da assinatura nova ficam com `service_role` apenas.
+- O backfill roda com `trg_team_compositions_present_member_date_conflict` (354) desligado e religa o trigger em seguida. Motivo: o UPDATE escreve SOMENTE `foreman_person_id`, coluna que o trigger nao valida — ele revalida integrantes presentes por data —, e existem composicoes anteriores a 354 que ja violam essa regra. Sem o desligamento a migration aborta com `TEAM_COMPOSITION_MEMBER_DATE_CONFLICT` por um dado que ela nao criou nem altera. A inconsistencia legada permanece e precisa ser tratada a parte.
+- `resolve_team_foreman_snapshot` (161) NAO foi alterada: Medicao, Controle APR e Mapa de Programacao continuam resolvendo por historico -> cadastro e ainda nao enxergam o encarregado da composicao.
+
+374_resolve_team_foreman_from_composition.sql
+- Faz a Composicao de Equipe virar o nivel 1 de `resolve_team_foreman_snapshot` (161). Cadeia nova: composicao ativa da equipe naquela data (`foreman_name_snapshot`) -> `team_foreman_history` vigente na data -> `teams.foreman_person_id`. Assinatura e tipo de retorno inalterados, entao todo consumidor existente herda sem mudanca.
+- A Medicao herda de graca: `trg_apply_measurement_team_snapshot` (161) ja chamava essa funcao. Nenhuma RPC, rota ou tela da Medicao foi tocada.
+- O Controle de APR passa a usar o mesmo padrao: nova funcao `apply_apr_team_snapshot` + trigger `trg_apply_apr_team_snapshot` (`before insert or update of team_id, service_date, team_name_snapshot, foreman_name_snapshot`) em `project_apr_controls`. A RPC `save_project_apr_control` (370) NAO foi reescrita — o trigger sobrescreve o valor que ela grava a partir do join direto em `teams`. Evita republicar ~500 linhas de PL/pgSQL para trocar duas atribuicoes.
+- Guarda de historico nos dois triggers: update que nao muda equipe nem data preserva o snapshot ja gravado. Decisao de negocio registrada: o encarregado e resolvido na ESCRITA, entao registro salvo ANTES de a composicao daquele dia existir congela o encarregado do cadastro e nao passa a segui-la depois.
+- CORRIGE a constraint publicada na 373: `team_compositions_foreman_single_team_per_date` passa a valer somente para `work_status = 'WORKING'`. Caso real que motivou (equipe CESTO, cujo encarregado muda de um dia para o outro): o encarregado oficial de uma MK vai para o CESTO no dia D e a MK registra "Nao atuou", que por regra exige o encarregado como unico integrante nao presente — a versao anterior recusava e travava justamente o fluxo que a feature existe para atender. A 354 ja tinha decidido que `is_present = false` nao ocupa a pessoa; a 373 contrariava essa decisao sem justificativa.
+- Nova constraint `team_compositions_team_single_foreman_per_date` (EXCLUDE via btree_gist, tambem so em `WORKING`): a mesma equipe nao pode ter, na mesma data, duas composicoes ativas com encarregados diferentes. Sem ela a resolucao teria duas respostas possiveis e o `limit 1` do nivel 1 escolheria arbitrariamente.
+- O nivel 1 da resolucao tambem so olha composicao `WORKING`: "encarregado da equipe X no dia D" nao tem resposta util quando a equipe nao atuou; nesse caso a cadeia cai para historico -> cadastro.
+- Novo indice parcial `idx_team_compositions_tenant_team_date_active` sustenta a busca do nivel 1 por tenant + equipe + data.
+- Hardening de grant: `resolve_team_foreman_snapshot` tinha EXECUTE para `authenticated` desde a 161, contra a regra 16 de `guias/guia_sql.md`. Nenhum consumidor cliente existe (nenhuma chamada `.rpc()` em `src/` ou `supabase/functions/`) e todos os callers sao funcoes `SECURITY DEFINER`, que executam no contexto do dono — o EXECUTE passou a ser so de `service_role`. `apply_apr_team_snapshot` entra ja com revoke de `public`/`anon`/`authenticated`.
+- Fora do escopo: o Mapa de Programacao continua exibindo o encarregado do cadastro da equipe. Ali a resolucao e de LEITURA por linha (equipe + data da ultima etapa), nao de escrita, e fazer isso no Node viraria N+1 ou payload grande — exige RPC propria recebendo os pares (equipe, data).
+
+375_harden_supabase_advisor_security_warnings.sql
+- Fecha warnings de seguranca do Supabase Advisor, exceto Auth/Leaked Password Protection, que permanece manual no Dashboard Supabase.
+- Move `btree_gist` para o schema `extensions` (ou cria a extensao nesse schema se estiver ausente), preservando as constraints EXCLUDE que ja dependem da extensao.
+- Fixa `search_path = public` em `tg_programming_capture_anticipated_snapshot`, `tg_programming_clear_snapshot_source` e `tg_programming_set_updated_at`, e revoga EXECUTE externo dessas trigger functions.
+- Revoga EXECUTE de `public`, `anon` e `authenticated` nas RPCs `save_service_activity_record`, `save_project_measurement_order` e `save_project_measurement_order_batch_partial`; mantem somente `service_role`, compativel com os Route Handlers atuais que validam sessao/tenant/permissao antes de chamar as RPCs.
+- Inclui validacao pos-aplicacao para abortar se alguma funcao continuar executavel por `anon`/`authenticated`, sem EXECUTE para `service_role`, sem `search_path` fixo, ou se `btree_gist` continuar em `public`.
+
+376_fix_job_title_levels_rls_policies.sql
+- Corrige o warning `multiple_permissive_policies` em `public.job_title_levels` removendo `job_title_levels_tenant_write`, que foi criada como `FOR ALL` na 371 e tambem era avaliada em `SELECT`.
+- Mantem `job_title_levels_tenant_select` como unica policy permissiva de leitura para `authenticated`, preservando a leitura por tenant via `user_can_access_tenant`.
+- Nao cria policy direta de escrita: os niveis de cargo sao persistidos pela RPC `save_job_title_record` chamada pelos Route Handlers com `service_role`.
+- Inclui validacao pos-aplicacao para abortar se a policy de leitura sumir, se a policy antiga continuar existindo, ou se houver mais de uma policy permissiva `SELECT`/`ALL` para `authenticated`.
+
+375_stock_operation_foreman_from_composition.sql
+- Fecha a decisao "o estoque segue a composicao do dia". A RPC `save_team_stock_operation_record` deixa de resolver o encarregado por join direto em `teams.foreman_person_id` e passa a usar a cadeia da 374 (composicao do dia -> `team_foreman_history` -> cadastro).
+- Achado que motivou: a Saida ganhou o atalho "Encarregado do dia", que lista quem respondeu por cada equipe segundo a Composicao. Com a RPC ainda lendo o cadastro, o usuario escolhia por um criterio e o registro — e a exportacao CSV, que tem coluna `encarregado` — saia com outra pessoa sempre que havia encarregado emprestado.
+- Nova funcao `resolve_team_foreman(tenant, equipe, data)` devolve tambem o `foreman_person_id`, que `resolve_team_foreman_snapshot` nao expoe e que as operacoes de estoque precisam para gravar `foreman_person_id_snapshot`. `resolve_team_foreman_snapshot` mantem assinatura e passa a DELEGAR para ela, entao a cadeia existe num lugar so e os consumidores atuais (triggers da Medicao e da APR) nao mudam.
+- Nao foi preciso trigger nem parametro novo vindo do cliente: a RPC ja recebia `p_entry_date`, entao a data da operacao ja estava disponivel dentro dela.
+- A resolucao do encarregado fica DEPOIS da checagem `TEAM_NOT_FOUND` de proposito: `FOUND` e por statement, e resolver antes sobrescreveria o resultado do `SELECT` em `teams`.
+- Hardening: a 308 concedia EXECUTE de `save_team_stock_operation_record` a `authenticated`. A RPC so e chamada de `src/lib/server/teamStockOperations.ts` (backend, service_role), entao o EXECUTE passou a ser apenas de `service_role`, junto com as duas funcoes de resolucao.
+- Auditoria de consumidores feita na mesma tarefa: Estornos e Posicao Trafo herdam esta correcao porque leem `stock_transfer_team_operations.foreman_name_snapshot`; Medicao, Controle de APR, Apuracao de Fator Minimo e Dashboard de Equipes ja herdavam a 374 pelo snapshot da ordem. `Saldo por Equipe` continua no cadastro (posicao de "agora", sem data). `Mapa de Programacao` e o unico caso em aberto: resolucao de leitura por linha, que exige RPC propria.
+- Registros ja gravados NAO mudam: a resolucao continua acontecendo na escrita.
+
+
+377_drop_unused_stock_conflict_views.sql
+- Remove as views `v_stock_conflict_items` e `v_stock_conflicts`, criadas pela 007 SEM `security_invoker = true`.
+- Por que importa: view sem essa opcao executa com privilegio do owner e ignora a RLS das tabelas base. `stock_conflicts` tem RLS por tenant desde a 006 (endurecida na 020/021), e as views a contornavam.
+- Achado que motivou: consulta ao banco vivo mostrava `security_invoker=true` nas tres views de `public` — ou seja, SEM risco ativo em producao. Mas nenhum arquivo do repositorio aplica a opcao nas duas views de conflito: a correcao foi feita a mao, fora do versionamento, provavelmente na leva de remediacao do Advisor que originou a 375. Producao correta, receita errada: `db reset`, branch de preview ou projeto novo recriariam as views vulneraveis.
+- Escolha de remover em vez de corrigir: nenhuma referencia a `v_stock_conflict%` em `src/`. Versionar a correcao de um objeto sem consumidor manteria superficie exposta e mais um objeto para governar. Se a tela de conflitos precisar, recriar seguindo a regra 23 de `guias/guia_sql.md`.
+- Inclui validacao pos-aplicacao (padrao da 375) para abortar se sobrar qualquer view de `public` acessivel por `anon`/`authenticated` sem `security_invoker = true`.
+- Governanca criada na mesma tarefa: regras 23-27 em `guias/guia_sql.md`, check estatico `npm run db:view-check` (roda sem link, pega o defeito na origem — um check que so le o banco vivo teria passado), `npm run db:view-check-live`, `npm run db:drift-check` e `guias/runbook_drift_schema.md`.
+
+378_backfill_material_categories_from_xlsx.sql
+- Cria os catalogos multi-tenant `material_categories` e `material_subcategories`, com RLS de leitura por tenant, auditoria, nomes unicos e FK composta entre subcategoria e categoria.
+- Adiciona `materials.category_id` e `materials.subcategory_id`, com FKs compostas por `tenant_id` para impedir classificacao cruzada entre tenants e subcategoria fora da categoria selecionada.
+- Aplica backfill idempotente gerado da planilha `materiais_2026-08-11_categorizados.xlsx`, deduplicando 1.165 codigos por `codigo` e abortando se algum codigo tiver classificacao divergente.
+- Registra `material_history` com diff de Categoria/Subcategoria por nome para cada material alterado.
+- Republica `save_material_record` para exigir e validar categoria/subcategoria ativa no tenant.
+- A tela `/materiais` passa a cadastrar, editar, filtrar, listar e exportar Categoria/Subcategoria consumindo os catalogos.
+
+379_create_team_operations_export_rpc.sql
+- Cria a RPC `list_team_operations_export` para exportar Operacoes de Equipe por stream, aplicando filtros no banco e devolvendo as colunas do CSV prontas.
+- Adiciona indices de suporte em `stock_transfer_team_operations(tenant_id, transfer_id)` e nos vinculos de estorno por item.
+- A RPC e `SECURITY DEFINER`, fixa `search_path = public` e fica executavel apenas por `service_role`.
+
+380_realign_team_operations_export_default_limit.sql
+- Republica `list_team_operations_export` para realinhar o default de `p_limit` para 1000, o teto efetivo de linhas por resposta do PostgREST neste projeto.
+- Sem efeito no caminho da aplicacao, que passa `p_limit` explicitamente; corrige a divergencia entre banco vivo e migrations apos aplicacao manual da 379.
+- Reaplica revoke/grant explicitos para manter EXECUTE apenas em `service_role`.
+
+381_team_operations_category_filters_export.sql
+- Republica `list_team_operations_export` com `p_category_id` e `p_subcategory_id`, consumindo `materials.category_id/subcategory_id` criados na 378.
+- Inclui as colunas `categoria` e `subcategoria` no CSV de Operacoes de Equipe, logo apos `descricao`.
+- Remove a assinatura anterior da RPC para evitar sobrecarga ambigua e reaplica EXECUTE apenas para `service_role`.
+
+382_allow_no_project_no_production_measurement.sql
+- Permite `project_measurement_orders.project_id` e `project_code_snapshot` nulos exclusivamente para ordens `SEM_PRODUCAO` sem vinculo de Programacao.
+- Mantem Projeto obrigatorio para `COM_PRODUCAO` por constraint e pela RPC `save_project_measurement_order`.
+- Republica `enforce_project_measurement_order_context_unique` para bloquear duplicidade por `Projeto + Equipe + Data` quando ha Projeto e por `Equipe + Data` quando a ordem `SEM_PRODUCAO` nao tem Projeto.
+- Aplica patch dinamico em `save_project_measurement_order` para aceitar `SEM_PRODUCAO` sem Projeto, sem tentar resolver Programacao/Centro/Projeto nesse caso, e preserva EXECUTE apenas para `service_role`.
+
+383_create_stock_reversal_request_flow.sql
+- Cria o fluxo de solicitacao -> atendimento para estornos: `stock_reversal_requests` e `stock_reversal_request_items`, com RLS de leitura por tenant, auditoria, indices e unique parcial para impedir dois pedidos abertos do mesmo item original.
+- Cadastra a tela `estorno-atendimento` em `app_pages`, nascendo bloqueada para usuarios nao administrativos, e faz backfill de permissoes por role/usuario.
+- Cria RPCs `create_stock_reversal_request`, `claim_stock_reversal_request`, `reject_stock_reversal_request` e `approve_stock_reversal_request`, todas `SECURITY DEFINER` com EXECUTE apenas para `service_role`.
+- A aprovacao executa os itens solicitados usando as RPCs de estorno existentes (`reverse_stock_transfer_item_record_v1` ou `reverse_team_stock_operation_item_record_v1`) e marca o pedido como `EXECUTADO`; falha de regra marca `FALHA_EXECUCAO` sem estorno parcial.
+
+384_harden_stock_reversal_request_flow.sql
+- Renomeia as RPCs da fila criadas na 383 para versoes internas `_v383` e recria wrappers com regras de negocio adicionais.
+- Impede solicitante de assumir, aprovar ou recusar o proprio pedido e exige claim ativo do atendente antes de aprovar/recusar.
+- Bloqueia `BATCH` sem `itemIds` explicitos, mantendo `FULL` como unico modo que seleciona todos os itens validos.
+- Revoga EXECUTE de `authenticated`/`anon` nas RPCs antigas de execucao direta de estorno (`reverse_*`), mantendo apenas `service_role`.
+
+385_normalize_roles_and_viewer_read_only.sql
+- Mantem somente `admin`, `user` e `viewer` ativos em `app_roles`.
+- Migra usuarios `master` para `admin` e usuarios `supervisor` para `user`, com historico em `app_user_permission_history`.
+- Regrava o template `role_page_permissions` do `viewer` para permitir apenas paginas de consulta conhecidas e bloquear todas as acoes de escrita/exportacao.
+- Regrava `app_user_page_permissions` dos usuarios `viewer` existentes no mesmo padrao de leitura apenas.
+- Republica `save_user_permissions` para aceitar somente `admin`, `user` e `viewer`; quando o papel alvo e `viewer`, paginas fora da whitelist sao gravadas como bloqueadas e todas as acoes ficam `false`.
+
+386_harden_admin_tenant_links.sql
+- Cria `ensure_app_user_tenant_link` para centralizar criacao/reativacao do vinculo usuario-tenant sem duplicar default ativo.
+- Faz backfill de `app_user_tenants` para usuarios existentes com `tenant_id`, evitando lockout de administradores apos exigir selecao de contrato.
+- Republica `sync_auth_user_to_app_user` para criar/reativar o vinculo quando um usuario nasce ou e sincronizado a partir do Supabase Auth.
+- Republica `user_is_admin_in_tenant` para considerar administradores vinculados via `app_user_tenants`, nao apenas `app_users.tenant_id`.
+- Republica `save_user_permissions` para aceitar usuario alvo vinculado por `app_user_tenants` no tenant atual e criar/reativar o vinculo quando o papel salvo for `admin`.
+- Inclui validacao pos-aplicacao que aborta se sobrar administrador ativo sem vinculo ativo no proprio tenant.
+
+387_programming_history_tenant_created_index.sql
+- Cria `idx_programming_history_tenant_created` em `programming_history(tenant_id, created_at desc)` para sustentar a leitura de historico de Estado Trabalho usada pela Medicao.
+- Substitui a sugestao crua do Supabase Advisor (`created_at`) por um indice alinhado ao padrao multi-tenant do projeto.
+- Inclui validacao pos-aplicacao para abortar se o indice esperado nao existir.
+
+390_create_service_center_rpcs.sql
+- Cria as RPCs `save_service_center_record` e `set_service_center_record_status` para o cadastro de Centro de Servico.
+- Move cadastro, edicao, ativacao/cancelamento e historico de `project_service_centers` para transacao unica com `SELECT ... FOR UPDATE` e `expectedUpdatedAt`.
+- Mantem as RPCs `SECURITY DEFINER` executaveis apenas por `service_role`, com validacao pos-aplicacao contra grants para `anon`/`authenticated`.
+
+391_create_municipality_rpcs.sql
+- Cria as RPCs `save_municipality_record` e `set_municipality_record_status` para o cadastro de Municipio.
+- Move cadastro, edicao, ativacao/cancelamento e historico de `project_municipalities` para transacao unica com `SELECT ... FOR UPDATE` e `expectedUpdatedAt`.
+- Mantem as RPCs `SECURITY DEFINER` executaveis apenas por `service_role`, com validacao pos-aplicacao contra grants para `anon`/`authenticated`.
+
+392_advisor_tenant_first_performance_indexes.sql
+- Cria `idx_stock_transfer_team_operations_tenant_created` em `stock_transfer_team_operations(tenant_id, created_at desc)` para a listagem geral de Operacoes de Equipe ordenada por criacao.
+- Cria `idx_programming_tenant_execution_date` em `programming(tenant_id, execution_date)` para leituras da Programacao Normalizada por periodo sem filtro de status.
+- Cria `idx_programming_tenant_project_execution_date` em `programming(tenant_id, project_id, execution_date)` para leituras por projetos especificos e janela de data.
+- Mantem as sugestoes cruas do Advisor como indices tenant-first e deixa `team_compositions` para nova medicao antes de qualquer indice adicional.
+
+393_close_authenticated_write_surface.sql
+- Derruba as policies de INSERT/UPDATE/DELETE/ALL de `authenticated` em `public`, fechando a escrita direta via PostgREST que contornava `authorizePageAction` e as RPCs transacionais.
+- Preserva a leitura antes do drop: toda policy `FOR ALL` cujo tenant nao tenha outra policy de SELECT tem o `USING` original recriado como policy de SELECT.
+- Revoga INSERT/UPDATE/DELETE de `public`/`anon`/`authenticated` no schema e ajusta `ALTER DEFAULT PRIVILEGES` para tabela futura nao nascer aberta; SELECT permanece intocado.
+- Alinha o schema as regras 13 e 14 do `guias/guia_sql.md`, que ja exigiam esse padrao, e estende as tabelas o mesmo hardening que 251/298/388 aplicaram as RPCs.
+- Inclui validacao pos-aplicacao que aborta se sobrar policy/grant de escrita, se alguma tabela perder a leitura, ou se `service_role` perder acesso.
+
+394_harden_function_search_path_post_210.sql
+- Fixa `search_path = public, pg_temp` nas funcoes de `public` criadas depois da 210 e que ficaram com `search_path` mutavel (`user_is_admin_in_tenant`, `tg_programming_set_updated_at`, `tg_programming_capture_anticipated_snapshot`, `tg_programming_clear_snapshot_source`).
+- Varre `pg_proc` em vez de repetir lista fixa, para nao envelhecer como a 210; ignora funcoes pertencentes a extensao (`pg_depend.deptype = 'e'`).
+- Inclui validacao pos-aplicacao que aborta se sobrar funcao de `public` com `search_path` mutavel.
+
+395_harden_admin_pin_storage.sql
+- Adiciona `app_users.admin_pin_secret` com bcrypt (fator 12) aplicado sobre o SHA-256 existente, e faz backfill idempotente a partir de `admin_pin_hash`.
+- Cria `verify_admin_pin_secret(uuid, uuid, text)` `SECURITY DEFINER`, executavel apenas por `service_role`, que revalida vinculo e papel de admin e compara em tempo constante sem o hash sair do banco.
+- Fase EXPAND: mantem `admin_pin_hash` para permitir rollback da Edge Function; enquanto a coluna existir o risco de dump segue aberto.
+- Inclui validacao pos-aplicacao que aborta se sobrar hash sem bcrypt correspondente ou se a RPC ficar exposta a anon/authenticated.
+
+396_drop_legacy_admin_pin_hash.sql
+- Fase CONTRACT. NAO aplicar junto com a 395: exige que a nova versao de `verify_admin_pin` ja esteja publicada e testada.
+- Remove `app_users.admin_pin_hash` e republica `verify_admin_pin_secret` sem o fallback de transicao, deixando o bcrypt como unico caminho.
+- Aborta antes de remover se algum usuario tiver hash antigo sem `admin_pin_secret`, para nao trancar administrador para fora.
+
+397_fix_admin_pin_search_path.sql
+- Republica `verify_admin_pin_secret` com `search_path = public, extensions, pg_temp`: as migrations 395/396 fixaram `public, pg_temp` e chamam `crypt()` sem qualificar, mas em projeto Supabase o pgcrypto ja vem no schema `extensions` e o `create extension` da 000 foi no-op.
+- Erro era latente: o backfill da 395 funcionou por rodar em bloco `DO`, que herda o search_path da sessao, e a funcao so executa quando a Edge Function `verify_admin_pin` for publicada.
+- Usa os dois schemas no search_path em vez de qualificar `extensions.crypt`, para funcionar tambem em banco reconstruido do zero, onde a 000 cria o pgcrypto em `public`.
+- Validacao pos-aplicacao confere que `proconfig` da funcao inclui `extensions` e que a RPC nao e executavel por `anon`/`authenticated`. O smoke test de hash que acompanha roda em bloco `DO` e portanto herda o search_path da sessao: ele confirma que o pgcrypto existe, nao que resolve de dentro da funcao. A prova real e chamar `verify_admin_pin_secret` para um usuario com `admin_pin_secret` preenchido.
+- A 394 nao precisa de correcao equivalente: nenhuma funcao ajustada por ela usa pgcrypto, operador de extensao ou schema fora de `public`.
+
+398_stock_requisition_requested_by_date_index.sql
+- Cria `idx_stock_requisition_requests_tenant_requested_date_created` em `stock_requisition_requests(tenant_id, requested_by, request_date desc, created_at desc)`, parcial para `requested_by is not null`.
+- Substitui a sugestao crua do Supabase Advisor (`request_date`) por um indice tenant-first para a aba "minhas requisicoes", que filtra por solicitante e ordena por data/criacao.
+- Inclui validacao pos-aplicacao para abortar se o indice esperado nao existir.
+
+399_create_missing_foreign_key_indexes_post_301.sql
+- Repete a varredura dinamica da 301 para criar indices faltantes de FKs publicas adicionadas depois daquela leva.
+- Fecha a nova remessa de alertas INFO `unindexed_foreign_keys` do Supabase Advisor sem listar manualmente as 62 constraints do relatorio.
+- Mantem `unused_index` fora do escopo: remocao de indice continua exigindo auditoria separada de workload, janela de estatisticas, constraints e fluxos raros.
+
+400_programming_team_programmed_foreman_snapshot.sql
+- Adiciona `programmed_foreman_person_id` e `programmed_foreman_name_snapshot` em `programming_team`, com FK tenant-aware para `people` e indice tenant-first.
+- Faz backfill usando `team_foreman_history` pela data de criacao da alocacao, preservando quem era o encarregado previsto quando a programacao foi registrada.
+- Republica `save_project_programming_stage`, `add_project_programming_team` e `postpone_project_programming_team` para gravar/preservar o encarregado programado na alocacao.
+- Cria `resolve_programmed_foreman_for_team` para validar novos encarregados contra pessoa ativa do tenant com cargo ativo de Encarregado.
+- Trocas de encarregado programado gravam `UPDATE_PROGRAMMED_FOREMAN` em `programming_history` e exigem motivo; alteracoes de outros campos continuam aceitando motivo vazio.
+- Hardening: editar uma etapa com equipe ja vinculada nao exige que essa equipe ainda esteja ativa no cadastro; `ativo = true` segue exigido somente para nova inclusao. Valor vazio explicito de encarregado programado e recusado pela API/RPC, e o formulario nao sobrescreve vazio historico ao marcar equipes visiveis.
+
+401_create_activity_type_page_and_team_type_rpcs.sql
+- Cadastra a pagina `tipo-atividade` em `app_pages` (secao Cadastro Base) com `default_user_access = false`, seguindo a 245: tela nova nasce liberada so para administrador e depende de liberacao explicita em `/permissoes`. Por isso a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_team_type_record` e `set_team_type_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no mesmo padrao transacional da 390/391: `SELECT ... FOR UPDATE`, comparacao de `expected_updated_at` e escrita em `app_entity_history` na mesma transacao.
+- A tela `Tipo de Atividade` administra o catalogo existente `team_types` (origem do campo `Tipo` em `Atividades`), sem tabela nova e sem migracao de dados.
+- `team_types` tem unique `(tenant_id, name)` case-sensitive; a RPC de salvar faz checagem extra por `upper(btrim(name))` para recusar duplicidade que difere so em caixa/espaco, que o indice deixaria passar.
+- Cancelamento e recusado com `TEAM_TYPE_IN_USE` enquanto houver `service_activities` ou `teams` ativos apontando para o tipo: inativar um tipo em uso tiraria a opcao do select sem tocar nos registros gravados.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada.
+
+402_move_team_type_screen_to_tipo_equipe.sql
+- Consolida a tela de cadastro de `team_types` em `/tipo-equipe` e aposenta o page_key `tipo-atividade` criado pela 401: `Tipo de Atividade` e `Tipo de Equipe` sao a mesma informacao, as duas telas apontavam para a mesma tabela.
+- A 401 NAO foi editada (guia_sql regra 2: ja estava commitada/publicada e pode ter sido aplicada); a correcao e para a frente. Se a 401 nunca tiver sido aplicada, os blocos que tratam de `tipo-atividade` viram no-op.
+- Republica `save_team_type_record` e `set_team_type_record_status` gravando `module_key = 'tipo-equipe'`, sem mudar assinatura. O revoke/grant e repetido porque `create or replace` so preserva privilegio de funcao que ja existia — se a 401 nao rodou, a funcao nasce aqui e nasceria executavel por public.
+- Migra `app_entity_history` de `module_key = 'tipo-atividade'` para `'tipo-equipe'` (filtrando `entity_table = 'team_types'`), para a tela nao perder a auditoria feita antes da consolidacao.
+- Aposenta `tipo-atividade` no padrao da 364: desativa em `app_pages`, revoga permissoes e grava `app_user_permission_history`, sem deletar a linha — deletar zeraria o `page_key` do historico de permissao, que tem `on delete set null`.
+- Revoga `can_create`/`can_update`/`can_cancel`/`can_export` de `tipo-equipe` para usuarios e papeis nao administradores, PRESERVANDO `can_access`. Motivo: a 245 deu `default_user_access = true` a essa pagina e a 253 fez backfill de `can_create = can_access`; enquanto a rota era placeholder isso era inofensivo, mas ao virar CRUD real todo nao-admin ganharia poder de renomear e cancelar tipos usados por Equipes, Meta, Medicao e Atividades sem nenhuma acao do administrador.
+- Validacao pos-aplicacao aborta se: as RPCs ficarem executaveis por `anon`/`authenticated`; `tipo-equipe` nao estiver ativa; sobrar historico de `team_types` no module_key antigo; `tipo-atividade` continuar ativo; ou sobrar permissao de escrita em `tipo-equipe` para nao-admin.
+
+403_create_activity_category_page_and_rpcs.sql
+- Etapa 2 de 3 do trabalho de dar tela de Cadastro Base aos campos Tipo/Categoria/Grupo de Atividades.
+- Cadastra a pagina `categoria-atividade` em `app_pages` (secao Cadastro Base) com `default_user_access = false`, seguindo a 245. Por isso a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_activity_category_record` e `set_activity_category_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no mesmo padrao transacional da 390/391/402.
+- A tela administra o catalogo existente `types_service_activities` (origem do campo `Categoria` em Atividades, coluna `service_activities.type_service`), sem tabela nova e sem migracao de dados.
+- Pagina nova e nao reaproveitamento de `/tipo-servico`: aquele placeholder e reservado para `project_service_types`, o Tipo de Servico do PROJETO, lido por Projetos/Medicao/Apuracao Fator Minimo/Mapa Programacao. Tabelas e dominios diferentes, entao aqui nao ha o CRUD duplicado que a 402 teve de resolver.
+- `types_service_activities_tenant_name_key` e unique `(tenant_id, name)` case-sensitive; a RPC de salvar faz checagem extra por `upper(btrim(name))` para recusar duplicidade que difere so em caixa/espaco.
+- Cancelamento e recusado com `ACTIVITY_CATEGORY_IN_USE` enquanto houver `service_activities` ativa apontando para a categoria: `Categoria` e obrigatoria no formulario e o meta so lista `ativo = true`, entao inativar em uso deixaria a atividade antiga impossivel de reeditar.
+- `sort_order` nao e exposto na tela: a coluna existe desde a 145, mas nenhum leitor do catalogo ordena por ela. Cadastro novo fica com o default 100.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada.
+
+404_create_activity_group_catalog_and_page.sql
+- Etapa 3 de 3 (conclui) do trabalho de dar tela de Cadastro Base aos campos Tipo/Categoria/Grupo de Atividades. Unica das tres com TABELA NOVA.
+- Cria `activity_groups` (catalogo por tenant), semeia a partir dos `service_activities.group_name` ja existentes, adiciona `service_activities.group_id` com FK composta `(group_id, tenant_id)` e indice tenant-first, e faz o backfill do vinculo.
+- RLS da tabela nova concede SOMENTE `SELECT` a `authenticated`, no padrao fixado pela 393; o revoke de INSERT/UPDATE/DELETE e repetido explicitamente para nao depender do `alter default privileges` do ambiente.
+- `group_name` NAO e removida: continua como SNAPSHOT do nome. A RPC `check_measurement_minimum_billing_unit_value` (212) casa o grupo por `normalize_minimum_billing_token(sa.group_name)` para o valor do ponto da garantia de faturamento minimo, e `/api/locacao/activities/catalog` e `/api/apuracao-fator-minimo` leem a coluna direto. Trocar por FK exigiria reescrever calculo financeiro em producao.
+- `group_id` nasce NULLABLE espelhando `group_name`, que perdeu o NOT NULL na 050; a obrigatoriedade segue cobrada na RPC de escrita.
+- Seed deduplica por `upper(btrim(group_name))`, entao "SOT AEREA" e "Sot Aerea" viram um grupo so. Seguro para o faturamento minimo: `normalize_minimum_billing_token` ja aplica upper, remove acento e descarta o que nao e A-Z0-9. Os valores ja gravados em `group_name` nao sao reescritos.
+- Republica `save_service_activity_record` trocando `p_group_name text` por `p_group_id uuid`, com `drop function` explicito da versao da 372: manter as duas criaria overload e o PostgREST nao resolveria a chamada. A RPC resolve o nome no catalogo e grava `group_id` + `group_name`, entao nao existe par id/nome inconsistente.
+- Cria `save_activity_group_record` e `set_activity_group_record_status`, `SECURITY DEFINER`, `EXECUTE` so para `service_role`. Renomear um grupo propaga o nome para o `group_name` das atividades vinculadas, senao o snapshot congelaria e o faturamento minimo casaria por um token fora do catalogo.
+- Cancelamento recusado com `ACTIVITY_GROUP_IN_USE` enquanto houver atividade ativa vinculada.
+- Cadastra a pagina `grupo-atividade` com `default_user_access = false`; a chave NAO entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Validacao pos-aplicacao aborta se: as RPCs ficarem executaveis por `anon`/`authenticated`; sobrar assinatura antiga de `save_service_activity_record`; a pagina nao for cadastrada; ou sobrar atividade ativa com `group_name` preenchido e `group_id` nulo.
+
+405_allow_not_working_composition_with_optional_project.sql
+- Republica `save_team_composition_record` por patch dinamico para permitir Projetos em composicoes `NOT_WORKING`, mantendo a lista vazia como caso valido.
+- `WORKING` continua exigindo ao menos um Projeto; `NOT_WORKING` passa a validar projetos somente quando informados, recusando lista invalida, duplicada ou fora do tenant.
+- Quando `NOT_WORKING` tem Projeto, a RPC persiste `project_id`, snapshots agregados e linhas em `team_composition_projects`; sem Projeto, continua gravando `project_id = null`.
+- Reaplica revoke de `public`/`anon`/`authenticated`, concede EXECUTE apenas a `service_role` e aborta se o trecho antigo `PROJECT_NOT_ALLOWED` continuar na funcao.
+
+406_fix_service_activities_code_idd_text.sql
+- Corrige drift de schema em `public.service_activities.code_idd`: ambientes onde a coluna ja existia como
+  `bigint` nao foram corrigidos pela 353, porque `add column if not exists code_idd text` virou no-op.
+- Converte `code_idd` para `text` com `using nullif(btrim(code_idd::text), '')`, preservando valores
+  numericos existentes como texto e alinhando o banco ao contrato atual de Atividades/Medicao.
+- Corrige a falha `42804` da RPC `save_service_activity_record` no cadastro/importacao de Atividades:
+  `column "code_idd" is of type bigint but expression is of type text`.
+- Inclui validacao pos-aplicacao para abortar se `service_activities.code_idd` nao ficar como `text`.
+
+407_create_no_production_reason_page_and_rpcs.sql
+- Cadastra a pagina `motivo-sem-producao` em `app_pages` (secao Cadastro Base) com `default_user_access = false`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_no_production_reason_record` e `set_no_production_reason_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no padrao transacional de cadastros-base: `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- A tela administra o catalogo existente `measurement_no_production_reasons`, sem tabela nova; esse catalogo alimenta `Medicao`, `Medicao Asbuilt` e `Faturamento` em ordens `SEM_PRODUCAO`.
+- O cadastro normaliza codigo para caixa alta, bloqueia codigo fora de letras/numeros/underline, preserva unicidade por `(tenant_id, code)` e recusa nomes duplicados que diferem so por caixa/espaco.
+- Quando `p_sort_order` vem nulo no cadastro, a RPC calcula a proxima ordem do tenant em sequencia de 10 em 10.
+- Cancelamento e recusado com `NO_PRODUCTION_REASON_IN_USE` enquanto houver registros ativos usando o motivo em `project_measurement_orders`, `project_asbuilt_measurement_orders` ou `project_billing_orders`.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated` ou se a pagina nao for cadastrada com `default_user_access = false`.
+
+408_create_stock_center_page_and_rpcs.sql
+- Cadastra a pagina `centro-estoque` em `app_pages` (secao Cadastro Base) com `default_user_access = false`; a chave nao entra em `DEFAULT_USER_PAGE_ACCESS`.
+- Cria `save_stock_center_record` e `set_stock_center_record_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, no padrao transacional de cadastros-base: `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- A tela administra o catalogo existente `stock_centers`, mas somente centros fisicos de estoque (`center_type = 'OWN'`, `controls_balance = true`) sem vinculo em `teams.stock_center_id`.
+- Centros de estoque proprios de equipes nao aparecem na tela e as RPCs recusam qualquer tentativa de editar ou alterar status desses registros com `TEAM_STOCK_CENTER`.
+- Cadastro novo sempre cria centro `OWN` com `controls_balance = true`, que pode alimentar o select `Centro de estoque` de `Solicitacao de Requisicao`.
+- Cancelamento e recusado se o centro tiver saldo diferente de zero em `stock_center_balances` ou requisicao aberta em `stock_requisition_requests`.
+- Revoga escrita direta em `stock_centers` para `public`, `anon` e `authenticated`, mantendo escrita pela aplicacao via `service_role` e RPCs.
+
+409_contract_control_fields_and_rpc.sql
+- Corrige/versiona o drift manual dos campos de controle em `contract`: se a coluna `"e-mail"` existir e `email` nao existir, renomeia preservando dados; se ambas existirem, aborta em divergencia antes de remover a coluna legada.
+- Adiciona `telefone_corporativo numeric`, `email text`, `nome_gestor text` e `empresa text` em `contract`.
+- Faz backfill de `empresa` a partir de `name` quando estiver vazia, preservando o contrato atual consumido por Projetos.
+- Cria `save_contract_control_record`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- Mantem um contrato por tenant via `UNIQUE (tenant_id)` ja existente e inclui validacao pos-aplicacao para coluna legada e grant da RPC.
+
+410_create_utility_distributor_contact_page.sql
+- Cadastra/atualiza a pagina `responsavel-distribuidora` como `Responsaveis Distribuidora`, preservando o mesmo `page_key` historico.
+- Cria `save_utility_distributor_contact_record` e `set_utility_distributor_contact_status`, `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`, `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`.
+- A tela usa um `kind` fechado para escolher internamente entre `project_utility_responsibles` e `project_utility_field_managers`; o cliente nao envia nome de tabela nem `tenant_id`.
+- As duas tabelas continuam alimentando os campos `Responsavel Distribuidora` e `Gestor de campo Distribuidora` em Projetos via `/api/projects/meta`, sempre filtradas por tenant e `ativo`.
+- Como a rota existia como placeholder, define `default_user_access = false` e revoga escrita/exportacao de nao-admin herdada de `can_access`, preservando leitura ja concedida.
+- Inclui validacao pos-aplicacao que aborta se as RPCs ficarem executaveis por `anon`/`authenticated`, se a pagina nao estiver ativa ou se sobrar escrita para nao-admin.
+
+411_activity_groups_unit_value_source.sql
+- Adiciona `activity_groups.unit_value numeric(14,2)` com check de valor maior ou igual a zero.
+- Faz backfill do valor do grupo pelos valores canonicos conhecidos (`SOT AEREA`, `SOC`, `PODA`, `LLEE`/`LINHA VIVA`, `SEGURANCA`) e, para grupos customizados, pelo ultimo `service_activities.unit_value` vinculado.
+- Republica `save_activity_group_record` para cadastrar/editar `unit_value` com historico em `app_entity_history`.
+- Republica `save_service_activity_record` preservando a assinatura atual, mas usando `activity_groups.unit_value` como fonte de verdade para gravar o snapshot `service_activities.unit_value`.
+- Mantem RLS, grants e tenant derivados do backend: RPCs `SECURITY DEFINER` seguem executaveis apenas por `service_role`.
+
+412_allow_measurement_uncancel_status_action.sql
+- Republica `set_project_measurement_order_status` para permitir `ABRIR` em ordem de
+  Medicao `FECHADA` ou `CANCELADA`.
+- Quando a origem e `CANCELADA`, volta a ordem para `ABERTA`, reativa `is_active`,
+  limpa `cancellation_reason`, `canceled_at` e `canceled_by`, e grava historico
+  `UNCANCEL`.
+- Mantem `SELECT ... FOR UPDATE`, `expected_updated_at`, `tenant_id` recebido do
+  backend autenticado e EXECUTE apenas para `service_role`.
+
+414_material_pending_serial_flag_in_save_rpc.sql
+- Republica `save_material_record` com `p_allow_pending_serial_identification` (assinatura
+  passa de 16 para 17 parametros), expondo no cadastro de Materiais a coluna
+  `materials.allow_pending_serial_identification` criada pela 247 e que ate aqui so podia
+  ser alterada por SQL direto.
+- `null` no parametro preserva o valor atual na edicao; no insert grava `false`. Chamada
+  que nao conhece o parametro nao zera a configuracao do material em silencio.
+- Recusa `true` para tipo que nao aceita pendencia (`PENDING_SERIAL_NOT_ALLOWED_FOR_TYPE`,
+  422), com mensagem propria em vez de estourar `materials_pending_serial_not_trafo_check`.
+- Trava nova 1: desligar a flag com saldo em `stock_serial_pending_balances` retorna
+  `PENDING_SERIAL_BALANCE_OPEN` (409). `identify_pending_serial_tracked_unit` (319, linha
+  73) recusa identificacao quando a flag esta `false`, entao o saldo ja acumulado ficaria
+  preso, sem caminho de identificacao, com as unidades ainda contando no saldo agregado.
+- Trava nova 2: trocar `serial_tracking_type` com saldo pendente em aberto retorna o mesmo
+  `reason`. A checagem de uso anterior olhava `trafo_instances` e `stock_transfer_items`
+  com serial preenchido, mas nao `stock_serial_pending_balances`.
+- Nenhuma das travas altera dado existente: elas apenas recusam a transicao.
+- Mantem RLS, `SELECT ... FOR UPDATE`, `expected_updated_at`, `tenant_id` vindo do backend
+  autenticado e EXECUTE apenas para `service_role`.
+- Valida no fim que existe exatamente uma `save_material_record` com 17 parametros e que
+  nao sobrou overload antigo, que deixaria a chamada por nome ambigua.
+
+415_team_categories_and_commercial_measurement.sql
+- Cria o catalogo `team_categories` por tenant (catalogo fechado: `code` restrito por
+  check a `TECNICA`/`COMERCIAL`, semeado nesta migration, sem tela de cadastro).
+- `teams.team_category_id` passa a ser obrigatorio, com backfill `TECNICA` para TODA
+  equipe existente: nenhum cadastro atual muda de comportamento.
+- `teams.foreman_person_id` passa a aceitar `NULL`. A regra por categoria vai para o
+  trigger `enforce_team_category_links` (TECNICA exige encarregado, COMERCIAL exige
+  supervisor) porque `CHECK` nao consulta outra tabela.
+- `sync_team_foreman_history` deixa de abrir periodo para equipe sem encarregado, e
+  `resolve_team_foreman_snapshot` devolve `NULL` nesse caso. Sem isso, toda equipe
+  comercial gravaria `Nao identificado` como `foreman_name_snapshot` da Medicao.
+- `save_team_record` ganha `p_team_category_id` (assinatura passa de 12 para 13
+  parametros) e aplica as regras acima antes de gravar. O overload antigo e derrubado:
+  com as duas versoes publicadas a chamada por nome ficaria ambigua no PostgREST.
+  A trava de `um encarregado, uma equipe ativa` passa a valer somente quando ha
+  encarregado.
+- Na ordem de equipe COMERCIAL o Projeto deixa de ser obrigatorio, inclusive em
+  `COM_PRODUCAO`, e a ordem ganha `commercial_order_ref` (campo `Ordem` da tela, texto
+  livre e opcional). A regra de Projeto obrigatorio sai do CHECK da 382 e vira o trigger
+  `enforce_measurement_project_by_kind`, pelo mesmo motivo do trigger de equipe: depende
+  do `code` da categoria, que vive em outra tabela. Para equipe TECNICA a regra nao muda.
+- `save_project_measurement_order` recebe a mesma excecao pela cirurgia de texto que a 382
+  usou (predicado `public.is_commercial_team`), e aborta se a guarda esperada nao for
+  encontrada em vez de republicar a funcao sem o patch.
+- Cria `measurement_commercial_processes` (catalogo do campo `Processo` da Medicao
+  Comercial, por tenant), semeado com Cobrancas / Novas_Ligacoes / Perdas. Sem tela de
+  cadastro por ora: cresce por SQL. RLS de SELECT e escrita fechada, padrao da 393.
+- A ordem ganha `commercial_process_id` (FK composta com tenant), o snapshot do nome e
+  `commercial_start_time`/`commercial_end_time`. As colunas sao ANULAVEIS porque a ordem
+  TECNICA nao tem esses campos: a obrigatoriedade depende do tipo operacional da equipe
+  (`team_types.name = COMERCIAL`, com fallback em `team_categories.code = COMERCIAL`) e
+  vive no trigger, junto com a regra de Projeto.
+- Sao DOIS triggers, com tempos diferentes de proposito:
+  - `trg_enforce_measurement_project_rules` e BEFORE, imediato, exatamente como o CHECK
+    que substitui. A ordem TECNICA continua reprovada na propria instrucao, e nao no
+    commit: mudar isso alteraria em silencio o comportamento de erro de um fluxo que nao
+    faz parte deste pedido.
+  - `trg_enforce_commercial_measurement_fields` e CONSTRAINT TRIGGER DEFERIDO, porque a
+    ordem comercial nasce em DOIS passos: a RPC comercial grava o cabecalho pela RPC da
+    Medicao (que nao conhece Processo, horarios nem Ordem) e so depois preenche esses
+    campos num UPDATE. Um trigger imediato reprovaria o INSERT intermediario, que ainda
+    esta incompleto. Diferido, a checagem roda no fim da transacao e continua valendo
+    para escrita vinda de fora da RPC.
+- O trigger comercial tambem recusa ordem de equipe TECNICA que carregue qualquer campo
+  comercial, para nao sobrar lixo se alguem trocar a equipe da ordem.
+- Check de intervalo: `commercial_end_time > commercial_start_time`. Turno que atravessa a
+  meia-noite nao e suportado de proposito -- a ordem e amarrada a UMA data de execucao.
+- Cria `project_commercial_measurement_order_members` (os dois eletricistas da ordem
+  comercial, com snapshot do nome, `sort_order in (1,2)` e unicidade por slot e por
+  pessoa dentro da ordem). RLS de SELECT e escrita fechada, no padrao da 393.
+- Cria `save_project_commercial_measurement_order` (com `p_commercial_order_ref`), que
+  valida que a equipe e comercial pelo tipo operacional e
+  os dois eletricistas (cargo `ELETRICISTA`, ativos, do mesmo tenant), DELEGA cabecalho
+  e itens para `save_project_measurement_order` em vez de duplicar a regra da Medicao, e
+  regrava os integrantes na mesma transacao.
+- Registra a pagina `medicao-comercial` em `app_pages` com `default_user_access = false`
+  (padrao da 245) e faz o backfill das 7 colunas de acao juntas (padrao da 253), senao o
+  administrador abriria a tela e tomaria 403 no proprio CSV.
+- Valida no fim: todo tenant com as duas categorias, nenhuma equipe sem tipo operacional,
+  nenhum overload antigo de `save_team_record`, EXECUTE so para `service_role` nas duas
+  RPCs e a pagina cadastrada.
+
+416_team_type_belongs_to_team_category.sql
+- `team_types.team_category_id` passa a existir como classificacao opcional. O backfill
+  preenche COMERCIAL para tipo operacional chamado `COMERCIAL` e TECNICA para os demais,
+  preservando relatórios/metas existentes sem tornar o campo obrigatorio.
+- `save_team_type_record` ganha `p_team_category_id` (5 -> 6 parametros, overload antigo
+  derrubado), mas aceita `NULL`; quando preenchido, valida a categoria do tenant e registra
+  a troca no historico.
+- O trigger `enforce_team_category_links` aplica a regra pelo tipo operacional:
+  `COMERCIAL` exige supervisor e limpa encarregado; demais tipos exigem encarregado. A
+  categoria opcional so entra como fallback de compatibilidade.
+- Valida no fim: nenhum overload antigo e EXECUTE so para `service_role`.
+
+417_measurement_meta_by_team_category.sql
+- Permite meta para a operacao COMERCIAL. As duas tabelas de meta
+  (`measurement_team_type_targets` e `measurement_cycle_target_items`) NAO mudam: sao
+  chaveadas por `team_type_id`, e a 416 ja fez o tipo pertencer a um tipo operacional,
+  entao valor diario e meta do ciclo ja ficaram separados por operacao.
+- O que travava era a linha do CICLO: `measurement_cycle_workdays` era unique
+  (tenant_id, cycle_start), uma linha por periodo por tenant. Cadastrar a meta comercial
+  de um periodo ja cadastrado pela tecnica voltava `DUPLICATE_META_CYCLE`, e `worked_days`
+  (media de dias trabalhados) e coluna unica -- gravar a comercial sobrescreveria a media
+  da tecnica no mesmo ciclo.
+- `measurement_cycle_workdays.team_category_id` obrigatorio, com backfill TECNICA, e a
+  unicidade passa a (tenant, tipo operacional, cycle_start). Cada operacao tem o seu
+  ciclo, com seus dias uteis, seus dias padrao e sua propria media.
+- A unicidade antiga e derrubada por bloco dinamico que a procura por COLUNAS em
+  `information_schema`, e nao pelo nome: ela nasceu como UNIQUE inline na 161 e o nome
+  gerado varia conforme o caminho por onde o ambiente foi criado.
+- `save_measurement_meta_registration` ganha `p_team_category_id` (11 -> 12 parametros,
+  overload antigo derrubado). Duas travas novas: recusa payload com tipo de OUTRO tipo
+  operacional (sem ela, a tela de uma operacao sobrescreveria o valor diario da outra,
+  porque `measurement_team_type_targets` e chaveada so por `team_type_id`), e recusa
+  editar um ciclo trocando o tipo operacional dele.
+- A versao da 169 concedia EXECUTE a `authenticated`, de antes do padrao das 251/309/393.
+  A funcao nova nasce fechada, com EXECUTE so para `service_role`.
+- Valida no fim: nenhum ciclo sem tipo operacional, unicidade antiga ausente, unicidade
+  nova presente, nenhum overload antigo e EXECUTE so para `service_role`.
+
+418_fix_deferred_commercial_measurement_validation.sql
+- Corrige a validacao comercial deferida da 415, que reprovava TODA ordem de Medicao
+  Comercial -- inclusive a primeira. Antes desta migration: 971 ordens de medicao no
+  total, ZERO de equipe comercial, ZERO com `commercial_process_id` e ZERO linhas em
+  `project_commercial_measurement_order_members`.
+- A 415 criou `trg_enforce_commercial_measurement_fields` como CONSTRAINT TRIGGER
+  deferido justificando que "diferido, a checagem roda no fim da transacao, com a linha
+  ja completa". A premissa esta errada: `deferrable` muda QUANDO o trigger roda, nao QUAL
+  versao da tupla o evento carrega. O evento de INSERT guarda o `ctid` da tupla inserida e
+  o Postgres busca exatamente aquela versao (`SnapshotAny`) na hora de disparar; o UPDATE
+  posterior gera um SEGUNDO evento, nao substitui o primeiro.
+- Como a ordem comercial nasce em dois passos (INSERT pela RPC tecnica, que nao conhece
+  Processo/horarios/Ordem, e so depois o UPDATE que preenche essas colunas), no COMMIT o
+  evento de INSERT via `commercial_process_id` NULL, caia no ramo comercial e levantava
+  `commercial_process_required`. A transacao inteira fazia rollback -- por isso nao sobrava
+  nem ordem nem lixo parcial, so a mensagem generica na tela.
+- Ordem TECNICA nunca quebrou: `is_commercial_team` e falso e todas as colunas comerciais
+  sao NULL, entao ela cai no ramo de saida limpa do trigger.
+- Correcao: `enforce_commercial_measurement_fields()` passa a RELER a linha por `id` e a
+  validar esse estado. Os dois eventos leem a MESMA linha, entao a checagem virou
+  idempotente. O trigger continua `after insert or update` e continua deferido -- que agora
+  funciona como a 415 descreveu. O boolean do ramo usa `coalesce(..., false)`.
+- Nao muda a regra de negocio validada, nao mexe em `enforce_measurement_project_rules`,
+  nao toca em ordem existente e nao exige backfill.
+- Valida no fim: funcao releu a linha, nao restou validacao por `new`, trigger presente e
+  deferido, nenhuma ordem comercial sem Processo/horarios e nenhuma ordem tecnica com campo
+  comercial preenchido.
+
+419_commercial_measurement_order_ref_required_and_unique.sql
+- `Ordem` (`commercial_order_ref`) passa a ser OBRIGATORIA na Medicao Comercial e nao pode
+  repetir para a mesma Ordem + Equipe + Data de execucao.
+- Motivo: a ordem comercial nao tinha NENHUMA trava de duplicidade no caso mais comum da
+  tela. As duas barreiras da 382 usam uma chave que nao conhece `Ordem` -- o trigger
+  `enforce_project_measurement_order_context_unique` tem early-return para
+  `project_id is null and measurement_kind <> 'SEM_PRODUCAO'`, e o pre-check da RPC so
+  procura duplicata entre linhas `SEM_PRODUCAO`. Como a equipe comercial normalmente nao
+  tem projeto, a tela aceitava gravar a mesma execucao quantas vezes o usuario clicasse.
+- Decisoes de negocio desta tarefa: (1) `Ordem` obrigatoria nos DOIS tipos de medicao;
+  (2) as regras SOMAM -- a chave nova e adicionada e as da 382 continuam como estao, entao
+  duas Ordens diferentes no mesmo projeto + equipe + data seguem bloqueadas pela regra
+  antiga; (3) ordem CANCELADA libera a reutilizacao da `Ordem`.
+- Obrigatoriedade: dentro de `enforce_commercial_measurement_fields()` (a mesma funcao
+  corrigida pela 418, cuja releitura da linha e preservada e verificada aqui), com
+  `commercial_order_ref_required`.
+- Unicidade: UNIQUE INDEX parcial `uq_project_measurement_orders_commercial_ref_team_date`
+  sobre `(tenant_id, upper(btrim(commercial_order_ref)), team_id, execution_date)`, com
+  predicado `commercial_order_ref is not null and is_active = true`. Indice, e nao checagem
+  otimista (`guia_sql.md` 6 e 10): diferente do pre-check da 382, nao ha janela TOCTOU.
+  A normalizacao e proposital -- sem ela a regra cai no primeiro dia com `1234` vs `1234 `
+  vs `1234A`. O texto continua gravado como foi digitado.
+- A RPC `save_project_commercial_measurement_order` NAO foi recriada de proposito: o indice
+  ja e a barreira, e restatir a funcao inteira so criaria risco de drift com a 415. A
+  traducao do 23505 para 409 legivel vive em `src/server/modules/medicao/handlers.ts`,
+  identificada pelo NOME do indice -- `23505` sozinho tambem cobre a unicidade de
+  `order_number` e a dos integrantes, que tem outra causa.
+- Efeito colateral conhecido: reabrir (`ABRIR`) uma ordem cancelada cuja `Ordem` foi
+  reutilizada no periodo volta a colidir com o indice. E o conflito real, e tambem tem
+  mensagem propria no handler de status.
+- Sem backfill: nao existe nenhuma ordem comercial gravada (ver 418).
+- Valida no fim: releitura da 418 preservada, obrigatoriedade presente, indice existente,
+  unico e parcial, nenhuma ordem comercial ativa sem `Ordem`.
+
+420_require_team_category_on_teams.sql
+- `teams.team_category_id` (`Tipo de equipe`: TECNICA/COMERCIAL) passa a ser NOT NULL, e a
+  natureza da equipe passa a sair SO dele.
+- Motivo: desde a 415 conviviam duas fontes para a mesma pergunta ("esta equipe e
+  comercial?") -- `team_types.name = 'COMERCIAL'` OU `team_categories.code = 'COMERCIAL'` --
+  e a 416 acrescentou uma terceira (`team_types.team_category_id`). Com a categoria opcional,
+  existia o caminho em que a tela cobrava encarregado (olhando a categoria) e o trigger
+  apagava o valor (olhando o nome do tipo operacional): o campo sumia sem erro nenhum.
+- Regra final: TECNICA exige encarregado; COMERCIAL exige supervisor e tem
+  `foreman_person_id` forcado a NULL. O atalho por `team_types.name` sai do trigger
+  `enforce_team_category_links` e da RPC `save_team_record`.
+- Divergencia passa a ser recusada: quando `team_types.team_category_id` esta preenchido, o
+  `team_category_id` da equipe tem que ser o mesmo (`team_type_category_mismatch`, 422). Tipo
+  operacional sem classificacao (anulavel desde a 416) aceita qualquer categoria.
+- Backfill em duas etapas, nesta ordem: (1) categoria nula recebe a classificacao do proprio
+  tipo operacional e, na falta dela, a derivada do nome do tipo; (2) equipe que hoje e
+  comercial APENAS pelo nome do tipo operacional e realinhada para COMERCIAL. O passo 2 nao e
+  cosmetico -- sem ele essas equipes ficariam TECNICA sem encarregado, um estado que o trigger
+  novo recusa em qualquer UPDATE posterior, travando o registro para sempre.
+- `save_team_record` mantem a mesma assinatura de 13 parametros da 415 (nenhum overload novo
+  no PostgREST) e repete o revoke de `public`/`anon`/`authenticated` com EXECUTE so para
+  `service_role`. O trigger, tambem `SECURITY DEFINER`, tem revoke explicito.
+- Divergencia remanescente NAO e corrigida automaticamente: o bloco final so emite NOTICE.
+  Realinhar no automatico trocaria a natureza da equipe -- perderia o encarregado de uma
+  equipe tecnica, ou exigiria um encarregado que a comercial nao tem. A correcao e manual, na
+  tela Equipes.
+- Valida no fim: falha se sobrar equipe sem `team_category_id`; conta e reporta as equipes com
+  `Tipo de equipe` divergente da classificacao do `Tipo operacional`.
+- ORDEM DE LOCK (passo 0, obrigatorio): `lock table public.teams in access exclusive mode` ANTES de
+  qualquer UPDATE, com `lock_timeout = '5s'`. A primeira tentativa de aplicar este arquivo morreu
+  com `40P01: deadlock detected`. Causa: a migration precisa de ACCESS EXCLUSIVE em `teams` duas
+  vezes (o `SET NOT NULL` e a troca de trigger) e chegava la ja segurando ROW EXCLUSIVE pelos quatro
+  UPDATEs do backfill -- elevacao de lock no meio da transacao, com a aplicacao viva do outro lado
+  fechando o ciclo. Pegando o lock no inicio existe UM ponto de aquisicao e o ciclo some. O
+  `lock_timeout` e para FALHAR RAPIDO: pedido de ACCESS EXCLUSIVE pendente bloqueia todo leitor que
+  chega depois dele, entao esperar em silencio derrubaria a aplicacao junto. Se estourar, rodar de
+  novo com a aplicacao ociosa -- a transacao volta atras inteira, nada fica pela metade.
+
+421_create_tenant_stock_serial_policy.sql
+- Cria `tenant_stock_serial_policy` (um registro por tenant, unique em `tenant_id`) com
+  `allow_pending_on_entry`, `allow_pending_on_transfer` e `allow_pending_on_exit`.
+- Torna configuravel por contrato em quais movimentos um material rastreado por serial pode
+  ser lancado sem Serial. Vale em AND com `materials.allow_pending_serial_identification`
+  (414): a pendencia so e aceita quando o material permite E o contrato permite o movimento.
+- Backfill grava `entry=true, transfer=true, exit=false` para todo tenant -- exatamente a
+  regra que estava fixa no codigo. Nenhum contrato muda de comportamento no deploy.
+- RLS ativa com `select` por `user_can_access_tenant`; sem escrita direta para
+  `anon`/`authenticated`. Escrita apenas por `save_tenant_stock_serial_policy`, com
+  `SELECT ... FOR UPDATE`, `expected_updated_at` e historico em `app_entity_history`
+  (`module_key = 'politica-serial'`) na mesma transacao.
+- Cria a pagina `politica-serial` em `app_pages` com `default_user_access = false` e semeia
+  `role_page_permissions` e `app_user_page_permissions` liberando apenas admin, no mesmo
+  molde da 408.
+- A politica NAO alcanca `identify_pending_serial_tracked_unit`: saldo pendente ja acumulado
+  precisa continuar liquidavel mesmo depois de o contrato apertar a regra, senao fica preso.
+- Valida no fim: RPC nao executavel por anon/authenticated, tabela sem escrita direta, pagina
+  ativa e nenhum tenant sem linha de politica.
+
+422_commercial_measurement_history_fields.sql
+- Recria `save_project_commercial_measurement_order` para registrar no historico os campos
+  proprios da Medicao Comercial: `Incidencia` (`commercial_order_ref`), Processo, Hora inicio,
+  Hora termino, Eletricista 1 e Eletricista 2.
+- Motivo: a RPC comercial delega cabecalho e itens para `save_project_measurement_order`; a RPC
+  tecnica grava `project_measurement_order_history` antes de a comercial preencher esses campos.
+  Assim, a ordem era salva, mas o modal de historico mostrava so `Quantidade de itens`.
+- A correcao captura o estado anterior quando for edicao, monta o JSON de mudancas comerciais e
+  anexa esse JSON ao mesmo registro de historico criado pela RPC tecnica. Se a linha esperada nao
+  for encontrada, grava um historico separado com `source = measurement-commercial-api`.
+- O `updated_at` retornado passa a ser o final, depois do UPDATE comercial.
+- Sem nova tabela, coluna, policy, indice ou rota. A funcao permanece `SECURITY DEFINER`, com
+  `EXECUTE` revogado de `public`/`anon`/`authenticated` e concedido apenas a `service_role`.
+- Valida no fim: definicao contem `commercialOrderRef` e `commercialFieldsIncluded`, e a RPC nao
+  esta executavel por `anon`/`authenticated`.
+
+423_backfill_measurement_project_activity_indicators.sql
+- Semeia `AHO717` e `AHO720` em `measurement_project_activity_indicators` para todo tenant que
+  esta sem nenhuma linha na tabela.
+- Motivo: o seed da 293 usou `cross join public.tenants` e so alcancou os tenants existentes
+  naquela data. Tenant criado depois ficava com zero codigos, entao
+  `GET /api/medicao/project-activity-usage` respondia 200 com `items: []` e o cadastro da
+  Medicao nao exibia chip algum embaixo do campo `Projeto` -- sem erro na tela.
+- O insert e condicionado a `not exists` por tenant e usa `on conflict do nothing`: tenant que
+  ja configurou os proprios codigos (ou desativou algum de proposito) nao e alterado.
+- Sem nova tabela, coluna, policy, indice, RPC ou rota.
+- Valida no fim: nenhum tenant fica sem linha em `measurement_project_activity_indicators`.
+
+424_create_blocked_dates_page_and_rpcs.sql
+- Cria `programming_blocked_dates` (data, descricao, abrangencia NACIONAL/MUNICIPAL, municipio
+  opcional, tipo FERIADO/PONTO_FACULTATIVO/OUTRO, `is_active`) e a tela de Cadastro Base
+  `/datas-bloqueadas`.
+- ESCOPO: AVISO, NAO TRAVA. Nenhuma RPC de escrita da Programacao foi alterada --
+  `save_project_programming_stage`, `postpone_project_programming_stage`,
+  `postpone_project_programming_team` e `correct_project_programming_stage_date` continuam
+  aceitando qualquer data. O catalogo alimenta so sinalizacao visual em tres telas.
+- Adiciona `unique (id, tenant_id)` em `project_municipalities`, que faltava desde a 031. Sem
+  ela a FK do municipio nao poderia ser composta e uma data do tenant A poderia apontar para um
+  municipio do tenant B.
+- Unicidade por dois indices PARCIAIS, nao por constraint unica: `municipality_id` e nulo em
+  NACIONAL e um unique comum trataria cada nulo como distinto, deixando a mesma data nacional
+  entrar N vezes. Os indices nao filtram por `is_active` de proposito -- data inativada mantem o
+  lugar e recadastrar se faz reativando, o que preserva o historico daquela data numa linha so.
+- RPCs `save_blocked_date_record` e `set_blocked_date_record_status`, ambas `SECURITY DEFINER`,
+  com `EXECUTE` revogado de `public`/`anon`/`authenticated` e concedido apenas a `service_role`.
+  Historico em `app_entity_history` sob `module_key = datas-bloqueadas`, na mesma transacao.
+- `set_blocked_date_record_status` nao checa uso: nenhuma tabela referencia
+  `programming_blocked_dates` e inativar so faz o aviso sumir.
+- RLS ativa com SELECT para `authenticated` via `user_can_access_tenant`; escrita revogada.
+- Valida no fim: as duas RPCs nao executaveis por `anon`/`authenticated`, a tabela sem
+  insert/update/delete para `anon`/`authenticated`, e a pagina cadastrada em `app_pages` com
+  `ativo = true` e `default_user_access = false`.

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
+import { FeedbackSlot } from "@/components/ui/FeedbackSlot";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { useIdempotencyKey } from "@/hooks/useIdempotencyKey";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
@@ -16,6 +18,18 @@ import type {
   ItemDecision,
   SerialOption,
 } from "./types";
+
+const FULFILLMENT_TABLE_HEADERS = [
+  "Data",
+  "Projeto",
+  "Equipe",
+  "Centro",
+  "Solicitante",
+  "Atendente",
+  "Itens",
+  "Status",
+  "",
+];
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING: "Pendente",
@@ -303,10 +317,13 @@ export function FulfillmentPageView() {
           </label>
         </div>
 
-        {feedback ? <p className={feedback.type === "ok" ? styles.feedbackOk : styles.feedbackError}>{feedback.message}</p> : null}
+        <FeedbackSlot
+          className={feedback?.type === "error" ? styles.feedbackError : styles.feedbackOk}
+          message={feedback?.message}
+        />
 
         {isLoading ? (
-          <p className={styles.empty}>Carregando...</p>
+          <TableSkeleton className={styles.table} headers={FULFILLMENT_TABLE_HEADERS} rows={10} />
         ) : list.length === 0 ? (
           <p className={styles.empty}>Nenhum pedido na fila.</p>
         ) : (

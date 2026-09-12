@@ -12,5 +12,6 @@ Guias de domínio referenciados pela seção 7 do [`CLAUDE.md`](../CLAUDE.md) (g
 | [`guia_git.md`](guia_git.md) | Como propor commits, quando (não) executar comandos git |
 | [`guia_validacao.md`](guia_validacao.md) | Protocolo pré-PR: mapa de "o que ler" + checklist consolidado |
 | [`runbook_deploy_edge_functions.md`](runbook_deploy_edge_functions.md) | Passo a passo e troubleshooting de deploy de Edge Functions (Docker/API) |
+| [`runbook_rollback.md`](runbook_rollback.md) | Rollback de codigo, revert de PR mergeado, `git bisect`; registro de commits que nao buildam e do acoplamento codigo/banco |
 
 Guias não criados por falta de escopo real no projeto hoje: `guia_nextjs.md` (conteúdo cabe em backend/frontend), `guia_testes.md` (não há suíte automatizada — ver TODO em `guia_validacao.md`).

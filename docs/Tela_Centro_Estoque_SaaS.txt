@@ -1,0 +1,119 @@
+Tela: Centro de estoque SaaS
+
+Visao geral
+-----------
+- Tela de Cadastro Base para manter centros fisicos de estoque do tenant.
+- O cadastro alimenta o select `Centro de estoque` da tela `Solicitacao de Requisicao`.
+- A tela administra somente `stock_centers` com `center_type = 'OWN'` e `controls_balance = true`.
+- Centros de estoque proprios de equipes, vinculados por `teams.stock_center_id`, nao aparecem na lista, no historico, na exportacao ou nas acoes.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/centro-estoque/page.tsx`
+- View: `src/modules/dashboard/centro-estoque/StockCentersPageView.tsx`
+- CSV: `src/modules/dashboard/centro-estoque/csv.ts`
+- Fachada frontend: `src/modules/dashboard/centro-estoque/index.ts`
+- API principal: `src/app/api/stock-centers/route.ts`
+- Backend: `src/server/modules/stock-centers/controller.ts`
+- Fachada backend: `src/server/modules/stock-centers/index.ts`
+- Banco base: `stock_centers`, criada por `supabase/migrations/128_create_stock_transfer_module.sql`
+- Tipo de centro: `center_type` e `controls_balance`, adicionados por `supabase/migrations/129_add_stock_movement_types_and_center_roles.sql`
+- Centros de equipe: `teams.stock_center_id`, populado pelo fluxo de `supabase/migrations/141_auto_create_team_stock_centers_and_foreman_snapshots.sql`
+- RPC transacional e permissao da tela: `supabase/migrations/408_create_stock_center_page_and_rpcs.sql`
+
+Cadastro
+--------
+- Campos:
+  - `Nome` obrigatorio.
+  - `Descricao` opcional.
+- Regras:
+  - Cadastro novo sempre grava `center_type = 'OWN'` e `controls_balance = true`.
+  - Nome e unico por tenant; a RPC tambem bloqueia duplicidade que difira somente por caixa/espaco.
+  - Edicao de registro inativo e bloqueada ate reativacao.
+  - Edicao e troca de status exigem `expectedUpdatedAt`.
+  - A RPC recusa qualquer centro que esteja vinculado a `teams.stock_center_id`.
+  - A RPC recusa centros que nao sejam fisicos de estoque proprio (`OWN` com saldo controlado).
+- Fluxos:
+  - `GET /api/stock-centers` para listagem, historico e exportacao.
+  - `POST /api/stock-centers` para cadastro.
+  - `PUT /api/stock-centers` para edicao.
+  - `PATCH /api/stock-centers` para cancelamento/ativacao com motivo obrigatorio.
+  - `POST` e `PUT` chamam `save_stock_center_record`.
+  - `PATCH` chama `set_stock_center_record_status`.
+
+Filtros, listagem e exportacao
+------------------------------
+- Filtros:
+  - `Nome`
+  - `Status`
+- Listagem:
+  - Paginacao server-side (`page`, `pageSize`, `total`).
+  - Colunas: Nome, Descricao, Status, Atualizado em, Acoes.
+  - Acoes: `Detalhes`, `Editar`, `Historico`, `Cancelar/Ativar`.
+  - Botao `Exportar Excel (CSV)` no cabecalho.
+  - Exportacao usa `mode=export` e exige permissao `export` no backend.
+  - O botao de exportacao fica bloqueado por `10` segundos apos cada clique.
+- Historico:
+  - Fonte: `app_entity_history`.
+  - `module_key`: `centro-estoque`.
+  - `entity_table`: `stock_centers`.
+  - Modal com paginacao fixa de `5` registros por pagina.
+
+Boas praticas
+-------------
+- Todas as operacoes usam `tenant_id` derivado da sessao no backend.
+- A tela nova usa `page_key = centro-estoque`; menu, lista, detalhe, historico, exportacao e acoes proprias usam o mesmo `page_key`.
+- A migration cadastra `default_user_access = false`, entao a tela nasce bloqueada para nao administradores e depende de liberacao explicita em `Permissoes`.
+- A migration revoga escrita direta em `stock_centers` para `public`, `anon` e `authenticated`; escrita da tela ocorre somente por RPC `SECURITY DEFINER` com `EXECUTE` para `service_role`.
+
+Cancelamento e saldo
+--------------------
+- Cancelamento/ativacao usa o campo `is_active` de `stock_centers`.
+- O motivo fica registrado em `app_entity_history`, pois a tabela base nao possui colunas `cancellation_reason`, `canceled_at` e `canceled_by`.
+- Cancelamento e recusado quando:
+  - O centro esta vinculado a alguma equipe em `teams.stock_center_id`.
+  - O centro possui saldo diferente de zero em `stock_center_balances`.
+  - O centro possui requisicao aberta (`PENDING` ou `EM_ATENDIMENTO`) em `stock_requisition_requests`.
+
+Relacao com Solicitacao de Requisicao
+-------------------------------------
+- O select `Centro de estoque` da tela `/requisicao-solicitacao` vem de `GET /api/stock-requisitions/meta`.
+- Esse endpoint lista `stock_centers` ativos, `OWN`, do tenant, e remove qualquer centro vinculado a equipes.
+- Assim, a nova tela administra exatamente o catalogo fisico que pode aparecer no combo de solicitacao, sem expor centros proprios de equipe.
+
+Atalhos
+-------
+- Rota principal: `/centro-estoque`
+- API: `GET/POST/PUT/PATCH /api/stock-centers`
+
+Atualizacao 2026-09
+-------------------
+- Tela `Centro de estoque` criada como CRUD real em Cadastro Base.
+- Antes: os centros fisicos existiam em `stock_centers` e eram consumidos pela Solicitacao de Requisicao, mas nao havia tela propria de manutencao.
+- Depois: `/centro-estoque` permite cadastrar, editar, listar, detalhar, consultar historico, cancelar/ativar e exportar centros fisicos do tenant.
+- Depois: centros de equipe permanecem fora da tela e das acoes por filtro no backend e bloqueio nas RPCs.
+- Criada a migration `408_create_stock_center_page_and_rpcs.sql` com `save_stock_center_record` e `set_stock_center_record_status`, ambas `SECURITY DEFINER`, com `EXECUTE` apenas para `service_role`.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/centro-estoque/page.tsx`
+  - Responsavel por: montar a view operacional da rota `Centro de estoque`.
+- Caminho: `src/modules/dashboard/centro-estoque/StockCentersPageView.tsx`
+  - Responsavel por: formulario, filtros, listagem, exportacao, detalhes, historico e status.
+- Caminho: `src/app/api/stock-centers/route.ts`
+  - Responsavel por: expor os handlers HTTP da API.
+- Caminho: `src/server/modules/stock-centers/controller.ts`
+  - Responsavel por: validar sessao, permissao, tenant, esconder centros de equipe, paginar listagem e chamar as RPCs transacionais.
+- Caminho: `supabase/migrations/408_create_stock_center_page_and_rpcs.sql`
+  - Responsavel por: salvar cadastro/status, registrar historico na mesma transacao, cadastrar a pagina e bloquear centros de equipe.
+
+Constantes e configuracoes
+- Caminho: `src/modules/dashboard/centro-estoque/StockCentersPageView.tsx`
+  - Responsavel por: `PAGE_SIZE`, `HISTORY_PAGE_SIZE`, `EXPORT_PAGE_SIZE`, `INITIAL_FORM`, `INITIAL_FILTERS`, `HISTORY_FIELD_LABELS`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: menu e titulo da rota `/centro-estoque`.
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: mapear `/centro-estoque` para `page_key = centro-estoque`.
+- Caminho: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
+  - Responsavel por: exibir a permissao da tela `Centro de estoque`.

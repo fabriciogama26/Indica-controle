@@ -133,11 +133,11 @@ Filtros, auto-complete e listagem
   - Prazos das Obras com cards-resumo, carrossel por SOB, modal `Ver todos` e exportacao CSV.
   - Obras prioritarias em tabela paginada
   - Obras nunca programadas em tabela paginada
-  - Equipes sem programacao
+  - Equipes sem programacao por dia
 - Exportacao:
   - CSV dos prazos das obras na janela selecionada.
   - CSV das obras do card aberto.
-  - CSV de equipes sem programacao quando houver periodo.
+  - CSV de equipes sem programacao quando houver periodo, com uma linha por equipe e data sem agenda.
 - Prazos das Obras:
   - Calculado a partir da `Carteira valida` ja consolidada no Mapa.
   - Respeita os filtros locais de `Centro de servico` e busca de obra/projeto/status.
@@ -165,14 +165,16 @@ Boas praticas
 - `CANCELADA` e `ADIADA` sao tratadas como programacoes interrompidas no mapa quando forem a ultima programacao da obra e nao houver continuidade futura ativa.
 - Programacao `ADIADA` ou `CANCELADA` deve ficar com `Estado Trabalho` em branco apos a migration 284; o adiamento in-place tambem limpa o campo desde a migration 326.
 - Programacao futura ativa (`PROGRAMADA` ou `REPROGRAMADA`) evita classificar a obra como `Para reprogramar`, salvo quando a ultima situacao estiver interrompida.
-- `Sem Estado Trabalho` considera a ultima programacao sem apontamento quando a data ja passou ou quando a data esta invalida/ausente, E a ultima etapa NAO esta `ADIADA`/`CANCELADA`. Obra interrompida e contada somente em `Canceladas/adiadas`, porque para ela o campo vazio e regra de banco e nao falta de apontamento.
+- `Para reprogramar` NAO conta obra interrompida sem continuidade futura (`interrupted && !hasFutureActiveProgramming`): esse recorte e exatamente o card `Canceladas/adiadas`, entao os dois cards sao disjuntos. Obra interrompida QUE TEM etapa futura ativa continua em `Para reprogramar`.
+- O `Estado Trabalho` DA OBRA (usado por `Concluidas`, `Parciais`, `Beneficio atingido`, `Para reprogramar` e pela exclusao de `Pendentes`) sai do ultimo apontamento entre as etapas COMUNS (`is_pendencia = false`). Pendencia concluida nao conclui a obra — regra do banco: indice unico `programming_one_active_completion_per_project` (migration 321) e migration 318 item 4.
+- `Sem Estado Trabalho` considera a ETAPA COMUM mais recente quando ela esta ativa (`PROGRAMADA`/`REPROGRAMADA`), sem apontamento, e com data ja vencida ou ausente/invalida. Nao usa o consolidado da obra: com o consolidado, um apontamento antigo em qualquer etapa escondia uma etapa nova vencida sem apontamento. Obra interrompida e contada somente em `Canceladas/adiadas`, porque para ela o campo vazio e regra de banco e nao falta de apontamento; pendencia aberta e cobrada em `Pendentes`.
 - Obra cuja ultima etapa esta `ADIADA`/`CANCELADA` sem `Estado Trabalho` NAO recebe o nivel `INCONSISTENCY`; cai na escala normal por dias (`NORMAL`/`ATENCAO`/`PRIORIDADE`) e continua priorizada pelo atraso real.
 - O `Estado Trabalho` exibido para obra sem apontamento distingue o motivo: `Nao se aplica (cancelada)` / `Nao se aplica (adiada)` quando a ultima etapa esta interrompida, e `Nao informado` apenas quando a etapa podia ter apontamento e nao teve. O rotulo e montado no servidor, entao vale para tabela, detalhe e CSV.
 - A quantidade de etapas conta linhas de `programming` da obra (uma linha = uma etapa no modelo normalizado).
 - A quantidade de equipes conta `team_id` distintos em `programming_team` (qualquer status) entre as etapas da obra.
-- Pendencia aberta (card `Pendentes`) e a flag `is_pendencia = true` numa etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) cujo `work_completion_status` ainda nao e `CONCLUIDO` — mesma definicao do chip "Pendencias abertas" da lista da Programacao Normalizada.
+- Pendencia aberta (card `Pendentes`) e a flag `is_pendencia = true` numa etapa ativa (`PROGRAMADA`/`REPROGRAMADA`) cujo `work_completion_status` nao e `CONCLUIDO` nem `BENEFICIO_ATINGIDO`, E cuja obra tambem nao esta com o ultimo Estado Trabalho valido em `CONCLUIDO` ou `BENEFICIO_ATINGIDO`. Obra concluida ou com beneficio atingido nao aparece em `Pendentes`, mesmo que uma etapa anterior tenha ficado com a flag ligada — ela ja e contada em `Concluidas` ou em `Beneficio atingido`.
 - Equipe/encarregado da "ultima etapa" mostram TODAS as equipes com `programming_team.status = 'ATIVA'` naquela etapa (lista), nao so uma.
-- Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` no periodo, resolvidos via `programming_team` (status `ATIVA`) cruzado com `programming`.
+- Equipes sem programacao consideram apenas equipes ativas sem registros `PROGRAMADA` ou `REPROGRAMADA` em cada dia do periodo, resolvidos via `programming_team` (status `ATIVA`) cruzado com `programming`. A mesma equipe pode aparecer em varios dias se ficou sem agenda nesses dias.
 - Falhas da tela sao registradas com `useErrorLogger("mapa_programacao")`.
 
 Atalhos
@@ -293,8 +295,8 @@ Funcoes utilitarias relacionadas
   - Resolve label de exibicao do catalogo de Estado Trabalho.
 - `fetchTeams`
   - Carrega equipes ativas e inativas para resolver historico, tipo, encarregado e centro de servico.
-- `fetchTeamIdsProgrammedInPeriod` (fachada `@/server/modules/programacao-normalizada`)
-  - Carrega equipes com etapa ativa (`ATIVA` em `programming_team`, `PROGRAMADA`/`REPROGRAMADA` em `programming`) no periodo filtrado.
+- `fetchProgrammedTeamDatesInPeriod` (fachada `@/server/modules/programacao-normalizada`)
+  - Carrega pares `equipe + data` com etapa ativa (`ATIVA` em `programming_team`, `PROGRAMADA`/`REPROGRAMADA` em `programming`) no periodo filtrado.
 - `normalizeToken`
   - Normaliza textos tecnicos para comparar status e Estado Trabalho.
 - `isCompletedWorkStatus`
@@ -306,7 +308,7 @@ Funcoes utilitarias relacionadas
 - `filterProjects`
   - Aplica filtros locais de busca/centro sobre cards, tabelas e modal.
 - `exportCsv`
-  - Gera CSV local das obras do card e das equipes.
+  - Gera CSV local das obras do card e das equipes sem programacao por dia.
 - `resolveDeadlineWindowDays`
   - Resolve a janela ativa do painel `Prazos das Obras`.
 - `formatDeadlineRangeLabel`
@@ -357,7 +359,7 @@ Atualizacao 2026-08-11 - Etapa cancelada deixa de virar falso positivo:
   1. o card `WITHOUT_STATUS` filtra `withoutStatus && !interrupted` — passa a contar so etapa ativa vencida sem apontamento, sem duplicar com `Canceladas/adiadas`;
   2. `resolvePriorityLevel` recebe `latestStatusInterrupted` e nao emite `INCONSISTENCY` para etapa interrompida; a obra cai na escala por dias e segue priorizada pelo atraso;
   3. o rotulo distingue `Nao se aplica (cancelada)` / `Nao se aplica (adiada)` de `Nao informado`, montado no servidor.
-- `Para reprogramar` e `Obras prioritarias` NAO mudaram de conteudo de proposito: obra cancelada sem continuidade continua exigindo acao — ali o resultado ja estava correto.
+- `Para reprogramar` e `Obras prioritarias` NAO mudaram de conteudo de proposito: obra cancelada sem continuidade continua exigindo acao — ali o resultado ja estava correto. (REVISADO em 2026-09-02: por decisao do usuario, `Para reprogramar` passou a excluir a obra cancelada/adiada sem continuidade. `Obras prioritarias` continua com a regra desta atualizacao.)
 - `Prazos das Obras` deixou de comparar o texto do rotulo (`=== "Nao informado"`) e passou a decidir pelo codigo `latestWorkCompletionStatus`, preservando a coluna em branco quando nao ha apontamento.
 - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao. Nenhuma migration nova — a regra de banco ja existia; a tela e que passou a respeita-la na leitura.
 
@@ -461,8 +463,8 @@ IMPLEMENTADO 2026-07-31 - Fase 4 do corte: Mapa lendo Programacao Normalizada
   mesmo padrao da Fase 3a/3b). Funcoes novas na fachada:
   `fetchProgrammingStagesForMap` (etapas do tenant desde a janela de 18 meses,
   com `programming_team(team_id, status)` embutido) e
-  `fetchTeamIdsProgrammedInPeriod` (equipes com etapa ativa no periodo, via
-  `programming_team!inner(programming)`).
+  `fetchProgrammedTeamDatesInPeriod` (pares equipe + data com etapa ativa no
+  periodo, via `programming_team!inner(programming)`).
 - `Revisao de etapas` e `Interrompidas com Estado concluido` foram MANTIDOS
   nesta entrega, conforme a secao "Ordem" acima — apenas passaram a ler a nova
   fonte. `resolveStageReviewIssue`/`resolveInterruptedCompletedIssue` nao
@@ -504,7 +506,7 @@ IMPLEMENTADO 2026-07-31 - Fase 4 do corte: Mapa lendo Programacao Normalizada
   o lugar errado).
 - Arquivos alterados:
   - `src/server/modules/programacao-normalizada/queries.ts` (novas
-    `fetchProgrammingStagesForMap`/`fetchTeamIdsProgrammedInPeriod`)
+    `fetchProgrammingStagesForMap`/`fetchProgrammedTeamDatesInPeriod`)
   - `src/server/modules/programacao-normalizada/index.ts` (exports novos)
   - `src/app/api/mapa-programacao/route.ts`
   - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
@@ -652,3 +654,158 @@ Atualizacao 2026-08-14 - Etapa "em espera" passa a existir no Mapa:
   `Nunca programadas` desce, e `Para reprogramar` pode subir (obra em espera tem
   `actionRequired`, por nao ter programacao futura ativa). `Carteira valida` nao
   muda: o total de obras e o mesmo, so a situacao de cada uma foi corrigida.
+
+Atualizacao 2026-08-25 - Equipes sem programacao por dia
+-------------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/server/modules/programacao-normalizada/queries.ts`
+  - `src/server/modules/programacao-normalizada/index.ts`
+  - `src/app/api/mapa-programacao/route.ts`
+  - `src/modules/dashboard/mapa-programacao/types.ts`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.tsx`
+  - `src/modules/dashboard/mapa-programacao/MapProgrammingPageView.module.css`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Antes: `Equipes sem programacao` removia da lista a equipe que tivesse qualquer
+  etapa ativa em qualquer dia do periodo. Num filtro de 02 a 20, uma equipe
+  programada somente no dia 05 sumia do periodo inteiro.
+- Depois: o endpoint monta todos os dias do periodo e cruza com as equipes ativas.
+  A resposta e o CSV passam a ter uma linha por `equipe + data` sem agenda. No
+  exemplo acima, a equipe nao aparece no dia 05, mas aparece nos demais dias em
+  que ficou livre.
+- A query normalizada foi renomeada de `fetchTeamIdsProgrammedInPeriod` para
+  `fetchProgrammedTeamDatesInPeriod` e passou a usar `loadAllRows`, com ordenacao
+  por `programming_team.id`, para evitar corte silencioso acima de 1.000 linhas.
+- A tela mostra a data em cada item, inclui a data na busca de equipe, pagina a
+  lista de equipes sem programacao em blocos de 30 itens e limita a altura do
+  bloco com rolagem interna. O CSV exporta todas as linhas filtradas, nao somente
+  a pagina visivel.
+- Sem migration, RLS, grant ou permissao nova. `tenant_id` continua derivado da
+  sessao autenticada e a rota segue protegida por `mapa-programacao/read`.
+
+Atualizacao 2026-08-31 - Encarregado planejado vindo da Programacao
+-------------------------------------------------------------------
+- O Mapa passa a consolidar o encarregado da ultima programacao ativa pelo snapshot
+  salvo em `programming_team.programmed_foreman_name_snapshot`.
+- Antes, a coluna/lista de encarregados era resolvida pelo cadastro atual da equipe.
+  Isso fazia uma obra historica mudar de Joao para Carlos so porque a equipe teve
+  o encarregado padrao alterado depois da programacao.
+- Fallback: se a alocacao ainda nao tiver snapshot (dado legado sem migration
+  aplicada), o Mapa continua usando o encarregado atual da equipe para nao deixar a
+  tela vazia.
+- Sem mudanca de permissao: a rota continua sob `mapa-programacao/read` e a leitura
+  ampla da fachada normalizada segue filtrada por `tenant_id`.
+
+Atualizacao 2026-09-02 - Pendentes nao conta obra concluida nem com beneficio
+-----------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/mapa-programacao/route.ts`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Antes: `hasOpenPendencia` so descartava a etapa cujo `work_completion_status` era
+  exatamente `CONCLUIDO`. `BENEFICIO_ATINGIDO` nao era considerado e o Estado
+  Trabalho consolidado da obra nao era olhado, entao uma obra ja concluida (ou com
+  beneficio atingido) que tivesse uma etapa antiga com `is_pendencia = true`
+  continuava somando no card `Pendentes` e aparecia em dois cards ao mesmo tempo.
+- Depois: a etapa so conta como pendencia aberta quando o Estado Trabalho dela nao
+  e conclusao nem beneficio atingido (`isCompletedWorkStatus` /
+  `isBenefitReachedWorkStatus`, que cobrem as variacoes de token), e a obra so
+  entra no card quando o ultimo Estado Trabalho valido dela tambem nao e conclusao
+  nem beneficio atingido.
+- A descricao do card passou a ser "Programacao ativa com pendencia aberta, sem
+  conclusao nem beneficio atingido.".
+- Efeito esperado: o card `Pendentes` cai, sem sobreposicao com `Concluidas` e
+  `Beneficio atingido`. Nenhum outro card muda de regra.
+- Sem migration, RLS, grant ou permissao nova. A rota segue sob
+  `mapa-programacao/read` e o `tenant_id` continua derivado da sessao.
+
+Atualizacao 2026-09-02 - Para reprogramar nao conta cancelada/adiada
+--------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/mapa-programacao/route.ts`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Antes: o card filtrava so `!neverProgrammed && actionRequired`, e `actionRequired`
+  inclui `interrupted`. A obra cancelada/adiada sem continuidade futura era contada
+  ao mesmo tempo em `Para reprogramar` e em `Canceladas/adiadas`.
+- Depois: o card exclui exatamente o recorte do card `Canceladas/adiadas`
+  (`interrupted && !hasFutureActiveProgramming`). Os dois cards ficam disjuntos.
+- Reversao consciente de decisao anterior: a atualizacao de 2026-08-11 registrou que
+  `Para reprogramar` NAO mudaria porque "obra cancelada sem continuidade continua
+  exigindo acao". A decisao do usuario nesta tarefa e a oposta para o card, e a nota
+  antiga foi marcada como revisada em vez de apagada.
+- `Obras prioritarias` (`priorityProjects`) NAO mudou: continua usando
+  `actionRequired && !neverProgrammed`, entao a obra cancelada/adiada permanece na
+  tabela de prioridade. Se o desejado for tira-la de la tambem, e mudanca separada.
+- `actionRequired` em si nao mudou de significado; o recorte foi aplicado no filtro
+  do card, para nao afetar os outros consumidores do campo.
+- A descricao do card passou a ser "Ultimo Estado Trabalho valido nao concluido e sem
+  programacao futura ativa, fora canceladas/adiadas.".
+- Sem migration, RLS, grant ou permissao nova. A rota segue sob `mapa-programacao/read`
+  e o `tenant_id` continua derivado da sessao.
+
+Atualizacao 2026-09-02 - Estado Trabalho da obra ignora etapa de pendencia
+--------------------------------------------------------------------------
+- Arquivos alterados:
+  - `src/app/api/mapa-programacao/route.ts`
+  - `docs/Tela_Mapa_Programacao_SaaS.txt`
+  - `TASKS.md`
+- Achado 1 (conclusao): `latestWorkCompletion` pegava a ultima linha com
+  `work_completion_status` de QUALQUER etapa, inclusive pendencia. Como a pendencia
+  costuma ter data posterior, uma pendencia concluida virava o Estado Trabalho da
+  obra: a obra aparecia em `Concluidas` e sumia de `Para reprogramar`, `Parciais` e
+  `Pendentes`. Isso contraria a regra do banco — a conclusao do projeto e a etapa
+  ativa `CONCLUIDO` com `is_pendencia = false` (indice unico parcial
+  `programming_one_active_completion_per_project`, migration 321), e a migration 318
+  (item 4) diz que concluir uma pendencia nao conta como a conclusao do projeto.
+- Correcao 1: o consolidado passa a sair de `commonRows` (etapas com
+  `is_pendencia = false`). A pendencia continua influindo apenas na sua propria
+  dimensao, o card `Pendentes`.
+- Achado 2 (`Sem Estado Trabalho`): `withoutStatus` testava o consolidado da obra
+  (`!workCompletionStatus`), entao bastava um apontamento antigo em qualquer etapa
+  para uma etapa nova, vencida e sem apontamento ficar invisivel. Na pratica o card
+  so pegava obra que nunca teve apontamento nenhum.
+- Correcao 2: `withoutStatus` passa a julgar a etapa COMUM mais recente — ativa,
+  sem apontamento proprio e com data vencida ou ausente/invalida — com data e dias
+  calculados dessa mesma etapa (`latestCommonDate`, `daysSinceLatestCommon`).
+- Efeito combinado esperado: `Concluidas` pode cair (obra que so tinha pendencia
+  concluida sai), `Pendentes`/`Para reprogramar`/`Parciais` podem subir pelas mesmas
+  obras, e `Sem Estado Trabalho` deixa de ficar preso em zero por causa de
+  apontamento antigo.
+- Consequencia conhecida e aceita: pela regra de `Pendentes` decidida nesta mesma
+  data, obra com etapa comum concluida (ou com beneficio atingido) e pendencia
+  aberta NAO entra em `Pendentes`. O banco permite esse estado de proposito (318
+  item 3: pendencia pode existir em projeto concluido). Se o desejado for cobrar
+  essa pendencia mesmo com a obra concluida, e mudar so a linha `hasOpenPendencia`.
+- `latest` (ultima etapa da linha do tempo) continua considerando TODAS as etapas,
+  inclusive pendencia: ela e a etapa mais recente de verdade e alimenta equipe,
+  encarregado, rotulo de etapa, `interrupted` e `hasFutureActiveProgramming`.
+- Sem migration, RLS, grant ou permissao nova. Rota segue sob `mapa-programacao/read`
+  e `tenant_id` derivado da sessao.
+
+Atualizacao 2026-09-10 - Painel de datas bloqueadas do mes vigente
+------------------------------------------------------------------
+- Origem: tela nova `Datas Bloqueadas` (`/datas-bloqueadas`, migration 424).
+  Detalhe completo em `docs/Tela_Datas_Bloqueadas_SaaS.txt`.
+- `BlockedDatesMonthPanel` (`components/BlockedDatesMonthPanel.tsx`) entra logo
+  abaixo da barra de acoes rapidas, antes do card de filtros, listando as datas
+  bloqueadas do MES VIGENTE.
+- Mes vigente, NAO o periodo filtrado: o pedido e avisar o que nao se pode
+  programar neste mes, independente da janela que o usuario esta olhando. A
+  janela sai de `getMonthWindow(today)`.
+- Aqui as datas `MUNICIPAL` aparecem TODAS, com o municipio no rotulo, e nao
+  filtradas pelo municipio do projeto como na Programacao. Motivo: o Mapa e visao
+  de carteira, com obras de varios municipios na mesma tela, entao nao existe um
+  municipio unico contra o qual filtrar.
+- O painel e informativo. Nada no Mapa depende dele e nenhuma escrita mudou.
+- `src/app/api/mapa-programacao/route.ts` NAO foi tocado. Ele tem 722 linhas e
+  concentra regra de negocio, o que ja contraria a regra 5 do CLAUDE.md (rota
+  delega, nao decide); o painel consome o endpoint proprio
+  `GET /api/blocked-dates/vigentes` em vez de fazer aquele arquivo crescer.
+- Permissao: a leitura aceita o `page_key` `mapa-programacao` via
+  `authorizeAnyPageAction`, entao quem abre o Mapa ve o painel sem precisar de
+  acesso ao cadastro `datas-bloqueadas`.
+- Estilos novos em `MapProgrammingPageView.module.css`: `.blockedDatesList`,
+  `.blockedDateItem` e a variante para telas ate 720px.
+- Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros, 2 warnings
+  legados) e `npm run build`.

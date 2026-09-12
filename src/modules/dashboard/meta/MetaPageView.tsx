@@ -7,119 +7,31 @@ import { useAuth } from "@/hooks/useAuth";
 import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { useExportCooldown } from "@/hooks/useExportCooldown";
 import styles from "./MetaPageView.module.css";
-import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
+import { downloadCsvFile } from "@/lib/utils/csv";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/formatters";
 
-type TeamTypeTarget = {
-  id: string;
-  name: string;
-  dailyValue: number;
-  activeTeamCount: number;
-  targetId: string | null;
-  updatedAt: string | null;
-};
+import {
+  HISTORY_PAGE_SIZE,
+  buildRegistrationsCsv,
+  formatHistoryActionLabel,
+  formatInputMoney,
+  formatMetaHistoryValue,
+  isCycleCurrent,
+  normalizeMoneyInput,
+  parseInputMoney,
+  resolveMetaHistoryChanges,
+  type CycleOption,
+  type MetaDetail,
+  type MetaDetailResponse,
+  type MetaHistoryEntry,
+  type MetaHistoryResponse,
+  type MetaRegistration,
+  type MetaResponse,
+  type SaveResponse,
+  type TeamCategoryOption,
+  type TeamTypeTarget,
+} from "./presentation";
 
-type CycleOption = {
-  id: string | null;
-  cycleStart: string;
-  cycleEnd: string;
-  label: string;
-  defaultWorkdays: number;
-  workedDays: number;
-  workdays: number;
-  notes: string;
-  updatedAt: string | null;
-  isEdited: boolean;
-  targets?: Array<{
-    teamTypeId: string;
-    dailyValue: number;
-    measuredTeamCount: number;
-  }>;
-};
-
-type MetaRegistration = {
-  id: string;
-  cycleStart: string;
-  cycleEnd: string;
-  label: string;
-  workdays: number;
-  defaultWorkdays: number;
-  workedDays: number;
-  notes: string;
-  updatedAt: string | null;
-  targetCount: number;
-  totalActiveTeams: number;
-  totalMeasuredTeams: number;
-  totalDailyGoal: number;
-  totalCycleGoal: number;
-  totalStandardCycleGoal: number;
-  totalWorkedCycleGoal: number;
-};
-
-type MetaDetailItem = {
-  id: string;
-  teamTypeId: string;
-  teamTypeName: string;
-  dailyValue: number;
-  activeTeamCount: number;
-  measuredTeamCount: number;
-  dailyGoal: number;
-  cycleGoal: number;
-  standardCycleGoal: number;
-  workedCycleGoal: number;
-  updatedAt: string;
-};
-
-type MetaDetail = MetaRegistration & {
-  items: MetaDetailItem[];
-};
-
-type MetaHistoryEntry = {
-  id: string;
-  actionType: "CREATE" | "UPDATE";
-  reason: string;
-  changes: Record<string, unknown>;
-  metadata: Record<string, unknown>;
-  createdAt: string;
-  createdByName: string;
-};
-
-type MetaResponse = {
-  teamTypes?: TeamTypeTarget[];
-  cycles?: CycleOption[];
-  registrations?: MetaRegistration[];
-  message?: string;
-};
-
-type MetaDetailResponse = {
-  detail?: MetaDetail;
-  message?: string;
-};
-
-type MetaHistoryResponse = {
-  history?: MetaHistoryEntry[];
-  message?: string;
-};
-
-type SaveResponse = {
-  success?: boolean;
-  message?: string;
-};
-
-const HISTORY_PAGE_SIZE = 5;
-const META_HISTORY_FIELD_LABELS: Record<string, string> = {
-  cycleStart: "Inicio do ciclo",
-  cycleEnd: "Fim do ciclo",
-  workdays: "Dias uteis",
-  defaultWorkdays: "Dias padrao segunda a sexta",
-  workedDays: "Média Dias trabalhados",
-  notes: "Observacao",
-  totalMeasuredTeams: "Equipes medida",
-  totalDailyGoal: "Meta diaria",
-  totalCycleGoal: "Meta ciclo",
-  totalStandardCycleGoal: "Meta ciclo padrao",
-  totalWorkedCycleGoal: "Meta ciclo trabalhado",
-};
 
 function scrollDashboardContentToTop() {
   if (typeof window === "undefined") return;
@@ -131,105 +43,6 @@ function scrollDashboardContentToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function buildRegistrationsCsv(registrations: MetaRegistration[]) {
-  const header = [
-    "Ciclo",
-    "Dias uteis",
-    "Dias padrao",
-    "Média Dias trabalhados",
-    "Equipes ativas",
-    "Equipes medida",
-    "Meta diaria",
-    "Meta ciclo",
-    "Meta ciclo padrao",
-    "Meta ciclo trabalhado",
-    "Atualizado em",
-  ];
-  const rows = registrations.map((registration) => [
-    registration.label,
-    registration.workdays,
-    registration.defaultWorkdays,
-    registration.workedDays,
-    registration.totalActiveTeams,
-    registration.totalMeasuredTeams,
-    formatCurrency(registration.totalDailyGoal),
-    formatCurrency(registration.totalCycleGoal),
-    formatCurrency(registration.totalStandardCycleGoal),
-    formatCurrency(registration.totalWorkedCycleGoal),
-    formatDateTime(registration.updatedAt),
-  ]);
-  const csvLines = [header, ...rows].map((line) => line.map((item) => escapeCsvValue(item)).join(";"));
-  return `\uFEFF${csvLines.join("\n")}\n`;
-}
-
-function formatInputMoney(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "";
-  return value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function normalizeMoneyInput(value: string) {
-  return value.replace(/[^\d,.]/g, "");
-}
-
-function parseInputMoney(value: string) {
-  const normalized = value.trim().replace(/\./g, "").replace(",", ".");
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Number(parsed.toFixed(2));
-}
-
-function formatHistoryActionLabel(action: string) {
-  const normalized = String(action ?? "").toUpperCase();
-  if (normalized === "CREATE") return "Cadastro";
-  if (normalized === "UPDATE") return "Edicao";
-  return normalized || "Atualizacao";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function formatMetaHistoryValue(field: string, value: unknown) {
-  if (value === null || value === undefined) return "-";
-
-  if (field === "cycleStart" || field === "cycleEnd") {
-    return formatDate(String(value));
-  }
-
-  if (
-    field === "totalDailyGoal"
-    || field === "totalCycleGoal"
-    || field === "totalStandardCycleGoal"
-    || field === "totalWorkedCycleGoal"
-  ) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? formatCurrency(parsed) : "-";
-  }
-
-  const normalized = String(value).trim();
-  return normalized || "-";
-}
-
-function resolveMetaHistoryChanges(entry: MetaHistoryEntry) {
-  const from = isRecord(entry.changes.from) ? entry.changes.from : {};
-  const to = isRecord(entry.changes.to) ? entry.changes.to : {};
-  const fields = Array.from(new Set([...Object.keys(from), ...Object.keys(to)]))
-    .filter((field) => META_HISTORY_FIELD_LABELS[field]);
-
-  return fields.map((field) => ({
-    field,
-    label: META_HISTORY_FIELD_LABELS[field],
-    from: from[field],
-    to: to[field],
-  }));
-}
-
-function isCycleCurrent(cycle: CycleOption) {
-  const today = new Date();
-  const start = new Date(`${cycle.cycleStart}T00:00:00`);
-  const end = new Date(`${cycle.cycleEnd}T23:59:59`);
-  return today >= start && today <= end;
-}
 
 export function MetaPageView() {
   const { session } = useAuth();
@@ -306,12 +119,16 @@ export function MetaPageView() {
     }
   }, [historyPage, historyTotalPages]);
 
+  const [teamCategories, setTeamCategories] = useState<TeamCategoryOption[]>([]);
+  const [selectedTeamCategoryId, setSelectedTeamCategoryId] = useState("");
+
   const loadMeta = useCallback(async () => {
     if (!session?.accessToken) return;
 
     setIsLoading(true);
     try {
-      const response = await fetch("/api/meta", {
+      const query = selectedTeamCategoryId ? `?teamCategoryId=${selectedTeamCategoryId}` : "";
+      const response = await fetch(`/api/meta${query}`, {
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${session.accessToken}`,
@@ -332,6 +149,12 @@ export function MetaPageView() {
 
       const nextTeamTypes = data.teamTypes ?? [];
       const nextCycles = data.cycles ?? [];
+      setTeamCategories(data.teamCategories ?? []);
+      // Na primeira carga a rota resolve TECNICA sozinha; fixar o id aqui evita
+      // que o salvamento va sem tipo operacional depois.
+      if (data.teamCategory?.id) {
+        setSelectedTeamCategoryId(data.teamCategory.id);
+      }
       setTeamTypes(nextTeamTypes);
       setCycles(nextCycles);
       setRegistrations(data.registrations ?? []);
@@ -356,7 +179,7 @@ export function MetaPageView() {
     } finally {
       setIsLoading(false);
     }
-  }, [logError, session?.accessToken]);
+  }, [logError, selectedTeamCategoryId, session?.accessToken]);
 
   useEffect(() => {
     void loadMeta();
@@ -446,6 +269,7 @@ export function MetaPageView() {
         },
         body: JSON.stringify({
           action: "SAVE_META_REGISTRATION",
+          teamCategoryId: selectedTeamCategoryId,
           cycleId: editingCycleId,
           targets,
           cycleStart: selectedCycle.cycleStart,
@@ -639,6 +463,22 @@ export function MetaPageView() {
               <h2 className={styles.cardTitle}>Cadastro de metas</h2>
               <p className={styles.cardSubtitle}>Valores por tipo de equipe e dias uteis do ciclo selecionado.</p>
             </div>
+            {/* Cada tipo operacional tem seus tipos de equipe, seu ciclo e sua meta
+                (migrations 416 e 417). Trocar aqui recarrega a tela inteira. */}
+            <label className={styles.field}>
+              <span>Tipo operacional</span>
+              <select
+                value={selectedTeamCategoryId}
+                onChange={(event) => setSelectedTeamCategoryId(event.target.value)}
+                disabled={isLoading || isSaving || isEditing}
+              >
+                {teamCategories.map((teamCategory) => (
+                  <option key={teamCategory.id} value={teamCategory.id}>
+                    {teamCategory.name}
+                  </option>
+                ))}
+              </select>
+            </label>
             <span className={styles.loadingHint}>
               {isLoading ? "Atualizando..." : isEditing ? "Modo edicao" : `${targetSummary.configured} tipos configurados`}
             </span>
@@ -648,7 +488,7 @@ export function MetaPageView() {
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th>Tipo</th>
+                  <th>Tipo de equipe</th>
                   <th>Valor diario</th>
                   <th>Equipes ativas</th>
                   <th>Equipes medida</th>

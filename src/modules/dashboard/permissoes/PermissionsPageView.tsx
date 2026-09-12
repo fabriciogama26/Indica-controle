@@ -45,11 +45,9 @@ type TenantUser = {
 };
 
 const roleOptions: RoleOption[] = [
-  { value: "master", label: "Master" },
   { value: "admin", label: "Admin" },
-  { value: "supervisor", label: "Supervisor" },
-  { value: "viewer", label: "Viewer" },
   { value: "user", label: "User" },
+  { value: "viewer", label: "Viewer" },
 ];
 
 function resolveRoleLabel(role: string) {
@@ -122,9 +120,16 @@ const permissionCatalog = [
   { pageKey: "mapa-programacao", label: "Mapa de Programacao", path: "/mapa-programacao", section: "Operacao" },
   { pageKey: "composicao-equipe", label: "Composicao de Equipe", path: "/composicao-equipe", section: "Operacao" },
   { pageKey: "controle-apr", label: "Controle de APR", path: "/controle-apr", section: "Operacao" },
+  {
+    pageKey: "permissao-intervencao",
+    label: "Permissao de Intervencao",
+    path: "/permissao-intervencao",
+    section: "Operacao",
+  },
   { pageKey: "apuracao-fator-minimo", label: "Apuracao de Fator Minimo", path: "/apuracao-fator-minimo", section: "Operacao" },
   { pageKey: "medicao-asbuilt", label: "Medicao Asbuilt", path: "/medicao-asbuilt", section: "Operacao" },
   { pageKey: "medicao", label: "Medicao", path: "/medicao", section: "Operacao" },
+  { pageKey: "medicao-comercial", label: "Medicao Comercial", path: "/medicao-comercial", section: "Operacao" },
   { pageKey: "medicao-visualizacao", label: "Visualizacao Medicao", path: "/medicao-visualizacao", section: "Operacao" },
   { pageKey: "faturamento", label: "Faturamento", path: "/faturamento", section: "Operacao" },
   { pageKey: "estoque", label: "Estoque Atual", path: "/estoque", section: "Almoxarifado" },
@@ -136,6 +141,7 @@ const permissionCatalog = [
   { pageKey: "saida-requisicao", label: "Requisicao direta (Operacoes de Equipe)", path: "/saida-requisicao", section: "Almoxarifado" },
   { pageKey: "requisicao-solicitacao", label: "Solicitacao de Requisicao", path: "/requisicao-solicitacao", section: "Almoxarifado" },
   { pageKey: "requisicao-atendimento", label: "Atendimento de Requisicoes", path: "/requisicao-atendimento", section: "Almoxarifado" },
+  { pageKey: "estorno-atendimento", label: "Atendimento de Estornos", path: "/estorno-atendimento", section: "Almoxarifado" },
   { pageKey: "estornos", label: "Estornos", path: "/estornos", section: "Almoxarifado" },
   { pageKey: "consumo-projeto", label: "Consumo por Projeto", path: "/consumo-projeto", section: "Almoxarifado" },
   { pageKey: "materiais", label: "Materiais", path: "/materiais", section: "Cadastros" },
@@ -152,7 +158,28 @@ const permissionCatalog = [
   },
   { pageKey: "prioridade", label: "Prioridade", path: "/prioridade", section: "Cadastro Base" },
   { pageKey: "centro-servico", label: "Centro de Servico", path: "/centro-servico", section: "Cadastro Base" },
+  { pageKey: "centro-estoque", label: "Centro de estoque", path: "/centro-estoque", section: "Cadastro Base" },
   { pageKey: "contrato", label: "Contrato", path: "/contrato", section: "Cadastro Base" },
+  {
+    pageKey: "categoria-atividade",
+    label: "Categoria de Atividade",
+    path: "/categoria-atividade",
+    section: "Cadastro Base",
+  },
+  { pageKey: "grupo-atividade", label: "Grupo de Atividade", path: "/grupo-atividade", section: "Cadastro Base" },
+  {
+    pageKey: "motivo-sem-producao",
+    label: "Motivo sem producao",
+    path: "/motivo-sem-producao",
+    section: "Cadastro Base",
+  },
+  { pageKey: "modelo-pi", label: "Modelo de PI", path: "/modelo-pi", section: "Cadastro Base" },
+  {
+    pageKey: "datas-bloqueadas",
+    label: "Datas Bloqueadas",
+    path: "/datas-bloqueadas",
+    section: "Cadastro Base",
+  },
   { pageKey: "tipo-equipe", label: "Tipo de Equipe", path: "/tipo-equipe", section: "Cadastro Base" },
   { pageKey: "imei", label: "Imei", path: "/imei", section: "Cadastro Base" },
   { pageKey: "tipo-servico", label: "Tipo de Servico", path: "/tipo-servico", section: "Cadastro Base" },
@@ -160,7 +187,7 @@ const permissionCatalog = [
   { pageKey: "porte", label: "Porte", path: "/porte", section: "Cadastro Base" },
   {
     pageKey: "responsavel-distribuidora",
-    label: "Responsavel Distribuidora",
+    label: "Responsaveis Distribuidora",
     path: "/responsavel-distribuidora",
     section: "Cadastro Base",
   },
@@ -191,7 +218,7 @@ function createPermissionSet(role: string): PermissionCard[] {
   const defaultPageAccess: readonly string[] = DEFAULT_USER_PAGE_ACCESS;
 
   const cards = permissionCatalog.map<PermissionCard>((item) => {
-    if (role === "master" || role === "admin") {
+    if (role === "admin") {
       return { ...item, enabled: true };
     }
 
@@ -202,7 +229,6 @@ function createPermissionSet(role: string): PermissionCard[] {
       };
     }
 
-    // `supervisor` e `user` compartilham o mesmo default.
     return {
       ...item,
       enabled: defaultPageAccess.includes(item.pageKey),
