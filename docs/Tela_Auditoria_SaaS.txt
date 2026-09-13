@@ -1,0 +1,188 @@
+Tela: Auditoria SaaS
+
+Visao geral
+-----------
+- Tela administrativa (somente leitura) com 3 abas para consultar o que o sistema ja registra
+  de auditoria, sem agregacao anterior: Alteracoes, Acessos e Erros.
+- Aba Alteracoes: le `app_entity_history` (historico generico ja gravado por dezenas de modulos
+  de cadastro). Mostra quem alterou o que, em qual tela, com diff de campos.
+- Aba Acessos: le `login_audit` (login, logout, falha e motivo de saida, incluindo inatividade).
+  Ja existia o dado, nao existia leitura nem tela — gap que estava documentado em
+  `Auditoria/Auditoria_Login_Acessos_SaaS.txt`.
+- Aba Erros: le `app_error_logs` (erros capturados manualmente pelas telas via
+  `useErrorLogger`/Edge Function `log_error`).
+- Nao inclui o historico da Permissao de Intervencao (`pi_history`) nem cria page_key/migration
+  em `app_pages` — ver secao "Decisoes desta entrega" e "Pendencia de padronizacao" abaixo.
+
+Arquitetura
+-----------
+- Rota: `src/app/(dashboard)/auditoria/page.tsx`
+- View (shell + abas): `src/modules/dashboard/auditoria/AuditPageView.tsx`
+- Aba Alteracoes: `src/modules/dashboard/auditoria/ChangesTab.tsx`
+- Aba Acessos: `src/modules/dashboard/auditoria/AccessTab.tsx`
+- Aba Erros: `src/modules/dashboard/auditoria/ErrorsTab.tsx`
+- Cliente HTTP das 3 abas: `src/modules/dashboard/auditoria/api.ts`
+- Tipos compartilhados: `src/modules/dashboard/auditoria/types.ts`
+- Estilo: `src/modules/dashboard/auditoria/AuditPageView.module.css`
+- Rotas de API: `src/app/api/auditoria/{alteracoes,acessos,erros,telas}/route.ts` (todas finas,
+  so delegam para `src/server/modules/auditoria/handlers.ts`)
+- Handlers (parse de filtros/paginacao + guard admin): `src/server/modules/auditoria/handlers.ts`
+- Queries (Supabase, filtros e paginacao): `src/server/modules/auditoria/queries.ts`
+- Guard admin-only: `src/lib/server/appUsersAdmin.ts` (`resolveAdminOperator`)
+- Guard de rota (menu + redirect): `src/lib/auth/authorization.ts` (`ADMIN_ONLY_ROUTE_PREFIXES`)
+- Navegacao: `src/components/layout/AppShell.tsx`
+
+Decisoes desta entrega
+-----------------------
+- Tela restrita a admin do tenant, seguindo o MESMO padrao de `/permissoes`: entrou em
+  `ADMIN_ONLY_ROUTE_PREFIXES` (`authorization.ts`), NAO por `page_key`/`app_pages`. Por isso nao
+  ha migration nesta entrega, nao ha entrada em `ROUTE_PAGE_KEYS`, e as rotas de API usam
+  `resolveAdminOperator` (mesmo guard de `app-users/[userId]/permissions/route.ts`) em vez de
+  `requirePageAction`. Diferenca visual do precedente: `/permissoes` so aparece pelo icone de
+  engrenagem; `/auditoria` ganhou item proprio em `menuSections` (secao "Auditoria"), decisao
+  explicita do usuario — some do menu sozinho para quem nao e admin via `canAccessRoute`.
+- Todas as queries usam o client admin (`service_role`, bypassa RLS) resolvido por
+  `resolveAdminOperator`. Por isso TODA query em `queries.ts` filtra `tenant_id` manualmente no
+  codigo (nao existe rede de seguranca de RLS aqui) — atencao redobrada em qualquer alteracao
+  futura nesses arquivos.
+- Busca por usuario (nome/matricula) nas 3 abas NUNCA usa `.or()` com texto livre do cliente
+  (convencao ja usada em `programacao-normalizada/queries.ts`): resolve primeiro os ids de
+  `app_users` que casam com o texto via `.ilike()` parametrizado em 3 colunas separadas
+  (`resolveUserIdsByQuery`), depois filtra a tabela principal por `.in("created_by"/"user_id",
+  ids)`. Retorno `null` = sem filtro; array vazio = "nenhum usuario casa", encerra em zero
+  resultados sem consultar a tabela principal.
+- Exportacao CSV exporta APENAS a pagina atualmente carregada (20 linhas), nao "todos os
+  registros que casam com o filtro" como o padrao de Pessoas (`/api/people/export` +
+  `loadAllRows`). Simplificacao deliberada para a primeira entrega; ver "Proximos passos".
+- Sem pareamento LOGIN/LOGOUT por `session_ref` (duracao de sessao) nesta entrega — cada evento
+  aparece como uma linha independente, na ordem cronologica. `session_ref` ja vai no payload da
+  API (`AccessLogItem.sessionRef`) para uma evolucao futura sem precisar mudar o backend.
+
+Filtros, auto-complete e listagem
+---------------------------------
+- Aba Alteracoes (`GET /api/auditoria/alteracoes`): tela (`moduleKey`, populado por
+  `GET /api/auditoria/telas` a partir de `app_pages.name`), usuario/matricula (`userQuery`),
+  tipo de alteracao (`changeType`: UPDATE/CANCEL/ACTIVATE — mesmo CHECK de `app_entity_history`),
+  codigo do registro (`entityCode`, `ilike`), intervalo de datas (`dateFrom`/`dateTo` sobre
+  `created_at`). Paginacao 20/pagina, ordenado por `created_at desc`.
+- Aba Acessos (`GET /api/auditoria/acessos`): usuario/matricula (`userQuery`), status
+  (SUCCESS/FAILED), evento (LOGIN/LOGOUT), motivo (lista fechada observada em `login_audit`:
+  USER_LOGOUT, IDLE_TIMEOUT, TOKEN_EXPIRED, USER_NOT_FOUND, INACTIVE, AUTH_INVALID), origem
+  (APP/SITE), intervalo de datas sobre `event_at`. Ordenado por `event_at desc`.
+- Aba Erros (`GET /api/auditoria/erros`): usuario/matricula (`userQuery`), severidade (select
+  com ERROR/WARNING/INFO — a coluna e texto livre sem CHECK, na pratica so `ERROR` e gravado
+  hoje), tela (`screen`, `ilike` parcial — texto livre por tela, nao um catalogo fechado), origem
+  (WEB/APP — `source`, granularidade "de onde partiu a requisicao", NAO "API vs front"; ver
+  pendencia abaixo), intervalo de datas sobre `created_at`. Ordenado por `created_at desc`.
+- Todas as 3 rotas usam `parsePagination` (`src/lib/server/apiHelpers.ts`), `.range()` (nunca
+  `.limit()` acima do teto do PostgREST) e `{ count: "exact" }` para o total da paginacao.
+
+Boas praticas
+-------------
+- Restringir a tela a perfis administrativos (ja garantido por `ADMIN_ONLY_ROUTE_PREFIXES`).
+- Nunca adicionar filtro de texto livre via `.or()` nas 3 tabelas principais — seguir o padrao
+  `resolveUserIdsByQuery` (resolver ids em `app_users` primeiro, depois `.in()`).
+- Toda nova coluna de filtro precisa continuar filtrando `tenant_id` explicitamente no `queries.ts`
+  — nao ha RLS a favor aqui (client admin).
+- `login_audit` e `app_error_logs` sao classificadas (auditoria interna,
+  `Auditoria/15-supabase-implicit-row-cap.md`) como tabelas que "crescem monotonicamente e nunca
+  sao podadas" — o filtro de intervalo de datas nas abas Acessos e Erros nao e cosmetico, e a
+  unica forma pratica de manter a consulta rapida com o tempo.
+
+Cancelamento e saldo
+--------------------
+- Nao se aplica (tela somente leitura, sem escrita/cancelamento).
+
+Atalhos
+-------
+- Rota ativa: `/auditoria`
+- Item proprio na sidebar, secao "Auditoria".
+- Visivel e acessivel somente para `admin` do tenant.
+
+Atualizacao 2026-09-13
+-----------------------
+- Tela criada do zero com as 3 abas (Alteracoes, Acessos, Erros), decisoes acima confirmadas com
+  o usuario antes da implementacao (admin-only sem page_key, PI fora do escopo, matricula de
+  `app_users`, secao propria no menu).
+
+Pendencia de padronizacao (fora de escopo desta entrega)
+----------------------------------------------------------
+- `permission_intervention` grava historico em tabela propria `pi_history`, nao em
+  `app_entity_history` (ver comentario em `supabase/migrations/429_create_permission_intervention.sql`
+  linha ~384). Motivo documentado: o CHECK de `change_type` de `app_entity_history` so aceita
+  `UPDATE`/`CANCEL`/`ACTIVATE`; a PI usa hoje 10 valores de `action_type` (`CREATE`, `LINK_AUTO`,
+  `UPDATE`, `UPDATE_EXECUTION_PLAN`, `CANCEL`, `ISSUE`, `MARK_READY`, `REOPEN`, `LINK_MANUAL`,
+  `RELINK` — o comentario da migration cita `GENERATE_DOCUMENT`, mas esse valor nunca foi
+  implementado em codigo).
+- Diferenca de modelo de seguranca, nao so de CHECK: `app_entity_history` aceita `INSERT` direto
+  de qualquer `authenticated` (varios handlers TS fazem `.from("app_entity_history").insert(...)`
+  direto); `pi_history` bloqueia todo `INSERT` direto — so entra via RPC `SECURITY DEFINER`
+  (`pi_append_history`). Padronizar as duas exige decidir qual postura vale para todo mundo, nao
+  so alargar um CHECK.
+- Diferenca de volume por natureza: o fluxo de PI grava dezenas de linhas por registro ao longo
+  de um unico ciclo de aprovacao (toggle pronto/reabrir, vinculo, emissao); os demais modulos so
+  gravam em update/cancel/activate. `pi_history` tem 1 indice de 3 colunas contra 2 indices (um de
+  5 colunas) em `app_entity_history` — mais leve por linha, mas por atender uma unica entidade,
+  nao por ser mais otimizada.
+- Achado extra: dentro do proprio modulo PI ja existe uma 3a variacao — `pi_settings`
+  (configuracao do contrato) usa `app_entity_history`, nao `pi_history`, por decisao de
+  granularidade (registro vs contrato inteiro; comentario em
+  `supabase/migrations/431_pi_settings_roles_and_contact_source.sql` linha ~127).
+- Nao ha, no codigo ou em `TASKS.md`, nenhum plano ja aberto de unificacao. A migration que criou
+  `pi_history` argumenta explicitamente que alargar o CHECK de uma tabela compartilhada por ~15
+  modulos e mais arriscado do que manter tabela propria — qualquer proposta futura de padronizacao
+  precisa lidar com esse argumento e com a diferenca de modelo de seguranca acima, escolhendo a
+  opcao de menor impacto de I/O e risco, e nao entra nesta tela sem tarefa dedicada.
+
+Proximos passos (nao implementados nesta entrega)
+---------------------------------------------------
+- Separar, na aba Erros, "erro de API" de "erro de tela" dentro do `source = WEB` — hoje nao ha
+  coluna para isso; exigiria campo novo (`origin`/`layer`) escrito explicitamente nos ~41 pontos
+  de chamada de `useErrorLogger`. Tambem nao existe captura automatica de excecao (sem
+  `error.tsx`/`global-error.tsx`, sem error boundary, sem catch em rota de API) — hoje so aparece
+  na tela o que cada tela decidiu logar manualmente em `catch`.
+- Exportar CSV de todos os registros que casam com o filtro (nao so a pagina carregada), no
+  mesmo padrao de `/api/people/export` (`loadAllRows` + aviso de resultado truncado).
+- Parear LOGIN/LOGOUT por `session_ref` na aba Acessos para mostrar duracao de sessao.
+- Decisao de padronizacao `pi_history` vs `app_entity_history` (ver secao acima) — tarefa
+  dedicada, fora desta tela.
+
+Mapa de Codigo (funcoes, hooks e constantes)
+--------------------------------------------
+Funcoes principais
+- Caminho: `src/app/(dashboard)/auditoria/page.tsx`
+  - Responsavel por: expor a rota autenticada `/auditoria`.
+- Caminho: `src/modules/dashboard/auditoria/AuditPageView.tsx`
+  - Responsavel por: alternar entre as 3 abas (`activeTab`).
+- Caminho: `src/modules/dashboard/auditoria/ChangesTab.tsx`
+  - Responsavel por: filtro, listagem, paginacao e export CSV da aba Alteracoes; carrega o
+    catalogo de telas via `fetchAuditableScreens`.
+- Caminho: `src/modules/dashboard/auditoria/AccessTab.tsx`
+  - Responsavel por: filtro, listagem, paginacao e export CSV da aba Acessos.
+- Caminho: `src/modules/dashboard/auditoria/ErrorsTab.tsx`
+  - Responsavel por: filtro, listagem, paginacao, export CSV e expandir stacktrace da aba Erros.
+- Caminho: `src/server/modules/auditoria/handlers.ts`
+  - Responsavel por: `getChangeHistory`, `getAccessLog`, `getErrorLog`, `getAuditableScreens` —
+    guard admin, parse de query params e paginacao, shape da resposta JSON.
+- Caminho: `src/server/modules/auditoria/queries.ts`
+  - Responsavel por: `listChangeHistory`, `listAccessLog`, `listErrorLogs`,
+    `listAuditableScreens`, `resolveUserIdsByQuery`, `fetchUserSummaries` — todas as consultas
+    Supabase com filtro de `tenant_id` explicito.
+
+Constantes e configuracoes
+- Caminho: `src/lib/auth/authorization.ts`
+  - Responsavel por: `ADMIN_ONLY_ROUTE_PREFIXES` inclui `/auditoria`.
+- Caminho: `src/components/layout/AppShell.tsx`
+  - Responsavel por: secao de menu "Auditoria" e entrada em `titleMap["/auditoria"]`.
+
+Funcoes utilitarias relacionadas
+- Caminho: `src/lib/server/appUsersAdmin.ts`
+  - Responsavel por: `resolveAdminOperator`, guard admin-only reaproveitado das 4 rotas.
+- Caminho: `src/lib/server/apiHelpers.ts`
+  - Responsavel por: `parsePagination`, `normalizeHistoryChanges`, `normalizeNullableText`.
+- Caminho: `src/lib/utils/csv.ts` e `src/lib/utils/formatters.ts`
+  - Responsavel por: `buildCsvContent`/`downloadCsvFile` (export) e `formatDateTime` (exibicao).
+
+Servicos e integracoes externas
+- Supabase Postgres, tabelas `app_entity_history`, `login_audit`, `app_error_logs`, `app_pages`,
+  `app_users` — todas ja existentes, nenhuma migration nova nesta entrega.
