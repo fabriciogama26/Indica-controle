@@ -152,15 +152,63 @@ Atualizacao 2026-07
 -------------------
 - Filtros da lista de Pessoas passam a incluir `CPF` e `Telefone`, enviados pelo frontend para `GET /api/people` e aplicados na paginacao server-side.
 
+Atualizacao 2026-09 - Importacao em massa, exportacao CSV e busca por nome mais rapidas
+------------------------------------------------------------------------------------------
+- Contexto: comparacao com o fluxo equivalente do projeto API-Estoque encontrou tres pontos de
+  ineficiencia real no codigo (nao no outro projeto): importacao em massa fazia varias queries
+  por linha, exportacao refazia a listagem inteira em loop, e a busca por nome nao tinha indice
+  compativel.
+- IMPORTACAO EM MASSA: `importPersonBatch()` fazia ate ~5-6 queries por linha do arquivo (cargo,
+  tipo, nivel, duplicidade de matricula, duplicidade de CPF, RPC de save individual). Exemplo
+  concreto: um arquivo com 500 pessoas (o teto do formulario) podia gerar ate ~2.500 idas
+  sequenciais ao banco. Extraida para `src/server/modules/people/import.ts`, que agora carrega
+  cargos/tipos/niveis do tenant uma unica vez (3 queries para o arquivo inteiro) e verifica
+  duplicidade de matricula/CPF em lote via `.in()` (2 queries, mais deteccao de duplicidade
+  DENTRO do proprio arquivo, que o servidor nao checava antes). A gravacao passou de uma
+  chamada RPC por pessoa para uma UNICA chamada a nova RPC `save_person_records_batch`
+  (migration `435_create_save_person_records_batch_rpc.sql`), que insere o lote inteiro numa
+  transacao so, com cada linha isolada em bloco `begin/exception` (savepoint implicito do
+  PL/pgSQL) para que uma linha invalida (ex.: matricula duplicada) nao derrube as demais.
+  Exemplo: o mesmo arquivo de 500 pessoas agora faz 1 unica chamada ao banco para a gravacao,
+  nao mais ~500. As mensagens/codigos de erro por linha (`DUPLICATE_PERSON_MATRICULATION`,
+  `DUPLICATE_PERSON_CPF`, `INVALID_JOB_TITLE` etc.) continuam as mesmas que a tela ja exibia.
+- EXPORTACAO CSV: `handleExportPeople()` fazia um loop no navegador de paginas de 100 registros,
+  cada volta refazendo autenticacao, `count: exact` e lookups de cargo/tipo/usuario. Exemplo
+  concreto: exportar 2.000 pessoas gerava ~20 requisicoes sequenciais do navegador. Criado
+  `GET /api/people/export`, que usa o helper `loadAllRows` (le a lista inteira em blocos de
+  1.000 registros DENTRO do servidor, sem round-trip do navegador por bloco) para devolver a
+  lista filtrada completa numa UNICA resposta, com teto de seguranca de 20.000 linhas e aviso
+  de exportacao parcial (`truncated: true`) em vez de exportar incompleto calado.
+  `PeoplePageView.tsx` troca o loop por uma unica chamada.
+- BUSCA POR NOME: o filtro `Nome` usa `ilike('nome', '%termo%')`, que nao tem indice compativel
+  com curinga nas duas pontas (so existia `idx_people_tenant_active`, que serve ordenacao e
+  status, nao busca por texto). Migration `436_add_people_nome_trigram_index.sql` cria a
+  extensao `pg_trgm` e um indice GIN trigram em `people.nome`. Decisao de escopo: so
+  `people.nome` — `Matricula`/`CPF`/`Telefone` continuam sem indice de texto.
+- `src/app/api/people/route.ts` caiu de 1.370 para 1.066 linhas com a extracao de
+  `src/server/modules/people/list.ts` (query de listagem + resolucao de nomes, reaproveitada
+  pelo `GET` original sem mudanca de comportamento) e `src/server/modules/people/import.ts`.
+- Criado `src/lib/server/massImportRunner.ts` (`runMassImport`), mecanica generica de
+  importacao em massa (sem regra de dominio) reaproveitada tambem por Materiais e Projetos na
+  mesma rodada de trabalho.
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; `lint:size:accept` para +2 linhas
+  legadas em `PeoplePageView.tsx`). Migrations 435/436 nao aplicadas no banco vivo nesta tarefa.
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/modules/dashboard/pessoas/PeoplePageView.tsx`
   - Responsavel por: formulario, filtros, listagem, exportacao, cadastro em massa, detalhes, historico e status, incluindo envio de `expectedUpdatedAt` e refresh quando houver conflito.
 - Caminho: `src/app/api/people/route.ts`
-  - Responsavel por: validar tenant/cargo/tipo/nivel, listar/historico, processar cadastro em massa e delegar insert/update/status para as RPCs `save_person_record` e `set_person_record_status`.
+  - Responsavel por: validar tenant/cargo/tipo/nivel, listar/historico e delegar insert/update/status para as RPCs `save_person_record` e `set_person_record_status` (listagem e cadastro em massa delegados para os modulos abaixo desde 2026-09).
 - Caminho: `src/app/api/people/meta/route.ts`
   - Responsavel por: carregar metadados de cargos, tipos por cargo e niveis.
+- Caminho: `src/app/api/people/export/route.ts` (2026-09)
+  - Responsavel por: exportar a lista filtrada inteira numa unica resposta, via `loadAllRows`, sem paginacao nem `count: exact`.
+- Caminho: `src/server/modules/people/list.ts` (2026-09)
+  - Responsavel por: `listPeopleRows` (query de listagem com filtros) e `enrichPeopleRows` (resolucao em lote de nomes de cargo/tipo/usuario), usados pelo `GET` paginado e pelo export.
+- Caminho: `src/server/modules/people/import.ts` (2026-09)
+  - Responsavel por: pre-carregar catalogos/duplicidade em lote e chamar a RPC `save_person_records_batch` para o cadastro em massa.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/pessoas/PeoplePageView.tsx`
@@ -177,6 +225,10 @@ Constantes e configuracoes
   - Responsavel por: adicionar `people.cpf` opcional, validar 11 digitos e republicar `save_person_record` para salvar CPF normalizado.
 - Caminho: `supabase/migrations/199_people_cpf_unique_phone_and_conditional_type.sql`
   - Responsavel por: garantir CPF unico por tenant, proteger `CPF + Matricula`, adicionar `people.phone` e republicar `save_person_record` com telefone.
+- Caminho: `supabase/migrations/435_create_save_person_records_batch_rpc.sql`
+  - Responsavel por: criar `save_person_records_batch`, insercao em lote do cadastro em massa numa unica chamada.
+- Caminho: `supabase/migrations/436_add_people_nome_trigram_index.sql`
+  - Responsavel por: indice GIN trigram em `people.nome` para acelerar o filtro de busca por texto.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -262,3 +314,32 @@ Atualizacao 2026-08-15 - Formulario nao e mais apagado em conflito de concorrenc
 - Arquivos alterados: `src/modules/dashboard/pessoas/PeoplePageView.tsx`.
 - Validado com `npx tsc --noEmit` e `npm run lint` (0 erros; baseline reduzido via
   `npm run lint:size:update`).
+
+Atualizacao 2026-09 - Importacao em massa, exportacao e busca por nome (detalhe tecnico)
+--------------------------------------------------------------------------------------------
+- Ver resumo com exemplos na secao "Atualizacao 2026-09" acima (antes da "Mapa de Codigo").
+- Arquivos alterados/criados:
+  - `src/app/api/people/route.ts`
+  - `src/app/api/people/export/route.ts` (novo)
+  - `src/server/modules/people/list.ts` (novo)
+  - `src/server/modules/people/import.ts` (novo)
+  - `src/lib/server/massImportRunner.ts` (novo)
+  - `src/modules/dashboard/pessoas/PeoplePageView.tsx`
+  - `supabase/migrations/435_create_save_person_records_batch_rpc.sql` (novo)
+  - `supabase/migrations/436_add_people_nome_trigram_index.sql` (novo)
+- Funcoes/hooks/constantes tocadas:
+  - `listPeopleRows`, `enrichPeopleRows` (substituem `listPeople` embutida em `route.ts`)
+  - `importPersonBatch` (recriada em `src/server/modules/people/import.ts`)
+  - `runMassImport`
+  - `handleExportPeople` (loop client-side de paginas removido)
+  - `save_person_records_batch`
+  - `EXPORT_PAGE_SIZE`/`DEFAULT_EXPORT_PAGE_SIZE` deixam de ser usados por esta tela
+- Comportamento antes/depois:
+  - Antes: `Exportar Excel (CSV)` disparava N requisicoes sequenciais do navegador (uma por
+    pagina de 100 registros).
+  - Depois: `Exportar Excel (CSV)` faz 1 requisicao para `/api/people/export`, que le a lista
+    inteira no servidor.
+  - Antes: cadastro em massa fazia ate ~5-6 queries por linha do arquivo.
+  - Depois: cadastro em massa faz 3 queries de catalogo + ate 2 queries `.in()` de duplicidade
+    (para o arquivo inteiro, nao por linha) + 1 chamada RPC para gravar o lote inteiro.
+  - Depois: busca por `Nome` passa a usar indice GIN trigram em vez de sequential scan.

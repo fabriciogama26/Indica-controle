@@ -230,9 +230,11 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
   - Responsavel por: estado da tela, cadastro, edicao, cadastro em massa CSV, filtros, paginacao e modais de historico/cancelamento, incluindo envio de `expectedUpdatedAt`, bloqueio visual de rastreio por serial em uso e refresh da lista quando houver conflito.
 - Caminho: `src/app/api/materials/route.ts`
-  - Responsavel por: validar payload manual/lote, validar UMB contra `material_umb_options`, listar/historico, calcular `hasSerialTrackingUsage`, executar pre-check de codigo, bloquear alteracao/remocao de rastreio em uso, validar limites de estoque, exigir permissao server-side por acao e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`.
+  - Responsavel por: validar payload manual, validar UMB contra `material_umb_options`, listar/historico, calcular `hasSerialTrackingUsage`, executar pre-check de codigo, bloquear alteracao/remocao de rastreio em uso, validar limites de estoque, exigir permissao server-side por acao e delegar insert/update/status para as RPCs `save_material_record` e `set_material_record_status`. Cadastro em massa delegado para `src/server/modules/materials/import.ts` desde 2026-09-13.
 - Caminho: `src/app/api/materials/meta/route.ts`
   - Responsavel por: carregar opcoes ativas de UMB do catalogo `material_umb_options` e detectar registros legados sem UMB.
+- Caminho: `src/server/modules/materials/import.ts` (2026-09-13)
+  - Responsavel por: normalizar/validar estruturalmente cada linha do arquivo de importacao (obrigatorios, tipo, preco, limites de estoque — sem banco) e chamar a RPC `save_material_records_batch` para o lote inteiro.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/materiais/MaterialsPageView.tsx`
@@ -253,6 +255,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar `stock_minimum`/`stock_maximum` em `materials` e republicar `save_material_record` com persistencia transacional desses limites.
 - Caminho: `supabase/migrations/366_create_material_umb_options.sql`
   - Responsavel por: criar `material_umb_options`, semear `M`/`KG`/`UN`, manter seed para novos tenants e republicar `save_material_record` com validacao de UMB ativa por tenant.
+- Caminho: `supabase/migrations/437_create_save_material_records_batch_rpc.sql`
+  - Responsavel por: criar `save_material_records_batch`, que replica a validacao de `save_material_record` (categoria/subcategoria/UMB/tipo/preco/estoque/rastreio) linha a linha dentro do loop e insere o lote inteiro numa unica chamada.
 
 Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
@@ -436,3 +440,55 @@ Atualizacao 2026-09-03 - Pendencia de identificacao de serial vira campo do cada
   encolheu de 1695 para 1687 linhas com a extracao do bloco de rastreio; baseline reduzido
   via `npm run lint:size:update`. Comandos de banco (`db:migration-list`, `db:lint`,
   `db:security-check`) nao foram executados: o Supabase CLI nao esta linkado neste ambiente.
+
+Atualizacao 2026-09-13 - Cadastro em massa: RPC unica em vez de RPC por linha
+-------------------------------------------------------------------------------
+- Contexto: auditoria de performance (comparacao com o fluxo equivalente do projeto
+  API-Estoque) encontrou 8 telas do SaaS reimplementando o mesmo loop de cadastro em massa
+  linha a linha. Materiais era um dos dois piores casos, junto com Projetos.
+- Antes: `importMaterialBatch()` (dentro de `src/app/api/materials/route.ts`) fazia, POR LINHA
+  do arquivo importado: 2 queries paralelas para checar categoria/subcategoria ativas, 1
+  chamada RPC de pre-check de codigo duplicado (`precheck_material_code_conflict`) e 1 chamada
+  RPC de gravacao (`save_material_record`) — ate 4 idas ao banco por linha. Exemplo concreto:
+  um arquivo de 500 materiais (teto do formulario) podia gerar ate ~2.000 idas ao banco,
+  sequenciais, cada uma pagando a latencia de rede Vercel<->Supabase.
+- Depois: a gravacao do arquivo inteiro acontece numa UNICA chamada a nova RPC
+  `save_material_records_batch` (migration `437_create_save_material_records_batch_rpc.sql`).
+  A validacao de categoria/subcategoria/UMB/tipo/preco/estoque/rastreio roda DENTRO do proprio
+  loop em PL/pgSQL — a mesma logica que ja existia no branch de insercao de
+  `save_material_record`, so que reaplicada linha a linha dentro do banco (busca local por
+  indice, sem round-trip de rede). Cada linha fica isolada num bloco `begin/exception`
+  (savepoint implicito do PL/pgSQL): uma linha com codigo duplicado ou categoria invalida nao
+  derruba as linhas ja inseridas na mesma chamada. Exemplo concreto: o mesmo arquivo de 500
+  materiais agora gera 1 unica chamada ao banco para a gravacao, nao mais ~2.000.
+  - Exemplo de erro por linha (mensagem/codigo inalterados para quem usa a tela): a linha 12
+    com um `codigo` ja cadastrado continua devolvendo `{ rowNumber: 12, success: false, code:
+    "DUPLICATE_MATERIAL_CODE", message: "Ja existe material com este codigo no tenant atual."
+    }` no CSV de erros — so muda ONDE essa checagem roda (dentro da RPC, nao mais numa chamada
+    separada de pre-check), nao o resultado que a tela mostra.
+- `precheck_material_code_conflict` deixa de ser chamada no caminho de importacao em massa
+  (continua em uso no cadastro/edicao unitarios, que nao mudaram nesta tarefa).
+- Extraido `src/server/modules/materials/import.ts`: normalizacao/validacao ESTRUTURAL pura
+  (campos obrigatorios, `tipo` valido, preco/estoque numericos) — sem nenhuma chamada ao banco.
+  A existencia de categoria/subcategoria/UMB fica inteiramente a cargo da RPC nova.
+- Criado `src/lib/server/massImportRunner.ts` (`runMassImport`), infraestrutura generica de
+  importacao em massa (sem regra de dominio) reaproveitada tambem por Pessoas e Projetos na
+  mesma rodada de trabalho.
+- `route.ts` caiu de 1.435 para 1.339 linhas com a extracao. Cadastro unitario (`POST` sem
+  `BATCH_IMPORT`, `PUT`, `PATCH`) nao mudou nesta tarefa.
+- Multi-tenant e permissao:
+  - `save_material_records_batch` e `SECURITY DEFINER`, `EXECUTE` restrito a `service_role`
+    (mesma trava de `save_material_record`), `tenant_id` sempre vindo da sessao autenticada.
+  - Permissao inalterada: cadastro em massa continua sob a mesma acao `create` usada pelo
+    cadastro unitario (`authorizeMaterialsAction`, `pageKey = materiais`).
+- Arquivos alterados/criados:
+  - `src/app/api/materials/route.ts`
+  - `src/server/modules/materials/import.ts` (novo)
+  - `src/lib/server/massImportRunner.ts` (novo)
+  - `supabase/migrations/437_create_save_material_records_batch_rpc.sql` (novo)
+- Funcoes/hooks/constantes tocadas:
+  - `importMaterialBatch` (removida de `route.ts`, recriada em `src/server/modules/materials/import.ts`)
+  - `runMassImport`
+  - `save_material_records_batch`
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros). Migration `437` nao aplicada no
+  banco vivo nesta tarefa (pendente `db:check-link` + `db:lint`).

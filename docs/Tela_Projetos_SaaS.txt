@@ -301,7 +301,9 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/projetos/massImport.ts`
   - Responsavel por: modelo CSV, leitura, aliases, validacao de catalogos e normalizacao de datas/valores/flags do cadastro em massa de projetos.
 - Caminho: `src/app/api/projects/route.ts`
-  - Responsavel por: validar payload, importar projetos em massa, inserir, editar, cancelar, listar e consultar historico por projeto, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC.
+  - Responsavel por: validar payload, inserir, editar, cancelar, listar e consultar historico por projeto, ignorando `FOB` no fluxo operacional atual, delegando update/status para RPCs transacionais e aplicando fallback de compatibilidade de assinatura no save via RPC. Cadastro em massa delegado para `src/server/modules/projects/import.ts` desde 2026-09.
+- Caminho: `src/server/modules/projects/import.ts` (2026-09)
+  - Responsavel por: normalizar/validar estruturalmente cada linha do arquivo de importacao (sem banco) e chamar a RPC `save_project_records_batch` para o lote inteiro.
 - Caminho: `src/app/api/projects/meta/route.ts`
   - Responsavel por: carregar catalogos de filtros e auto-preenchimento.
 - Caminho: `src/app/api/projects/forecast/route.ts`
@@ -358,6 +360,8 @@ Constantes e configuracoes
   - Responsavel por: adicionar `project.is_test`, republicar `project_with_labels` e evoluir a RPC `save_project_record` com suporte ao marcador de obra de teste.
 - Caminho: `supabase/migrations/174_add_project_is_withdrawn.sql`
   - Responsavel por: adicionar `project.is_withdrawn`, republicar `project_with_labels` e evoluir a RPC `save_project_record` com suporte ao marcador `RETIRADO DA CARTEIRA`.
+- Caminho: `supabase/migrations/438_create_save_project_records_batch_rpc.sql`
+  - Responsavel por: criar `save_project_records_batch`, que resolve os 8 catalogos por nome, o contrato ativo e o Responsavel Contratada/Supervisor DENTRO do loop em SQL e insere o lote inteiro numa unica chamada.
 - Caminho: `supabase/migrations/045_create_tenants_and_user_tenant_access.sql`
   - Responsavel por: criar entidade `tenants`, vinculo `app_user_tenants` e atualizar `user_can_access_tenant`.
 - Caminho: `supabase/migrations/046_add_tenant_fk_to_all_tenant_tables.sql`
@@ -970,3 +974,57 @@ Atualizacao 2026-09-10 (2) - Filtro por Observacao na listagem de Projetos
 - Plano de modularizacao (obrigatorio: os dois arquivos seguem acima do teto):
   - Plano inalterado em relacao ao registrado na `Atualizacao 2026-09-10`; nada foi extraido nesta tarefa.
   - Crescimento aceito arquivo a arquivo por `npm run lint:size:accept` (route.ts 1862 -> 1879, PageView.tsx 4232 -> 4247); o diff de `file-size-baseline.json` e a evidencia.
+
+Atualizacao 2026-09-13 - Cadastro em massa: RPC unica resolvendo os catalogos dentro do loop
+-------------------------------------------------------------------------------------------------
+- Contexto: auditoria de performance (comparacao com o fluxo equivalente do projeto API-Estoque)
+  encontrou 8 telas do SaaS reimplementando o mesmo loop de cadastro em massa linha a linha.
+  Projetos era o PIOR caso entre elas.
+- Antes: `resolveProjectLookups()` (dentro de `src/app/api/projects/route.ts`) rodava, POR LINHA
+  do arquivo importado, 10 queries EM PARALELO (`Promise.all`) para resolver por nome: Prioridade,
+  Centro de Servico, Tipo de Servico, Nivel de Tensao, Porte, Municipio, Responsavel Contratada
+  (Supervisor, que ainda faz 2 queries proprias), Responsavel Distribuidora, Gestor de campo
+  Distribuidora e o contrato ativo (Parceira) — sem nenhum cache entre linhas. Exemplo concreto:
+  um arquivo com 500 projetos (teto do formulario, `MASS_IMPORT_ROW_LIMIT`) podia gerar ate
+  ~5.500 idas ao banco so para resolver os catalogos, antes mesmo da RPC de gravacao.
+- Depois: nova RPC `save_project_records_batch` (migration
+  `438_create_save_project_records_batch_rpc.sql`) recebe os NOMES normalizados (nao UUIDs) e
+  resolve cada um dos 8 catalogos, o contrato ativo e o Responsavel Contratada/Supervisor DENTRO
+  do proprio loop em PL/pgSQL — busca local por indice em vez de round-trip de rede. O contrato
+  ativo e os `job_title_id` de codigo SUPERVISOR sao resolvidos uma UNICA vez, antes do loop, por
+  nao variarem linha a linha. Exemplo concreto: o mesmo arquivo de 500 projetos agora faz 1 unica
+  chamada ao banco para resolver os catalogos e gravar tudo, nao mais ~5.500 + 500 RPCs de save.
+  - Exemplo de erro por linha (mensagem inalterada para quem usa a tela): uma linha com
+    `Centro de Servico` escrito errado continua devolvendo `{ rowNumber, success: false, code:
+    "INVALID_SERVICE_CENTER", message: "o Centro de Servico invalido(a)." }` no CSV de erros —
+    cada campo de catalogo agora tem um `code` proprio (`INVALID_PRIORITY`,
+    `INVALID_SERVICE_CENTER`, `INVALID_SERVICE_TYPE`, `INVALID_VOLTAGE_LEVEL`,
+    `INVALID_PROJECT_SIZE`, `INVALID_MUNICIPALITY`, `INVALID_CONTRACTOR_RESPONSIBLE`,
+    `INVALID_UTILITY_RESPONSIBLE`, `INVALID_UTILITY_FIELD_MANAGER`) em vez de um erro generico
+    unico de "Falha ao validar cadastro." que nao dizia qual campo estava errado.
+- Removida `importProjectBatch()` de `route.ts`; recriada em `src/server/modules/projects/import.ts`,
+  que agora so faz normalizacao/validacao ESTRUTURAL pura (obrigatoriedade, formato de data,
+  faixa de latitude/longitude) — sem nenhuma chamada ao banco. A existencia dos catalogos fica
+  inteiramente a cargo da RPC nova.
+- Criado `src/lib/server/massImportRunner.ts` (`runMassImport`), infraestrutura generica
+  reaproveitada tambem por Pessoas e Materiais na mesma rodada de trabalho.
+- `route.ts` (legado, ja acima do teto de 1.500 linhas) caiu de 1.879 para 1.824 linhas so com
+  esta extracao — primeiro encolhimento registrado desde que o "Plano de modularizacao" comecou
+  a ser seguido; baseline atualizado via `npm run lint:size:update` (so reducao, nunca `accept`).
+  `ProjectsPageView.tsx` nao foi tocado nesta tarefa.
+- Cadastro unitario (`POST` sem `BATCH_IMPORT`, `PUT`, `PATCH`) nao mudou.
+- Banco:
+  - Migration `438_create_save_project_records_batch_rpc.sql`, ainda nao aplicada no banco vivo
+    nesta tarefa (pendente `db:check-link` + `db:lint`).
+  - RPC mais complexa das criadas nesta rodada de performance (435/437/438) — maior superficie
+    para revisar antes de aplicar.
+- Multi-tenant e permissao:
+  - `save_project_records_batch` e `SECURITY DEFINER`, `EXECUTE` restrito a `service_role`
+    (mesma trava de `save_project_record`), `tenant_id` sempre vindo da sessao autenticada.
+  - Permissao inalterada: cadastro em massa continua sob `projetos/import`.
+- Arquivos alterados/criados:
+  - `src/app/api/projects/route.ts`
+  - `src/server/modules/projects/import.ts` (novo)
+  - `src/lib/server/massImportRunner.ts` (novo)
+  - `supabase/migrations/438_create_save_project_records_batch_rpc.sql` (novo)
+- Validado com `npx tsc --noEmit` e `npm run lint` (0 erros).
