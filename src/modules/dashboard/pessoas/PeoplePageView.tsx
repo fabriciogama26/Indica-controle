@@ -11,7 +11,7 @@ import styles from "./PeoplePageView.module.css";
 import { downloadCsvFile, escapeCsvValue } from "@/lib/utils/csv";
 import { formatAuditActor, formatDateTime } from "@/lib/utils/formatters";
 import { parseCsvLine } from "@/lib/utils/parsers";
-import { DEFAULT_PAGE_SIZE, DEFAULT_EXPORT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
+import { DEFAULT_PAGE_SIZE, DEFAULT_HISTORY_PAGE_SIZE } from "@/lib/constants/pagination";
 
 type PersonItem = {
   id: string;
@@ -88,6 +88,12 @@ type PeopleListResponse = {
   message?: string;
 };
 
+type PeopleExportResponse = {
+  people?: PersonItem[];
+  truncated?: boolean;
+  message?: string;
+};
+
 type PeopleMetaResponse = {
   jobTitleTypes?: JobTitleTypeOption[];
   jobTitles?: JobTitleOption[];
@@ -139,7 +145,6 @@ type PersonBatchImportResponse = {
 
 const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 const HISTORY_PAGE_SIZE = DEFAULT_HISTORY_PAGE_SIZE;
-const EXPORT_PAGE_SIZE = DEFAULT_EXPORT_PAGE_SIZE;
 
 const HISTORY_FIELD_LABELS: Record<string, string> = {
   name: "Nome",
@@ -249,7 +254,7 @@ function isJobTitleTypeRequired(jobTitle: JobTitleOption | null | undefined) {
   return required.has(normalizeRuleText(jobTitle?.name)) || required.has(normalizeRuleText(jobTitle?.code));
 }
 
-function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SIZE) {
+function buildFilterParams(filters: PersonFilterState) {
   const params = new URLSearchParams();
   if (filters.name.trim()) {
     params.set("name", filters.name.trim());
@@ -275,9 +280,18 @@ function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SI
   if (filters.status.trim()) {
     params.set("status", filters.status.trim());
   }
+  return params;
+}
+
+function buildQuery(filters: PersonFilterState, page: number, pageSize = PAGE_SIZE) {
+  const params = buildFilterParams(filters);
   params.set("page", String(page));
   params.set("pageSize", String(pageSize));
   return params.toString();
+}
+
+function buildExportQuery(filters: PersonFilterState) {
+  return buildFilterParams(filters).toString();
 }
 
 function normalizeCsvHeader(value: string) {
@@ -852,39 +866,25 @@ export function PeoplePageView() {
     setIsExporting(true);
 
     try {
-      const allPeople: PersonItem[] = [];
-      let exportPage = 1;
-      let totalItems = 0;
+      const query = buildExportQuery(activeFilters);
+      const response = await fetch(`/api/people/export?${query}`, {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+      });
 
-      while (true) {
-        const query = buildQuery(activeFilters, exportPage, EXPORT_PAGE_SIZE);
-        const response = await fetch(`/api/people?${query}`, {
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${session.accessToken}`,
-          },
+      const data = (await response.json().catch(() => ({}))) as PeopleExportResponse;
+
+      if (!response.ok) {
+        setFeedback({
+          type: "error",
+          message: data.message ?? "Falha ao exportar pessoas.",
         });
-
-        const data = (await response.json().catch(() => ({}))) as PeopleListResponse;
-
-        if (!response.ok) {
-          setFeedback({
-            type: "error",
-            message: data.message ?? "Falha ao exportar pessoas.",
-          });
-          return;
-        }
-
-        const pageItems = data.people ?? [];
-        totalItems = data.pagination?.total ?? totalItems;
-        allPeople.push(...pageItems);
-
-        if (pageItems.length === 0 || allPeople.length >= totalItems) {
-          break;
-        }
-
-        exportPage += 1;
+        return;
       }
+
+      const allPeople = data.people ?? [];
 
       if (allPeople.length === 0) {
         setFeedback({
@@ -899,8 +899,10 @@ export function PeoplePageView() {
       downloadCsvFile(csv, `pessoas_${exportDate}.csv`);
 
       setFeedback({
-        type: "success",
-        message: `${allPeople.length} pessoa(s) exportada(s) com sucesso.`,
+        type: data.truncated ? "error" : "success",
+        message: data.truncated
+          ? `Exportacao parcial: ${allPeople.length} pessoa(s) exportada(s). Refine os filtros para exportar o restante.`
+          : `${allPeople.length} pessoa(s) exportada(s) com sucesso.`,
       });
     } catch {
       setFeedback({
