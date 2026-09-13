@@ -10,6 +10,7 @@ import {
 import { requirePageAction, type PageAction } from "@/lib/server/pageAuthorization";
 import { allowsPendingSerialIdentification, normalizeSerialTrackingType, SerialTrackingType } from "@/lib/materialSerialTracking";
 import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
+import { importMaterialBatch } from "@/server/modules/materials/import";
 
 const WITHOUT_UMB_FILTER = "__SEM_UMB__";
 
@@ -620,103 +621,6 @@ async function saveMaterialViaRpc(params: {
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
-async function importMaterialBatch(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  allowedUmbCodes: Set<string>;
-  rows: Array<CreateMaterialPayload & { rowNumber?: number }>;
-}) {
-  const results: Array<{
-    rowNumber: number;
-    success: boolean;
-    message: string;
-    code?: string;
-  }> = [];
-  let savedCount = 0;
-
-  for (const [index, row] of params.rows.entries()) {
-    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0
-      ? Number(row.rowNumber)
-      : index + 2;
-    const input = parseMaterialInput(row);
-    const validationError = validateRequiredMaterialFields(input);
-    const umbValidationError = validationError ? null : validateMaterialUmbOption(input, params.allowedUmbCodes);
-    const classification = validationError
-      ? null
-      : await loadMaterialClassificationSelection(
-          params.supabase,
-          params.tenantId,
-          input.categoryId,
-          input.subcategoryId,
-        );
-
-    if (validationError || umbValidationError || (classification && !classification.ok)) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: validationError ?? umbValidationError ?? classification?.message ?? "Categoria invalida.",
-        code: umbValidationError ? "INVALID_UMB" : classification && !classification.ok ? "INVALID_CATEGORY" : undefined,
-      });
-      continue;
-    }
-
-    const precheck = await precheckMaterialCodeConflict(params.supabase, params.tenantId, null, input.codigo);
-    if (!precheck.ok) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: precheck.message,
-        code: precheck.status === 409 ? "DUPLICATE_MATERIAL_CODE" : undefined,
-      });
-      continue;
-    }
-
-    const saveResult = await saveMaterialViaRpc({
-      supabase: params.supabase,
-      tenantId: params.tenantId,
-      actorUserId: params.actorUserId,
-      materialId: null,
-      codigo: input.codigo,
-      descricao: input.descricao,
-      categoryId: input.categoryId,
-      subcategoryId: input.subcategoryId,
-      umb: input.umb,
-      tipo: input.tipo,
-      isTransformer: input.isTransformer,
-      serialTrackingType: input.serialTrackingType,
-      allowPendingSerialIdentification: input.allowPendingSerialIdentification,
-      unitPrice: input.unitPrice,
-      stockMinimum: input.stockMinimum,
-      stockMaximum: input.stockMaximum,
-    });
-
-    if (!saveResult.ok) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: saveResult.message,
-        code: saveResult.reason ?? undefined,
-      });
-      continue;
-    }
-
-    savedCount += 1;
-    results.push({
-      rowNumber,
-      success: true,
-      message: `Material ${input.codigo} registrado com sucesso.`,
-    });
-  }
-
-  return {
-    success: true,
-    savedCount,
-    errorCount: results.filter((result) => !result.success).length,
-    results,
-  };
-}
-
 async function setMaterialStatusViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -1094,11 +998,6 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json().catch(() => ({}))) as Partial<CreateMaterialPayload> & MaterialBatchImportPayload;
     const { supabase, appUser } = resolution;
-    const umbOptions = await loadActiveMaterialUmbCodes(supabase, appUser.tenant_id);
-
-    if (!umbOptions.ok) {
-      return NextResponse.json({ message: umbOptions.message }, { status: umbOptions.status });
-    }
 
     if (normalizeText(body.action).toUpperCase() === "BATCH_IMPORT") {
       const rows = Array.isArray(body.rows) ? body.rows : [];
@@ -1115,7 +1014,6 @@ export async function POST(request: NextRequest) {
         supabase,
         tenantId: appUser.tenant_id,
         actorUserId: appUser.id,
-        allowedUmbCodes: umbOptions.codes,
         rows,
       });
 
@@ -1126,6 +1024,12 @@ export async function POST(request: NextRequest) {
             ? `Cadastro em massa processado com ${result.savedCount} materiais salvos e ${result.errorCount} linhas com erro.`
             : `Cadastro em massa concluido com ${result.savedCount} materiais salvos.`,
       });
+    }
+
+    const umbOptions = await loadActiveMaterialUmbCodes(supabase, appUser.tenant_id);
+
+    if (!umbOptions.ok) {
+      return NextResponse.json({ message: umbOptions.message }, { status: umbOptions.status });
     }
 
     const input = parseMaterialInput(body);

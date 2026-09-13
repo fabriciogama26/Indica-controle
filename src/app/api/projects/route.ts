@@ -14,6 +14,7 @@ import {
   fetchProjectIdsWithCompletedWork,
 } from "@/server/modules/programacao-normalizada";
 import { authorizeProjectsAction } from "@/server/modules/projects/authorization";
+import { importProjectBatch } from "@/server/modules/projects/import";
 import { MASS_IMPORT_ROW_LIMIT } from "@/lib/constants/massImport";
 import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
 import { parseLatitude, parseLongitude } from "@/lib/utils/parsers";
@@ -1321,62 +1322,6 @@ async function saveProjectViaRpc(params: {
   }
 
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
-}
-
-async function importProjectBatch(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  rows: ProjectBatchImportRow[];
-}) {
-  const results: Array<{ rowNumber: number; success: boolean; message: string; code?: string }> = [];
-  let savedCount = 0;
-
-  for (const [index, row] of params.rows.entries()) {
-    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0 ? Number(row.rowNumber) : index + 2;
-    const input = parseProjectInput(row);
-    const requiredError = validateRequiredProjectFields(input);
-
-    if (requiredError) {
-      results.push({ rowNumber, success: false, message: requiredError, code: "INVALID_PROJECT" });
-      continue;
-    }
-
-    const lookupResolution = await resolveProjectLookups(params.supabase, params.tenantId, input);
-    if (lookupResolution.message || !lookupResolution.data) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: lookupResolution.message ?? "Falha ao validar cadastro.",
-        code: "INVALID_PROJECT_LOOKUP",
-      });
-      continue;
-    }
-
-    const insertPayload = buildProjectWritePayload(input, lookupResolution.data);
-    const saveResult = await saveProjectViaRpc({
-      supabase: params.supabase,
-      tenantId: params.tenantId,
-      actorUserId: params.actorUserId,
-      projectId: null,
-      payload: insertPayload,
-    });
-
-    if (!saveResult.ok) {
-      results.push({ rowNumber, success: false, message: saveResult.message, code: saveResult.reason ?? undefined });
-      continue;
-    }
-
-    savedCount += 1;
-    results.push({ rowNumber, success: true, message: `Projeto ${input.sob} cadastrado com sucesso.` });
-  }
-
-  return {
-    success: true,
-    savedCount,
-    errorCount: results.filter((result) => !result.success).length,
-    results,
-  };
 }
 
 async function setProjectStatusViaRpc(params: {

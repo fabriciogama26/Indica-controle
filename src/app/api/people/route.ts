@@ -9,9 +9,7 @@ import {
 } from "@/lib/server/concurrency";
 import {
   addChange,
-  buildNameMap,
   buildUserDisplayMap,
-  buildUserLoginNameMap,
   fetchTenantLinkedAppUsers,
   normalizeHistoryChanges,
   normalizeNullableText,
@@ -25,6 +23,8 @@ import {
   isMissingFunctionError,
   mapPersonDbError,
 } from "@/server/modules/people/errors";
+import { importPersonBatch } from "@/server/modules/people/import";
+import { enrichPeopleRows, listPeopleRows, type PeopleListFilters } from "@/server/modules/people/list";
 
 type PeopleRow = {
   id: string;
@@ -122,21 +122,6 @@ type PersonSaveRpcResult = {
   updated_at?: string;
 };
 
-type PeopleListFilters = {
-  tenantId: string;
-  name: string;
-  matriculation: string;
-  cpf: string;
-  phone: string;
-  jobTitleId: string;
-  jobTitleTypeId: string;
-  jobLevel: string;
-  status: string;
-  from: number;
-  to: number;
-  matriculationMatchMode?: "contains" | "exact";
-};
-
 function normalizeMatriculation(value: unknown) {
   return normalizeText(value).toUpperCase();
 }
@@ -225,14 +210,6 @@ function isJobTitleTypeRequired(jobTitle: { code?: string | null; name?: string 
   ]);
 
   return requiredNames.has(name) || requiredNames.has(code);
-}
-
-function buildJobTitleMap(jobTitles: JobTitleRow[]) {
-  return buildNameMap(jobTitles);
-}
-
-function buildJobTitleTypeMap(jobTitleTypes: JobTitleTypeRow[]) {
-  return buildNameMap(jobTitleTypes);
 }
 
 async function fetchJobTitleById(
@@ -538,165 +515,6 @@ async function savePersonViaRpc(params: {
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
 }
 
-async function importPersonBatch(params: {
-  supabase: SupabaseClient;
-  tenantId: string;
-  actorUserId: string;
-  rows: Array<CreatePersonPayload & { rowNumber?: number }>;
-}) {
-  const results: Array<{
-    rowNumber: number;
-    success: boolean;
-    message: string;
-    code?: string;
-  }> = [];
-  let savedCount = 0;
-
-  for (const [index, row] of params.rows.entries()) {
-    const rowNumber = Number.isInteger(Number(row.rowNumber)) && Number(row.rowNumber) > 0
-      ? Number(row.rowNumber)
-      : index + 2;
-    const input = parsePersonInput(row);
-    const validationError = validateRequiredPersonFields(input);
-
-    if (validationError) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: validationError,
-      });
-      continue;
-    }
-    if (!input.matriculation) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: "Matricula obrigatoria para salvar pessoa.",
-      });
-      continue;
-    }
-    const matriculation = input.matriculation;
-
-    const jobTitle = await fetchJobTitleById(params.supabase, params.tenantId, input.jobTitleId);
-    if (!jobTitle) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: "Cargo invalido para o tenant atual.",
-        code: "INVALID_JOB_TITLE",
-      });
-      continue;
-    }
-    const typeRequired = isJobTitleTypeRequired(jobTitle);
-
-    const jobTitleType = input.jobTitleTypeId
-      ? await fetchJobTitleTypeById(
-        params.supabase,
-        params.tenantId,
-        input.jobTitleId,
-        input.jobTitleTypeId,
-      )
-      : null;
-    if (typeRequired && !jobTitleType) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: "Tipo invalido para o cargo selecionado.",
-        code: "INVALID_JOB_TITLE_TYPE",
-      });
-      continue;
-    }
-    if (input.jobTitleTypeId && !jobTitleType) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: "Tipo invalido para o cargo selecionado.",
-        code: "INVALID_JOB_TITLE_TYPE",
-      });
-      continue;
-    }
-
-    if (input.jobLevel) {
-      const jobLevel = await fetchJobLevelByValue(params.supabase, params.tenantId, input.jobLevel);
-      if (!jobLevel) {
-        results.push({
-          rowNumber,
-          success: false,
-          message: "Nivel invalido para o tenant atual.",
-          code: "INVALID_JOB_LEVEL",
-        });
-        continue;
-      }
-    }
-
-    const duplicatedPerson = await findDuplicatePersonByMatriculation(
-      params.supabase,
-      params.tenantId,
-      matriculation,
-    );
-    if (duplicatedPerson) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: "Ja existe pessoa com esta matricula no tenant atual.",
-        code: "DUPLICATE_PERSON_MATRICULATION",
-      });
-      continue;
-    }
-
-    if (input.cpf) {
-      const duplicatedCpf = await findDuplicatePersonByCpf(params.supabase, params.tenantId, input.cpf);
-      if (duplicatedCpf) {
-        results.push({
-          rowNumber,
-          success: false,
-          message: "Ja existe pessoa com este CPF no tenant atual.",
-          code: "DUPLICATE_PERSON_CPF",
-        });
-        continue;
-      }
-    }
-
-    const saveResult = await savePersonViaRpc({
-      supabase: params.supabase,
-      tenantId: params.tenantId,
-      actorUserId: params.actorUserId,
-      personId: null,
-      name: input.name,
-      matriculation,
-      cpf: input.cpf,
-      phone: input.phone,
-      jobTitleId: input.jobTitleId,
-      jobTitleTypeId: input.jobTitleTypeId,
-      jobLevel: input.jobLevel,
-    });
-
-    if (!saveResult.ok) {
-      results.push({
-        rowNumber,
-        success: false,
-        message: saveResult.message,
-        code: saveResult.reason ?? undefined,
-      });
-      continue;
-    }
-
-    savedCount += 1;
-    results.push({
-      rowNumber,
-      success: true,
-      message: `Pessoa ${input.name} cadastrada com sucesso.`,
-    });
-  }
-
-  return {
-    success: true,
-    savedCount,
-    errorCount: results.filter((result) => !result.success).length,
-    results,
-  };
-}
-
 async function setPersonStatusViaRpc(params: {
   supabase: SupabaseClient;
   tenantId: string;
@@ -730,64 +548,6 @@ async function setPersonStatusViaRpc(params: {
   }
 
   return { ok: true, updatedAt: result.updated_at ?? null } as const;
-}
-
-async function listPeople(params: {
-  supabase: SupabaseClient;
-  filters: PeopleListFilters;
-}) {
-  const { supabase, filters } = params;
-  const matriculationMatchMode = filters.matriculationMatchMode ?? "contains";
-
-  let query = supabase
-    .from("people")
-    .select(
-      "id, nome, matriculation, cpf, phone, job_title_id, job_title_type_id, job_level, ativo, cancellation_reason, canceled_at, canceled_by, created_by, updated_by, created_at, updated_at",
-      { count: "exact" },
-    )
-    .eq("tenant_id", filters.tenantId);
-
-  if (filters.name) {
-    query = query.ilike("nome", `%${filters.name}%`);
-  }
-
-  if (filters.matriculation) {
-    query = matriculationMatchMode === "exact"
-      ? query.eq("matriculation", filters.matriculation)
-      : query.ilike("matriculation", `%${filters.matriculation}%`);
-  }
-
-  if (filters.cpf) {
-    query = query.ilike("cpf", `%${filters.cpf}%`);
-  }
-
-  if (filters.phone) {
-    query = query.ilike("phone", `%${filters.phone}%`);
-  }
-
-  if (filters.jobTitleId) {
-    query = query.eq("job_title_id", filters.jobTitleId);
-  }
-
-  if (filters.jobTitleTypeId) {
-    query = query.eq("job_title_type_id", filters.jobTitleTypeId);
-  }
-
-  if (filters.jobLevel) {
-    query = query.eq("job_level", filters.jobLevel);
-  }
-
-  if (filters.status === "ativo") {
-    query = query.eq("ativo", true);
-  } else if (filters.status === "inativo") {
-    query = query.eq("ativo", false);
-  }
-
-  return query
-    .order("ativo", { ascending: false })
-    .order("nome", { ascending: true })
-    .range(filters.from, filters.to)
-    .returns<PeopleRow[]>();
 }
 
 export async function GET(request: NextRequest) {
@@ -881,22 +641,23 @@ export async function GET(request: NextRequest) {
       jobTitleTypeId,
       jobLevel,
       status,
-      from,
-      to,
     };
 
-    let { data, error, count } = await listPeople({
+    let { data, error, count } = await listPeopleRows({
       supabase,
       filters: listFilters,
+      from,
+      to,
+      withCount: true,
     });
 
     if (matriculation && error && isMatriculationNumericTypeMismatchError(error)) {
-      ({ data, error, count } = await listPeople({
+      ({ data, error, count } = await listPeopleRows({
         supabase,
-        filters: {
-          ...listFilters,
-          matriculationMatchMode: "exact",
-        },
+        filters: { ...listFilters, matriculationMatchMode: "exact" },
+        from,
+        to,
+        withCount: true,
       }));
     }
 
@@ -904,79 +665,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Falha ao listar pessoas." }, { status: 500 });
     }
 
-    const userIds = Array.from(
-      new Set(
-        (data ?? [])
-          .flatMap((item) => [item.created_by, item.updated_by, item.canceled_by])
-          .filter((value): value is string => Boolean(value)),
-      ),
-    );
-
-    const jobTitleIds = Array.from(
-      new Set((data ?? []).map((item) => item.job_title_id).filter((value): value is string => Boolean(value))),
-    );
-    const jobTitleTypeIds = Array.from(
-      new Set((data ?? []).map((item) => item.job_title_type_id).filter((value): value is string => Boolean(value))),
-    );
-
-    const users = await fetchTenantLinkedAppUsers<AppUserRow>(supabase, appUser.tenant_id, userIds);
-
-    let jobTitles: JobTitleRow[] = [];
-    if (jobTitleIds.length > 0) {
-      const jobTitlesResult = await supabase
-        .from("job_titles")
-        .select("id, code, name")
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", jobTitleIds)
-        .returns<JobTitleRow[]>();
-
-      if (!jobTitlesResult.error) {
-        jobTitles = jobTitlesResult.data ?? [];
-      }
-    }
-
-    let jobTitleTypes: JobTitleTypeRow[] = [];
-    if (jobTitleTypeIds.length > 0) {
-      const jobTitleTypesResult = await supabase
-        .from("job_title_types")
-        .select("id, name, job_title_id")
-        .eq("tenant_id", appUser.tenant_id)
-        .in("id", jobTitleTypeIds)
-        .returns<JobTitleTypeRow[]>();
-
-      if (!jobTitleTypesResult.error) {
-        jobTitleTypes = jobTitleTypesResult.data ?? [];
-      }
-    }
-
-    const userDisplayMap = buildUserDisplayMap(users);
-    const userLoginNameMap = buildUserLoginNameMap(users);
-    const jobTitleMap = buildJobTitleMap(jobTitles);
-    const jobTitleTypeMap = buildJobTitleTypeMap(jobTitleTypes);
+    const people = await enrichPeopleRows({
+      supabase,
+      tenantId: appUser.tenant_id,
+      rows: data ?? [],
+    });
 
     return NextResponse.json({
-      people: (data ?? []).map((row) => ({
-        id: row.id,
-        name: row.nome,
-        matriculation: row.matriculation,
-        cpf: row.cpf,
-        phone: row.phone,
-        jobTitleId: row.job_title_id,
-        jobTitleName: jobTitleMap.get(row.job_title_id) ?? "Nao identificado",
-        jobTitleTypeId: row.job_title_type_id,
-        jobTitleTypeName: row.job_title_type_id
-          ? jobTitleTypeMap.get(row.job_title_type_id) ?? "Nao identificado"
-          : null,
-        jobLevel: row.job_level,
-        isActive: Boolean(row.ativo),
-        cancellationReason: row.cancellation_reason,
-        canceledAt: row.canceled_at,
-        canceledByName: row.canceled_by ? userDisplayMap.get(row.canceled_by) ?? "Nao identificado" : null,
-        createdByName: row.created_by ? userLoginNameMap.get(row.created_by) ?? "Nao identificado" : "Nao identificado",
-        updatedByName: row.updated_by ? userDisplayMap.get(row.updated_by) ?? "Nao identificado" : "Nao identificado",
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      })),
+      people,
       pagination: {
         page,
         pageSize,

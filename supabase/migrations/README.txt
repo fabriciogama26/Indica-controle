@@ -146,6 +146,10 @@ Ordem de aplicacao
 410. 410_create_utility_distributor_contact_page.sql
 411. 411_activity_groups_unit_value_source.sql
 412. 412_allow_measurement_uncancel_status_action.sql
+435. 435_create_save_person_records_batch_rpc.sql
+436. 436_add_people_nome_trigram_index.sql
+437. 437_create_save_material_records_batch_rpc.sql
+438. 438_create_save_project_records_batch_rpc.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1691,3 +1695,39 @@ Observacao
 - Valida no fim: as duas RPCs nao executaveis por `anon`/`authenticated`, a tabela sem
   insert/update/delete para `anon`/`authenticated`, e a pagina cadastrada em `app_pages` com
   `ativo = true` e `default_user_access = false`.
+
+435_create_save_person_records_batch_rpc.sql
+- Cria a RPC `save_person_records_batch`, que insere um lote inteiro de Pessoas numa unica
+  chamada, em vez de uma RPC `save_person_record` por linha do arquivo importado.
+- Cada linha roda dentro do proprio bloco `begin/exception` (savepoint implicito do PL/pgSQL):
+  uma linha com `unique_violation`/`check_violation` nao derruba as linhas ja inseridas na mesma
+  chamada. Reaproveita o mesmo mapeamento de `constraint_name` para `reason`/`message` ja usado
+  em `save_person_record` (079/197/198/199).
+- Consumida por `src/server/modules/people/import.ts`, que agora carrega cargos/tipos/niveis do
+  tenant e verifica duplicidade de matricula/CPF em lote (1 query cada para o arquivo inteiro),
+  em vez de por linha.
+
+436_add_people_nome_trigram_index.sql
+- Cria a extensao `pg_trgm` e um indice GIN trigram em `people.nome`, para o filtro de busca por
+  texto (`ilike '%termo%'`) parar de depender de sequential scan.
+
+437_create_save_material_records_batch_rpc.sql
+- Cria a RPC `save_material_records_batch`, que insere um lote inteiro de Materiais numa unica
+  chamada, em vez de uma RPC `save_material_record` + precheck de codigo + checagem de
+  categoria/subcategoria por linha. Replica, dentro do loop, a mesma validacao do branch de
+  insercao de `save_material_record` (414): categoria/subcategoria ativas, UMB obrigatorio e
+  ativo, tipo NOVO/SUCATA, preco e limites de estoque, tipo de rastreio por serial e a regra de
+  pendencia de identificacao (so RELIGADOR/CHAVE). `unique_violation` -> `DUPLICATE_MATERIAL_CODE`.
+  Consumida por `src/server/modules/materials/import.ts`.
+
+438_create_save_project_records_batch_rpc.sql
+- Cria a RPC `save_project_records_batch` para o pior caso encontrado entre os modulos com
+  importacao em massa: `resolveProjectLookups` fazia 10 queries em paralelo POR LINHA do arquivo
+  (8 catalogos por nome, contrato ativo, pessoa Responsavel Contratada/Supervisor), sem nenhum
+  cache. A RPC recebe os nomes normalizados (nao UUIDs) e resolve cada lookup dentro do proprio
+  loop em PL/pgSQL -- buscas locais por indice, sem round-trip de rede por linha; contrato ativo
+  e cargos SUPERVISOR sao resolvidos uma vez, antes do loop, por nao variarem por linha. Cada
+  campo invalido gera um `reason` especifico (`INVALID_PRIORITY`, `INVALID_SERVICE_CENTER` etc.)
+  em vez de mensagem generica. `unique_violation` -> `DUPLICATE_PROJECT_SOB`. Consumida por
+  `src/server/modules/projects/import.ts`. RPC mais complexa das tres criadas nesta rodada de
+  performance de importacao em massa (435/437/438) -- maior superficie para revisar.
