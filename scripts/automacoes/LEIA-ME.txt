@@ -4,6 +4,7 @@ Modelos nesta pasta:
 - scripts/automacoes/tasks.json
 - scripts/automacoes/sync-main.ps1
 - scripts/automacoes/sync-preservando-alteracoes.ps1
+- scripts/automacoes/atualizar-hd-externo.ps1
 
 Para ativar no VS Code, copie `scripts/automacoes/tasks.json` para `.vscode/tasks.json`.
 
@@ -19,6 +20,21 @@ Sincronizacao preservando alteracoes locais:
 2. Executa `git fetch --prune origin` e `git pull --ff-only` na branch atual.
 3. Reaplica o stash com `git stash apply --index`.
 4. Mantem o stash como backup; remova manualmente com `git stash drop <stash>` depois de conferir.
+
+Atualizacao da copia no HD externo:
+1. O script `atualizar-hd-externo.ps1` copia do repositorio atual para a pasta externa usando `robocopy`.
+2. Por padrao, atualiza arquivos novos/alterados e nao apaga arquivos extras do destino.
+3. Pastas pesadas/cache ficam fora da copia: `node_modules`, `.next`, `.tmp`, `.vercel`, `coverage`, `out`, `build`, `Backup` e `supabase\.temp`.
+4. O destino padrao e `D:\Indica-controle`.
+
+Comandos comuns:
+```
+powershell -ExecutionPolicy Bypass -File scripts\automacoes\atualizar-hd-externo.ps1
+powershell -ExecutionPolicy Bypass -File scripts\automacoes\atualizar-hd-externo.ps1 -Destination "F:\INDICA\Indica-controle"
+powershell -ExecutionPolicy Bypass -File scripts\automacoes\atualizar-hd-externo.ps1 -DryRun
+```
+
+Use `-Mirror` somente quando quiser que o destino fique igual a origem, apagando arquivos que existirem apenas no destino. Esse modo pede confirmacao digitando `SIM`.
 
 Na primeira vez, o VS Code pode pedir autorizacao para Automatic Tasks.
 Permita somente se este workspace for confiavel.

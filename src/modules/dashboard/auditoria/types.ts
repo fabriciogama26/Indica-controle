@@ -45,7 +45,6 @@ export type AccessLogItem = {
   matricula: string | null;
   loginName: string | null;
   eventAt: string;
-  sessionRef: string | null;
 };
 
 export type AccessLogFiltersState = {
@@ -74,10 +73,10 @@ export type ErrorLogItem = {
   screen: string | null;
   message: string;
   stacktrace: string | null;
-  matricula: string | null;
-  loginName: string | null;
   source: string;
   createdAt: string;
+  userName: string;
+  userMatricula: string | null;
 };
 
 export type ErrorLogFiltersState = {

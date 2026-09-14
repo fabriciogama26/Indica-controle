@@ -43,6 +43,26 @@
         "focus": true,
         "showReuseMessage": false
       }
+    },
+    {
+      "label": "Atualizar copia no HD externo",
+      "type": "shell",
+      "command": "powershell.exe",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\scripts\\automacoes\\atualizar-hd-externo.ps1"
+      ],
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true,
+        "focus": true,
+        "showReuseMessage": false
+      }
     }
   ]
 }

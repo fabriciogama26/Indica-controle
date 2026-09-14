@@ -195,7 +195,6 @@ export async function getAccessLog(request: NextRequest) {
         matricula: row.matricula,
         loginName: row.login_name,
         eventAt: row.event_at,
-        sessionRef: row.session_ref,
       })),
       pagination: { page, pageSize, total },
     });
@@ -228,7 +227,6 @@ export async function exportAccessLogHandler(request: NextRequest) {
         matricula: row.matricula,
         loginName: row.login_name,
         eventAt: row.event_at,
-        sessionRef: row.session_ref,
       })),
       truncated,
     });
@@ -257,18 +255,24 @@ export async function getErrorLog(request: NextRequest) {
       { from, to },
     );
 
+    const errorUserIds = Array.from(new Set(rows.map((row) => row.user_id).filter((id): id is string => Boolean(id))));
+    const userSummaries = await fetchUserSummaries(supabase, operator.tenantId, errorUserIds);
+
     return NextResponse.json({
-      items: rows.map((row) => ({
-        id: row.id,
-        severity: row.severity,
-        screen: row.screen,
-        message: row.message,
-        stacktrace: row.stacktrace,
-        matricula: row.matricula,
-        loginName: row.login_name,
-        source: row.source,
-        createdAt: row.created_at,
-      })),
+      items: rows.map((row) => {
+        const summary = row.user_id ? userSummaries.get(row.user_id) : undefined;
+        return {
+          id: row.id,
+          severity: row.severity,
+          screen: row.screen,
+          message: row.message,
+          stacktrace: row.stacktrace,
+          source: row.source,
+          createdAt: row.created_at,
+          userName: summary?.display ?? "Nao identificado",
+          userMatricula: summary?.matricula ?? null,
+        };
+      }),
       pagination: { page, pageSize, total },
     });
   } catch {
@@ -290,18 +294,24 @@ export async function exportErrorLogHandler(request: NextRequest) {
 
     const { rows, truncated } = await exportErrorLogs(supabase, operator.tenantId, parseErrorLogFilters(params, userIds));
 
+    const errorUserIds = Array.from(new Set(rows.map((row) => row.user_id).filter((id): id is string => Boolean(id))));
+    const userSummaries = await fetchUserSummaries(supabase, operator.tenantId, errorUserIds);
+
     return NextResponse.json({
-      items: rows.map((row) => ({
-        id: row.id,
-        severity: row.severity,
-        screen: row.screen,
-        message: row.message,
-        stacktrace: row.stacktrace,
-        matricula: row.matricula,
-        loginName: row.login_name,
-        source: row.source,
-        createdAt: row.created_at,
-      })),
+      items: rows.map((row) => {
+        const summary = row.user_id ? userSummaries.get(row.user_id) : undefined;
+        return {
+          id: row.id,
+          severity: row.severity,
+          screen: row.screen,
+          message: row.message,
+          stacktrace: row.stacktrace,
+          source: row.source,
+          createdAt: row.created_at,
+          userName: summary?.display ?? "Nao identificado",
+          userMatricula: summary?.matricula ?? null,
+        };
+      }),
       truncated,
     });
   } catch {
