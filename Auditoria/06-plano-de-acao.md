@@ -220,6 +220,8 @@ Restam 7 passos (C2–C8). O C1 também foi concluído em 2026-08-12 com a remo�
 
 **P2.1 vem primeiro** porque fecha o bug de P0 de forma definitiva: com agregação no banco, não existe teto de linhas a estourar. E porque é o único item com **evidência de fan-out medida**, que não depende do ranking global.
 
+> ✅ **P2.1 implementado em 2026-09-14** (após o incidente do banco Nano com Disk IO em 100%). RPC `get_stock_dashboard_aggregates` (migration 439): 1 chamada no lugar das centenas de consultas em chunks; teto de 20k, sondagem e 422 removidos. Equivalência validada em Postgres 16 (PGlite) com massa sintética: 20/20 combinações de filtro idênticas à lógica anterior, e teste de mutação reprovando defeitos injetados. **Aceite com dados reais ainda pendente**: KPIs card a card produção × Preview e `EXPLAIN (ANALYZE, BUFFERS)` no maior tenant. A medição de `calls_per_dashboard_load` precisa cobrir o horário de pico (9h–16h). Detalhes em `docs/Tela_Dash_Estoque_SaaS.txt`.
+
 #### Critério de aceite do P2.1
 
 ```

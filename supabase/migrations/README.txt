@@ -150,6 +150,7 @@ Ordem de aplicacao
 436. 436_add_people_nome_trigram_index.sql
 437. 437_create_save_material_records_batch_rpc.sql
 438. 438_create_save_project_records_batch_rpc.sql
+439. 439_create_get_stock_dashboard_aggregates_rpc.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1731,3 +1732,15 @@ Observacao
   em vez de mensagem generica. `unique_violation` -> `DUPLICATE_PROJECT_SOB`. Consumida por
   `src/server/modules/projects/import.ts`. RPC mais complexa das tres criadas nesta rodada de
   performance de importacao em massa (435/437/438) -- maior superficie para revisar.
+
+439_create_get_stock_dashboard_aggregates_rpc.sql
+- Cria a RPC `get_stock_dashboard_aggregates` (P2.1 de `Auditoria/06-plano-de-acao.md`): agrega no
+  banco, numa unica chamada, o que `GET /api/dash-estoque` lia em centenas de consultas em chunks
+  (movimentacoes, itens, operacoes de equipe, materiais, projetos, equipes e 4 recortes de estorno).
+- Retorna `jsonb` com centros fisicos, lista de materiais (saldo no escopo + ultima movimentacao),
+  contagem de operacoes, quantidade movimentada, evolucao mensal, agregados da dispersao e opcoes de
+  equipe/projeto. Sem teto de linhas: o HTTP 422 de 20.000 movimentacoes deixa de existir.
+- `language sql stable security invoker`; EXECUTE revogado de `public`/`anon`/`authenticated` e
+  concedido so a `service_role` (chamada somente pela rota, que deriva o tenant da sessao).
+- Somente leitura: nao cria tabela, indice nem altera dado. Aplicar ANTES do deploy do codigo que a
+  consome (`src/server/modules/dash-estoque/aggregates.ts`); nao afeta o codigo anterior.
