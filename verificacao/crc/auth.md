@@ -70,6 +70,13 @@ Total por request: 4-5 queries ANTES de qualquer dado de negócio
 Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por sessão de uso
 ```
 
+Redução em vigor (itens 1-4 acima):
+- Cache por token+tenant com TTL de 45s (`_authCache`): requisições seguidas reaproveitam o resultado.
+- Resolução em andamento compartilhada (`_authInFlight`, 2026-09-14): requisições SIMULTÂNEAS do mesmo
+  token aguardam a mesma promise em vez de cada uma refazer os itens 1-4. A chave inclui
+  `invalidSessionMessage`/`inactiveMessage`, porque as respostas de erro usam as mensagens de quem chamou.
+- Ambos são por instância do servidor (memória do processo); instâncias diferentes não compartilham.
+
 ---
 
 ## Tabelas Supabase Acessadas
@@ -94,6 +101,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 6. **Permissões customizadas:** Se o usuário tem entradas em `app_user_page_permissions`, elas sobrescrevem o padrão da role.
 7. **Token expirado:** `TOKEN_EXPIRED` limpa sessão sem chamar `supabase.auth.signOut()` (para evitar loop).
 8. **Limpeza de tenant ativo:** `DELETE /api/auth/active-tenant` apenas expira o cookie `INDICA.activeTenantId` e deve ser idempotente mesmo sem sessao valida. Nao lista nem grava tenant; `GET` e `POST` continuam autenticados e restritos a admin.
+9. **Supabase indisponível não é sessão inválida:** rede, timeout ou 5xx durante a resolução → 503 no servidor, sessão mantida no cliente. Classificação única em `src/lib/auth/authErrors.ts` (`isTransientAuthError`, `isTransientHttpStatus`).
 
 ---
 
@@ -124,6 +132,8 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 
 | Data | O que mudou |
 |---|---|
+| 2026-09-14 | Falha de infraestrutura deixa de ser tratada como sessão inválida: `resolveAuthenticatedAppUser` responde 503 quando `getUser` ou as 3 consultas de resolução falham por rede/timeout/5xx (`src/lib/auth/authErrors.ts`); chamadas a `/auth/v1/*` do client admin com timeout de 10s; `AuthContext.hydrate` mantém a sessão em erro transitório e ignora `SIGNED_OUT` emitido durante o `setSession` (fim do logout duplicado). 401/403/428 inalterados |
+| 2026-09-14 | `resolveAuthenticatedAppUser` compartilha a resolução em andamento entre requisições simultâneas do mesmo token (`_authInFlight`); o corpo passou para `resolveAuthenticatedAppUserUncached`. Motivo: no incidente de 2026-09-14 (Supabase Nano com Disk IO em 100%), rajadas de requisições paralelas passavam todas pelo cache vazio e repetiam `getUser` + 3 queries cada. Contrato, mensagens e cache de sucesso inalterados |
 | 2026-08-31 | `DELETE /api/auth/active-tenant` passou a expirar o cookie de forma idempotente mesmo sem sessao valida, removendo 401 ruidoso no logout/token expirado; `GET` e `POST` seguem protegidos |
 | 2026-08-26 | `/api/auth/session-access` passou a devolver `tenantName` de `tenants.name`; a sessao frontend hidrata o campo e o `AppShell` mostra `Contrato: nome` no lugar do UUID do tenant |
 | 2026-08-25 | Migration 386 fecha brecha de `app_user_tenants`: backfill de vinculos, sync futuro, `save_user_permissions` cria/reativa vinculo de admin; header de tenant deixa de ser fonte operacional e cookie invalido passa a ser limpo |

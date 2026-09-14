@@ -11,6 +11,7 @@ import {
   useState,
 } from "react";
 
+import { isTransientAuthError } from "@/lib/auth/authErrors";
 import { supabase } from "@/lib/supabase/client";
 import {
   clearPersistedSession,
@@ -47,6 +48,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const logoutInProgressRef = useRef(false);
+  // Enquanto o `hydrate` aguarda o `setSession`, a decisao de encerrar a sessao e dele. O auth-js
+  // emite `SIGNED_OUT` DENTRO do `setSession` quando a renovacao falha; tratado pelo listener, esse
+  // evento disparava um segundo logout (duplicado) ou deslogava mesmo com falha so de rede.
+  // Contador, e nao booleano: no StrictMode de dev o efeito roda duas vezes e as hidratacoes se sobrepoem.
+  const hydrationsInProgressRef = useRef(0);
   const lastActivityRef = useRef(0);
   const hydrationVersionRef = useRef(0);
 
@@ -78,10 +84,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
 
       if (persisted.source === "remote" && persisted.accessToken && persisted.refreshToken && supabase) {
-        const { data, error } = await supabase.auth.setSession({
-          access_token: persisted.accessToken,
-          refresh_token: persisted.refreshToken,
-        });
+        hydrationsInProgressRef.current += 1;
+        let setSessionResult: Awaited<ReturnType<typeof supabase.auth.setSession>>;
+        try {
+          setSessionResult = await supabase.auth.setSession({
+            access_token: persisted.accessToken,
+            refresh_token: persisted.refreshToken,
+          });
+        } finally {
+          hydrationsInProgressRef.current -= 1;
+        }
+        const { data, error } = setSessionResult;
+
+        if (error && isTransientAuthError(error)) {
+          // Supabase indisponivel (rede, timeout, 5xx) nao prova sessao expirada. Mantem a sessao
+          // persistida em vez de deslogar; o proximo carregamento da pagina sincroniza de novo.
+          if (active && hydrationVersion === hydrationVersionRef.current) {
+            setSession(persisted);
+            setIsLoading(false);
+          }
+          return;
+        }
 
         if (error) {
           await clearPersistedSession({
@@ -137,6 +160,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       }
 
       if (!currentSession) {
+        if (hydrationsInProgressRef.current > 0) {
+          return;
+        }
+
         if (logoutInProgressRef.current) {
           logoutInProgressRef.current = false;
           return;

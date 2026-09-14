@@ -68,7 +68,7 @@ npm run db:status
 ```bash
 npm run build
 ```
-2. Publicar o frontend no Vercel como projeto `Next.js` apontando para a raiz deste repositorio.
+2. Publicar o frontend no Vercel como projeto `Next.js` apontando para a raiz deste repositorio. A regiao das Functions vem de `vercel.json` (`gru1`) e deve continuar igual a regiao do projeto Supabase.
 3. Configurar no Vercel as mesmas variaveis obrigatorias listadas em `.env.example`, inclusive as variaveis server-side usadas pelas rotas `src/app/api/*`.
 4. Definir `PASSWORD_REDIRECT_URL` com o dominio publico do frontend:
 ```bash
@@ -574,7 +574,7 @@ vercel --prod
   - `Tela_Recuperacao_Senha_SaaS.txt`: recuperacao e definicao de senha.
 - `.env`: variaveis locais do ambiente, ignoradas pelo Git.
 - `.env.example`: variaveis de ambiente esperadas.
-- `vercel.json`: identifica o projeto como `nextjs` no Vercel.
+- `vercel.json`: identifica o projeto como `nextjs` no Vercel e fixa as Functions em `gru1` (Sao Paulo), mesma regiao do projeto Supabase (`sa-east-1`).
 - `TASKS.md`: backlog do SaaS separado do app Android.
 - `package.json`: scripts, dependencias e versao minima de Node.js.
 - `tsconfig.json`: configuracao TypeScript.
@@ -946,6 +946,9 @@ npm run lint:size:accept -- src/modules/dashboard/<tela>/<Arquivo>.tsx
 - O email de recuperacao abre `localhost` ou dominio antigo:
   - Causa: `PASSWORD_REDIRECT_URL` configurada no Vercel ou no Supabase com URL desatualizada.
   - Solucao: atualizar `PASSWORD_REDIRECT_URL` para `https://SEU-DOMINIO/recuperar-senha` no Vercel e tambem nos secrets da Edge Function `auth-recover`.
+- `Servico de autenticacao indisponivel no momento. Tente novamente em instantes.` (HTTP 503):
+  - Causa: o Supabase (Auth ou banco) nao respondeu durante a validacao da sessao — rede, timeout de 10s do Auth ou erro 5xx. A sessao do usuario pode estar valida; o front nao desloga por esse erro.
+  - Solucao: conferir o projeto no dashboard do Supabase (Advisor, Reports > Database, uso de Disk IO) e a status page; depois que o banco voltar, recarregar a pagina.
 - `Sua sessao expirou por inatividade. Entre novamente.`:
   - Causa: tempo configurado em `NEXT_PUBLIC_SESSION_IDLE_TIMEOUT_MINUTES` atingido sem atividade do usuario.
   - Solucao: entrar novamente e revisar o timeout configurado para o ambiente.
