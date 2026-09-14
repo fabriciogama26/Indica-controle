@@ -99,6 +99,14 @@ const menuSections = [
       { href: "/municipio", label: "Municipio", icon: "settings" },
     ],
   },
+  {
+    title: "Auditoria",
+    items: [
+      // Admin-only via ADMIN_ONLY_ROUTE_PREFIXES (mesmo padrao de /permissoes), nao por page_key:
+      // item so aparece no menu de quem e admin do tenant (ver canAccessRoute em authorization.ts).
+      { href: "/auditoria", label: "Auditoria", icon: "settings" },
+    ],
+  },
 ] as const;
 
 const titleMap: Record<string, { title: string; subtitle: string }> = {
@@ -329,6 +337,10 @@ const titleMap: Record<string, { title: string; subtitle: string }> = {
   "/permissoes": {
     title: "Permissoes",
     subtitle: "Base inicial para a futura matriz de acesso por pagina.",
+  },
+  "/auditoria": {
+    title: "Auditoria",
+    subtitle: "Historico de alteracoes, acessos e erros do sistema, por usuario e por tela.",
   },
 };
 

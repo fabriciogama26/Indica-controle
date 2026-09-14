@@ -1,4 +1,4 @@
-const ADMIN_ONLY_ROUTE_PREFIXES = ["/permissoes"] as const;
+const ADMIN_ONLY_ROUTE_PREFIXES = ["/permissoes", "/auditoria"] as const;
 
 const ROUTE_PAGE_KEYS: ReadonlyArray<{ prefix: string; pageKey: string }> = [
   { prefix: "/home", pageKey: "home" },
