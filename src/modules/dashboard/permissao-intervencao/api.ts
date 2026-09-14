@@ -189,3 +189,38 @@ export async function savePiExecutionPlan(
   });
   return parseOrThrow(response, "Falha ao salvar o Plano de Execucao.");
 }
+
+/**
+ * Baixa o DOCX oficial de uma PI emitida.
+ *
+ * A resposta e binaria no caminho feliz e JSON no erro, entao o `response.ok`
+ * decide como ler. Devolve o Blob para quem chama disparar o download.
+ */
+export async function downloadPiDocument(
+  accessToken: string,
+  piId: string,
+): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetch(`${BASE_URL}/${piId}/documento`, {
+    cache: "no-store",
+    headers: authHeaders(accessToken),
+  });
+
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as PiMutationResponse;
+    throw new PiRequestError(data.message ?? "Falha ao gerar o documento da PI.", data);
+  }
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  return { blob: await response.blob(), fileName: match?.[1] ?? "PI.docx" };
+}
+
+/** Dispara o download no navegador a partir do Blob recebido. */
+export function triggerBlobDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.click();
+  URL.revokeObjectURL(url);
+}
