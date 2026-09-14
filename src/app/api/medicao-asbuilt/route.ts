@@ -4,6 +4,7 @@ import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
+import { asbuiltMeasurementListFilterConditions, parseAsbuiltMeasurementListFilters } from "@/server/modules/medicao-asbuilt";
 import { fetchProjectServiceCenterMap, PROJECT_SERVICE_CENTER_FALLBACK } from "@/server/modules/projects/serviceCenters";
 
 type AsbuiltMeasurementStatus = "ABERTA" | "FECHADA" | "CANCELADA";
@@ -629,10 +630,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ order: detail });
   }
 
-  const projectId = normalizeUuid(request.nextUrl.searchParams.get("projectId"));
-  const statusFilter = normalizeText(request.nextUrl.searchParams.get("status")).toUpperCase();
-  const asbuiltMeasurementKindFilter = normalizeText(request.nextUrl.searchParams.get("asbuiltMeasurementKind")).toUpperCase();
-  const noProductionReasonIdFilter = normalizeUuid(request.nextUrl.searchParams.get("noProductionReasonId"));
+  const listFilters = parseAsbuiltMeasurementListFilters(request.nextUrl.searchParams);
   const { page, pageSize } = parsePagination(request.nextUrl.searchParams, {
     defaultPageSize: 20,
     maxPageSize: 500,
@@ -653,21 +651,10 @@ export async function GET(request: NextRequest) {
     .select("id")
     .eq("tenant_id", resolution.appUser.tenant_id);
 
-  if (projectId) {
-    pagedQuery = pagedQuery.eq("project_id", projectId);
-    allIdsQuery = allIdsQuery.eq("project_id", projectId);
-  }
-  if (statusFilter && statusFilter !== "TODOS") {
-    pagedQuery = pagedQuery.eq("status", statusFilter);
-    allIdsQuery = allIdsQuery.eq("status", statusFilter);
-  }
-  if (asbuiltMeasurementKindFilter === "COM_PRODUCAO" || asbuiltMeasurementKindFilter === "SEM_PRODUCAO") {
-    pagedQuery = pagedQuery.eq("asbuilt_kind", asbuiltMeasurementKindFilter);
-    allIdsQuery = allIdsQuery.eq("asbuilt_kind", asbuiltMeasurementKindFilter);
-  }
-  if (noProductionReasonIdFilter) {
-    pagedQuery = pagedQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
-    allIdsQuery = allIdsQuery.eq("no_production_reason_id", noProductionReasonIdFilter);
+  // Mesmos filtros da exportacao (`src/server/modules/medicao-asbuilt/filters.ts`).
+  for (const [column, value] of asbuiltMeasurementListFilterConditions(listFilters)) {
+    pagedQuery = pagedQuery.eq(column, value);
+    allIdsQuery = allIdsQuery.eq(column, value);
   }
 
   const [{ data: pagedBaseOrders, count: pagedCount, error: pagedError }, { data: allIdsData, error: allIdsError }] = await Promise.all([

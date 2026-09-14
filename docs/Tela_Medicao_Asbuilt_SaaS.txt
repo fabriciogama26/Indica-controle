@@ -274,6 +274,12 @@ Funcoes principais
   - Responsavel por: carregar projetos ativos e motivos de sem producao por tenant.
 - Caminho: `src/app/api/medicao-asbuilt/activities/catalog/route.ts`
   - Responsavel por: pesquisar atividades em `service_activities`.
+- Caminho: `src/app/api/medicao-asbuilt/export/route.ts`
+  - Responsavel por: delegar o Detalhamento (CSV) para `handleAsbuiltMeasurementExportGet`.
+- Caminho: `src/server/modules/medicao-asbuilt/exportHandler.ts`
+  - Responsavel por: autorizar `export`, ler ordens + itens + centro de servico do filtro em lote e devolver numa unica resposta.
+- Caminho: `src/server/modules/medicao-asbuilt/filters.ts`
+  - Responsavel por: parse e condicoes dos filtros da listagem, compartilhados entre listagem e exportacao.
 
 Constantes e configuracoes
 - Caminho: `src/modules/dashboard/medicao-asbuilt/constants.ts`
@@ -416,3 +422,62 @@ CORRECAO
 - Arquivos alterados:
   - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx`
   - `src/modules/dashboard/medicao-asbuilt/constants.ts` (constante `EXPORT_PAGE_SIZE`)
+
+Atualizacao 2026-09-14 - Detalhamento (CSV) em requisicao unica
+--------------------------------------------------------------------------
+ACHADO (incidente de 2026-09-14, banco Supabase Nano inacessivel por Disk IO em 100%)
+- `exportOrdersDetailed` listava as ordens com `pageSize=10000` (capado em 500 pela rota) e depois
+  disparava `fetchDetail` para CADA ordem ao mesmo tempo (`Promise.allSettled`, sem limite).
+- Cada `GET /api/medicao-asbuilt?orderId=` refazia sessao, permissao, ordem, itens e nomes de
+  usuario: cerca de 8 acessos ao banco por ordem. Nos logs do Supabase, uma exportacao gerou
+  412+ requisicoes em 1,7s.
+- Efeito colateral: acima de 500 medicoes no filtro, o Detalhamento saia truncado em silencio (mesmo
+  defeito corrigido no export resumido em 2026-08-21, que ficou pendente neste botao).
+
+CORRECAO
+- Novo `GET /api/medicao-asbuilt/export`: uma requisicao devolve ordens + itens + centro de servico
+  do filtro inteiro.
+  - Ordens: `loadAllRows` com os mesmos filtros e a mesma ordem da listagem (`updated_at desc`,
+    desempate por `id`), teto intencional `MAX_EXPORT_ORDERS = 20000` com `truncated` na resposta.
+  - Itens: `loadRowsInChunks` por lotes de 200 ordens, paginado ate pagina vazia (sem corte
+    silencioso de 1.000 linhas); ordenados por `activity_code` como no detalhe.
+  - Centro de servico: `fetchProjectServiceCenterMap` chamado em lotes de 200 projetos.
+  - Nomes de usuario nao sao buscados: o CSV nao usa.
+- O CSV continua sendo montado no cliente, com as mesmas colunas e a mesma formatacao.
+- Exportacao parcial (teto atingido) mostra aviso explicito; antes, falha de detalhe por ordem era
+  descartada e contada como "ignorada".
+- Filtros da listagem e da exportacao passam a vir do mesmo lugar
+  (`src/server/modules/medicao-asbuilt/filters.ts`), para o CSV nunca divergir da lista.
+
+- Consumo de banco (por clique no Detalhamento, N ordens no filtro):
+  - Antes: N requisicoes HTTP simultaneas, ~8 acessos ao banco por ordem.
+  - Depois: 1 requisicao; (N/1000 + 1) paginas de ordens + (N/200 x 2) consultas de itens +
+    (projetos/200) de centro de servico, sequenciais. Ex.: 500 ordens -> ~11 consultas de dados (+ autenticacao uma vez).
+
+- Contrato de permissao:
+  - `page_key`: `medicao-asbuilt`, acao `export` via `authorizePageAction`, mesmo padrao do
+    `/api/medicao/export`.
+  - DIVERGENCIA registrada: antes o Detalhamento so exigia a leitura da tela (`can_access`), porque
+    usava os GETs de lista/detalhe. `save_user_permissions` (migration 253) grava
+    `can_export = can_access`, entao quem acessa a tela continua exportando. Usuario sem linha propria
+    em `app_user_page_permissions` depende de `app_pages.default_user_access` +
+    `role_page_permissions`, como ja acontece no POST/PUT desta tela.
+
+- Arquivos alterados/criados:
+  - `src/server/modules/medicao-asbuilt/exportHandler.ts` (novo)
+  - `src/server/modules/medicao-asbuilt/filters.ts` (novo)
+  - `src/server/modules/medicao-asbuilt/index.ts` (novo)
+  - `src/app/api/medicao-asbuilt/export/route.ts` (novo)
+  - `src/app/api/medicao-asbuilt/route.ts` (listagem usa os filtros compartilhados)
+  - `src/modules/dashboard/medicao-asbuilt/AsbuiltMeasurementPageView.tsx` (`exportOrdersDetailed`)
+  - `src/modules/dashboard/medicao-asbuilt/types.ts` (`AsbuiltMeasurementExportOrder`,
+    `AsbuiltMeasurementExportResponse`)
+- Funcoes/constantes tocadas:
+  - `handleAsbuiltMeasurementExportGet`, `loadExportOrders`, `loadExportItems`,
+    `loadExportServiceCenterMap`, `MAX_EXPORT_ORDERS`, `EXPORT_ID_CHUNK_SIZE`.
+  - `parseAsbuiltMeasurementListFilters`, `asbuiltMeasurementListFilterConditions`.
+  - `exportOrdersDetailed` (sem `fetchDetail` por ordem; `fetchDetail` segue usado no detalhe e na edicao).
+- Multi-tenant: todas as consultas filtram `tenant_id` da sessao; nenhum parametro de tenant vem do
+  cliente; RLS e schema inalterados.
+- Tamanho de arquivo: `AsbuiltMeasurementPageView.tsx` 1262 -> 1254 (-8), baseline reduzido via
+  `npm run lint:size:update`.

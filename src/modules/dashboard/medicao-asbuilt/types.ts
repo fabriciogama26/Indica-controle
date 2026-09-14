@@ -107,6 +107,30 @@ export type AsbuiltMeasurementDetail = Omit<AsbuiltMeasurementListItem, "project
   }>;
 };
 
+// Uma ordem do `GET /api/medicao-asbuilt/export`: cabecalho usado no CSV + itens, numa unica resposta.
+export type AsbuiltMeasurementExportOrder = Pick<
+  AsbuiltMeasurementListItem,
+  | "id"
+  | "asbuiltMeasurementNumber"
+  | "projectCode"
+  | "projectServiceCenter"
+  | "serviceCoverageEndDate"
+  | "asbuiltMeasurementKind"
+  | "noProductionReasonName"
+  | "status"
+  | "notes"
+  | "updatedAt"
+> & {
+  items: AsbuiltMeasurementDetail["items"];
+};
+
+export type AsbuiltMeasurementExportResponse = {
+  orders?: AsbuiltMeasurementExportOrder[];
+  truncated?: boolean;
+  limit?: number;
+  message?: string;
+};
+
 export type AsbuiltMeasurementHistoryEntry = {
   id: string;
   action: string;

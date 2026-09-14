@@ -70,6 +70,13 @@ Total por request: 4-5 queries ANTES de qualquer dado de negócio
 Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por sessão de uso
 ```
 
+Redução em vigor (itens 1-4 acima):
+- Cache por token+tenant com TTL de 45s (`_authCache`): requisições seguidas reaproveitam o resultado.
+- Resolução em andamento compartilhada (`_authInFlight`, 2026-09-14): requisições SIMULTÂNEAS do mesmo
+  token aguardam a mesma promise em vez de cada uma refazer os itens 1-4. A chave inclui
+  `invalidSessionMessage`/`inactiveMessage`, porque as respostas de erro usam as mensagens de quem chamou.
+- Ambos são por instância do servidor (memória do processo); instâncias diferentes não compartilham.
+
 ---
 
 ## Tabelas Supabase Acessadas
@@ -124,6 +131,7 @@ Com 68 rotas e páginas que carregam 5-10 APIs: centenas de queries de auth por 
 
 | Data | O que mudou |
 |---|---|
+| 2026-09-14 | `resolveAuthenticatedAppUser` compartilha a resolução em andamento entre requisições simultâneas do mesmo token (`_authInFlight`); o corpo passou para `resolveAuthenticatedAppUserUncached`. Motivo: no incidente de 2026-09-14 (Supabase Nano com Disk IO em 100%), rajadas de requisições paralelas passavam todas pelo cache vazio e repetiam `getUser` + 3 queries cada. Contrato, mensagens e cache de sucesso inalterados |
 | 2026-08-31 | `DELETE /api/auth/active-tenant` passou a expirar o cookie de forma idempotente mesmo sem sessao valida, removendo 401 ruidoso no logout/token expirado; `GET` e `POST` seguem protegidos |
 | 2026-08-26 | `/api/auth/session-access` passou a devolver `tenantName` de `tenants.name`; a sessao frontend hidrata o campo e o `AppShell` mostra `Contrato: nome` no lugar do UUID do tenant |
 | 2026-08-25 | Migration 386 fecha brecha de `app_user_tenants`: backfill de vinculos, sync futuro, `save_user_permissions` cria/reativa vinculo de admin; header de tenant deixa de ser fonte operacional e cookie invalido passa a ser limpo |

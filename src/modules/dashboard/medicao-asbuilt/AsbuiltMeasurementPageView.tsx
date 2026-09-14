@@ -13,6 +13,7 @@ import type {
   ActivityOption,
   AsbuiltMeasurementCatalogResponse,
   AsbuiltMeasurementDetail,
+  AsbuiltMeasurementExportResponse,
   AsbuiltMeasurementFilters,
   AsbuiltMeasurementFormItem,
   AsbuiltMeasurementHistoryEntry,
@@ -636,31 +637,22 @@ export function AsbuiltMeasurementPageView() {
     }
     setIsExportingDetails(true);
     try {
-      const params = new URLSearchParams({ page: "1", pageSize: "10000" });
+      // Uma requisicao traz ordens + itens do filtro inteiro. Antes era uma requisicao
+      // `?orderId=` por ordem, todas simultaneas, o que sobrecarregava o banco.
+      const params = new URLSearchParams();
       if (filters.projectId) params.set("projectId", filters.projectId);
       if (filters.status !== "TODOS") params.set("status", filters.status);
       if (filters.asbuiltMeasurementKind !== "TODOS") params.set("asbuiltMeasurementKind", filters.asbuiltMeasurementKind);
       if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-      const response = await fetch(`/api/medicao-asbuilt?${params.toString()}`, { headers: authHeaders });
-      const payload = (await response.json().catch(() => ({}))) as AsbuiltMeasurementListResponse;
+      const response = await fetch(`/api/medicao-asbuilt/export?${params.toString()}`, { headers: authHeaders, cache: "no-store" });
+      const payload = (await response.json().catch(() => ({}))) as AsbuiltMeasurementExportResponse;
       if (!response.ok) throw new Error(payload.message ?? "Falha ao exportar detalhamento.");
 
-      const exportOrders = payload.orders ?? [];
-      if (!exportOrders.length) {
+      const details = payload.orders ?? [];
+      if (!details.length) {
         throw new Error("Nenhuma medicao asbuilt encontrada para exportar detalhamento.");
       }
 
-      const detailResults = await Promise.allSettled(exportOrders.map((order) => fetchDetail(order)));
-      const details = detailResults
-        .filter((result): result is PromiseFulfilledResult<AsbuiltMeasurementDetail> => result.status === "fulfilled")
-        .map((result) => result.value);
-      const failedCount = detailResults.length - details.length;
-
-      if (!details.length) {
-        throw new Error("Falha ao carregar detalhes das medicoes asbuilt para exportar.");
-      }
-
-      const serviceCenterByOrderId = new Map(exportOrders.map((order) => [order.id, order.projectServiceCenter]));
       const rows: string[][] = [];
       for (const detail of details) {
         const detailItems = detail.items.length ? detail.items : [{
@@ -682,7 +674,7 @@ export function AsbuiltMeasurementPageView() {
           rows.push([
             detail.asbuiltMeasurementNumber,
             detail.projectCode,
-            serviceCenterByOrderId.get(detail.id) || "Sem base",
+            detail.projectServiceCenter || "Sem base",
             formatDate(detail.serviceCoverageEndDate),
             asbuiltMeasurementKindLabel(detail.asbuiltMeasurementKind),
             detail.noProductionReasonName || "-",
@@ -708,8 +700,8 @@ export function AsbuiltMeasurementPageView() {
         ...rows,
       ]);
 
-      if (failedCount > 0) {
-        setSuccess(`Detalhamento exportado com sucesso. ${failedCount} medicoes asbuilt foram ignoradas por falha ao carregar detalhes.`);
+      if (payload.truncated) {
+        setError(`Detalhamento exportado parcialmente: limite de ${payload.limit ?? details.length} medicoes asbuilt por exportacao. Refine os filtros.`);
       }
     } catch (error) {
       setError(error instanceof Error ? error.message : "Falha ao exportar detalhamento.");

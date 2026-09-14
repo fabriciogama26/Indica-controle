@@ -15,6 +15,13 @@ type AuthCacheEntry = {
 
 const _authCache = new Map<string, AuthCacheEntry>();
 
+// --- Resolucoes em andamento, por token+tenant+mensagens ---
+// O cache acima so e preenchido quando a primeira resolucao TERMINA. Requisicoes que chegam
+// juntas (ex.: a tela dispara varias APIs ao abrir) passavam todas pelo cache vazio e cada
+// uma refazia getUser + app_users + app_roles + app_user_tenants. Com este mapa, as
+// simultaneas aguardam a mesma promise: N requisicoes, uma resolucao.
+const _authInFlight = new Map<string, Promise<AuthenticatedAppUserResolution>>();
+
 function getCachedAuth(key: string): AuthenticatedAppUserContext | null {
   const entry = _authCache.get(key);
   if (!entry) return null;
@@ -173,6 +180,33 @@ export async function resolveAuthenticatedAppUser(
   const cached = getCachedAuth(cacheKey);
   if (cached) return cached;
 
+  // As mensagens entram na chave porque as respostas de erro usam as mensagens de quem
+  // chamou; compartilhar entre rotas diferentes devolveria o texto de outra rota.
+  const inFlightKey = [cacheKey, options.invalidSessionMessage ?? "", options.inactiveMessage ?? ""].join(":");
+  const inFlight = _authInFlight.get(inFlightKey);
+  if (inFlight) return inFlight;
+
+  const resolution = resolveAuthenticatedAppUserUncached({
+    token,
+    headerTenantId,
+    cookieTenantId,
+    cacheKey,
+    options,
+  }).finally(() => {
+    _authInFlight.delete(inFlightKey);
+  });
+  _authInFlight.set(inFlightKey, resolution);
+  return resolution;
+}
+
+async function resolveAuthenticatedAppUserUncached(params: {
+  token: string;
+  headerTenantId: string | null;
+  cookieTenantId: string | null;
+  cacheKey: string;
+  options: ResolveAuthenticatedAppUserOptions;
+}): Promise<AuthenticatedAppUserResolution> {
+  const { token, headerTenantId, cookieTenantId, cacheKey, options } = params;
   const supabase = getSupabaseAdmin();
   const {
       data: { user },
