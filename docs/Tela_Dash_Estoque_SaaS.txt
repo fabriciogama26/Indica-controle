@@ -18,7 +18,7 @@ Arquitetura
 - Rota: `src/app/(dashboard)/dash-estoque/page.tsx`
 - View principal: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
 - Estilo dedicado: `src/modules/dashboard/dash-estoque/StockDashboardPageView.module.css`
-- API da tela: `src/app/api/dash-estoque/route.ts`
+- API da tela: `src/app/api/dash-estoque/route.ts` (so delega) -> `src/server/modules/dash-estoque/` -> RPC `get_stock_dashboard_aggregates` (migration 439)
 - Menu e titulo: `src/components/layout/AppShell.tsx`
 - Autorizacao de rota: `src/lib/auth/authorization.ts`
 - Matriz de permissoes: `src/modules/dashboard/permissoes/PermissionsPageView.tsx`
@@ -118,8 +118,70 @@ Cancelamento e saldo
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
 
+Atualizacao 2026-09-14 - Agregacoes no banco via RPC (P2.1 da auditoria)
+----------------------------------------------------------------------------------------
+- Origem: item P2.1 de `Auditoria/06-plano-de-acao.md` e incidente de 2026-09-14 (banco Supabase Nano
+  inacessivel por Disk IO em 100%; `GET /api/dash-estoque` levou 79s e respondeu 401).
+- ANTES:
+  - A rota carregava ate 20.000 movimentacoes do periodo e, em chunks de 100 IDs, itens, operacoes de
+    equipe, materiais, projetos, equipes e 4 recortes de estorno; toda a agregacao era feita em
+    JavaScript. Um ano de dados virava centenas de consultas encadeadas Vercel -> Supabase.
+  - Acima de 20.000 movimentacoes a tela respondia HTTP 422 (`DASH_ESTOQUE_PERIODO_EXCEDE_LIMITE`).
+  - `loadBalances` (chunk de 500 centros) e `loadTransferItems` (chunk de 100 transferencias) nao
+    paginavam: acima de 1.000 linhas por chunk o PostgREST cortava sem avisar.
+- DEPOIS:
+  - Uma chamada a RPC `get_stock_dashboard_aggregates(p_tenant_id, p_start_date, p_end_date,
+    p_stock_center_id, p_team_id, p_project_id, p_material_code, p_material_type)` devolve um `jsonb` com:
+    centros fisicos, lista de materiais (saldo no escopo + ultima movimentacao), contagem de operacoes,
+    quantidade movimentada, evolucao mensal completa, agregados da dispersao por material e por UMB, e
+    as opcoes de equipe e projeto.
+  - O Node (`src/server/modules/dash-estoque/presentation.ts`) so faz a apresentacao sobre a lista de
+    materiais ja agregada: criticos, top saldo, faixas sem giro, Curva ABC (valor e quantidade), corte
+    de 25 por UMB / 200 por operacao na dispersao e ordenacao `localeCompare("pt-BR")`. Sao as mesmas
+    funcoes de antes; ficam no Node para nao depender da collation do banco.
+  - Sem teto de movimentacoes: o HTTP 422, a sondagem `.range(20000, 20000)` e o
+    `DASH_TRANSFERS_MAX_ROWS` deixam de existir.
+  - Sem corte de 1.000 linhas nos saldos e itens (a RPC agrega no banco).
+  - Falha transitoria do banco na RPC (status 0/5xx) responde 503; RPC ausente (PGRST202) indica a
+    migration 439 na mensagem.
+- Contrato da resposta: inalterado (`src/modules/dashboard/dash-estoque/types.ts`); o frontend nao mudou.
+- Diferencas conhecidas em relacao a implementacao anterior:
+  - Rotulo da opcao de equipe: vem da operacao mais recente da equipe no periodo (antes: de uma operacao
+    qualquer, sem ordem definida). So difere quando o snapshot do nome da equipe mudou no periodo.
+  - Saldos e itens acima de 1.000 linhas por chunk passam a entrar inteiros (antes eram cortados).
+  - Em empate de quantidade na dispersao, a ordem entre os empatados pode variar (antes tambem nao era
+    definida).
+- Equivalencia validada antes da entrega:
+  - Migration 439 executada em Postgres 16 (PGlite) com as tabelas reais do dashboard; grants conferidos
+    (EXECUTE so `service_role`).
+  - Mesma massa sintetica (2 tenants, centros de equipe/terceiros/inativos, materiais inativos, UMB
+    nula/minuscula/com espaco, estornos de transferencia e de item, eventos compartilhados, projeto
+    nulo) processada pela logica antiga (portada do `route.ts` anterior) e pela nova (RPC + apresentacao):
+    20/20 combinacoes de filtro identicas campo a campo (resumo, UMB, criticos, top saldo, sem giro,
+    ABC valor/quantidade, evolucao, dispersao, opcoes de filtro).
+  - Teste de mutacao: dois defeitos injetados na RPC (estorno ignorado; preco de material sem saldo)
+    foram reprovados pelo comparador.
+- Pendente com dados reais: aplicar a migration 439, comparar card a card o dashboard em producao
+  (codigo antigo) com o Preview (codigo novo) nos mesmos filtros, e rodar `EXPLAIN (ANALYZE, BUFFERS)`
+  da RPC para o ano inteiro do maior tenant, fora do horario de pico (9h-16h).
+- Ordem de publicacao: aplicar a migration 439 ANTES do deploy do codigo (a rota nova depende da RPC; a
+  RPC nao afeta o codigo antigo).
+- Arquivos alterados/criados:
+  - `supabase/migrations/439_create_get_stock_dashboard_aggregates_rpc.sql` (novo)
+  - `src/server/modules/dash-estoque/aggregates.ts` (novo)
+  - `src/server/modules/dash-estoque/presentation.ts` (novo)
+  - `src/server/modules/dash-estoque/handler.ts` (novo)
+  - `src/server/modules/dash-estoque/index.ts` (novo)
+  - `src/app/api/dash-estoque/route.ts` (1.203 -> 7 linhas; so delega)
+- Multi-tenant e permissao:
+  - `page_key` `dash-estoque` validado antes da RPC (`ensureDashPageAccess`, mesma regra de antes).
+  - `p_tenant_id` vem da sessao; todas as leituras da RPC filtram `tenant_id`; RLS inalterada.
+  - RPC `security invoker` com EXECUTE revogado de `public`/`anon`/`authenticated` e concedido so a
+    `service_role`.
+
 Atualizacao 2026-08-12 - Teto de movimentacoes deixa de truncar em silencio (HTTP 422)
 ----------------------------------------------------------------------------------------
+- SUBSTITUIDA em 2026-09-14 pela RPC de agregacao (secao acima): o teto, a sondagem e o 422 foram removidos.
 - Origem: auditoria de performance/Disk I/O (`Auditoria/`, item P0.1 de `Auditoria/06-plano-de-acao.md`).
 - Arquivos alterados:
   - `src/app/api/dash-estoque/route.ts`
@@ -369,7 +431,15 @@ Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
 - Caminho: `src/app/api/dash-estoque/route.ts`
-  - Responsavel por: autenticar usuario, validar permissao da pagina, carregar centros fisicos, saldos, movimentacoes, itens, operacoes de equipe, projetos e equipes, e devolver agregados para os 6 graficos.
+  - Responsavel por: delegar o `GET` para `handleStockDashboardGet`.
+- Caminho: `src/server/modules/dash-estoque/handler.ts`
+  - Responsavel por: autenticar usuario, validar permissao da pagina, normalizar filtros, chamar a RPC e montar a resposta dos 6 graficos.
+- Caminho: `src/server/modules/dash-estoque/aggregates.ts`
+  - Responsavel por: chamar `get_stock_dashboard_aggregates` e normalizar o `jsonb` (tipos numericos, listas vazias, erro 503/500).
+- Caminho: `src/server/modules/dash-estoque/presentation.ts`
+  - Responsavel por: classificacao e ordenacao de apresentacao sobre a lista de materiais agregada (criticos, top saldo, sem giro, ABC, corte da dispersao, UMB e opcoes de filtro).
+- Caminho: `supabase/migrations/439_create_get_stock_dashboard_aggregates_rpc.sql`
+  - Responsavel por: RPC de agregacao do dashboard (saldo por material, evolucao mensal, contagem de operacoes, dispersao, opcoes de filtro), EXECUTE so `service_role`.
 - Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
   - Responsavel por: composicao da pagina. Chama `useStockDashboard()` e distribui os dados para os componentes; nao contem estado, fetch, calculo nem formatacao.
 - Caminho: `src/modules/dashboard/dash-estoque/hooks.ts`
@@ -406,37 +476,41 @@ Constantes e configuracoes
     - `ScatterScale`
     - `evolutionKeys`
     - `evolutionEstimatedValueHelp`
-    - `DASH_IN_FILTER_CHUNK_SIZE`
     - periodo inicial do ano corrente
+- Caminho: `src/server/modules/dash-estoque/presentation.ts`
+  - Responsavel por:
+    - `DASH_SCATTER_ROWS_PER_UNIT` (25)
+    - `DASH_SCATTER_ROWS_PER_OPERATION` (200)
 - Caminho: `src/components/ui/ActionIcon.tsx`
   - Responsavel por: icones compartilhados de acoes; inclui `info` para ajuda contextual.
 - Caminho: `supabase/migrations/186_create_stock_dashboard_page.sql`
   - Responsavel por: inserir/atualizar `app_pages`, `role_page_permissions` e `app_user_page_permissions` para `dash-estoque`.
 
 Funcoes utilitarias relacionadas
-- Caminho: `src/app/api/dash-estoque/route.ts`
+- Caminho: `src/server/modules/dash-estoque/handler.ts`
   - Responsavel por:
+    - `handleStockDashboardGet`
     - `ensureDashPageAccess`
     - `resolveDashContext`
-    - `loadPhysicalStockCenters`
-    - `loadBalances`
-    - `loadTransfers`
-    - `loadTransferItems`
-    - `loadMovementMaterials`
-    - `loadTeamOperations`
-    - `loadProjects`
-    - `loadTeams`
-    - `loadReversalSets`
+- Caminho: `src/server/modules/dash-estoque/aggregates.ts`
+  - Responsavel por:
+    - `loadStockDashboardAggregates`
+    - `StockDashboardAggregatesError`
+- Caminho: `src/server/modules/dash-estoque/presentation.ts`
+  - Responsavel por:
+    - `buildMaterialAggregates`
+    - `buildSummaryByUnit`
     - `buildCriticalRows`
     - `buildTopBalanceRows`
-    - `buildMaterialDetail`
     - `buildIdleBuckets`
     - `buildAbcRows`
-    - `buildEvolutionRows`
-    - `buildFallbackOperationEventId`
-    - `OperationEventAggregate`
-    - `buildScatterUnitSummary`
     - `buildScatterRows`
+    - `sortScatterSummaryByUnit`
+    - `sortOptions`
+- Removidos em 2026-09-14 (substituidos pela RPC): `loadPhysicalStockCenters`, `loadBalances`,
+  `loadTransfers`, `loadTransferItems`, `loadMovementMaterials`, `loadTeamOperations`, `loadProjects`,
+  `loadTeams`, `loadReversalSets`, `buildEvolutionRows`, `buildFallbackOperationEventId`,
+  `buildScatterUnitSummary`, `DASH_TRANSFERS_MAX_ROWS`, `DashTransfersLimitError`.
 - Caminho: `src/modules/dashboard/dash-estoque/StockDashboardPageView.tsx`
   - Responsavel por:
     - `BarList`
@@ -472,7 +546,8 @@ Funcoes utilitarias relacionadas
 
 Servicos e integracoes externas
 - Supabase Postgres com RLS.
-- Tabelas consultadas:
+- RPC `get_stock_dashboard_aggregates` (migration 439), chamada com `service_role` pela rota.
+- Tabelas lidas pela RPC (e `app_user_page_permissions`/`role_page_permissions` pelo handler):
   - `stock_center_balances`
   - `stock_transfers`
   - `stock_transfer_items`
