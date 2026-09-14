@@ -1,6 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { loadAllRows } from "@/lib/server/apiHelpers";
+
 type PaginationRange = { from: number; to: number };
+
+/**
+ * Teto de seguranca para a exportacao: leitura completa do resultado filtrado
+ * numa unica resposta (via loadAllRows), no mesmo padrao de
+ * `src/app/api/people/export/route.ts`.
+ */
+export const MAX_EXPORT_ROWS = 20000;
 
 export type UserSummary = { display: string; matricula: string | null };
 
@@ -119,21 +128,18 @@ export type ChangeHistoryRow = {
   created_by: string | null;
 };
 
-export async function listChangeHistory(
+const CHANGE_HISTORY_SELECT =
+  "id, module_key, entity_table, entity_id, entity_code, change_type, reason, changes, created_at, created_by";
+
+function buildChangeHistoryQuery(
   supabase: SupabaseClient,
   tenantId: string,
   filters: ChangeHistoryFilters,
-  range: PaginationRange,
-): Promise<{ rows: ChangeHistoryRow[]; total: number }> {
-  if (filters.userIds !== null && filters.userIds.length === 0) {
-    return { rows: [], total: 0 };
-  }
-
+  withCount: boolean,
+) {
   let query = supabase
     .from("app_entity_history")
-    .select("id, module_key, entity_table, entity_id, entity_code, change_type, reason, changes, created_at, created_by", {
-      count: "exact",
-    })
+    .select(CHANGE_HISTORY_SELECT, withCount ? { count: "exact" } : undefined)
     .eq("tenant_id", tenantId);
 
   if (filters.moduleKey) {
@@ -155,8 +161,20 @@ export async function listChangeHistory(
     query = query.lte("created_at", toRangeEnd(filters.dateTo));
   }
 
-  const { data, error, count } = await query
-    .order("created_at", { ascending: false })
+  return query.order("created_at", { ascending: false });
+}
+
+export async function listChangeHistory(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: ChangeHistoryFilters,
+  range: PaginationRange,
+): Promise<{ rows: ChangeHistoryRow[]; total: number }> {
+  if (filters.userIds !== null && filters.userIds.length === 0) {
+    return { rows: [], total: 0 };
+  }
+
+  const { data, error, count } = await buildChangeHistoryQuery(supabase, tenantId, filters, true)
     .range(range.from, range.to)
     .returns<ChangeHistoryRow[]>();
 
@@ -165,6 +183,28 @@ export async function listChangeHistory(
   }
 
   return { rows: data ?? [], total: count ?? 0 };
+}
+
+export async function exportChangeHistory(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: ChangeHistoryFilters,
+): Promise<{ rows: ChangeHistoryRow[]; truncated: boolean }> {
+  if (filters.userIds !== null && filters.userIds.length === 0) {
+    return { rows: [], truncated: false };
+  }
+
+  const { data, error } = await loadAllRows<ChangeHistoryRow>(
+    (from, to) => buildChangeHistoryQuery(supabase, tenantId, filters, false).range(from, to).returns<ChangeHistoryRow[]>(),
+    { maxRows: MAX_EXPORT_ROWS },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = data ?? [];
+  return { rows, truncated: rows.length >= MAX_EXPORT_ROWS };
 }
 
 export async function listAuditableScreens(
@@ -210,21 +250,17 @@ export type AccessLogRow = {
   session_ref: string | null;
 };
 
-export async function listAccessLog(
+const ACCESS_LOG_SELECT = "id, user_id, matricula, login_name, source, status, reason, event_type, event_at, session_ref";
+
+function buildAccessLogQuery(
   supabase: SupabaseClient,
   tenantId: string,
   filters: AccessLogFilters,
-  range: PaginationRange,
-): Promise<{ rows: AccessLogRow[]; total: number }> {
-  if (filters.userIds !== null && filters.userIds.length === 0) {
-    return { rows: [], total: 0 };
-  }
-
+  withCount: boolean,
+) {
   let query = supabase
     .from("login_audit")
-    .select("id, user_id, matricula, login_name, source, status, reason, event_type, event_at, session_ref", {
-      count: "exact",
-    })
+    .select(ACCESS_LOG_SELECT, withCount ? { count: "exact" } : undefined)
     .eq("tenant_id", tenantId);
 
   if (filters.status) {
@@ -249,8 +285,20 @@ export async function listAccessLog(
     query = query.lte("event_at", toRangeEnd(filters.dateTo));
   }
 
-  const { data, error, count } = await query
-    .order("event_at", { ascending: false })
+  return query.order("event_at", { ascending: false });
+}
+
+export async function listAccessLog(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: AccessLogFilters,
+  range: PaginationRange,
+): Promise<{ rows: AccessLogRow[]; total: number }> {
+  if (filters.userIds !== null && filters.userIds.length === 0) {
+    return { rows: [], total: 0 };
+  }
+
+  const { data, error, count } = await buildAccessLogQuery(supabase, tenantId, filters, true)
     .range(range.from, range.to)
     .returns<AccessLogRow[]>();
 
@@ -259,6 +307,28 @@ export async function listAccessLog(
   }
 
   return { rows: data ?? [], total: count ?? 0 };
+}
+
+export async function exportAccessLog(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: AccessLogFilters,
+): Promise<{ rows: AccessLogRow[]; truncated: boolean }> {
+  if (filters.userIds !== null && filters.userIds.length === 0) {
+    return { rows: [], truncated: false };
+  }
+
+  const { data, error } = await loadAllRows<AccessLogRow>(
+    (from, to) => buildAccessLogQuery(supabase, tenantId, filters, false).range(from, to).returns<AccessLogRow[]>(),
+    { maxRows: MAX_EXPORT_ROWS },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = data ?? [];
+  return { rows, truncated: rows.length >= MAX_EXPORT_ROWS };
 }
 
 // ---------------------------------------------------------------------------
@@ -287,21 +357,17 @@ export type ErrorLogRow = {
   created_at: string;
 };
 
-export async function listErrorLogs(
+const ERROR_LOG_SELECT = "id, user_id, matricula, login_name, source, severity, screen, message, stacktrace, created_at";
+
+function buildErrorLogQuery(
   supabase: SupabaseClient,
   tenantId: string,
   filters: ErrorLogFilters,
-  range: PaginationRange,
-): Promise<{ rows: ErrorLogRow[]; total: number }> {
-  if (filters.userIds !== null && filters.userIds.length === 0) {
-    return { rows: [], total: 0 };
-  }
-
+  withCount: boolean,
+) {
   let query = supabase
     .from("app_error_logs")
-    .select("id, user_id, matricula, login_name, source, severity, screen, message, stacktrace, created_at", {
-      count: "exact",
-    })
+    .select(ERROR_LOG_SELECT, withCount ? { count: "exact" } : undefined)
     .eq("tenant_id", tenantId);
 
   if (filters.severity) {
@@ -323,8 +389,20 @@ export async function listErrorLogs(
     query = query.lte("created_at", toRangeEnd(filters.dateTo));
   }
 
-  const { data, error, count } = await query
-    .order("created_at", { ascending: false })
+  return query.order("created_at", { ascending: false });
+}
+
+export async function listErrorLogs(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: ErrorLogFilters,
+  range: PaginationRange,
+): Promise<{ rows: ErrorLogRow[]; total: number }> {
+  if (filters.userIds !== null && filters.userIds.length === 0) {
+    return { rows: [], total: 0 };
+  }
+
+  const { data, error, count } = await buildErrorLogQuery(supabase, tenantId, filters, true)
     .range(range.from, range.to)
     .returns<ErrorLogRow[]>();
 
@@ -333,4 +411,26 @@ export async function listErrorLogs(
   }
 
   return { rows: data ?? [], total: count ?? 0 };
+}
+
+export async function exportErrorLogs(
+  supabase: SupabaseClient,
+  tenantId: string,
+  filters: ErrorLogFilters,
+): Promise<{ rows: ErrorLogRow[]; truncated: boolean }> {
+  if (filters.userIds !== null && filters.userIds.length === 0) {
+    return { rows: [], truncated: false };
+  }
+
+  const { data, error } = await loadAllRows<ErrorLogRow>(
+    (from, to) => buildErrorLogQuery(supabase, tenantId, filters, false).range(from, to).returns<ErrorLogRow[]>(),
+    { maxRows: MAX_EXPORT_ROWS },
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = data ?? [];
+  return { rows, truncated: rows.length >= MAX_EXPORT_ROWS };
 }

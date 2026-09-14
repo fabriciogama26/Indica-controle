@@ -51,9 +51,11 @@ Decisoes desta entrega
   (`resolveUserIdsByQuery`), depois filtra a tabela principal por `.in("created_by"/"user_id",
   ids)`. Retorno `null` = sem filtro; array vazio = "nenhum usuario casa", encerra em zero
   resultados sem consultar a tabela principal.
-- Exportacao CSV exporta APENAS a pagina atualmente carregada (20 linhas), nao "todos os
-  registros que casam com o filtro" como o padrao de Pessoas (`/api/people/export` +
-  `loadAllRows`). Simplificacao deliberada para a primeira entrega; ver "Proximos passos".
+- Exportacao CSV segue o MESMO padrao de Pessoas (`/api/people/export`): endpoint dedicado
+  `GET /api/auditoria/{alteracoes,acessos,erros}/export` que le TODOS os registros que casam
+  com o filtro atual via `loadAllRows` (nao so a pagina carregada), com teto de seguranca
+  `MAX_EXPORT_ROWS = 20000` e aviso de "exportacao parcial" quando bate no teto. Frontend usa
+  `useExportCooldown` (10s) para nao deixar disparar exportacao em sequencia.
 - Sem pareamento LOGIN/LOGOUT por `session_ref` (duracao de sessao) nesta entrega — cada evento
   aparece como uma linha independente, na ordem cronologica. `session_ref` ja vai no payload da
   API (`AccessLogItem.sessionRef`) para uma evolucao futura sem precisar mudar o backend.
@@ -141,11 +143,27 @@ Proximos passos (nao implementados nesta entrega)
   de chamada de `useErrorLogger`. Tambem nao existe captura automatica de excecao (sem
   `error.tsx`/`global-error.tsx`, sem error boundary, sem catch em rota de API) — hoje so aparece
   na tela o que cada tela decidiu logar manualmente em `catch`.
-- Exportar CSV de todos os registros que casam com o filtro (nao so a pagina carregada), no
-  mesmo padrao de `/api/people/export` (`loadAllRows` + aviso de resultado truncado).
 - Parear LOGIN/LOGOUT por `session_ref` na aba Acessos para mostrar duracao de sessao.
 - Decisao de padronizacao `pi_history` vs `app_entity_history` (ver secao acima) — tarefa
   dedicada, fora desta tela.
+
+Atualizacao 2026-09-13 (2)
+---------------------------
+- Corrigido: exportacao CSV das 3 abas passou do padrao "so a pagina carregada" para o padrao
+  usado no resto do sistema (`/api/people/export`) — endpoint dedicado por aba
+  (`/api/auditoria/{alteracoes,acessos,erros}/export`), leitura completa do filtro via
+  `loadAllRows`, teto `MAX_EXPORT_ROWS = 20000` e aviso de exportacao parcial. `queries.ts`
+  ganhou `buildChangeHistoryQuery`/`buildAccessLogQuery`/`buildErrorLogQuery` privados,
+  reaproveitados pela listagem paginada (`list*`) e pela exportacao completa (`export*`).
+- Root cause investigado e corrigido nesta mesma tarefa: `app_error_logs` estava 100% vazia
+  (0 linhas em todo o banco, todos os tenants) porque a Edge Function `log_error` nunca tinha
+  sido publicada no Supabase (existia em `supabase/functions/log_error/`, mas nao aparecia na
+  lista de Functions do projeto). `useErrorLogger` (`src/hooks/useErrorLogger.ts`) faz
+  `fetch(...).catch(() => null)` sem checar `response.ok`, entao um 404 de funcao inexistente
+  nunca apareceu como erro em lugar nenhum — silencioso desde sempre. Publicada via
+  `npx supabase functions deploy log_error --project-ref lcusxnhhrjosxqgiphgp --use-api`
+  (`guias/runbook_deploy_edge_functions.md`). Script de diagnostico somente-leitura criado:
+  `scripts/diagnosticos/diagnose-audit-error-logs-readonly.mjs`.
 
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
@@ -162,10 +180,15 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/auditoria/ErrorsTab.tsx`
   - Responsavel por: filtro, listagem, paginacao, export CSV e expandir stacktrace da aba Erros.
 - Caminho: `src/server/modules/auditoria/handlers.ts`
-  - Responsavel por: `getChangeHistory`, `getAccessLog`, `getErrorLog`, `getAuditableScreens` —
-    guard admin, parse de query params e paginacao, shape da resposta JSON.
+  - Responsavel por: `getChangeHistory`/`getAccessLog`/`getErrorLog`/`getAuditableScreens`
+    (listagem paginada) e `exportChangeHistoryHandler`/`exportAccessLogHandler`/
+    `exportErrorLogHandler` (exportacao completa) — guard admin, parse de query params e
+    paginacao, shape da resposta JSON.
 - Caminho: `src/server/modules/auditoria/queries.ts`
-  - Responsavel por: `listChangeHistory`, `listAccessLog`, `listErrorLogs`,
+  - Responsavel por: `listChangeHistory`/`listAccessLog`/`listErrorLogs` (paginado, com
+    `count: "exact"`) e `exportChangeHistory`/`exportAccessLog`/`exportErrorLogs` (completo, via
+    `loadAllRows` + `MAX_EXPORT_ROWS`), ambos reaproveitando os mesmos filtros privados
+    `buildChangeHistoryQuery`/`buildAccessLogQuery`/`buildErrorLogQuery`; mais
     `listAuditableScreens`, `resolveUserIdsByQuery`, `fetchUserSummaries` — todas as consultas
     Supabase com filtro de `tenant_id` explicito.
 
