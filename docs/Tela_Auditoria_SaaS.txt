@@ -51,14 +51,21 @@ Decisoes desta entrega
   (`resolveUserIdsByQuery`), depois filtra a tabela principal por `.in("created_by"/"user_id",
   ids)`. Retorno `null` = sem filtro; array vazio = "nenhum usuario casa", encerra em zero
   resultados sem consultar a tabela principal.
+- Usuario do tenant = tenant de origem (`app_users.tenant_id`) OU vinculo em
+  `app_user_tenants`, ATIVO OU INATIVO (ver "Atualizacao 2026-09-14"). Vale para a busca
+  (`resolveUserIdsByQuery`) e para o nome/matricula exibidos (`fetchUserSummaries`). O vinculo
+  inativo conta de proposito: a Auditoria le historico e quem agiu no tenant precisa continuar
+  identificado depois de desligado — diferente de `fetchTenantLinkedAppUsers` (telas
+  operacionais), que so aceita vinculo ativo.
 - Exportacao CSV segue o MESMO padrao de Pessoas (`/api/people/export`): endpoint dedicado
   `GET /api/auditoria/{alteracoes,acessos,erros}/export` que le TODOS os registros que casam
   com o filtro atual via `loadAllRows` (nao so a pagina carregada), com teto de seguranca
   `MAX_EXPORT_ROWS = 20000` e aviso de "exportacao parcial" quando bate no teto. Frontend usa
   `useExportCooldown` (10s) para nao deixar disparar exportacao em sequencia.
 - Sem pareamento LOGIN/LOGOUT por `session_ref` (duracao de sessao) nesta entrega — cada evento
-  aparece como uma linha independente, na ordem cronologica. `session_ref` ja vai no payload da
-  API (`AccessLogItem.sessionRef`) para uma evolucao futura sem precisar mudar o backend.
+  aparece como uma linha independente, na ordem cronologica. `session_ref` NAO vai no payload
+  nem no select (removido em 2026-09-14 — ver motivo de seguranca na atualizacao dessa data);
+  um pareamento futuro deve ser feito no servidor, devolvendo so a duracao.
 
 Filtros, auto-complete e listagem
 ---------------------------------
@@ -86,6 +93,13 @@ Boas praticas
   `resolveUserIdsByQuery` (resolver ids em `app_users` primeiro, depois `.in()`).
 - Toda nova coluna de filtro precisa continuar filtrando `tenant_id` explicitamente no `queries.ts`
   — nao ha RLS a favor aqui (client admin).
+- Nunca ler linha de outro tenant para "completar" a visao de um usuario multi-tenant (ex.: logins
+  gravados no tenant de origem). O vinculo so muda QUEM e identificado, nunca QUAIS linhas
+  aparecem — as linhas continuam presas a `tenant_id = tenant ativo`.
+- Nunca exibir linhas com `tenant_id` nulo: em `login_audit` sao tentativas com usuario
+  inexistente, com `login_name` digitado por quem nao esta autenticado.
+- Identidade na aba Erros vem de `user_id` (derivado do JWT pela `log_error`), nunca de
+  `app_error_logs.matricula`/`login_name`: a Edge Function aceita a matricula enviada pelo cliente.
 - `login_audit` e `app_error_logs` sao classificadas (auditoria interna,
   `Auditoria/15-supabase-implicit-row-cap.md`) como tabelas que "crescem monotonicamente e nunca
   sao podadas" — o filtro de intervalo de datas nas abas Acessos e Erros nao e cosmetico, e a
@@ -146,6 +160,30 @@ Proximos passos (nao implementados nesta entrega)
 - Parear LOGIN/LOGOUT por `session_ref` na aba Acessos para mostrar duracao de sessao.
 - Decisao de padronizacao `pi_history` vs `app_entity_history` (ver secao acima) — tarefa
   dedicada, fora desta tela.
+- Seguranca (levantado em 2026-09-14, etapas 2 a 4 do plano; ver atualizacao dessa data):
+  - RLS de leitura: as policies de SELECT de `login_audit`, `app_error_logs` e
+    `app_entity_history` usam `user_can_access_tenant(tenant_id)`, entao QUALQUER membro do
+    tenant (inclusive `viewer`) le essas tabelas via `/rest/v1` com o proprio JWT — a tela e
+    admin-only so na API. Proposta: migration trocando as 3 policies para
+    `user_is_admin_in_tenant(tenant_id)`, depois de conferir as policies no banco vivo (o CLI nao
+    estava linkado na analise). As rotas usam `service_role` e nao dependem dessas policies.
+  - CSV: `escapeCsvValue` (`src/lib/utils/csv.ts`) nao neutraliza celula iniciada por
+    `= + - @`; a exportacao da aba Erros leva `message`/`screen`, texto controlado por qualquer
+    usuario logado. Corrigir sem quebrar numero negativo de `formatCsvNumber` (afeta todas as
+    exportacoes do sistema).
+  - Aba Acessos multi-tenant: LOGIN/LOGOUT sao gravados no tenant de origem (o login acontece
+    antes da escolha de contrato). NAO resolver lendo linhas do tenant de origem (quebra o
+    isolamento). Caminho seguro: evento de entrada no contrato gravado no servidor com o tenant
+    validado por `resolveAuthenticatedAppUser` (ex.: `POST /api/auth/active-tenant`); falta
+    definir o momento para nao-admin. Nao trocar o `tenant_id` do LOGIN: a `logout` compara com
+    `app_users.tenant_id` e deixaria de achar a sessao.
+  - Aba Erros multi-tenant: `log_error` grava `app_users.tenant_id` (origem). Caminho seguro: rota
+    Next com `resolveAuthenticatedAppUser` (tenant do cookie `httpOnly` validado no servidor),
+    sem aceitar tenant/matricula do cliente. Na mesma tarefa, `log_error` deixa de aceitar
+    `body.matricula`.
+  - `logout`: fallback `reason=TOKEN_EXPIRED` + `session_ref`/`login_audit_id` grava LOGOUT sem
+    sessao valida (so anon key). Tratar em tarefa propria — ha 349 logouts legitimos por esse
+    caminho.
 
 Atualizacao 2026-09-13 (2)
 ---------------------------
@@ -165,6 +203,43 @@ Atualizacao 2026-09-13 (2)
   (`guias/runbook_deploy_edge_functions.md`). Script de diagnostico somente-leitura criado:
   `scripts/diagnosticos/diagnose-audit-error-logs-readonly.mjs`.
 
+Atualizacao 2026-09-14
+-----------------------
+- Corrigido: usuario multi-tenant aparecia como "Nao identificado" e nao era encontrado pela busca
+  por usuario. Causa: `fetchUserSummaries` e `resolveUserIdsByQuery` filtravam so
+  `app_users.tenant_id = tenant ativo`, mas usuarios multi-tenant mantem o `app_users.id` do tenant
+  de origem e operam nos demais por `app_user_tenants`. Evidencia (leitura em producao antes da
+  correcao): no tenant INDICA SERVICO - MACAE, 29 de 39 linhas de `app_entity_history` (74%) sem
+  autor identificado, todas de um usuario com origem em INDICA SERVICO - ANGRA; 6 vinculos ativos
+  fora do tenant de origem.
+  - Antes: usuario = so tenant de origem.
+  - Depois: usuario = tenant de origem OU vinculo em `app_user_tenants` (ativo ou inativo). As
+    linhas listadas NAO mudam — continuam filtradas por `tenant_id = tenant ativo`; so a
+    identificacao do autor muda.
+  - Consultas continuam presas ao tenant: `app_users` por `tenant_id`, ou restrito a ids cujo
+    vinculo com o tenant foi confirmado em `app_user_tenants`. Ids em lotes de 200
+    (`loadRowsInChunks`) e leituras via `loadAllRows`/`loadRowsInChunks` (sem truncamento
+    silencioso). Erro de banco nessas consultas passa a virar 500 em vez de ser engolido e
+    exibido como "Nao identificado".
+- Corrigido (leitura): aba Erros exibia `app_error_logs.matricula`, valor que a Edge Function
+  `log_error` aceita do body do cliente (qualquer usuario logado podia registrar erro com a
+  matricula de outro), e `login_name`, que a funcao nunca grava (coluna Usuario sempre vazia).
+  - Antes: `ErrorLogItem.loginName`/`matricula` lidos da linha.
+  - Depois: `ErrorLogItem.userName`/`userMatricula` resolvidos por `user_id` via
+    `fetchUserSummaries`, no mesmo formato da aba Alteracoes; as duas colunas sairam do select.
+  - A gravacao em `log_error` ainda aceita `body.matricula` — pendente (ver "Proximos passos").
+- Removido: `session_ref` do select e do payload da aba Acessos (`AccessLogItem.sessionRef`).
+  Nenhuma tela usava, e a Edge Function `logout` aceita `session_ref` + `reason=TOKEN_EXPIRED` sem
+  sessao valida para gravar LOGOUT — expor o valor permitia forjar o horario de saida.
+- Descartado nesta analise: resolver a aba Acessos de usuario multi-tenant lendo linhas do tenant
+  de origem. Quebraria o isolamento (logins em outro contrato, tentativas de senha errada,
+  historico anterior ao vinculo). Alternativa segura registrada em "Proximos passos".
+- Validacao executada: `npx tsc --noEmit` e `npm run lint` verdes; checagem somente-leitura das
+  funcoes novas contra producao (copia literal de `queries.ts`): MACAE 39/39 linhas com autor
+  identificado; ANGRA sem regressao; usuario so de ANGRA nao e resolvido nem encontrado no MACAE;
+  usuario de ANGRA+MACAE nao e resolvido em TESTE; busca por vinculo encontra os usuarios de
+  origem ANGRA no MACAE. Vinculo inativo coberto so por codigo (nenhum existe hoje no banco).
+
 Mapa de Codigo (funcoes, hooks e constantes)
 --------------------------------------------
 Funcoes principais
@@ -178,19 +253,28 @@ Funcoes principais
 - Caminho: `src/modules/dashboard/auditoria/AccessTab.tsx`
   - Responsavel por: filtro, listagem, paginacao e export CSV da aba Acessos.
 - Caminho: `src/modules/dashboard/auditoria/ErrorsTab.tsx`
-  - Responsavel por: filtro, listagem, paginacao, export CSV e expandir stacktrace da aba Erros.
+  - Responsavel por: filtro, listagem, paginacao, export CSV e expandir stacktrace da aba Erros;
+    coluna/CSV "Usuario" e "Matricula" usam `userName`/`userMatricula` (resolvidos por `user_id`).
+- Caminho: `src/modules/dashboard/auditoria/types.ts`
+  - Responsavel por: contratos das 3 abas; `ErrorLogItem` expoe `userName`/`userMatricula`;
+    `AccessLogItem` nao expoe `sessionRef`.
 - Caminho: `src/server/modules/auditoria/handlers.ts`
   - Responsavel por: `getChangeHistory`/`getAccessLog`/`getErrorLog`/`getAuditableScreens`
     (listagem paginada) e `exportChangeHistoryHandler`/`exportAccessLogHandler`/
     `exportErrorLogHandler` (exportacao completa) — guard admin, parse de query params e
-    paginacao, shape da resposta JSON.
+    paginacao, shape da resposta JSON. Alteracoes e Erros resolvem o autor com
+    `fetchUserSummaries` (`created_by`/`user_id`).
 - Caminho: `src/server/modules/auditoria/queries.ts`
   - Responsavel por: `listChangeHistory`/`listAccessLog`/`listErrorLogs` (paginado, com
     `count: "exact"`) e `exportChangeHistory`/`exportAccessLog`/`exportErrorLogs` (completo, via
     `loadAllRows` + `MAX_EXPORT_ROWS`), ambos reaproveitando os mesmos filtros privados
     `buildChangeHistoryQuery`/`buildAccessLogQuery`/`buildErrorLogQuery`; mais
-    `listAuditableScreens`, `resolveUserIdsByQuery`, `fetchUserSummaries` — todas as consultas
-    Supabase com filtro de `tenant_id` explicito.
+    `listAuditableScreens`; `resolveUserIdsByQuery` e `fetchUserSummaries` (usuario do tenant =
+    origem ou vinculo ativo/inativo); `listTenantLinkedUserIds` (privada, ids vinculados ao tenant
+    em `app_user_tenants`) — todas as consultas Supabase presas ao tenant.
+  - Constantes: `MAX_EXPORT_ROWS` (20000), `USER_ID_CHUNK_SIZE` (200, lote de ids em `.in()`),
+    `USER_SEARCH_COLUMNS` (`display`/`login_name`/`matricula`), `AUDIT_USER_SELECT`,
+    `ACCESS_LOG_SELECT` (sem `session_ref`), `ERROR_LOG_SELECT` (sem `matricula`/`login_name`).
 
 Constantes e configuracoes
 - Caminho: `src/lib/auth/authorization.ts`
@@ -202,10 +286,12 @@ Funcoes utilitarias relacionadas
 - Caminho: `src/lib/server/appUsersAdmin.ts`
   - Responsavel por: `resolveAdminOperator`, guard admin-only reaproveitado das 4 rotas.
 - Caminho: `src/lib/server/apiHelpers.ts`
-  - Responsavel por: `parsePagination`, `normalizeHistoryChanges`, `normalizeNullableText`.
+  - Responsavel por: `parsePagination`, `normalizeHistoryChanges`, `normalizeNullableText`,
+    `loadAllRows`/`loadRowsInChunks` (leitura completa sem truncamento silencioso do PostgREST).
 - Caminho: `src/lib/utils/csv.ts` e `src/lib/utils/formatters.ts`
   - Responsavel por: `buildCsvContent`/`downloadCsvFile` (export) e `formatDateTime` (exibicao).
 
 Servicos e integracoes externas
 - Supabase Postgres, tabelas `app_entity_history`, `login_audit`, `app_error_logs`, `app_pages`,
-  `app_users` — todas ja existentes, nenhuma migration nova nesta entrega.
+  `app_users`, `app_user_tenants` (desde 2026-09-14) — todas ja existentes, nenhuma migration nova
+  nesta entrega.

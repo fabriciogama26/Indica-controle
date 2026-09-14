@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { loadAllRows } from "@/lib/server/apiHelpers";
+import { loadAllRows, loadRowsInChunks } from "@/lib/server/apiHelpers";
 
 type PaginationRange = { from: number; to: number };
 
@@ -11,10 +11,55 @@ type PaginationRange = { from: number; to: number };
  */
 export const MAX_EXPORT_ROWS = 20000;
 
+/** Ids por lote nos filtros `.in(...)` de usuario: limita a largura da URL do PostgREST. */
+const USER_ID_CHUNK_SIZE = 200;
+
+const USER_SEARCH_COLUMNS = ["display", "login_name", "matricula"] as const;
+
+const AUDIT_USER_SELECT = "id, display, login_name, matricula";
+
+type AuditUserRow = { id: string; display: string | null; login_name: string | null; matricula: string | null };
+
 export type UserSummary = { display: string; matricula: string | null };
 
+// ---------------------------------------------------------------------------
+// Usuarios do tenant na Auditoria
+//
+// Um usuario pertence ao tenant por dois caminhos: tenant de origem
+// (`app_users.tenant_id`) ou vinculo em `app_user_tenants` — usuarios multi-tenant
+// mantem o `app_users.id` do tenant de origem e operam nos demais pelo vinculo.
+// Considerar so a origem deixava como "Nao identificado" quem alterou dados no
+// tenant ativo por vinculo, e a busca por usuario nao os encontrava.
+//
+// O vinculo vale ATIVO OU INATIVO, diferente de `fetchTenantLinkedAppUsers`
+// (telas operacionais): a Auditoria le historico, e quem agiu no tenant precisa
+// continuar identificado depois que o vinculo e desativado.
+//
+// Toda consulta continua presa ao tenant: `app_users` por `tenant_id`, ou restrito
+// a ids cujo vinculo com o tenant ja foi confirmado em `app_user_tenants`.
+// ---------------------------------------------------------------------------
+
+async function listTenantLinkedUserIds(supabase: SupabaseClient, tenantId: string): Promise<string[]> {
+  const { data, error } = await loadAllRows<{ user_id: string }>((from, to) =>
+    supabase
+      .from("app_user_tenants")
+      .select("user_id")
+      .eq("tenant_id", tenantId)
+      .order("user_id", { ascending: true })
+      .range(from, to)
+      .returns<Array<{ user_id: string }>>(),
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return Array.from(new Set((data ?? []).map((row) => row.user_id).filter(Boolean)));
+}
+
 /**
- * Resolve ids de app_users que casam com o texto de busca (nome, login ou matricula).
+ * Resolve ids de usuarios do tenant (origem ou vinculo) que casam com o texto de busca
+ * (nome, login ou matricula).
  *
  * Nunca usa `.or()` com texto livre do cliente (convencao do projeto, ver
  * `src/server/modules/programacao-normalizada/queries.ts`): cada candidato e uma
@@ -35,29 +80,41 @@ export async function resolveUserIdsByQuery(
   }
 
   const pattern = `%${trimmed}%`;
-  const [byDisplay, byLogin, byMatricula] = await Promise.all([
-    supabase
-      .from("app_users")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .ilike("display", pattern)
-      .returns<Array<{ id: string }>>(),
-    supabase
-      .from("app_users")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .ilike("login_name", pattern)
-      .returns<Array<{ id: string }>>(),
-    supabase
-      .from("app_users")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .ilike("matricula", pattern)
-      .returns<Array<{ id: string }>>(),
-  ]);
+  const linkedUserIds = await listTenantLinkedUserIds(supabase, tenantId);
+
+  const results = await Promise.all(
+    USER_SEARCH_COLUMNS.flatMap((column) => [
+      loadAllRows<{ id: string }>((from, to) =>
+        supabase
+          .from("app_users")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .ilike(column, pattern)
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<Array<{ id: string }>>(),
+      ),
+      loadRowsInChunks<{ id: string }>(
+        linkedUserIds,
+        (chunk, from, to) =>
+          supabase
+            .from("app_users")
+            .select("id")
+            .in("id", chunk)
+            .ilike(column, pattern)
+            .order("id", { ascending: true })
+            .range(from, to)
+            .returns<Array<{ id: string }>>(),
+        { chunkSize: USER_ID_CHUNK_SIZE },
+      ),
+    ]),
+  );
 
   const ids = new Set<string>();
-  for (const result of [byDisplay, byLogin, byMatricula]) {
+  for (const result of results) {
+    if (result.error) {
+      throw result.error;
+    }
     for (const row of result.data ?? []) {
       ids.add(row.id);
     }
@@ -66,6 +123,11 @@ export async function resolveUserIdsByQuery(
   return Array.from(ids);
 }
 
+/**
+ * Nome e matricula dos autores das linhas ja filtradas por tenant. Os ids vem sempre
+ * dessas linhas no servidor, nunca do cliente; mesmo assim so resolve quem pertence
+ * ao tenant (origem ou vinculo) — id de fora do tenant fica sem resumo.
+ */
 export async function fetchUserSummaries(
   supabase: SupabaseClient,
   tenantId: string,
@@ -76,15 +138,70 @@ export async function fetchUserSummaries(
     return new Map();
   }
 
-  const { data } = await supabase
-    .from("app_users")
-    .select("id, display, login_name, matricula")
-    .eq("tenant_id", tenantId)
-    .in("id", uniqueIds)
-    .returns<Array<{ id: string; display: string | null; login_name: string | null; matricula: string | null }>>();
+  const { data: homeUsers, error: homeUsersError } = await loadRowsInChunks<AuditUserRow>(
+    uniqueIds,
+    (chunk, from, to) =>
+      supabase
+        .from("app_users")
+        .select(AUDIT_USER_SELECT)
+        .eq("tenant_id", tenantId)
+        .in("id", chunk)
+        .order("id", { ascending: true })
+        .range(from, to)
+        .returns<AuditUserRow[]>(),
+    { chunkSize: USER_ID_CHUNK_SIZE },
+  );
+
+  if (homeUsersError) {
+    throw homeUsersError;
+  }
+
+  const users = [...(homeUsers ?? [])];
+  const homeUserIds = new Set(users.map((user) => user.id));
+  const missingIds = uniqueIds.filter((id) => !homeUserIds.has(id));
+
+  if (missingIds.length) {
+    const { data: links, error: linksError } = await loadRowsInChunks<{ user_id: string }>(
+      missingIds,
+      (chunk, from, to) =>
+        supabase
+          .from("app_user_tenants")
+          .select("user_id")
+          .eq("tenant_id", tenantId)
+          .in("user_id", chunk)
+          .order("user_id", { ascending: true })
+          .range(from, to)
+          .returns<Array<{ user_id: string }>>(),
+      { chunkSize: USER_ID_CHUNK_SIZE },
+    );
+
+    if (linksError) {
+      throw linksError;
+    }
+
+    const linkedUserIds = (links ?? []).map((link) => link.user_id);
+    const { data: linkedUsers, error: linkedUsersError } = await loadRowsInChunks<AuditUserRow>(
+      linkedUserIds,
+      (chunk, from, to) =>
+        supabase
+          .from("app_users")
+          .select(AUDIT_USER_SELECT)
+          .in("id", chunk)
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<AuditUserRow[]>(),
+      { chunkSize: USER_ID_CHUNK_SIZE },
+    );
+
+    if (linkedUsersError) {
+      throw linkedUsersError;
+    }
+
+    users.push(...(linkedUsers ?? []));
+  }
 
   const map = new Map<string, UserSummary>();
-  for (const user of data ?? []) {
+  for (const user of users) {
     map.set(user.id, {
       display: String(user.display ?? user.login_name ?? "").trim() || "Nao identificado",
       matricula: user.matricula,
@@ -247,10 +364,12 @@ export type AccessLogRow = {
   reason: string | null;
   event_type: string;
   event_at: string;
-  session_ref: string | null;
 };
 
-const ACCESS_LOG_SELECT = "id, user_id, matricula, login_name, source, status, reason, event_type, event_at, session_ref";
+// `session_ref` fica fora de proposito: nenhuma tela usa, e a Edge Function `logout`
+// aceita `session_ref` + `reason=TOKEN_EXPIRED` sem sessao valida para gravar LOGOUT —
+// quem tem o valor consegue forjar o horario de saida de outra sessao.
+const ACCESS_LOG_SELECT = "id, user_id, matricula, login_name, source, status, reason, event_type, event_at";
 
 function buildAccessLogQuery(
   supabase: SupabaseClient,
@@ -347,8 +466,6 @@ export type ErrorLogFilters = {
 export type ErrorLogRow = {
   id: string;
   user_id: string | null;
-  matricula: string | null;
-  login_name: string | null;
   source: string;
   severity: string;
   screen: string | null;
@@ -357,7 +474,10 @@ export type ErrorLogRow = {
   created_at: string;
 };
 
-const ERROR_LOG_SELECT = "id, user_id, matricula, login_name, source, severity, screen, message, stacktrace, created_at";
+// `matricula`/`login_name` gravados em `app_error_logs` nao identificam o usuario: a Edge
+// Function `log_error` aceita a matricula enviada pelo cliente e nunca grava `login_name`.
+// A identidade vem de `user_id` (derivado do JWT) resolvido por `fetchUserSummaries`.
+const ERROR_LOG_SELECT = "id, user_id, source, severity, screen, message, stacktrace, created_at";
 
 function buildErrorLogQuery(
   supabase: SupabaseClient,

@@ -125,8 +125,8 @@ export function ErrorsTab() {
         item.severity,
         item.screen ?? "",
         item.message,
-        item.loginName ?? "",
-        item.matricula ?? "",
+        item.userName,
+        item.userMatricula ?? "",
       ]);
       downloadCsvFile(buildCsvContent(headers, rows), `log-erros_${new Date().toISOString().slice(0, 10)}.csv`);
 
@@ -273,8 +273,8 @@ export function ErrorsTab() {
                       {expandedId === item.id && item.stacktrace ? <pre className={styles.stacktrace}>{item.stacktrace}</pre> : null}
                     </td>
                     <td>
-                      {item.loginName ?? "-"}
-                      {item.matricula ? ` (${item.matricula})` : ""}
+                      {item.userName}
+                      {item.userMatricula ? ` (${item.userMatricula})` : ""}
                     </td>
                   </tr>
                 ))
