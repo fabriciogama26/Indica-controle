@@ -1,7 +1,6 @@
 // Leitura das agregacoes do Dashboard Estoque pela RPC `get_stock_dashboard_aggregates`
 // (migration 439). Uma chamada substitui a carga de movimentacoes + itens + operacoes de
 // equipe + materiais + projetos + equipes + 4 recortes de estorno em chunks.
-import { isTransientHttpStatus } from "@/lib/auth/authErrors";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 
 export type StockDashboardOperationKind = "ENTRY" | "EXIT" | "TRANSFER" | "REQUISITION" | "RETURN" | "FIELD_RETURN";
@@ -85,11 +84,24 @@ export type StockDashboardAggregates = {
 export class StockDashboardAggregatesError extends Error {
   constructor(
     message: string,
-    readonly status: 500 | 503,
+    readonly status: 500 | 503 | 504,
   ) {
     super(message);
     this.name = "StockDashboardAggregatesError";
   }
+}
+
+// `statement_timeout` do Postgres. O PostgREST devolve HTTP 500 para ele (familia 57*), entao o
+// status sozinho nao separa "consulta demorou demais" de "erro da funcao".
+const STATEMENT_TIMEOUT_CODE = "57014";
+
+// Falha de conexao/infraestrutura: sem resposta (0), gateway (502/503/504/520-524), conexao do
+// Postgres (08*), recurso insuficiente (53*) ou PostgREST sem banco (PGRST000-002).
+function isUnavailableRpcFailure(status: number, code: string | undefined) {
+  if (status === 0 || status === 502 || status === 503 || status === 504) return true;
+  if (status >= 520 && status <= 524) return true;
+  const normalizedCode = String(code ?? "");
+  return normalizedCode.startsWith("08") || normalizedCode.startsWith("53") || /^PGRST00[0-2]$/.test(normalizedCode);
 }
 
 type RawAggregates = Partial<Record<keyof StockDashboardAggregates, unknown>>;
@@ -127,7 +139,14 @@ export async function loadStockDashboardAggregates(
       message: error.message,
     });
 
-    if (isTransientHttpStatus(status)) {
+    if (error.code === STATEMENT_TIMEOUT_CODE) {
+      throw new StockDashboardAggregatesError(
+        "O Dashboard Estoque excedeu o tempo limite do banco. Reduza o periodo ou filtre por centro de estoque e tente novamente.",
+        504,
+      );
+    }
+
+    if (isUnavailableRpcFailure(status, error.code)) {
       throw new StockDashboardAggregatesError("Banco de dados indisponivel no momento. Tente novamente em instantes.", 503);
     }
 

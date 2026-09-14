@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { AUTH_UNAVAILABLE_MESSAGE } from "@/lib/auth/authErrors";
 import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { checkPageReadAccess } from "@/lib/server/pageAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchWorkCompletionByProject } from "@/server/modules/programacao-normalizada";
 
@@ -444,34 +446,6 @@ function createRow(code: string): AggregatedRow {
   };
 }
 
-async function ensureDashPageAccess(resolution: AuthenticatedAppUserContext) {
-  if (resolution.role.isAdmin) return true;
-
-  const userPermission = await resolution.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("user_id", resolution.appUser.id)
-    .eq("page_key", "dash-operacional-faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) {
-    return Boolean(userPermission.data.can_access);
-  }
-
-  if (!resolution.appUser.role_id) return false;
-
-  const rolePermission = await resolution.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("role_id", resolution.appUser.role_id)
-    .eq("page_key", "dash-operacional-faturamento")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 async function resolveDashContext(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar Dash operacional e faturamento.",
@@ -480,8 +454,11 @@ async function resolveDashContext(request: NextRequest) {
 
   if ("error" in resolution) return resolution;
 
-  const canAccess = await ensureDashPageAccess(resolution);
-  if (!canAccess) {
+  const access = await checkPageReadAccess(resolution, "dash-operacional-faturamento");
+  if (access === "unavailable") {
+    return { error: { status: 503, message: AUTH_UNAVAILABLE_MESSAGE } };
+  }
+  if (access === "denied") {
     return {
       error: {
         status: 403,

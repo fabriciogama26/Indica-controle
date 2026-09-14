@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 
+import { AUTH_UNAVAILABLE_MESSAGE } from "@/lib/auth/authErrors";
 import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { checkPageReadAccess } from "@/lib/server/pageAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 
 type ProjectRow = {
@@ -150,34 +152,6 @@ function shouldFallbackToLegacyTeamOperationSelect(error: PostgrestError | null)
   return normalized.includes("operation_kind") || error.code === "42703" || error.code === "PGRST204";
 }
 
-async function ensureProjectConsumptionPageAccess(context: AuthenticatedAppUserContext) {
-  if (context.role.isAdmin) return true;
-
-  const userPermission = await context.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", context.appUser.tenant_id)
-    .eq("user_id", context.appUser.id)
-    .eq("page_key", "consumo-projeto")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) {
-    return Boolean(userPermission.data.can_access);
-  }
-
-  if (!context.appUser.role_id) return false;
-
-  const rolePermission = await context.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", context.appUser.tenant_id)
-    .eq("role_id", context.appUser.role_id)
-    .eq("page_key", "consumo-projeto")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 async function resolveProjectConsumptionContext(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar Consumo por Projeto.",
@@ -186,8 +160,11 @@ async function resolveProjectConsumptionContext(request: NextRequest) {
 
   if ("error" in resolution) return resolution;
 
-  const canAccess = await ensureProjectConsumptionPageAccess(resolution);
-  if (!canAccess) {
+  const access = await checkPageReadAccess(resolution, "consumo-projeto");
+  if (access === "unavailable") {
+    return { error: { status: 503, message: AUTH_UNAVAILABLE_MESSAGE } };
+  }
+  if (access === "denied") {
     return {
       error: {
         status: 403,

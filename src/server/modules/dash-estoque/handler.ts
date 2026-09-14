@@ -6,9 +6,10 @@
 // e este handler so monta a resposta, com o mesmo contrato consumido pela tela.
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
-import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { AUTH_UNAVAILABLE_MESSAGE } from "@/lib/auth/authErrors";
 import { normalizeText } from "@/lib/server/apiHelpers";
+import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { checkPageReadAccess } from "@/lib/server/pageAuthorization";
 
 import { loadStockDashboardAggregates, StockDashboardAggregatesError } from "./aggregates";
 import {
@@ -57,34 +58,6 @@ function currentYearPeriod() {
   };
 }
 
-async function ensureDashPageAccess(resolution: AuthenticatedAppUserContext) {
-  if (resolution.role.isAdmin) return true;
-
-  const userPermission = await resolution.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("user_id", resolution.appUser.id)
-    .eq("page_key", DASH_ESTOQUE_PAGE_KEY)
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) {
-    return Boolean(userPermission.data.can_access);
-  }
-
-  if (!resolution.appUser.role_id) return false;
-
-  const rolePermission = await resolution.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("role_id", resolution.appUser.role_id)
-    .eq("page_key", DASH_ESTOQUE_PAGE_KEY)
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 async function resolveDashContext(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar Dashboard Estoque.",
@@ -93,8 +66,11 @@ async function resolveDashContext(request: NextRequest) {
 
   if ("error" in resolution) return resolution;
 
-  const canAccess = await ensureDashPageAccess(resolution);
-  if (!canAccess) {
+  const access = await checkPageReadAccess(resolution, DASH_ESTOQUE_PAGE_KEY);
+  if (access === "unavailable") {
+    return { error: { status: 503, message: AUTH_UNAVAILABLE_MESSAGE } };
+  }
+  if (access === "denied") {
     return {
       error: {
         status: 403,

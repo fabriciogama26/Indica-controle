@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { AUTH_UNAVAILABLE_MESSAGE } from "@/lib/auth/authErrors";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { checkPageReadAccess } from "@/lib/server/pageAuthorization";
 import { normalizeDateInput, normalizeText } from "@/lib/server/stockTransfers";
 import { fetchTenantLinkedAppUsers, loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
 
@@ -164,34 +166,6 @@ function teamOperationLabel(value: string) {
   return "Operacao de equipe";
 }
 
-async function ensureReversalsPageAccess(context: AuthenticatedAppUserContext) {
-  if (context.role.isAdmin) return true;
-
-  const userPermission = await context.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", context.appUser.tenant_id)
-    .eq("user_id", context.appUser.id)
-    .eq("page_key", "estornos")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) {
-    return Boolean(userPermission.data.can_access);
-  }
-
-  if (!context.appUser.role_id) return false;
-
-  const rolePermission = await context.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", context.appUser.tenant_id)
-    .eq("role_id", context.appUser.role_id)
-    .eq("page_key", "estornos")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 async function resolveReversalsContext(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar Estornos.",
@@ -200,8 +174,11 @@ async function resolveReversalsContext(request: NextRequest) {
 
   if ("error" in resolution) return resolution;
 
-  const canAccess = await ensureReversalsPageAccess(resolution);
-  if (!canAccess) {
+  const access = await checkPageReadAccess(resolution, "estornos");
+  if (access === "unavailable") {
+    return { error: { status: 503, message: AUTH_UNAVAILABLE_MESSAGE } };
+  }
+  if (access === "denied") {
     return {
       error: {
         status: 403,
