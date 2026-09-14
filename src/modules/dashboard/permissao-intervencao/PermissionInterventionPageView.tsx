@@ -10,7 +10,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { formatDate, formatDateTime } from "@/lib/utils/formatters";
 import { getStageDisplayClassification } from "@/modules/dashboard/programacao-normalizada";
 
-import { fetchPiList, fetchPiMeta } from "./api";
+import { downloadPiDocument, fetchPiList, fetchPiMeta, triggerBlobDownload } from "./api";
 import { NewPiModal } from "./components/NewPiModal";
 import {
   EMPTY_PI_FILTERS,
@@ -71,6 +71,23 @@ export function PermissionInterventionPageView() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  async function handleDownload(piId: string) {
+    if (!accessToken || downloadingId) return;
+    setDownloadingId(piId);
+    setFeedback(null);
+    try {
+      const { blob, fileName } = await downloadPiDocument(accessToken, piId);
+      triggerBlobDownload(blob, fileName);
+      setFeedback({ type: "success", message: "Documento gerado." });
+    } catch (error) {
+      logError("Falha ao gerar o documento da PI.", error, { piId });
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Falha ao gerar o documento." });
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   const loadMeta = useCallback(async () => {
     if (!accessToken) return;
@@ -318,9 +335,23 @@ export function PermissionInterventionPageView() {
                     <td>{item.foremanName ?? "-"}</td>
                     <td>{formatDateTime(item.createdAt)}</td>
                     <td>
-                      <Link href={`/permissao-intervencao/${item.id}`} className={styles.linkButton}>
-                        Abrir
-                      </Link>
+                      <div className={styles.rowActions}>
+                        <Link href={`/permissao-intervencao/${item.id}`} className={styles.linkButton}>
+                          Abrir
+                        </Link>
+                        {/* So PI emitida tem documento: e ela que carrega o
+                            codigo oficial e o template registrado. */}
+                        {item.status === "ISSUED" ? (
+                          <button
+                            type="button"
+                            className={styles.linkButton}
+                            disabled={downloadingId === item.id}
+                            onClick={() => void handleDownload(item.id)}
+                          >
+                            {downloadingId === item.id ? "Gerando..." : "Baixar"}
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))}

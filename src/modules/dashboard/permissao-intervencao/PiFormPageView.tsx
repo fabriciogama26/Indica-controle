@@ -8,6 +8,7 @@ import { useErrorLogger } from "@/hooks/useErrorLogger";
 import { formatDate } from "@/lib/utils/formatters";
 import { getStageDisplayClassification } from "@/modules/dashboard/programacao-normalizada";
 
+import { downloadPiDocument, PiRequestError, triggerBlobDownload } from "./api";
 import { PiExecutionPlan } from "./components/PiExecutionPlan";
 import { PiFormFields } from "./components/PiFormFields";
 import { PiComparisonPanel, PiHistoryModal } from "./components/PiSidePanels";
@@ -33,6 +34,26 @@ export function PiFormPageView({ piId }: { piId: string }) {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [isCancelOpen, setIsCancelOpen] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  async function handleDownload() {
+    if (!accessToken || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      const { blob, fileName } = await downloadPiDocument(accessToken, piId);
+      triggerBlobDownload(blob, fileName);
+      pi.setFeedback({ type: "success", message: "Documento gerado." });
+    } catch (error) {
+      logError("Falha ao gerar o documento da PI.", error, { piId });
+      pi.setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Falha ao gerar o documento.",
+        errors: error instanceof PiRequestError ? error.payload.errors : undefined,
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  }
 
   if (!accessToken) return <p className={styles.mutedText}>Sessao invalida.</p>;
   if (pi.isLoading) return <p className={styles.mutedText}>Carregando PI...</p>;
@@ -148,6 +169,20 @@ export function PiFormPageView({ piId }: { piId: string }) {
                 Emitir PI
               </button>
             </>
+          ) : null}
+
+          {/* O documento so existe depois da emissao: e ele que carrega o
+              codigo oficial e o template registrado. Para conferir layout antes
+              disso ha o preview em Modelo e Configuracao da PI. */}
+          {header.status === "ISSUED" ? (
+            <button
+              type="button"
+              className={styles.primaryButton}
+              disabled={isDownloading}
+              onClick={() => void handleDownload()}
+            >
+              {isDownloading ? "Gerando..." : "Baixar PI"}
+            </button>
           ) : null}
 
           {header.status !== "CANCELLED" ? (
