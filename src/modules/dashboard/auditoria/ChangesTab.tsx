@@ -5,11 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDateTime } from "@/lib/utils/formatters";
 
-import { buildChangeHistoryQuery, fetchAuditableScreens, fetchChangeHistory } from "./api";
+import { buildChangeHistoryExportQuery, buildChangeHistoryQuery, fetchAuditableScreens, fetchChangeHistory, fetchChangeHistoryExport } from "./api";
 import styles from "./AuditPageView.module.css";
 import { EMPTY_CHANGE_FILTERS, type ChangeHistoryFiltersState, type ChangeHistoryItem, type FeedbackState, type ScreenOption } from "./types";
 
@@ -37,8 +38,10 @@ export function ChangesTab() {
   const [items, setItems] = useState<ChangeHistoryItem[]>([]);
   const [screens, setScreens] = useState<ScreenOption[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const pagination = usePagination({ pageSize: PAGE_SIZE });
+  const exportCooldown = useExportCooldown();
 
   useEffect(() => {
     if (!session?.accessToken) return;
@@ -101,24 +104,56 @@ export function ChangesTab() {
     void loadItems(nextPage, activeFilters);
   }
 
-  function handleExport() {
-    if (!items.length) {
-      setFeedback({ type: "error", message: "Nao ha registros carregados para exportar." });
+  async function handleExport() {
+    if (!session?.accessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para exportar." });
       return;
     }
-    const headers = ["Data", "Tela", "Usuario", "Matricula", "Tipo", "Registro", "Alteracoes"];
-    const rows = items.map((item) => [
-      formatDateTime(item.createdAt),
-      item.moduleKey,
-      item.userName,
-      item.userMatricula ?? "",
-      item.changeType,
-      item.entityCode ?? item.entityId,
-      Object.entries(item.changes)
-        .map(([field, change]) => `${field}: ${change.from ?? "-"} -> ${change.to ?? "-"}`)
-        .join(" | "),
-    ]);
-    downloadCsvFile(buildCsvContent(headers, rows), `historico-alteracoes_${new Date().toISOString().slice(0, 10)}.csv`);
+    if (!exportCooldown.tryStart()) {
+      setFeedback({ type: "error", message: `Aguarde ${exportCooldown.getRemainingSeconds()}s antes de exportar novamente.` });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const query = buildChangeHistoryExportQuery(activeFilters);
+      const { ok, data } = await fetchChangeHistoryExport(session.accessToken, query);
+      if (!ok) {
+        setFeedback({ type: "error", message: data.message ?? "Falha ao exportar o historico de alteracoes." });
+        return;
+      }
+
+      const allItems = data.items ?? [];
+      if (allItems.length === 0) {
+        setFeedback({ type: "error", message: "Nenhum registro encontrado para exportar com os filtros atuais." });
+        return;
+      }
+
+      const headers = ["Data", "Tela", "Usuario", "Matricula", "Tipo", "Registro", "Alteracoes"];
+      const rows = allItems.map((item) => [
+        formatDateTime(item.createdAt),
+        item.moduleKey,
+        item.userName,
+        item.userMatricula ?? "",
+        item.changeType,
+        item.entityCode ?? item.entityId,
+        Object.entries(item.changes)
+          .map(([field, change]) => `${field}: ${change.from ?? "-"} -> ${change.to ?? "-"}`)
+          .join(" | "),
+      ]);
+      downloadCsvFile(buildCsvContent(headers, rows), `historico-alteracoes_${new Date().toISOString().slice(0, 10)}.csv`);
+
+      setFeedback({
+        type: data.truncated ? "error" : "success",
+        message: data.truncated
+          ? `Exportacao parcial: ${allItems.length} registro(s) exportado(s). Refine os filtros para exportar o restante.`
+          : `${allItems.length} registro(s) exportado(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({ type: "error", message: "Falha ao exportar o historico de alteracoes." });
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -196,7 +231,12 @@ export function ChangesTab() {
             <h2 className={styles.cardTitle}>Alteracoes registradas</h2>
             <p className={styles.tableHint}>Quem alterou o que, em qual tela, com data e diferenca de campos.</p>
           </div>
-          <CsvExportButton onClick={handleExport} disabled={isLoading || !items.length} showProgressModal={false} />
+          <CsvExportButton
+            onClick={() => void handleExport()}
+            disabled={isLoading || isExporting || exportCooldown.isCoolingDown}
+            isLoading={isExporting}
+            className={styles.ghostButton}
+          />
         </div>
 
         <div className={styles.tableWrapper}>

@@ -5,11 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDateTime } from "@/lib/utils/formatters";
 
-import { buildAccessLogQuery, fetchAccessLog } from "./api";
+import { buildAccessLogExportQuery, buildAccessLogQuery, fetchAccessLog, fetchAccessLogExport } from "./api";
 import styles from "./AuditPageView.module.css";
 import { EMPTY_ACCESS_FILTERS, type AccessLogFiltersState, type AccessLogItem, type FeedbackState } from "./types";
 
@@ -53,8 +54,10 @@ export function AccessTab() {
   const [activeFilters, setActiveFilters] = useState<AccessLogFiltersState>(EMPTY_ACCESS_FILTERS);
   const [items, setItems] = useState<AccessLogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const pagination = usePagination({ pageSize: PAGE_SIZE });
+  const exportCooldown = useExportCooldown();
 
   const loadItems = useCallback(
     async (targetPage: number, targetFilters: AccessLogFiltersState) => {
@@ -108,22 +111,54 @@ export function AccessTab() {
     void loadItems(nextPage, activeFilters);
   }
 
-  function handleExport() {
-    if (!items.length) {
-      setFeedback({ type: "error", message: "Nao ha registros carregados para exportar." });
+  async function handleExport() {
+    if (!session?.accessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para exportar." });
       return;
     }
-    const headers = ["Data", "Evento", "Status", "Motivo", "Origem", "Login", "Matricula"];
-    const rows = items.map((item) => [
-      formatDateTime(item.eventAt),
-      item.eventType,
-      item.status,
-      item.reason ?? "",
-      item.source,
-      item.loginName ?? "",
-      item.matricula ?? "",
-    ]);
-    downloadCsvFile(buildCsvContent(headers, rows), `log-acessos_${new Date().toISOString().slice(0, 10)}.csv`);
+    if (!exportCooldown.tryStart()) {
+      setFeedback({ type: "error", message: `Aguarde ${exportCooldown.getRemainingSeconds()}s antes de exportar novamente.` });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const query = buildAccessLogExportQuery(activeFilters);
+      const { ok, data } = await fetchAccessLogExport(session.accessToken, query);
+      if (!ok) {
+        setFeedback({ type: "error", message: data.message ?? "Falha ao exportar o log de acessos." });
+        return;
+      }
+
+      const allItems = data.items ?? [];
+      if (allItems.length === 0) {
+        setFeedback({ type: "error", message: "Nenhum registro encontrado para exportar com os filtros atuais." });
+        return;
+      }
+
+      const headers = ["Data", "Evento", "Status", "Motivo", "Origem", "Login", "Matricula"];
+      const rows = allItems.map((item) => [
+        formatDateTime(item.eventAt),
+        item.eventType,
+        item.status,
+        item.reason ?? "",
+        item.source,
+        item.loginName ?? "",
+        item.matricula ?? "",
+      ]);
+      downloadCsvFile(buildCsvContent(headers, rows), `log-acessos_${new Date().toISOString().slice(0, 10)}.csv`);
+
+      setFeedback({
+        type: data.truncated ? "error" : "success",
+        message: data.truncated
+          ? `Exportacao parcial: ${allItems.length} registro(s) exportado(s). Refine os filtros para exportar o restante.`
+          : `${allItems.length} registro(s) exportado(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({ type: "error", message: "Falha ao exportar o log de acessos." });
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -211,7 +246,12 @@ export function AccessTab() {
             <h2 className={styles.cardTitle}>Acessos registrados</h2>
             <p className={styles.tableHint}>Login, logout e motivo de saida (incluindo inatividade), por usuario.</p>
           </div>
-          <CsvExportButton onClick={handleExport} disabled={isLoading || !items.length} showProgressModal={false} />
+          <CsvExportButton
+            onClick={() => void handleExport()}
+            disabled={isLoading || isExporting || exportCooldown.isCoolingDown}
+            isLoading={isExporting}
+            className={styles.ghostButton}
+          />
         </div>
 
         <div className={styles.tableWrapper}>

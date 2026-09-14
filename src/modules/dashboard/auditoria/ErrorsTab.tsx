@@ -5,11 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { CsvExportButton } from "@/components/ui/CsvExportButton";
 import { Pagination } from "@/components/ui/Pagination";
 import { useAuth } from "@/hooks/useAuth";
+import { useExportCooldown } from "@/hooks/useExportCooldown";
 import { usePagination } from "@/hooks/usePagination";
 import { buildCsvContent, downloadCsvFile } from "@/lib/utils/csv";
 import { formatDateTime } from "@/lib/utils/formatters";
 
-import { buildErrorLogQuery, fetchErrorLog } from "./api";
+import { buildErrorLogExportQuery, buildErrorLogQuery, fetchErrorLog, fetchErrorLogExport } from "./api";
 import styles from "./AuditPageView.module.css";
 import { EMPTY_ERROR_FILTERS, type ErrorLogFiltersState, type ErrorLogItem, type FeedbackState } from "./types";
 
@@ -34,9 +35,11 @@ export function ErrorsTab() {
   const [activeFilters, setActiveFilters] = useState<ErrorLogFiltersState>(EMPTY_ERROR_FILTERS);
   const [items, setItems] = useState<ErrorLogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackState>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const pagination = usePagination({ pageSize: PAGE_SIZE });
+  const exportCooldown = useExportCooldown();
 
   const loadItems = useCallback(
     async (targetPage: number, targetFilters: ErrorLogFiltersState) => {
@@ -90,22 +93,54 @@ export function ErrorsTab() {
     void loadItems(nextPage, activeFilters);
   }
 
-  function handleExport() {
-    if (!items.length) {
-      setFeedback({ type: "error", message: "Nao ha registros carregados para exportar." });
+  async function handleExport() {
+    if (!session?.accessToken) {
+      setFeedback({ type: "error", message: "Sessao invalida para exportar." });
       return;
     }
-    const headers = ["Data", "Origem", "Severidade", "Tela", "Mensagem", "Usuario", "Matricula"];
-    const rows = items.map((item) => [
-      formatDateTime(item.createdAt),
-      item.source,
-      item.severity,
-      item.screen ?? "",
-      item.message,
-      item.loginName ?? "",
-      item.matricula ?? "",
-    ]);
-    downloadCsvFile(buildCsvContent(headers, rows), `log-erros_${new Date().toISOString().slice(0, 10)}.csv`);
+    if (!exportCooldown.tryStart()) {
+      setFeedback({ type: "error", message: `Aguarde ${exportCooldown.getRemainingSeconds()}s antes de exportar novamente.` });
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const query = buildErrorLogExportQuery(activeFilters);
+      const { ok, data } = await fetchErrorLogExport(session.accessToken, query);
+      if (!ok) {
+        setFeedback({ type: "error", message: data.message ?? "Falha ao exportar o log de erros." });
+        return;
+      }
+
+      const allItems = data.items ?? [];
+      if (allItems.length === 0) {
+        setFeedback({ type: "error", message: "Nenhum registro encontrado para exportar com os filtros atuais." });
+        return;
+      }
+
+      const headers = ["Data", "Origem", "Severidade", "Tela", "Mensagem", "Usuario", "Matricula"];
+      const rows = allItems.map((item) => [
+        formatDateTime(item.createdAt),
+        item.source,
+        item.severity,
+        item.screen ?? "",
+        item.message,
+        item.loginName ?? "",
+        item.matricula ?? "",
+      ]);
+      downloadCsvFile(buildCsvContent(headers, rows), `log-erros_${new Date().toISOString().slice(0, 10)}.csv`);
+
+      setFeedback({
+        type: data.truncated ? "error" : "success",
+        message: data.truncated
+          ? `Exportacao parcial: ${allItems.length} registro(s) exportado(s). Refine os filtros para exportar o restante.`
+          : `${allItems.length} registro(s) exportado(s) com sucesso.`,
+      });
+    } catch {
+      setFeedback({ type: "error", message: "Falha ao exportar o log de erros." });
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -187,7 +222,12 @@ export function ErrorsTab() {
             <h2 className={styles.cardTitle}>Erros registrados</h2>
             <p className={styles.tableHint}>Clique na mensagem para ver o stacktrace, quando disponivel.</p>
           </div>
-          <CsvExportButton onClick={handleExport} disabled={isLoading || !items.length} showProgressModal={false} />
+          <CsvExportButton
+            onClick={() => void handleExport()}
+            disabled={isLoading || isExporting || exportCooldown.isCoolingDown}
+            isLoading={isExporting}
+            className={styles.ghostButton}
+          />
         </div>
 
         <div className={styles.tableWrapper}>
