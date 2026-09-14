@@ -107,9 +107,11 @@ Funcoes principais
 - Caminho: `supabase/edge_functions/logout/index.ts`
   - Responsavel por: registrar um novo evento `LOGOUT`, inclusive para `TOKEN_EXPIRED`, correlacionando-o por `session_ref`.
 - Caminho: `src/context/AuthContext.tsx`
-  - Responsavel por: hidratar sessao, manter estado autenticado, tratar timeout por inatividade, token expirado e expor `login/logout`.
+  - Responsavel por: hidratar sessao, manter estado autenticado, tratar timeout por inatividade, token expirado e expor `login/logout`. Falha de infraestrutura do Supabase na hidratacao mantem a sessao em vez de deslogar.
 - Caminho: `src/lib/server/appUsersAdmin.ts`
-  - Responsavel por: resolver usuario autenticado, validar tenants disponiveis, aplicar o tenant ativo vindo do cookie `INDICA.activeTenantId`, bloquear header de tenant por padrao e retornar 428 quando admin nao selecionou contrato.
+  - Responsavel por: resolver usuario autenticado, validar tenants disponiveis, aplicar o tenant ativo vindo do cookie `INDICA.activeTenantId`, bloquear header de tenant por padrao e retornar 428 quando admin nao selecionou contrato. Retorna 503 quando o Supabase falha durante a resolucao (rede, timeout de 10s do Auth, 5xx).
+- Caminho: `src/lib/auth/authErrors.ts`
+  - Responsavel por: `isTransientAuthError` e `isTransientHttpStatus`, regra unica (cliente e servidor) para separar falha de infraestrutura de sessao invalida.
 - Caminho: `src/app/api/auth/active-tenant/route.ts`
   - Responsavel por: listar contratos ativos do admin, gravar o tenant selecionado em cookie `httpOnly` e limpar esse cookie no logout.
 - Caminho: `src/components/layout/AppShell.tsx`
@@ -215,3 +217,54 @@ Atualizacao 2026-08 - Estabilidade visual / CLS
     login.
 - Impacto multi-tenant:
   - Sem mudanca de API, banco, tenant_id, RLS, grants ou permissoes.
+
+Atualizacao 2026-09-14 - Falha do Supabase nao e sessao expirada
+-----------------------------------------------------------------
+ACHADO (incidente de 2026-09-14, banco Supabase Nano inacessivel por Disk IO em 100%)
+- Servidor: `resolveAuthenticatedAppUser` tratava QUALQUER erro de `getUser` como sessao invalida.
+  O `GET /api/dash-estoque` ficou 79s preso no `/auth/v1/user` (504 do gateway) e respondeu 401
+  com sessao valida. Falha de banco em `app_users`/`app_roles`/`app_user_tenants` virava 403
+  "Acesso negado".
+- Cliente: `AuthContext.hydrate` tratava QUALQUER erro de `setSession` como `TOKEN_EXPIRED` e
+  deslogava; a cada login novo o usuario era expulso de novo (DELETE `/api/auth/active-tenant` +
+  `/login` em loop nos logs da Vercel).
+- Logout duplicado: o auth-js emite `SIGNED_OUT` DENTRO do `setSession` quando a renovacao falha;
+  o listener chamava `expireSession` enquanto o `hydrate` tambem limpava a sessao (3 DELETEs no
+  mesmo instante nos logs).
+
+CORRECAO
+- `src/lib/auth/authErrors.ts` (novo): `isTransientAuthError` considera transitorio
+  `AuthRetryableFetchError` (rede, abort, 502/503/504), `AuthUnknownError` (resposta de erro nao-JSON,
+  ex.: pagina HTML do 522 do gateway — o GoTrue sempre responde erro em JSON) e `status` 0 ou >= 500.
+  401/403/400 continuam sendo sessao invalida.
+- Servidor (`appUsersAdmin.ts`):
+  - Falha transitoria no `getUser` ou nas 3 consultas de resolucao -> 503
+    "Servico de autenticacao indisponivel no momento. Tente novamente em instantes.".
+  - Chamadas a `/auth/v1/*` do client admin com timeout de 10s (`fetchWithAuthTimeout`). PostgREST
+    fica sem timeout aqui: exportacoes e importacoes em massa podem passar disso legitimamente.
+- Cliente (`AuthContext.tsx`):
+  - Erro transitorio no `setSession` da hidratacao mantem a sessao persistida; o proximo
+    carregamento da pagina sincroniza de novo.
+  - `hydrationsInProgressRef` (contador): `SIGNED_OUT`/`INITIAL_SESSION` sem sessao durante a
+    hidratacao sao ignorados; a decisao de encerrar e so do `hydrate`, uma vez.
+- Validacao das premissas do auth-js (servidor HTTP local simulando o Supabase, supabase-js instalado):
+  - timeout -> status 0, retentavel; 504 -> retentavel; 500 JSON -> status 500; 522 HTML ->
+    `AuthUnknownError` sem status; 401/403 -> nao transitorio; refresh 400 -> nao transitorio;
+    PostgREST 522 -> `status` 522; `SIGNED_OUT` emitido durante o `setSession`.
+
+- Limite conhecido: fora da hidratacao, o auto-refresh do auth-js remove a sessao e emite
+  `SIGNED_OUT` quando a renovacao falha com erro nao retentavel (ex.: 500/522). O evento nao carrega o
+  erro, entao esse caminho continua encerrando a sessao.
+
+- Arquivos alterados/criados:
+  - `src/lib/auth/authErrors.ts` (novo)
+  - `src/lib/server/appUsersAdmin.ts`
+  - `src/context/AuthContext.tsx`
+- Funcoes/constantes tocadas:
+  - `isTransientAuthError`, `isTransientHttpStatus`, `AUTH_REQUEST_TIMEOUT_MS`, `AUTH_UNAVAILABLE_ERROR`,
+    `fetchWithAuthTimeout`, `getSupabaseAdmin`, `resolveAuthenticatedAppUserUncached`,
+    `hydrationsInProgressRef`, `hydrate`, listener `onAuthStateChange`.
+- Impacto multi-tenant:
+  - Nenhuma resposta 503 carrega dado de tenant; resultado transitorio nao entra no cache de auth.
+  - Sessao invalida (401), usuario inativo (403), admin sem contrato (428) e header de tenant bloqueado
+    (403) seguem com o mesmo comportamento.
