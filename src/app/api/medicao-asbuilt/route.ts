@@ -1,6 +1,8 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
+import { AUTH_UNAVAILABLE_MESSAGE } from "@/lib/auth/authErrors";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { checkPageReadAccess } from "@/lib/server/pageAuthorization";
 import { authorizePageAction } from "@/lib/server/routeAuthorization";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { fetchTenantLinkedAppUsers, parsePagination } from "@/lib/server/apiHelpers";
@@ -407,38 +409,6 @@ function asbuiltMeasurementModuleMigrationHint(message: string | undefined, code
   return "";
 }
 
-async function ensureAsbuiltMeasurementPageAccess(resolution: AuthenticatedAppUserContext) {
-  if (resolution.role.isAdmin) {
-    return true;
-  }
-
-  const userPermission = await resolution.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("user_id", resolution.appUser.id)
-    .eq("page_key", "medicao-asbuilt")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) {
-    return Boolean(userPermission.data.can_access);
-  }
-
-  if (!resolution.appUser.role_id) {
-    return false;
-  }
-
-  const rolePermission = await resolution.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("role_id", resolution.appUser.role_id)
-    .eq("page_key", "medicao-asbuilt")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 async function resolveAsbuiltMeasurementContext(request: NextRequest, invalidSessionMessage: string) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage,
@@ -449,8 +419,11 @@ async function resolveAsbuiltMeasurementContext(request: NextRequest, invalidSes
     return resolution;
   }
 
-  const canAccess = await ensureAsbuiltMeasurementPageAccess(resolution);
-  if (!canAccess) {
+  const access = await checkPageReadAccess(resolution, "medicao-asbuilt");
+  if (access === "unavailable") {
+    return { error: { status: 503, message: AUTH_UNAVAILABLE_MESSAGE } };
+  }
+  if (access === "denied") {
     return {
       error: {
         status: 403,

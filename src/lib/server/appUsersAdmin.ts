@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-import { isTransientAuthError, isTransientHttpStatus } from "@/lib/auth/authErrors";
+import { AUTH_UNAVAILABLE_MESSAGE, isTransientAuthError, isTransientHttpStatus } from "@/lib/auth/authErrors";
 
 // --- Singleton: um único cliente admin por processo ---
 let _adminClient: SupabaseClient | null = null;
@@ -18,7 +18,7 @@ const AUTH_REQUEST_TIMEOUT_MS = 10_000;
 const AUTH_UNAVAILABLE_ERROR = {
   error: {
     status: 503,
-    message: "Servico de autenticacao indisponivel no momento. Tente novamente em instantes.",
+    message: AUTH_UNAVAILABLE_MESSAGE,
   },
 } as const;
 

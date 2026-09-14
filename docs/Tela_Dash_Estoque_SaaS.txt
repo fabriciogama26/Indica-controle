@@ -617,3 +617,21 @@ Ajuda contextual
   - Antes: exportacao da dispersao gerava CSV sem modal padrao.
   - Depois: os botoes `Exportar Excel` usam `ExportProgressModal` compartilhado durante a geracao.
   - Multi-tenant: sem mudanca em API, query, schema, RLS ou permissao.
+
+Atualizacao 2026-09-14 - Falha do banco na checagem de permissao responde 503
+--------------------------------------------------------------------------------
+- Antes: a checagem local `ensure*PageAccess` devolvia `false` quando a consulta a
+  `app_user_page_permissions`/`role_page_permissions` falhava, e a API respondia 403 "Acesso negado"
+  com o Supabase fora do ar (incidente de 2026-09-14).
+- Depois: a rota usa `checkPageReadAccess` (`src/lib/server/pageAuthorization.ts`), compartilhada pelas
+  8 rotas que tinham copias identicas. Falha de rede/timeout/5xx -> 503 com
+  `Servico de autenticacao indisponivel no momento. Tente novamente em instantes.`; sem permissao -> 403 como antes.
+- Regra de acesso inalterada: page_key `dash-estoque`; admin libera; senao `can_access` do usuario; sem linha do
+  usuario, `can_access` do role. Continua SEM o gate `app_pages.default_user_access` de `requirePageAction`
+  (divergencia registrada em `checkPageReadAccess` e no TASKS.md; migrar so apos conferir a pagina).
+- Arquivos alterados:
+  - `src/server/modules/dash-estoque/handler.ts` (`resolveDashContext`; removido `ensureDashPageAccess`)
+  - `src/server/modules/dash-estoque/aggregates.ts` (classificacao de erro da RPC: timeout `57014` -> 504 com mensagem propria; conexao/gateway -> 503; demais -> 500)
+  - `src/lib/server/pageAuthorization.ts` (`checkPageReadAccess`; `requirePageAction` tambem responde 503 em falha transitoria)
+  - `src/lib/auth/authErrors.ts` (`AUTH_UNAVAILABLE_MESSAGE`)
+- Multi-tenant: consultas de permissao continuam filtradas por `tenant_id` da sessao; nenhum dado de tenant na resposta 503.

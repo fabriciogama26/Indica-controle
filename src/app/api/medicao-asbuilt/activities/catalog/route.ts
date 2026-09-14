@@ -1,7 +1,8 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 
+import { AUTH_UNAVAILABLE_MESSAGE } from "@/lib/auth/authErrors";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
-import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
+import { checkPageReadAccess } from "@/lib/server/pageAuthorization";
 
 type CatalogRow = {
   id?: string;
@@ -54,31 +55,6 @@ function matchCatalogRow(item: CatalogRow, rawQuery: string) {
   );
 }
 
-async function ensureAsbuiltMeasurementPageAccess(resolution: AuthenticatedAppUserContext) {
-  if (resolution.role.isAdmin) return true;
-
-  const userPermission = await resolution.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("user_id", resolution.appUser.id)
-    .eq("page_key", "medicao-asbuilt")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) return Boolean(userPermission.data.can_access);
-  if (!resolution.appUser.role_id) return false;
-
-  const rolePermission = await resolution.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", resolution.appUser.tenant_id)
-    .eq("role_id", resolution.appUser.role_id)
-    .eq("page_key", "medicao-asbuilt")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 export async function GET(request: NextRequest) {
   try {
     const resolution = await resolveAuthenticatedAppUser(request, {
@@ -90,7 +66,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: resolution.error.message }, { status: resolution.error.status });
     }
 
-    if (!(await ensureAsbuiltMeasurementPageAccess(resolution))) {
+    const access = await checkPageReadAccess(resolution, "medicao-asbuilt");
+    if (access === "unavailable") {
+      return NextResponse.json({ message: AUTH_UNAVAILABLE_MESSAGE }, { status: 503 });
+    }
+    if (access === "denied") {
       return NextResponse.json({ message: "Acesso negado para pesquisar atividades do medicao-asbuilt." }, { status: 403 });
     }
 

@@ -602,3 +602,20 @@ Atualizacao 2026-08-20 - CSV de todos os projetos por categoria
 - Como validar:
   - Em `/dash-operacional-faturamento`, selecionar um Centro de servico, aplicar filtros opcionais do comparativo e clicar em `Extrair todos Projetos CSV`.
   - Conferir que o arquivo `dash_operacional_faturamento_todos_projetos_categorias_<centro>.csv` contem varias obras do recorte, com colunas de categorias e valores numericos com virgula decimal.
+
+Atualizacao 2026-09-14 - Falha do banco na checagem de permissao responde 503
+--------------------------------------------------------------------------------
+- Antes: a checagem local `ensure*PageAccess` devolvia `false` quando a consulta a
+  `app_user_page_permissions`/`role_page_permissions` falhava, e a API respondia 403 "Acesso negado"
+  com o Supabase fora do ar (incidente de 2026-09-14).
+- Depois: a rota usa `checkPageReadAccess` (`src/lib/server/pageAuthorization.ts`), compartilhada pelas
+  8 rotas que tinham copias identicas. Falha de rede/timeout/5xx -> 503 com
+  `Servico de autenticacao indisponivel no momento. Tente novamente em instantes.`; sem permissao -> 403 como antes.
+- Regra de acesso inalterada: page_key `dash-operacional-faturamento`; admin libera; senao `can_access` do usuario; sem linha do
+  usuario, `can_access` do role. Continua SEM o gate `app_pages.default_user_access` de `requirePageAction`
+  (divergencia registrada em `checkPageReadAccess` e no TASKS.md; migrar so apos conferir a pagina).
+- Arquivos alterados:
+  - `src/app/api/dash-operacional-faturamento/route.ts` (`resolveDashContext`; removido `ensureDashPageAccess`; 2406 -> 2383 linhas, baseline reduzido)
+  - `src/lib/server/pageAuthorization.ts` (`checkPageReadAccess`; `requirePageAction` tambem responde 503 em falha transitoria)
+  - `src/lib/auth/authErrors.ts` (`AUTH_UNAVAILABLE_MESSAGE`)
+- Multi-tenant: consultas de permissao continuam filtradas por `tenant_id` da sessao; nenhum dado de tenant na resposta 503.

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { AUTH_UNAVAILABLE_MESSAGE } from "@/lib/auth/authErrors";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
 import type { AuthenticatedAppUserContext } from "@/lib/server/appUsersAdmin";
 import { parsePagination } from "@/lib/server/apiHelpers";
+import { checkPageReadAccess } from "@/lib/server/pageAuthorization";
 
 type TeamRow = {
   id: string;
@@ -128,34 +130,6 @@ function chunks<T>(values: T[], size = CHUNK_SIZE) {
   return result;
 }
 
-async function ensurePageAccess(context: AuthenticatedAppUserContext) {
-  if (context.role.isAdmin) return true;
-
-  const userPermission = await context.supabase
-    .from("app_user_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", context.appUser.tenant_id)
-    .eq("user_id", context.appUser.id)
-    .eq("page_key", "estoque-equipes")
-    .maybeSingle<{ can_access: boolean }>();
-
-  if (!userPermission.error && userPermission.data) {
-    return Boolean(userPermission.data.can_access);
-  }
-
-  if (!context.appUser.role_id) return false;
-
-  const rolePermission = await context.supabase
-    .from("role_page_permissions")
-    .select("can_access")
-    .eq("tenant_id", context.appUser.tenant_id)
-    .eq("role_id", context.appUser.role_id)
-    .eq("page_key", "estoque-equipes")
-    .maybeSingle<{ can_access: boolean }>();
-
-  return !rolePermission.error && Boolean(rolePermission.data?.can_access);
-}
-
 async function resolveContext(request: NextRequest) {
   const resolution = await resolveAuthenticatedAppUser(request, {
     invalidSessionMessage: "Sessao invalida para carregar o estoque das equipes.",
@@ -164,7 +138,11 @@ async function resolveContext(request: NextRequest) {
 
   if ("error" in resolution) return resolution;
 
-  if (!(await ensurePageAccess(resolution))) {
+  const access = await checkPageReadAccess(resolution, "estoque-equipes");
+  if (access === "unavailable") {
+    return { error: { status: 503, message: AUTH_UNAVAILABLE_MESSAGE } };
+  }
+  if (access === "denied") {
     return {
       error: {
         status: 403,

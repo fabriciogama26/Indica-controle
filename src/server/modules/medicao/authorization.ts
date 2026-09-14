@@ -38,7 +38,8 @@ export async function authorizeMeasurementReadOrExportAction(
   });
 
   if (registrationAuthorization.allowed) return null;
-  if (registrationAuthorization.error.status === 500) {
+  // Falha de consulta (500/503) nao e "sem permissao": devolve o erro em vez de tentar a outra tela.
+  if (registrationAuthorization.error.status >= 500) {
     return buildMeasurementAuthorizationResponse(registrationAuthorization);
   }
 
@@ -49,7 +50,7 @@ export async function authorizeMeasurementReadOrExportAction(
   });
 
   if (visualizationAuthorization.allowed) return null;
-  if (visualizationAuthorization.error.status === 500) {
+  if (visualizationAuthorization.error.status >= 500) {
     return buildMeasurementAuthorizationResponse(visualizationAuthorization);
   }
 

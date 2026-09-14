@@ -1,5 +1,8 @@
 import { AuthUnknownError, isAuthRetryableFetchError } from "@supabase/supabase-js";
 
+/** Mensagem das respostas 503 quando sessao ou permissao nao podem ser validadas por falha do Supabase. */
+export const AUTH_UNAVAILABLE_MESSAGE = "Servico de autenticacao indisponivel no momento. Tente novamente em instantes.";
+
 /**
  * Status HTTP que indica falha de infraestrutura (Supabase fora do ar, timeout, gateway),
  * e nao resposta do servico sobre a sessao. `0` e o status que o supabase-js usa quando a
