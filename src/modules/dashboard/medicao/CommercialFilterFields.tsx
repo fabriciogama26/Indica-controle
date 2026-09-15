@@ -1,23 +1,33 @@
 "use client";
 
-// Filtros exclusivos da Medicao Comercial: `Incidencia` e `Eletricista`.
+// Filtros exclusivos da Medicao Comercial: `Incidencia`, `Eletricista` e `Processo`.
 //
 // Vivem fora do `MeasurementPageView` pelo mesmo motivo do
 // `CommercialOrderRefField`: o PageView e legado e esta no ratchet de tamanho
 // (guia_frontend.md, regra 15). Sao os unicos filtros que so fazem sentido na
-// variante comercial -- ordem tecnica nao tem Incidencia nem integrantes.
+// variante comercial -- ordem tecnica nao tem Incidencia, integrantes nem Processo.
 
 import type { CommercialElectricianOption } from "./CommercialMembersFields";
 
 export type CommercialFilterValue = {
   commercialOrderRef: string;
   commercialMember: string;
+  commercialProcessId: string;
 };
 
 export const EMPTY_COMMERCIAL_FILTERS: CommercialFilterValue = {
   commercialOrderRef: "",
   commercialMember: "",
+  commercialProcessId: "",
 };
+
+// Monta a parte comercial da query string da listagem e da exportacao. Na tela
+// tecnica os valores ficam sempre vazios, entao nenhum parametro e enviado.
+export function appendCommercialFilterParams(params: URLSearchParams, filters: CommercialFilterValue) {
+  if (filters.commercialOrderRef.trim()) params.set("commercialOrderRef", filters.commercialOrderRef.trim());
+  if (filters.commercialMember.trim()) params.set("commercialMember", filters.commercialMember.trim());
+  if (filters.commercialProcessId) params.set("commercialProcessId", filters.commercialProcessId);
+}
 
 const ELECTRICIAN_FILTER_LIST_ID = "medicao-comercial-eletricista-filtro-list";
 
@@ -26,6 +36,7 @@ type CommercialFilterFieldsProps = {
   onChange: (next: Partial<CommercialFilterValue>) => void;
   fieldClassName: string;
   electricians: CommercialElectricianOption[];
+  processes: Array<{ id: string; name: string }>;
 };
 
 export function CommercialFilterFields({
@@ -33,6 +44,7 @@ export function CommercialFilterFields({
   onChange,
   fieldClassName,
   electricians,
+  processes,
 }: CommercialFilterFieldsProps) {
   return (
     <>
@@ -66,6 +78,18 @@ export function CommercialFilterFields({
             />
           ))}
         </datalist>
+      </label>
+      <label className={fieldClassName}>
+        <span>Processo</span>
+        <select
+          value={value.commercialProcessId}
+          onChange={(event) => onChange({ commercialProcessId: event.target.value })}
+        >
+          <option value="">Todos</option>
+          {processes.map((process) => (
+            <option key={process.id} value={process.id}>{process.name}</option>
+          ))}
+        </select>
       </label>
     </>
   );

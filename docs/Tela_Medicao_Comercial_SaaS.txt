@@ -22,7 +22,7 @@ Arquitetura
 - View compartilhada: `src/modules/dashboard/medicao/MeasurementPageView.tsx`
 - Variantes da tela: `src/modules/dashboard/medicao/variant.ts`
 - Campos dos integrantes por nome/matricula: `src/modules/dashboard/medicao/CommercialMembersFields.tsx`
-- Filtros proprios da tela (`Incidencia` e `Eletricista`): `src/modules/dashboard/medicao/CommercialFilterFields.tsx`
+- Filtros proprios da tela (`Incidencia`, `Eletricista` e `Processo`) e a montagem da query string deles (`appendCommercialFilterParams`): `src/modules/dashboard/medicao/CommercialFilterFields.tsx`
 - Campo `Incidencia` + checagem de duplicidade: `src/modules/dashboard/medicao/CommercialOrderRefField.tsx` (o nome do arquivo e do componente segue a coluna `commercial_order_ref`, nao o rotulo da tela)
 - Catalogo de Processo: tabela `measurement_commercial_processes`, servida por `/api/medicao-comercial/meta`. Sem tela de cadastro: nasce semeada pela migration 415 (`Cobrancas`, `Novas_Ligacoes`, `Perdas`) e cresce por SQL.
 - API da tela (todas delegam):
@@ -130,7 +130,7 @@ Persistencia
 Filtros e listagem
 ------------------
 - Mesmos filtros da `Medicao`, com as listas de `Equipe` restritas a `Tipo de equipe` = `COMERCIAL`.
-- DOIS filtros existem SO nesta tela, porque so a ordem comercial tem os campos:
+- TRES filtros existem SO nesta tela, porque so a ordem comercial tem os campos:
   - `Incidencia`: busca por TRECHO, sem diferenciar caixa (`ilike` sobre `commercial_order_ref`).
     Mesma semantica do indice unico da 419, que compara `upper(btrim(...))`. Digitar `123` acha
     `1234` e `0123`.
@@ -145,13 +145,22 @@ Filtros e listagem
     - Termo que casa com mais de 200 pessoas volta `400` pedindo mais caracteres. Todos os ids
       iriam para a URL do filtro seguinte, que estoura muito antes disso -- recusar com mensagem
       e melhor que cortar em silencio e devolver lista errada.
-  - Os dois sao aplicados NO BANCO, na mesma consulta paginada da listagem, entao o `total` da
+  - `Processo`: select com as opcoes do catalogo `measurement_commercial_processes` que o
+    `/api/medicao-comercial/meta` ja carrega para o cadastro (so Processos ATIVOS). Casa por
+    `commercial_process_id`, nao pelo `commercial_process_name_snapshot`, entao renomear o
+    Processo no catalogo nao tira ordens antigas do filtro. Usa o indice parcial
+    `idx_project_measurement_orders_tenant_commercial_process` (migration 415); sem migration nova.
+    - Parametro `commercialProcessId`. Valor que nao e UUID volta `400` (`Processo invalido.`) em
+      vez de ser ignorado -- ignorar devolveria a lista inteira como se o filtro nao existisse.
+    - Limite conhecido: Processo DESATIVADO no catalogo nao aparece como opcao do filtro, mesmo
+      tendo ordens gravadas com ele. Mesmo comportamento do filtro `Motivo sem producao`.
+  - Os tres sao aplicados NO BANCO, na mesma consulta paginada da listagem, entao o `total` da
     paginacao conta certo. O de `Eletricista` usa join interno
     (`project_commercial_measurement_order_members!inner`), que descarta a ordem sem integrante
     correspondente e nao duplica a ordem em que os DOIS eletricistas casam: o PostgREST aninha os
     filhos em vez de multiplicar o pai. O join so entra na consulta quando o filtro esta
     preenchido, entao o caminho normal da listagem continua identico ao de antes.
-  - Os dois viajam na MESMA query string da exportacao, entao os dois CSVs saem filtrados junto.
+  - Os tres viajam na MESMA query string da exportacao, entao os dois CSVs saem filtrados junto.
   - Caracteres de sintaxe do PostgREST sao removidos do termo antes da consulta (`%`, `_`, `*`,
     virgula e parenteses): os tres primeiros sao curinga do `ilike` e os dois ultimos separam e
     agrupam condicoes dentro de um `or(...)`, entao um nome com virgula quebraria a expressao.
@@ -194,10 +203,13 @@ Validacao manual
   completa -- ignorar o filtro seria devolver tudo como se ele nao existisse.
 - Filtro `Eletricista` com uma letra so, num tenant com muita gente: confirmar a mensagem
   pedindo mais caracteres em vez de resultado cortado.
-- Combinar os dois filtros com `Data inicial`/`Data final` e `Equipe`, e conferir que o total da
+- Filtro `Processo`: escolher um Processo (ex.: `Perdas`) e confirmar que so aparecem ordens com
+  esse Processo na coluna; voltar para `Todos` e confirmar a lista completa; exportar os dois CSVs
+  com o filtro ativo e conferir a coluna `Processo`.
+- Combinar os tres filtros com `Data inicial`/`Data final` e `Equipe`, e conferir que o total da
   paginacao bate com a lista.
-- `Limpar` precisa zerar os dois campos novos junto com os demais.
-- Abrir a `Medicao` tecnica e confirmar que NENHUM dos dois filtros aparece la.
+- `Limpar` precisa zerar os tres campos junto com os demais.
+- Abrir a `Medicao` tecnica e confirmar que NENHUM dos tres filtros aparece la.
 - Cadastrar equipe `COMERCIAL` em `Equipes` sem encarregado e com supervisor; confirmar que salva.
 - Abrir `Medicao Comercial` e confirmar que o select de `Equipe` lista somente equipes comerciais.
 - Salvar uma ordem com Processo e horarios; tentar salvar com `Hora termino` menor ou igual a `Hora inicio` e confirmar o bloqueio.

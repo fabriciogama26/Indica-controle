@@ -286,14 +286,21 @@ export function parseMeasurementOrderListFilters(searchParams: URLSearchParams) 
     ? workCompletionStatusFilterRaw
     : resolveMeasurementWorkCompletionStatus(workCompletionStatusFilterRaw) ?? workCompletionStatusFilterRaw;
   const completionAlertFilter = normalizeText(searchParams.get("completionAlert")).toUpperCase();
-  // Os dois filtros abaixo so tem valor na Medicao Comercial: sao as unicas
-  // ordens com `commercial_order_ref` e com integrantes. Na tela tecnica os
-  // campos nem sao renderizados, entao chegam sempre vazios.
+  // Os tres filtros abaixo so tem valor na Medicao Comercial: sao as unicas
+  // ordens com `commercial_order_ref`, integrantes e Processo. Na tela tecnica
+  // os campos nem sao renderizados, entao chegam sempre vazios.
   const commercialOrderRefFilter = normalizeSearchTerm(searchParams.get("commercialOrderRef"));
   const commercialMemberFilter = normalizeSearchTerm(searchParams.get("commercialMember"));
+  const commercialProcessIdRaw = normalizeText(searchParams.get("commercialProcessId"));
+  const commercialProcessIdFilter = normalizeUuid(commercialProcessIdRaw);
 
   if (!startDate || !endDate) {
     return { ok: false as const, message: "startDate e endDate sao obrigatorios." };
+  }
+
+  // Id invalido nao pode cair em "sem filtro": seria devolver a lista inteira.
+  if (commercialProcessIdRaw && !commercialProcessIdFilter) {
+    return { ok: false as const, message: "Processo invalido." };
   }
 
   if (serviceTypeIdRaw && !serviceTypeId) {
@@ -321,6 +328,7 @@ export function parseMeasurementOrderListFilters(searchParams: URLSearchParams) 
       completionAlertFilter,
       commercialOrderRefFilter,
       commercialMemberFilter,
+      commercialProcessIdFilter,
     },
   };
 }
