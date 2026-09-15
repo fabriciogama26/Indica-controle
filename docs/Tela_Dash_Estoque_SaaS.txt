@@ -118,6 +118,31 @@ Cancelamento e saldo
 - O saldo atual vem do backend e e exibido de forma consolidada por material.
 - O grafico de evolucao usa o ledger de movimentacoes dentro do periodo filtrado e conta eventos operacionais distintos por tipo de operacao.
 
+Atualizacao 2026-09-15 - Timeout da RPC em producao corrigido (migration 440)
+----------------------------------------------------------------------------------------
+- Sintoma: logo apos o deploy da RPC 439 a tela mostrava "Banco de dados indisponivel no momento".
+- Medicao em producao (SQL Editor, tenant real, ano 2026):
+  - `explain (analyze) select public.get_stock_dashboard_aggregates(...)` -> Execution Time 10.305 ms.
+  - Com `set local statement_timeout = '8s'` a chamada estoura. Pela API a RPC roda como `service_role`,
+    que herda 8s do `authenticator`; o SQL Editor roda como `postgres` (ate 60s), por isso "funcionava
+    no SQL Editor".
+  - O PostgREST devolve o timeout (`57014`) como HTTP 500, e o handler mostrava qualquer 5xx como
+    "indisponivel" — mensagem corrigida no mesmo dia (timeout -> 504 com mensagem propria).
+- Causa: a 439 e `language sql` com CTEs; funcao assim e planejada sem os valores dos parametros. O
+  planejador subestima as movimentacoes do periodo e escolhe lacos aninhados que releem as CTEs para
+  cada item (custo quadratico). Reproduzido em Postgres 16 com massa sintetica do mesmo porte:
+  - 1.500 transferencias: 3.390 ms (funcao) x 170 ms (mesma consulta com valores literais).
+  - 3.000 transferencias: 10.827 ms (funcao) x 249 ms (mesma consulta com valores literais).
+- Correcao (migration 440): mesma consulta, mesmo contrato, em `language plpgsql` com
+  `set plan_cache_mode = force_custom_plan`. Mesma massa de 3.000 transferencias: 421 ms.
+- Validacao da 440: equivalencia com a logica antiga revalidada (20/20 combinacoes identicas) e teste de
+  mutacao reprovando os 2 defeitos injetados; resultado identico ao da 439 (arrays sem `order by` podem
+  mudar de ordem, e o Node ja reordena todos).
+- Publicacao: aplicar a migration 440. Nao exige deploy de codigo (a rota chama a mesma funcao).
+- Regra registrada em `guias/guia_sql.md` (regras 28-30).
+- Arquivos: `supabase/migrations/440_get_stock_dashboard_aggregates_custom_plan.sql` (novo),
+  `supabase/migrations/README.txt`, `guias/guia_sql.md`.
+
 Atualizacao 2026-09-14 - Agregacoes no banco via RPC (P2.1 da auditoria)
 ----------------------------------------------------------------------------------------
 - Origem: item P2.1 de `Auditoria/06-plano-de-acao.md` e incidente de 2026-09-14 (banco Supabase Nano

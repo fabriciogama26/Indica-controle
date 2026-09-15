@@ -59,6 +59,11 @@ Obrigatório sempre que a tarefa cria ou altera: migration, função PL/pgSQL, t
 26. Correção aplicada direto no Dashboard/SQL editor **vira migration na mesma tarefa**. Banco vivo correto com migration errada é falha de reprodutibilidade: `db reset`, branch de preview ou projeto novo recriam o objeto errado. Foi o caso de `v_stock_conflicts`/`v_stock_conflict_items` (criadas sem `security_invoker` na 007, corrigidas à mão em produção, removidas pela 377).
 27. View não é otimização por si só — ela não armazena resultado, é consulta salva. Criar view para centralizar JOIN e contrato de leitura; se a justificativa for performance, exigir `EXPLAIN (ANALYZE, BUFFERS)` antes e depois, e considerar RPC de agregação quando houver `GROUP BY`/parâmetro condicional (ver `docs/arquitetura/padrao-performance-backend.md`, seção 5).
 
+### RPC de leitura/agregação — plano genérico e `statement_timeout`
+28. RPC de leitura com CTEs, parâmetros opcionais (`p_x is null or ...`) ou filtro por período **não** é `language sql`. Função `language sql` que não pode ser embutida (CTE, retorno escalar/`jsonb`) é planejada **sem os valores dos parâmetros**: o planejador subestima as linhas e escolhe laços aninhados sobre CTEs materializadas, com custo quadrático. Usar `language plpgsql` com `set plan_cache_mode = force_custom_plan`, que planeja cada chamada com os valores reais. Caso real: `get_stock_dashboard_aggregates` levou 10.305 ms em produção como `language sql` (439) e caiu para centenas de ms na mesma consulta em PL/pgSQL (440).
+29. Medir RPC nova **chamando a função**, não só o corpo: `explain (analyze) select public.fn(...)`. O corpo com valores literais usa plano customizado e esconde o problema da regra 28. O tempo tem de ficar bem abaixo do `statement_timeout` de quem chama pela API: `service_role` herda **8s** do `authenticator` (`anon` 3s, `authenticated` 8s), enquanto o SQL Editor roda como `postgres` com até 60s — funcionar no SQL Editor não prova que funciona na API.
+30. `statement_timeout` estourado volta do PostgREST como HTTP **500** (código `57014`), não 503/504. Classificar pelo `code` do erro antes de dizer ao usuário que o banco está indisponível.
+
 ## 4. Fluxo recomendado
 
 1. Antes de criar tabela/coluna, mapear entidades relacionadas (regra 3) e confirmar `tenant_id`/RLS (regra 11-12).
