@@ -54,6 +54,7 @@ export async function listMeasurementOrdersPage(params: {
   completionAlertFilter: string;
   commercialOrderRefFilter?: string;
   commercialMemberFilter?: string;
+  commercialProcessIdFilter?: string | null;
   teamCategoryCodeFilter?: "TECNICA" | "COMERCIAL" | null;
   page: number | null;
   pageSize: number | null;
@@ -62,7 +63,7 @@ export async function listMeasurementOrdersPage(params: {
     supabase, tenantId, startDate, endDate, projectId, teamId, serviceTypeId, activityId,
     statusFilter, measurementKindFilter, noProductionReasonIdFilter, programmingMatchFilter,
     workCompletionStatusFilter, completionAlertFilter, page, pageSize,
-    teamCategoryCodeFilter, commercialOrderRefFilter, commercialMemberFilter,
+    teamCategoryCodeFilter, commercialOrderRefFilter, commercialMemberFilter, commercialProcessIdFilter,
   } = params;
 
   // A Medicao Comercial nao trabalha com Composicao de Equipe nem com Programacao:
@@ -197,6 +198,11 @@ export async function listMeasurementOrdersPage(params: {
     }
     if (commercialMemberPersonIds) {
       pagedQuery = pagedQuery.in("project_commercial_measurement_order_members.person_id", commercialMemberPersonIds);
+    }
+    // Processo: pelo id, nao pelo `commercial_process_name_snapshot`, para a ordem
+    // continuar no filtro mesmo se o nome do Processo mudar no catalogo depois.
+    if (commercialProcessIdFilter) {
+      pagedQuery = pagedQuery.eq("commercial_process_id", commercialProcessIdFilter);
     }
     if (serviceTypeProjectIdSet && serviceTypeProjectIdSet.size > 0) {
       pagedQuery = pagedQuery.in("project_id", Array.from(serviceTypeProjectIdSet));

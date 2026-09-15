@@ -19,7 +19,7 @@ import {
   type CommercialElectricianOption,
   type CommercialMembersValue,
 } from "./CommercialMembersFields";
-import { CommercialFilterFields, EMPTY_COMMERCIAL_FILTERS, type CommercialFilterValue } from "./CommercialFilterFields";
+import { appendCommercialFilterParams, CommercialFilterFields, EMPTY_COMMERCIAL_FILTERS, type CommercialFilterValue } from "./CommercialFilterFields";
 import {
   CommercialOrderRefField,
   IDLE_COMMERCIAL_ORDER_REF_CHECK,
@@ -456,8 +456,7 @@ function buildOrdersQuery(filters: Filters, page: number, pageSize = PAGE_SIZE) 
   if (filters.serviceTypeId) params.set("serviceTypeId", filters.serviceTypeId);
   if (filters.activityId) params.set("activityId", filters.activityId);
   if (filters.noProductionReasonId) params.set("noProductionReasonId", filters.noProductionReasonId);
-  if (filters.commercialOrderRef.trim()) params.set("commercialOrderRef", filters.commercialOrderRef.trim());
-  if (filters.commercialMember.trim()) params.set("commercialMember", filters.commercialMember.trim());
+  appendCommercialFilterParams(params, filters);
   return params.toString();
 }
 
@@ -3002,6 +3001,7 @@ export function MeasurementPageView({ variant = TECHNICAL_MEASUREMENT_VARIANT }:
               onChange={(next) => setFilterDraft((current) => ({ ...current, ...next }))}
               fieldClassName={styles.field}
               electricians={electricians}
+              processes={commercialProcesses}
             />
           ) : null}
           {/* Os tres filtros abaixo saem da Medicao Comercial: a tela nao trabalha
