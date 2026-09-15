@@ -151,6 +151,7 @@ Ordem de aplicacao
 437. 437_create_save_material_records_batch_rpc.sql
 438. 438_create_save_project_records_batch_rpc.sql
 439. 439_create_get_stock_dashboard_aggregates_rpc.sql
+440. 440_get_stock_dashboard_aggregates_custom_plan.sql
 
 Resumo por arquivo
 000_create_auth_and_audit_tables.sql
@@ -1744,3 +1745,17 @@ Observacao
   concedido so a `service_role` (chamada somente pela rota, que deriva o tenant da sessao).
 - Somente leitura: nao cria tabela, indice nem altera dado. Aplicar ANTES do deploy do codigo que a
   consome (`src/server/modules/dash-estoque/aggregates.ts`); nao afeta o codigo anterior.
+
+440_get_stock_dashboard_aggregates_custom_plan.sql
+- Corrige o timeout da RPC `get_stock_dashboard_aggregates` (439): em producao a chamada levou
+  10.305 ms, acima do `statement_timeout` de 8s da `service_role`, e o Dashboard Estoque falhava.
+- Causa: funcao `language sql` nao embutivel e planejada com plano generico (sem os valores dos
+  parametros); o planejador subestima as movimentacoes do periodo e escolhe lacos aninhados sobre
+  CTEs materializadas, com custo quadratico. Reproduzido em Postgres 16: 3.000 transferencias ->
+  10.827 ms na 439 x 249 ms com os valores literais.
+- Correcao: mesma consulta e mesmo contrato em `language plpgsql` com
+  `set plan_cache_mode = force_custom_plan` (plano com os valores reais a cada chamada): 421 ms
+  na mesma massa. Em producao, apos aplicar: 10.305 ms -> 597 ms. Resultado identico ao da 439; equivalencia com a implementacao anterior do
+  `route.ts` revalidada (20/20 combinacoes de filtro, teste de mutacao reprovando defeitos).
+- `create or replace` preserva assinatura e grants; revoke/grant repetidos (EXECUTE so
+  `service_role`). Nao exige deploy de codigo: a rota chama a mesma funcao.
