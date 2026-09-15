@@ -1755,7 +1755,7 @@ Observacao
   10.827 ms na 439 x 249 ms com os valores literais.
 - Correcao: mesma consulta e mesmo contrato em `language plpgsql` com
   `set plan_cache_mode = force_custom_plan` (plano com os valores reais a cada chamada): 421 ms
-  na mesma massa. Resultado identico ao da 439; equivalencia com a implementacao anterior do
+  na mesma massa. Em producao, apos aplicar: 10.305 ms -> 597 ms. Resultado identico ao da 439; equivalencia com a implementacao anterior do
   `route.ts` revalidada (20/20 combinacoes de filtro, teste de mutacao reprovando defeitos).
 - `create or replace` preserva assinatura e grants; revoke/grant repetidos (EXECUTE so
   `service_role`). Nao exige deploy de codigo: a rota chama a mesma funcao.

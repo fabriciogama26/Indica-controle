@@ -135,6 +135,10 @@ Atualizacao 2026-09-15 - Timeout da RPC em producao corrigido (migration 440)
   - 3.000 transferencias: 10.827 ms (funcao) x 249 ms (mesma consulta com valores literais).
 - Correcao (migration 440): mesma consulta, mesmo contrato, em `language plpgsql` com
   `set plan_cache_mode = force_custom_plan`. Mesma massa de 3.000 transferencias: 421 ms.
+- Resultado em PRODUCAO apos aplicar a 440 (mesmo tenant, ano 2026, SQL Editor):
+  `Execution Time` 10.305 ms -> 597 ms (~17x; folga de ~13x ate os 8s da `service_role`).
+  Conferido em `pg_proc`: linguagem `plpgsql`, `proconfig` = `search_path=public`,
+  `plan_cache_mode=force_custom_plan`.
 - Validacao da 440: equivalencia com a logica antiga revalidada (20/20 combinacoes identicas) e teste de
   mutacao reprovando os 2 defeitos injetados; resultado identico ao da 439 (arrays sem `order by` podem
   mudar de ordem, e o Node ja reordena todos).
