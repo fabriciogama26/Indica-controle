@@ -40,6 +40,29 @@
 -- Nao corrige nada sozinha: as tres recusas pedem acao humana. O unico caso em
 -- que a migration escreve e o vinculo de uma PI PENDING a uma etapa ativa LIVRE,
 -- que e completar, nao corrigir.
+--
+-- SEMANTICA TRANSACIONAL DO VINCULO FEITO AQUI
+-- ---------------------------------------------------------------------------
+-- O vinculo PERSISTE quando a validacao seguinte recusa a emissao. Nenhuma
+-- recusa de negocio desta funcao usa `raise`: todas devolvem o envelope
+-- `{success:false, ...}` que `rpcResponse` traduz em HTTP, padrao de toda a
+-- familia de RPCs desde a 430. Funcao que RETORNA nao desfaz nada, entao o
+-- UPDATE, a fotografia e o `LINK_AUTO` ficam gravados e `updated_at` muda.
+--
+-- E o comportamento certo: a PI pertence aquela etapa de fato, e a recusa
+-- seguinte, por supervisor ausente, existe JUSTAMENTE porque o vinculo passou a
+-- existir. O diagnostico chega ao usuario do mesmo jeito, porque a lista de
+-- erros viaja no envelope.
+--
+-- A alternativa, emissao atomica que desfaz o vinculo junto, exigiria `raise`
+-- para provocar rollback, e `raise` perderia a lista de erros da validacao no
+-- caminho — o cliente receberia 500 generico em vez das pendencias. Se essa
+-- troca for desejada, ela e deliberada e muda tambem a tela; nao acontece por
+-- acidente de escrita.
+--
+-- ORDEM E O SEQUENCIAL: as cinco recusas do ramo ISSUE ficam TODAS antes do
+-- `update public.pi_sequence_counter`. Nenhuma delas pode queimar numero de
+-- documento, e mover qualquer uma para depois quebraria isso.
 
 create or replace function public.set_permission_intervention_status(
   p_tenant_id uuid,
@@ -74,6 +97,7 @@ declare
   v_owner_pi_id uuid;
   v_owner_pi_code text;
   v_bind_updated_at timestamptz;
+  v_constraint text;
 begin
   if p_tenant_id is null or p_actor_user_id is null or p_pi_id is null then
     return jsonb_build_object('success', false, 'status', 400, 'reason', 'TENANT_OR_ACTOR_REQUIRED',
@@ -220,6 +244,14 @@ begin
           );
         exception
           when unique_violation then
+            -- Converter QUALQUER unique_violation em conflito de vinculo
+            -- mascararia constraint futura como se fosse disputa de etapa.
+            -- So o indice da etapa vira conflito; o resto sobe como erro.
+            get stacked diagnostics v_constraint = constraint_name;
+            if coalesce(v_constraint, '') <> 'permission_intervention_live_stage_key' then
+              raise;
+            end if;
+
             select id, pi_code into v_owner_pi_id, v_owner_pi_code
             from public.permission_intervention
             where tenant_id = p_tenant_id
@@ -256,6 +288,13 @@ begin
       -- Barreira final. Pega a PI presa a uma etapa historica enquanto outra
       -- etapa ativa ocupa a chave dela — caso em que `programming_id is not
       -- null` seria verdadeiro e mentiroso.
+      --
+      -- E FALLBACK, nao fluxo normal. Com o gatilho da 441 funcionando, essa
+      -- PI ja teria virado ATTENTION quando a etapa antiga mudou, e pararia na
+      -- primeira recusa. Este `if` so dispara quando `link_status` esta ERRADO:
+      -- registro anterior a 441, gatilho que engoliu erro, ou alteracao feita
+      -- direto no banco. E exatamente por isso ele compara com a etapa ativa em
+      -- vez de reler o estado — a defesa nao pode depender do dado suspeito.
       if v_current.programming_id is distinct from v_active_stage_id then
         return jsonb_build_object('success', false, 'status', 409, 'reason', 'LINKED_STAGE_NOT_ACTIVE',
           'message', 'Esta PI aponta para uma etapa que nao e mais a ativa desta data. Revise o vinculo antes de emitir.');
