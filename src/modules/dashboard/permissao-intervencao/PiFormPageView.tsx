@@ -121,7 +121,17 @@ export function PiFormPageView({ piId }: { piId: string }) {
         {header.linkStatus === "PENDING" ? (
           <p className={styles.warning}>
             PI criada sem Programacao. Aguardando a programacao do projeto {header.projectCode} em{" "}
-            {formatDate(header.workDate)}. O vinculo e feito sozinho quando a etapa daquela data existir.
+            {formatDate(header.workDate)}. O vinculo e feito sozinho assim que a etapa daquela data for criada,
+            enquanto a PI estiver em rascunho ou pronta. Depois de emitida, o vinculo passa a ser manual.
+          </p>
+        ) : null}
+
+        {/* Vinculo que ficou inconsistente. O sistema sinaliza e para: trocar a
+            etapa de uma PI e decisao humana, e nunca acontece por automacao. */}
+        {header.linkStatus === "ATTENTION" ? (
+          <p className={styles.warning}>
+            A etapa vinculada a esta PI saiu do plano ativo ou mudou de data. O vinculo foi mantido e precisa de
+            revisao: nenhuma automacao troca a etapa de uma PI.
           </p>
         ) : null}
 
@@ -195,7 +205,7 @@ export function PiFormPageView({ piId }: { piId: string }) {
         {pi.isDirty ? <p className={styles.mutedText}>Ha alteracoes nao salvas.</p> : null}
       </section>
 
-      <PiComparisonPanel rows={pi.comparison} />
+      <PiComparisonPanel rows={pi.comparison} snapshotSource={header.snapshotSource} />
 
       <PiFormFields
         form={pi.form}

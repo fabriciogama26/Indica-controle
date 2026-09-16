@@ -271,6 +271,22 @@ export function PermissionInterventionPageView() {
             />
           </label>
 
+          {/* Pendencia administrativa: PI emitida sem etapa cuja data ja tem
+              etapa ativa. Nao e um estado gravado na PI, e sim um cruzamento
+              feito na hora: a emitida e congelada para automacao de vinculo, e
+              alguem precisa decidir se vincula a mao ou reemite. */}
+          <label className={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              className={styles.checkbox}
+              checked={filters.issuedStageFound}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, issuedStageFound: event.target.checked }))
+              }
+            />
+            <span>Emitida com etapa encontrada depois</span>
+          </label>
+
           <div className={styles.filterActions}>
             <button type="button" className={styles.primaryButton} onClick={applyFilters} disabled={isLoading}>
               Filtrar
@@ -384,6 +400,10 @@ export function PermissionInterventionPageView() {
             // o proximo passo do usuario e sempre preenche-la.
             if (newPiId) router.push(`/permissao-intervencao/${newPiId}`);
             else void loadList();
+          }}
+          onOpenExisting={(existingPiId) => {
+            setIsModalOpen(false);
+            router.push(`/permissao-intervencao/${existingPiId}`);
           }}
           onError={(message) => setFeedback({ type: "error", message })}
         />

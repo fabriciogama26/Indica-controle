@@ -198,6 +198,15 @@ export type PiListFilters = {
   voltageLevelCode: string;
   dateFrom: string;
   dateTo: string;
+  /**
+   * Pendencia administrativa: PI EMITIDA sem etapa vinculada para cuja chave
+   * tenant + projeto + data ja existe etapa ativa.
+   *
+   * E derivada por consulta, nunca gravada na PI. A emitida e congelada para
+   * automacao de vinculo (migration 441), entao marcar a propria linha seria
+   * escrever num documento fechado so para poder filtrar.
+   */
+  issuedStageFound: boolean;
   page: number;
   pageSize: number;
 };

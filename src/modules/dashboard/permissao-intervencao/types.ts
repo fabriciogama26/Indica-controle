@@ -110,6 +110,16 @@ export type PiMutationResponse = {
   message?: string;
   reason?: string | null;
   errors?: Array<{ code: string; message: string }>;
+  /** So vem quando `reason` e PI_ALREADY_EXISTS: a PI que ja ocupa projeto + data. */
+  existingPi?: PiExistingSummary | null;
+};
+
+/** PI que ja existe na chave projeto + data, oferecida para abrir. */
+export type PiExistingSummary = {
+  id: string;
+  code: string | null;
+  status: string | null;
+  programmingId: string | null;
 };
 
 export type PiListFilterState = {
@@ -120,6 +130,8 @@ export type PiListFilterState = {
   voltageLevel: string;
   dateFrom: string;
   dateTo: string;
+  /** PI emitida sem etapa cuja data ja tem etapa ativa. Pendencia administrativa. */
+  issuedStageFound: boolean;
 };
 
 // ---------------------------------------------------------------------------
