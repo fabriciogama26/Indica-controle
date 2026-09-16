@@ -8,7 +8,6 @@ import {
   fetchPiMeta,
   PiRequestError,
   savePi,
-  savePiExecutionPlan,
 } from "./api";
 import type {
   PiCatalogOption,
@@ -30,8 +29,14 @@ import type {
  *
  * 1. `expectedUpdatedAt` acompanha TODA escrita. O backend recusa com 409 se a
  *    PI mudou por outro usuario, e cada resposta devolve o novo valor.
- * 2. O payload enviado e o conjunto COMPLETO dos campos editaveis, porque o
- *    backend trata chave ausente como nulo. E o que permite limpar um campo.
+ * 2. O payload enviado e o conjunto COMPLETO dos campos editaveis. Desde a
+ *    migration 444 isso deixou de ser convencao: chave AUSENTE e payload
+ *    invalido e o servidor recusa dizendo qual faltou. Para limpar um campo,
+ *    a chave vai com `null`. `PiFormState` declara as 41 como obrigatorias,
+ *    entao o TypeScript ja impede o esquecimento do lado da tela.
+ * 3. Cadastro e Plano de Execucao vao na MESMA chamada, e portanto na mesma
+ *    transacao. Eram duas, e falhar na segunda deixava plano novo com cadastro
+ *    velho.
  */
 
 const EMPTY_FORM: PiFormState = {
@@ -267,17 +272,15 @@ export function usePiForm(accessToken: string | null, piId: string) {
     setFeedback(null);
 
     try {
-      // O plano vai primeiro: as duas escritas tocam `updated_at`, e salvar o
-      // cadastro depois garante que o `expectedUpdatedAt` devolvido no fim seja
-      // o mais recente.
-      let expected = header.updatedAt;
-
-      if (JSON.stringify(steps) !== JSON.stringify(baselineSteps)) {
-        const planResult = await savePiExecutionPlan(accessToken, piId, expected, steps);
-        expected = planResult.updatedAt ?? expected;
-      }
-
-      await savePi(accessToken, piId, expected, { ...form });
+      // UMA chamada para cadastro e plano (migration 444). Eram duas, com o
+      // plano primeiro, e falhar na segunda deixava plano NOVO com cadastro
+      // VELHO — o plano e substituicao completa.
+      //
+      // `steps` so vai quando mudou: ausente significa "nao mexe no plano", e
+      // lista vazia significa "esvazia o plano". Mandar sempre transformaria
+      // todo salvamento numa reescrita do plano inteiro.
+      const planChanged = JSON.stringify(steps) !== JSON.stringify(baselineSteps);
+      await savePi(accessToken, piId, header.updatedAt, { ...form }, planChanged ? steps : undefined);
       await load();
       setFeedback({ type: "success", message: "PI salva com sucesso." });
       return true;
