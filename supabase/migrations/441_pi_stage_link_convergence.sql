@@ -137,7 +137,15 @@ as $$
   );
 $$;
 
-revoke all on function public.pi_stage_has_live_pi(uuid, uuid, uuid) from public, anon, authenticated;
+-- `service_role` no revoke, e nao so `public`/`anon`/`authenticated`: este
+-- projeto Supabase tem DEFAULT PRIVILEGES concedendo `execute` das funcoes de
+-- `public` tambem para `service_role`. Sem revogar dele, todo helper interno
+-- nasceria chamavel pela chave de servico da aplicacao.
+--
+-- Revogar nao quebra nada: os helpers so sao chamados de DENTRO de funcoes
+-- `SECURITY DEFINER` e do gatilho, onde o usuario corrente e o dono da funcao,
+-- nunca `service_role`.
+revoke all on function public.pi_stage_has_live_pi(uuid, uuid, uuid) from public, anon, authenticated, service_role;
 
 -- Grava o vinculo, a fotografia e o historico. Ponto unico de escrita do
 -- relacionamento: automacao, reconciliacao e vinculo manual passam todos por
@@ -210,7 +218,7 @@ begin
 end;
 $$;
 
-revoke all on function public.pi_bind_stage(uuid, uuid, uuid, uuid, text, text, text, jsonb) from public, anon, authenticated;
+revoke all on function public.pi_bind_stage(uuid, uuid, uuid, uuid, text, text, text, jsonb) from public, anon, authenticated, service_role;
 
 -- Lado ETAPA -> PI. Procura a PI pendente da chave de negocio daquela etapa e
 -- vincula. Devolve o id da PI vinculada, ou NULL quando nao havia o que fazer.
@@ -278,7 +286,7 @@ begin
 end;
 $$;
 
-revoke all on function public.pi_link_pending_for_stage(uuid, uuid, uuid) from public, anon, authenticated;
+revoke all on function public.pi_link_pending_for_stage(uuid, uuid, uuid) from public, anon, authenticated, service_role;
 
 -- Lado ETAPA -> PI, para vinculo que JA existe e ficou inconsistente.
 --
@@ -352,7 +360,7 @@ begin
 end;
 $$;
 
-revoke all on function public.pi_flag_stage_link_attention(uuid, uuid, uuid) from public, anon, authenticated;
+revoke all on function public.pi_flag_stage_link_attention(uuid, uuid, uuid) from public, anon, authenticated, service_role;
 
 -- =============================================================================
 -- 5) Reconciliacao do passivo
@@ -417,7 +425,7 @@ begin
 end;
 $$;
 
-revoke all on function public.pi_reconcile_pending_links(uuid, uuid) from public, anon, authenticated;
+revoke all on function public.pi_reconcile_pending_links(uuid, uuid) from public, anon, authenticated, service_role;
 
 -- =============================================================================
 -- 6) Execucao sobre o passivo existente
@@ -512,7 +520,7 @@ begin
 end;
 $$;
 
-revoke all on function public.pi_programming_link_sync() from public, anon, authenticated;
+revoke all on function public.pi_programming_link_sync() from public, anon, authenticated, service_role;
 
 -- Prefixo `zz_` pelo mesmo motivo das migrations 258 e 272: o gatilho le o
 -- estado final da etapa, entao precisa rodar depois dos demais.
@@ -1037,20 +1045,35 @@ declare
   v_fn text;
 begin
   -- Os helpers desta migration sao internos: chamados de dentro de outras
-  -- funcoes `security definer` e do gatilho, nunca pela aplicacao. Nenhum
-  -- recebe grant, nem para `service_role`.
+  -- funcoes `security definer` e do gatilho, nunca pela aplicacao.
+  --
+  -- A BARREIRA que este projeto sustenta e `anon`/`authenticated`, e e a unica
+  -- que aborta: e a mesma medida de `scripts/supabase/check-security-definer.ps1`
+  -- e da consulta ao vivo em `check-security-definer-live.sql`, e a mesma da
+  -- verificacao da migration 430.
+  --
+  -- `service_role` e revogado tambem, porque o DEFAULT PRIVILEGES deste projeto
+  -- concede `execute` a ele em toda funcao nova de `public` e nenhum helper
+  -- interno precisa disso. Mas aqui vira AVISO, nao erro: a chave de servico ja
+  -- e confiavel por construcao, e uma assercao sobre ela pode falhar por
+  -- pertencimento de role, transformando um reforco opcional em migration
+  -- travada.
   foreach v_fn in array array[
     'public.pi_stage_has_live_pi(uuid, uuid, uuid)',
     'public.pi_bind_stage(uuid, uuid, uuid, uuid, text, text, text, jsonb)',
     'public.pi_link_pending_for_stage(uuid, uuid, uuid)',
     'public.pi_flag_stage_link_attention(uuid, uuid, uuid)',
-    'public.pi_reconcile_pending_links(uuid, uuid)'
+    'public.pi_reconcile_pending_links(uuid, uuid)',
+    'public.pi_programming_link_sync()'
   ]
   loop
     if has_function_privilege('anon', v_fn::regprocedure, 'execute')
-       or has_function_privilege('authenticated', v_fn::regprocedure, 'execute')
-       or has_function_privilege('service_role', v_fn::regprocedure, 'execute') then
-      raise exception '441: % nao deveria ter grant de execucao', v_fn;
+       or has_function_privilege('authenticated', v_fn::regprocedure, 'execute') then
+      raise exception '441: % ainda executavel por anon/authenticated', v_fn;
+    end if;
+
+    if has_function_privilege('service_role', v_fn::regprocedure, 'execute') then
+      raise warning '441: % continua executavel por service_role apesar do revoke', v_fn;
     end if;
   end loop;
 
