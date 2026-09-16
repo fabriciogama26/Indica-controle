@@ -16,6 +16,11 @@
  *     limpa. NAO emite, entao NAO consome numero de PI e NAO altera nenhuma
  *     configuracao do contrato.
  *
+ *     Inclui a secao `Barreira de vinculo na emissao`, das migrations 442 e 443,
+ *     que exercita as recusas SEM emitir e confere o contador do sequencial
+ *     antes e depois de cada uma. Ela nao altera a Programacao: os unicos
+ *     ajustes diretos sao nas PIs que o proprio teste cria.
+ *
  *   node scripts/diagnosticos/pi-rpc-smoke.mjs --issue
  *     Faz tambem o caminho de emissao. Para isso precisa que o Plano de
  *     Emergencia esteja configurado: se estiver vazio, o script grava um texto
@@ -433,6 +438,10 @@ async function main() {
     await runFromProgrammingFlow(sb, { tenantId, actorId });
 
     // -----------------------------------------------------------------------
+    section("Barreira de vinculo na emissao (442/443)");
+    await runIssueLinkBarrierFlow(sb, { tenantId, actorId, settings: settings.data });
+
+    // -----------------------------------------------------------------------
     if (WITH_ISSUE) {
       section("Emissao");
       await runIssueFlow(sb, { tenantId, actorId, piId, updatedAt, settings: settings.data });
@@ -741,7 +750,15 @@ async function runFromProgrammingFlow(sb, { tenantId, actorId }) {
       },
       p_expected_updated_at: null,
     });
-    check("segunda PI viva na mesma data e recusada", duplicate.success === false && duplicate.reason === "DUPLICATE_PI", duplicate.reason);
+    // Desde a migration 441 a recusa vem da PRE-CHECAGEM pela chave de negocio,
+    // e nao mais do `unique_violation`: por isso o motivo mudou de `DUPLICATE_PI`
+    // para `PI_ALREADY_EXISTS`, e a resposta passou a dizer QUAL PI ja existe.
+    check(
+      "segunda PI viva na mesma data e recusada",
+      duplicate.success === false && duplicate.reason === "PI_ALREADY_EXISTS",
+      duplicate.reason,
+    );
+    check("a recusa identifica a PI existente", duplicate.existing_pi_id === piId, String(duplicate.existing_pi_id));
   } finally {
     if (piId) {
       const del = await sb.from("permission_intervention").delete().eq("tenant_id", tenantId).eq("id", piId);
@@ -1000,3 +1017,265 @@ async function runIssueFlow(sb, ctx) {
 }
 
 await main();
+
+/**
+ * Barreira de vinculo na EMISSAO (migrations 442 e 443).
+ *
+ * NAO EMITE e NAO CONSOME NUMERO. Todos os cenarios param antes do sequencial,
+ * de proposito: o valor do contador e conferido antes e depois de cada recusa.
+ *
+ * NAO TOCA A PROGRAMACAO. As etapas sao reais e ficam intactas; o unico ajuste
+ * direto e nas PIs que o proprio teste cria. E por isso que os dois cenarios de
+ * CORRIDA da 443 NAO estao cobertos aqui: reproduzi-los exigiria alterar a
+ * etapa ENTRE dois statements de uma mesma chamada RPC, o que nao se faz do
+ * lado do cliente. Ficam como lacuna declarada.
+ *
+ * Tambem nao cobre `LINKED_STAGE_NOT_ACTIVE`, que exigiria uma etapa inativa na
+ * mesma chave de uma ativa, combinacao que nao da para garantir num banco real.
+ */
+async function runIssueLinkBarrierFlow(sb, { tenantId, actorId, settings }) {
+  if (!settings.emergency_plan_text) {
+    console.log("  aviso: Plano de Emergencia vazio; a PI nao chega a PRONTA. Secao pulada.");
+    return;
+  }
+
+  const hasTemplate = await sb
+    .from("pi_document_template")
+    .select("id", { count: "exact", head: true })
+    .eq("tenant_id", tenantId)
+    .eq("is_active", true);
+  if ((hasTemplate.count ?? 0) === 0) {
+    console.log("  aviso: nenhum template ativo; a PI nao chega a PRONTA. Secao pulada.");
+    return;
+  }
+
+  // Pessoa com cargo habilitado para Encarregado, exigencia da migration 432.
+  const roleTitles = await sb.from("pi_role_job_titles").select("role, job_title_id").eq("tenant_id", tenantId);
+  const foremanTitles = (roleTitles.data ?? []).filter((r) => r.role === "FOREMAN").map((r) => r.job_title_id);
+  const people = await sb.from("people").select("id, job_title_id").eq("tenant_id", tenantId).eq("ativo", true);
+  const foreman =
+    foremanTitles.length > 0
+      ? (people.data ?? []).find((p) => foremanTitles.includes(p.job_title_id))
+      : (people.data ?? [])[0];
+  if (!check("ha encarregado com cargo habilitado", Boolean(foreman), "nenhum encontrado")) return;
+
+  // Etapa ativa LIVRE: a mesma escolha da secao anterior.
+  const stages = await sb
+    .from("programming")
+    .select("id, project_id, execution_date, feeder")
+    .eq("tenant_id", tenantId)
+    .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+    .not("execution_date", "is", null)
+    .order("execution_date", { ascending: false })
+    .limit(50);
+  const taken = await sb
+    .from("permission_intervention")
+    .select("programming_id")
+    .eq("tenant_id", tenantId)
+    .neq("status", "CANCELLED");
+  const used = new Set((taken.data ?? []).map((r) => r.programming_id).filter(Boolean));
+  const stage = (stages.data ?? []).find((row) => !used.has(row.id));
+  if (!stage) {
+    console.log("  aviso: nenhuma etapa ativa livre no banco; secao pulada.");
+    return;
+  }
+
+  const counter = async () => {
+    const row = await sb.from("pi_sequence_counter").select("last_value").eq("tenant_id", tenantId).maybeSingle();
+    return Number(row.data?.last_value ?? 0);
+  };
+  const readPi = async (id) => {
+    const row = await sb
+      .from("permission_intervention")
+      .select("programming_id, link_status, status, snapshot_source, source_programming_snapshot, updated_at, pi_sequence")
+      .eq("tenant_id", tenantId)
+      .eq("id", id)
+      .maybeSingle();
+    return row.data;
+  };
+
+  const basePayload = {
+    managerName: "SMOKE BARREIRA",
+    companyName: "SMOKE",
+    contractNumber: "SMOKE-442",
+    activityDescription: "Atividade de teste da barreira",
+    feeder: stage.feeder ?? "SMOKE01",
+    address: "Rua de Teste, 442",
+    operationAreas: ["PM"],
+    voltageLevels: ["MT"],
+    foremanPersonId: foreman.id,
+  };
+
+  let piId = null;
+  let otherPiId = null;
+  try {
+    // ---------------------------------------------------------------------
+    // Monta uma PI PRONTA vinculada aquela etapa.
+    const created = await callRpc(sb, "save_permission_intervention", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: null,
+      p_payload: { projectId: stage.project_id, workDate: stage.execution_date, creationSource: "FROM_PROGRAMMING", ...basePayload },
+      p_expected_updated_at: null,
+    });
+    if (!check("monta a PI de teste da barreira", created.success === true, created.message)) return;
+    piId = created.pi_id;
+
+    const withStep = await callRpc(sb, "save_pi_execution_steps", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: piId,
+      p_steps: [{ workZone: "ZONA 1", activity: "Etapa de teste", origin: "MANUAL" }],
+      p_expected_updated_at: created.updated_at,
+    });
+    if (!check("plano de execucao com uma etapa", withStep.success === true, withStep.message)) return;
+
+    const ready = await callRpc(sb, "set_permission_intervention_status", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: piId,
+      p_action: "READY",
+      p_reason: null,
+      p_expected_updated_at: withStep.updated_at,
+    });
+    if (!check("PI de teste chega a PRONTA", ready.success === true, JSON.stringify(ready.errors ?? ready.message))) return;
+
+    // ---------------------------------------------------------------------
+    // CENARIO 1 — o decisivo.
+    //
+    // PI volta a PENDENTE com a etapa ativa ainda livre, e perde um campo
+    // obrigatorio. A emissao tem de reconciliar o vinculo e SO ENTAO recusar
+    // pela validacao. Prova de uma vez: o vinculo acontece, ele PERSISTE apesar
+    // da recusa, fica auditado, e nenhum numero e consumido.
+    await sb
+      .from("permission_intervention")
+      .update({ programming_id: null, link_status: "PENDING", source_programming_snapshot: null, snapshot_source: null, feeder: null })
+      .eq("tenant_id", tenantId)
+      .eq("id", piId);
+
+    const before1 = await readPi(piId);
+    const counterBefore1 = await counter();
+    check("PI preparada como PENDENTE", before1.link_status === "PENDING" && before1.programming_id === null, before1.link_status);
+
+    const issue1 = await callRpc(sb, "set_permission_intervention_status", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: piId,
+      p_action: "ISSUE",
+      p_reason: null,
+      p_expected_updated_at: before1.updated_at,
+    });
+
+    const codes1 = (issue1.errors ?? []).map((e) => e.code);
+    check("emissao recusada pela validacao", issue1.success === false && issue1.reason === "VALIDATION_FAILED", issue1.reason);
+    check("a recusa e o campo faltando", codes1.includes("FEEDER_REQUIRED"), codes1.join(","));
+
+    const after1 = await readPi(piId);
+    check("o vinculo foi feito na emissao", after1.programming_id === stage.id, String(after1.programming_id));
+    check("o vinculo PERSISTE apos a recusa", after1.link_status === "LINKED", after1.link_status);
+    check("fotografia marcada como vinculo tardio", after1.snapshot_source === "LATE_STAGE_LINK", String(after1.snapshot_source));
+    check("fotografia gravada", Boolean(after1.source_programming_snapshot));
+    check("PI continua PRONTA, nao emitida", after1.status === "READY", after1.status);
+    check("nenhum numero consumido", (await counter()) === counterBefore1, `antes ${counterBefore1}`);
+
+    const hist = await sb.from("pi_history").select("action_type, metadata").eq("pi_id", piId);
+    const auto = (hist.data ?? []).find((h) => h.action_type === "LINK_AUTO" && h.metadata?.trigger === "ISSUE_RECONCILE");
+    check("historico registra a reconciliacao da emissao", Boolean(auto), JSON.stringify((hist.data ?? []).map((h) => h.action_type)));
+
+    // ---------------------------------------------------------------------
+    // CENARIO 2 — ATTENTION nao emite.
+    await sb
+      .from("permission_intervention")
+      .update({ feeder: basePayload.feeder, link_status: "ATTENTION" })
+      .eq("tenant_id", tenantId)
+      .eq("id", piId);
+
+    const before2 = await readPi(piId);
+    const counterBefore2 = await counter();
+    const issue2 = await callRpc(sb, "set_permission_intervention_status", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: piId,
+      p_action: "ISSUE",
+      p_reason: null,
+      p_expected_updated_at: before2.updated_at,
+    });
+    check("PI em ATENCAO nao emite", issue2.success === false && issue2.reason === "PI_LINK_REQUIRES_REVIEW", issue2.reason);
+    check("ATENCAO nao consome numero", (await counter()) === counterBefore2, `antes ${counterBefore2}`);
+
+    // ---------------------------------------------------------------------
+    // CENARIO 3 — etapa ativa que ja tem dona.
+    //
+    // Simula a reprogramacao SEM tocar na Programacao: a PI dona passa a ter
+    // outra data, continuando vinculada aquela etapa. A chave original fica
+    // livre para uma PI nova, que nascera PENDENTE porque a etapa tem dona.
+    const movedDate = new Date(`${stage.execution_date}T00:00:00Z`);
+    movedDate.setUTCDate(movedDate.getUTCDate() + 1);
+    const movedIso = movedDate.toISOString().slice(0, 10);
+
+    await sb
+      .from("permission_intervention")
+      .update({ work_date: movedIso, link_status: "LINKED" })
+      .eq("tenant_id", tenantId)
+      .eq("id", piId);
+
+    const createdOther = await callRpc(sb, "save_permission_intervention", {
+      p_tenant_id: tenantId,
+      p_actor_user_id: actorId,
+      p_pi_id: null,
+      p_payload: { projectId: stage.project_id, workDate: stage.execution_date, creationSource: "MANUAL", ...basePayload },
+      p_expected_updated_at: null,
+    });
+    if (check("cria a PI da data original", createdOther.success === true, createdOther.message)) {
+      otherPiId = createdOther.pi_id;
+      check("ela nasce PENDENTE porque a etapa tem dona", createdOther.link_status === "PENDING", String(createdOther.link_status));
+
+      const stepOther = await callRpc(sb, "save_pi_execution_steps", {
+        p_tenant_id: tenantId,
+        p_actor_user_id: actorId,
+        p_pi_id: otherPiId,
+        p_steps: [{ workZone: "ZONA 1", activity: "Etapa de teste", origin: "MANUAL" }],
+        p_expected_updated_at: createdOther.updated_at,
+      });
+
+      const readyOther = await callRpc(sb, "set_permission_intervention_status", {
+        p_tenant_id: tenantId,
+        p_actor_user_id: actorId,
+        p_pi_id: otherPiId,
+        p_action: "READY",
+        p_reason: null,
+        p_expected_updated_at: stepOther.updated_at ?? createdOther.updated_at,
+      });
+
+      if (check("a PI da data original chega a PRONTA", readyOther.success === true, JSON.stringify(readyOther.errors ?? readyOther.message))) {
+        const counterBefore3 = await counter();
+        const issue3 = await callRpc(sb, "set_permission_intervention_status", {
+          p_tenant_id: tenantId,
+          p_actor_user_id: actorId,
+          p_pi_id: otherPiId,
+          p_action: "ISSUE",
+          p_reason: null,
+          p_expected_updated_at: readyOther.updated_at,
+        });
+
+        check(
+          "etapa ativa com dona bloqueia a emissao",
+          issue3.success === false && issue3.reason === "ACTIVE_STAGE_ALREADY_LINKED",
+          issue3.reason,
+        );
+        check("a recusa identifica a PI dona", issue3.existing_pi_id === piId, String(issue3.existing_pi_id));
+        check("conflito de etapa nao consome numero", (await counter()) === counterBefore3, `antes ${counterBefore3}`);
+
+        const afterOther = await readPi(otherPiId);
+        check("a PI bloqueada continua PENDENTE", afterOther.link_status === "PENDING", afterOther.link_status);
+        check("a PI bloqueada nao foi emitida", afterOther.status === "READY", afterOther.status);
+      }
+    }
+  } finally {
+    for (const id of [otherPiId, piId]) {
+      if (!id) continue;
+      const del = await sb.from("permission_intervention").delete().eq("tenant_id", tenantId).eq("id", id);
+      check("PI da barreira removida", !del.error, del.error?.message);
+    }
+  }
+}
