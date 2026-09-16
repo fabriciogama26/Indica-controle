@@ -306,6 +306,14 @@ export function usePiForm(accessToken: string | null, piId: string) {
       return true;
     } catch (error) {
       const payload = error instanceof PiRequestError ? error.payload : null;
+
+      // Recarrega TAMBEM na falha. A emissao reconcilia o vinculo antes de
+      // validar (migration 442), entao ela pode vincular a etapa e so depois
+      // recusar por conteudo. O vinculo persiste e `updatedAt` muda; manter o
+      // token antigo faria a proxima acao do usuario tomar 409 sem motivo
+      // visivel, logo depois de ele corrigir o que a mensagem pediu.
+      await load();
+
       setFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "Falha ao alterar o status.",
