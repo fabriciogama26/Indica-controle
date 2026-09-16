@@ -154,6 +154,13 @@ export type PiHeader = {
   projectCity: string | null;
   linkedStage: PiStageClassification | null;
   emergencyPlanSnapshot: string | null;
+  /**
+   * Quando a fotografia da etapa foi tirada: `PI_CREATION` na criacao,
+   * `LATE_STAGE_LINK` num vinculo feito depois. O painel de comparacao precisa
+   * dizer qual dos dois, senao apresenta uma etapa localizada mais tarde como
+   * se tivesse originado a PI.
+   */
+  snapshotSource: string | null;
   updatedAt: string;
 };
 
@@ -196,6 +203,7 @@ export function usePiForm(accessToken: string | null, piId: string) {
       projectCity: detail.project?.city ?? null,
       linkedStage: (pi.linkedStage as PiStageClassification | null) ?? null,
       emergencyPlanSnapshot: (pi.emergencyPlanSnapshot as string | null) ?? null,
+      snapshotSource: (pi.snapshotSource as string | null) ?? null,
       updatedAt: text(pi.updatedAt),
     });
   }, []);

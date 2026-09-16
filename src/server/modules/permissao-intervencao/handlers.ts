@@ -59,6 +59,13 @@ type RpcResult = {
   link_status?: string;
   programming_id?: string | null;
   step_count?: number;
+  // Devolvidos apenas por `PI_ALREADY_EXISTS`: identificam a PI que ocupa a
+  // chave tenant + projeto + data, para a tela poder oferecer abri-la em vez de
+  // so recusar a criacao.
+  existing_pi_id?: string | null;
+  existing_pi_code?: string | null;
+  existing_pi_status?: string | null;
+  existing_programming_id?: string | null;
 };
 
 function jsonError(message: string, status: number, extra?: Record<string, unknown>) {
@@ -71,6 +78,16 @@ function rpcResponse(result: RpcResult, fallbackMessage: string) {
     return jsonError(result.message ?? fallbackMessage, Number(result.status ?? 400), {
       reason: result.reason ?? null,
       ...(result.errors ? { errors: result.errors } : {}),
+      ...(result.existing_pi_id
+        ? {
+            existingPi: {
+              id: result.existing_pi_id,
+              code: result.existing_pi_code ?? null,
+              status: result.existing_pi_status ?? null,
+              programmingId: result.existing_programming_id ?? null,
+            },
+          }
+        : {}),
     });
   }
 
@@ -102,6 +119,7 @@ function parseFilters(params: URLSearchParams): PiListFilters {
     voltageLevelCode: normalizeText(params.get("voltageLevel")),
     dateFrom: normalizeText(params.get("dateFrom")),
     dateTo: normalizeText(params.get("dateTo")),
+    issuedStageFound: params.get("issuedStageFound") === "true",
     page,
     pageSize,
   };

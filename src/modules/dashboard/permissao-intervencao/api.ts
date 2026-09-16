@@ -63,6 +63,7 @@ export async function fetchPiList(
   if (filters.voltageLevel) params.set("voltageLevel", filters.voltageLevel);
   if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
   if (filters.dateTo) params.set("dateTo", filters.dateTo);
+  if (filters.issuedStageFound) params.set("issuedStageFound", "true");
 
   const response = await fetch(`${BASE_URL}?${params.toString()}`, {
     cache: "no-store",

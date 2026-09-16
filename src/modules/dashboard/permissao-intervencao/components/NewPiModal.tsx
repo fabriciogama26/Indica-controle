@@ -6,8 +6,9 @@ import { getStageDisplayClassification } from "@/modules/dashboard/programacao-n
 import { formatDate } from "@/lib/utils/formatters";
 
 import { createPi, fetchProgrammingStages, PiRequestError } from "../api";
+import { PI_STATUS_LABELS } from "../constants";
 import styles from "../PermissionInterventionPageView.module.css";
-import type { PiProjectOption, PiStageOption } from "../types";
+import type { PiExistingSummary, PiProjectOption, PiStageOption, PiStatus } from "../types";
 
 /**
  * Fluxo `Nova PI`, em dois passos.
@@ -27,6 +28,7 @@ type Props = {
   projects: PiProjectOption[];
   onClose: () => void;
   onCreated: (piId: string, message: string) => void;
+  onOpenExisting: (piId: string) => void;
   onError: (message: string) => void;
 };
 
@@ -34,7 +36,7 @@ type Mode = "CHOOSE" | "FROM_PROGRAMMING" | "MANUAL";
 
 const MAX_SUGGESTIONS = 30;
 
-export function NewPiModal({ accessToken, projects, onClose, onCreated, onError }: Props) {
+export function NewPiModal({ accessToken, projects, onClose, onCreated, onOpenExisting, onError }: Props) {
   const [search, setSearch] = useState("");
   const [project, setProject] = useState<PiProjectOption | null>(null);
   const [mode, setMode] = useState<Mode>("CHOOSE");
@@ -45,6 +47,9 @@ export function NewPiModal({ accessToken, projects, onClose, onCreated, onError 
 
   const [manualDate, setManualDate] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  // PI que ja ocupa a chave projeto + data. Fica no modal, e nao no feedback da
+  // tela, porque a acao util e abrir aquela PI e nao fechar e tentar de novo.
+  const [existingPi, setExistingPi] = useState<PiExistingSummary | null>(null);
 
   const suggestions = useMemo(() => {
     const term = search.trim().toUpperCase();
@@ -85,6 +90,7 @@ export function NewPiModal({ accessToken, projects, onClose, onCreated, onError 
     }
 
     setIsSaving(true);
+    setExistingPi(null);
     try {
       const result = await createPi(accessToken, {
         projectId: project.id,
@@ -110,6 +116,15 @@ export function NewPiModal({ accessToken, projects, onClose, onCreated, onError 
     } catch (error) {
       const message =
         error instanceof PiRequestError ? error.message : error instanceof Error ? error.message : "Falha ao criar a PI.";
+
+      // A PI ja existe naquela chave. Isso nao e erro do usuario: e uma PI que
+      // ele provavelmente quer abrir. O servidor devolve qual e, tanto na
+      // pre-checagem quanto na corrida entre dois usuarios.
+      if (error instanceof PiRequestError && error.payload.existingPi) {
+        setExistingPi(error.payload.existingPi);
+        return;
+      }
+
       onError(message);
     } finally {
       setIsSaving(false);
@@ -127,6 +142,29 @@ export function NewPiModal({ accessToken, projects, onClose, onCreated, onError 
         </header>
 
         <div className={styles.modalBody}>
+          {existingPi ? (
+            <div className={styles.feedbackError}>
+              <p className={styles.feedbackMessage}>
+                Ja existe uma PI para este projeto em {manualDate || selectedStage?.executionDate
+                  ? formatDate(manualDate || (selectedStage?.executionDate ?? ""))
+                  : "esta data"}
+                .
+              </p>
+              <p className={styles.mutedText}>
+                PI {existingPi.code ?? "sem numero"} - Status:{" "}
+                {PI_STATUS_LABELS[existingPi.status as PiStatus] ?? existingPi.status ?? "-"} - Etapa:{" "}
+                {existingPi.programmingId ? "vinculada" : "ainda nao vinculada"}
+              </p>
+              <button
+                type="button"
+                className={styles.primaryButton}
+                onClick={() => onOpenExisting(existingPi.id)}
+              >
+                Abrir PI existente
+              </button>
+            </div>
+          ) : null}
+
           <section className={styles.step}>
             <span className={styles.stepLabel}>1. Projeto / Nota</span>
             {project ? (
@@ -264,7 +302,9 @@ export function NewPiModal({ accessToken, projects, onClose, onCreated, onError 
                 onChange={(event) => setManualDate(event.target.value)}
               />
               <p className={styles.mutedText}>
-                A PI nasce pendente. Se ja existir etapa ativa nesta data, o vinculo e feito na hora de salvar.
+                Se ja existir etapa ativa nesta data, o vinculo e feito na hora de salvar. Se nao existir, a PI nasce
+                pendente e e vinculada sozinha assim que a etapa daquela data for criada, enquanto estiver em rascunho
+                ou pronta.
               </p>
             </section>
           ) : null}

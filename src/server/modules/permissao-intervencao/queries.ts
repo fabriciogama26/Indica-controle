@@ -35,7 +35,7 @@ export const PI_SELECT = `
   foreman_alternate_person_id, foreman_alternate_name_snapshot,
   author_person_id, author_name_snapshot, prepared_at,
   validator_person_id, validator_name_snapshot, validated_at,
-  observations, source_programming_snapshot,
+  observations, source_programming_snapshot, snapshot_source,
   issued_at, issued_by, issued_template_id, issued_template_version, issued_template_checksum,
   cancellation_reason, cancelled_at, cancelled_by,
   created_by, updated_by, created_at, updated_at
@@ -156,6 +156,65 @@ async function resolveIdsByTag(
   return Array.from(new Set((data ?? []).map((row) => row.pi_id)));
 }
 
+/**
+ * Ids das PIs em pendencia administrativa: EMITIDA sem etapa vinculada cuja
+ * chave tenant + projeto + data ja tem etapa ativa.
+ *
+ * Derivado por consulta, nunca gravado. A PI emitida e congelada para automacao
+ * de vinculo (migration 441): o gatilho nao a toca, e marcar a linha so para
+ * poder filtrar seria escrever num documento fechado. Como ela nao tem etapa,
+ * tambem nao entra na marcacao de ATTENTION, que exige vinculo existente pela
+ * constraint de consistencia da migration 429.
+ *
+ * Duas consultas em vez de um `join`: o PostgREST nao cruza duas tabelas sem FK
+ * declarada entre elas, e aqui o cruzamento e pela chave de negocio.
+ */
+async function resolveIssuedStageFoundIds(
+  supabase: SupabaseClient,
+  tenantId: string,
+): Promise<string[]> {
+  const { data: issued } = await loadAllRows<{ id: string; project_id: string; work_date: string }>(
+    (from, to) =>
+      supabase
+        .from("permission_intervention")
+        .select("id, project_id, work_date")
+        .eq("tenant_id", tenantId)
+        .eq("status", "ISSUED")
+        .is("programming_id", null)
+        .order("id")
+        .range(from, to)
+        .returns<{ id: string; project_id: string; work_date: string }[]>(),
+  );
+
+  const rows = issued ?? [];
+  if (rows.length === 0) return [];
+
+  const projectIds = Array.from(new Set(rows.map((row) => row.project_id)));
+  const dates = Array.from(new Set(rows.map((row) => row.work_date)));
+  const found = new Set<string>();
+
+  // Blocos de 100 projetos: a lista vai na URL do PostgREST e uma carteira
+  // grande estouraria o limite de tamanho da requisicao.
+  for (let index = 0; index < projectIds.length; index += 100) {
+    const group = projectIds.slice(index, index + 100);
+    const { data: stages } = await loadAllRows<{ project_id: string; execution_date: string }>((from, to) =>
+      supabase
+        .from("programming")
+        .select("project_id, execution_date")
+        .eq("tenant_id", tenantId)
+        .in("project_id", group)
+        .in("execution_date", dates)
+        .in("status", ["PROGRAMADA", "REPROGRAMADA"])
+        .order("project_id")
+        .range(from, to)
+        .returns<{ project_id: string; execution_date: string }[]>(),
+    );
+    for (const stage of stages ?? []) found.add(`${stage.project_id}|${stage.execution_date}`);
+  }
+
+  return rows.filter((row) => found.has(`${row.project_id}|${row.work_date}`)).map((row) => row.id);
+}
+
 function intersect(a: string[] | null, b: string[] | null): string[] | null {
   if (a === null) return b;
   if (b === null) return a;
@@ -178,6 +237,9 @@ export async function fetchPiList(
     restrictedIds,
     await resolveIdsByTag(supabase, tenantId, "pi_voltage_level_link", "voltage_code", filters.voltageLevelCode),
   );
+  if (filters.issuedStageFound) {
+    restrictedIds = intersect(restrictedIds, await resolveIssuedStageFoundIds(supabase, tenantId));
+  }
 
   // Busca textual casa codigo da PI ou codigo do projeto. O projeto e resolvido
   // antes para a condicao virar um `in` de ids.
@@ -710,8 +772,13 @@ function asText(value: unknown): string {
  * nao nas RPCs. A estrutura devolvida ja serve de base para o dashboard de
  * qualidade do planejamento, sem precisar recalcular.
  *
- * PI sem snapshot (criada sem Programacao) nao tem origem contra a qual medir e
- * devolve lista vazia.
+ * PI sem snapshot nao tem origem contra a qual medir e devolve lista vazia.
+ *
+ * A fotografia pode ter sido tirada na criacao ou no momento de um vinculo
+ * feito depois (migration 441). Quem exibe precisa dizer qual dos dois foi:
+ * `snapshot_source` viaja no detalhe da PI como `snapshotSource`, e mostrar uma
+ * etapa localizada mais tarde como se tivesse originado a PI falsifica o
+ * historico. A comparacao em si e a mesma nos dois casos.
  */
 export function buildPiComparison(
   snapshot: Record<string, unknown> | null,

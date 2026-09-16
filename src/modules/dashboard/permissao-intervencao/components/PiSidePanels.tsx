@@ -16,7 +16,13 @@ import type { PiComparisonRow, PiHistoryEntry } from "../types";
  * sem Programacao nao tem origem a comparar e o painel nao aparece.
  */
 
-export function PiComparisonPanel({ rows }: { rows: PiComparisonRow[] }) {
+export function PiComparisonPanel({
+  rows,
+  snapshotSource,
+}: {
+  rows: PiComparisonRow[];
+  snapshotSource: string | null;
+}) {
   if (rows.length === 0) return null;
 
   const divergentCount = rows.filter((row) => row.divergent).length;
@@ -30,8 +36,14 @@ export function PiComparisonPanel({ rows }: { rows: PiComparisonRow[] }) {
         </span>
       </div>
 
+      {/* A fotografia pode ter sido tirada em dois momentos diferentes, e o
+          painel nao pode apresentar os dois como se fossem o mesmo: uma etapa
+          localizada depois nao originou a PI. */}
       <p className={styles.intro}>
-        Comparacao com a etapa no momento em que a PI foi criada. Divergir nao impede salvar nem emitir.
+        {snapshotSource === "LATE_STAGE_LINK"
+          ? "Etapa vinculada automaticamente apos a criacao da PI. Comparacao com a etapa no momento do vinculo."
+          : "Comparacao com a etapa no momento em que a PI foi criada."}{" "}
+        Divergir nao impede salvar nem emitir.
       </p>
 
       <div className={styles.tableScroll}>

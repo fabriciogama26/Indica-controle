@@ -26,6 +26,7 @@ export const EMPTY_PI_FILTERS: PiListFilterState = {
   voltageLevel: "",
   dateFrom: "",
   dateTo: "",
+  issuedStageFound: false,
 };
 
 export const PI_PAGE_SIZE = 20;
