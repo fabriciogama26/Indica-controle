@@ -1759,3 +1759,13 @@ Observacao
   `route.ts` revalidada (20/20 combinacoes de filtro, teste de mutacao reprovando defeitos).
 - `create or replace` preserva assinatura e grants; revoke/grant repetidos (EXECUTE so
   `service_role`). Nao exige deploy de codigo: a rota chama a mesma funcao.
+
+445_team_composition_technical_only_unmeasured_rpc.sql
+- Republica `list_unmeasured_team_composition_ids` com o parametro opcional
+  `p_team_ids uuid[]`, usado pela tela Composicao de Equipe para manter o filtro
+  `Medicao = Sem medicao` restrito a equipes TECNICAS antes da paginacao.
+- Troca a RPC para `language plpgsql` com `plan_cache_mode = force_custom_plan`,
+  porque ela combina parametros opcionais, CTEs e paginacao.
+- Remove a assinatura anterior para evitar overload ambiguo no PostgREST e repete
+  `revoke` de `public`/`anon`/`authenticated`, com `EXECUTE` apenas para
+  `service_role`.

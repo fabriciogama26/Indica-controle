@@ -5,7 +5,7 @@ Visao geral
 - Tela para registrar a composicao diaria de uma equipe por `Projetos + Equipe + Data`.
 - O cadastro parte da equipe selecionada e permite adicionar pessoas do cadastro `Pessoas`.
 - A lista exibe uma linha por composicao, mantendo os integrantes dentro dos detalhes/edicao.
-- Acima do cadastro, o painel `Composicoes das Equipes` compara todas as equipes ativas do tenant com as composicoes da data selecionada.
+- Acima do cadastro, o painel `Composicoes das Equipes` compara as equipes tecnicas ativas do tenant com as composicoes da data selecionada.
 - A tela possui dois CSVs:
   - `Exportar lista (CSV)`: exporta uma linha por composicao, com as mesmas colunas exibidas na listagem.
   - `Detalhes (CSV)`: exporta uma linha por integrante no padrao operacional: Data, PROJETO, Equipe, Situacao, Setor, Matricula, Colaborador, Funcao, CPF, TELEFONE, Patio, Placa, Hora inicial e Presente.
@@ -50,6 +50,8 @@ Cadastro
   - O primeiro projeto selecionado e mantido em `team_compositions.project_id` como referencia legada.
   - Todos os projetos ficam normalizados em `team_composition_projects`.
 - Ao selecionar uma equipe:
+  - Somente equipes tecnicas (`teams.team_category_id` resolvido como `TECNICA`) aparecem na tela.
+  - Equipes comerciais ficam fora do catalogo, do painel diario, da listagem/exportacao e sao recusadas pela API de salvamento.
   - A lista de selecao exibe a equipe no formato `Equipe / Encarregado`, quando o encarregado esta identificado.
   - A tela exibe placa e encarregado.
   - A tela preenche `Patio` automaticamente com o Centro de Servico vinculado a equipe.
@@ -84,7 +86,7 @@ Filtros, auto-complete e listagem
   - O cabecalho nao repete a data em texto; a referencia visivel fica somente no filtro `Data do acompanhamento`.
   - O filtro `Data do acompanhamento` fica imediatamente abaixo do titulo `Composicoes das Equipes`; os contadores permanecem alinhados no lado direito.
   - Exibe contadores de `Total`, `Cadastradas`, `Pendentes` e `Nao atuaram`.
-  - Exibe um cartao por equipe ativa no formato `Equipe / Encarregado`.
+  - Exibe um cartao por equipe tecnica ativa no formato `Equipe / Encarregado`.
   - Cartao vermelho: equipe sem composicao ativa na data.
   - Cartao verde: equipe com ao menos uma composicao ativa na data.
   - Cartao verde com `Nao atuou`: a composicao diaria foi registrada com `work_status = NOT_WORKING`.
@@ -96,7 +98,7 @@ Filtros, auto-complete e listagem
   - Data inicial
   - Data final
   - Projeto (input + datalist por SOB; filtra composicoes que contenham o projeto)
-  - Equipe (opcoes no formato `Equipe / Encarregado`, quando o encarregado esta identificado)
+  - Equipe tecnica (opcoes no formato `Equipe / Encarregado`, quando o encarregado esta identificado)
   - Situacao da equipe (`Todas`, `Atuando` ou `Nao atuou`)
   - Medicao (`Todas` ou `Sem medicao`), aplicado antes da paginacao e exportacao
     pela RPC `list_unmeasured_team_composition_ids`.
@@ -126,6 +128,7 @@ Filtros, auto-complete e listagem
 Boas praticas
 -------------
 - Toda leitura/escrita usa `tenant_id` do usuario autenticado.
+- A tela e isolada para equipes tecnicas por regra de backend. O recorte usa `teams.team_category_id` via a mesma fonte de verdade das telas de Medicao/Dashboard, sem inferir por nome.
 - `team_compositions`, `team_composition_projects` e `team_composition_members` possuem RLS por `user_can_access_tenant`.
 - O frontend valida projeto por SOB exato antes de filtrar ou salvar.
 - A API revalida todos os projetos ativos, equipe ativa e pessoas ativas do tenant antes de salvar.
@@ -736,3 +739,33 @@ Atualizacao 2026-08 - Projeto opcional em Nao atuou
   - Projeto opcional continua validado por `tenant_id = appUser.tenant_id`.
   - A RPC permanece `SECURITY DEFINER` executavel apenas por `service_role`, com revoke explicito de `public`, `anon` e `authenticated`.
   - Nao houve mudanca de RLS, grants de tabela, permissao de pagina ou aceite de `tenant_id` vindo do cliente.
+
+Atualizacao 2026-09 - Isolamento de equipes tecnicas
+----------------------------------------------------
+- Arquivos alterados/criados:
+  - `src/app/api/composicao-equipe/meta/route.ts`
+  - `src/app/api/composicao-equipe/route.ts`
+  - `supabase/migrations/445_team_composition_technical_only_unmeasured_rpc.sql`
+  - `supabase/migrations/README.txt`
+  - `docs/Tela_Composicao_Equipe_SaaS.txt`
+  - `TASKS.md`
+- Funcoes/rotas tocadas:
+  - `GET /api/composicao-equipe/meta`
+  - `GET /api/composicao-equipe`
+  - `POST /api/composicao-equipe`
+  - `PUT /api/composicao-equipe`
+  - RPC `list_unmeasured_team_composition_ids`
+  - `fetchTeamIdsByMeasurementMode`
+  - `resolveTeamMeasurementMode`
+- Comportamento antes/depois:
+  - Antes: a tela carregava todas as equipes ativas do tenant, incluindo equipes comerciais.
+  - Depois: Composicao de Equipe aceita somente equipes tecnicas.
+  - Depois: o meta retorna apenas equipes tecnicas ativas; o painel diario conta somente equipes tecnicas; listagem, detalhe, historico e exportacao ficam restritos a composicoes de equipes tecnicas.
+  - Depois: o salvamento recusa equipe comercial mesmo quando a chamada e feita diretamente na API.
+  - Depois: o filtro `Medicao = Sem medicao` recebeu `p_team_ids` na RPC para aplicar o recorte tecnico antes da paginacao e da totalizacao.
+- Permissao:
+  - `GET /api/composicao-equipe` e `GET /api/composicao-equipe/meta` passam a validar `composicao-equipe/read`, alinhando meta, painel, lista, detalhe e historico ao `page_key` da tela visivel.
+- Impacto multi-tenant:
+  - Todas as leituras continuam filtradas por `tenant_id` da sessao autenticada.
+  - O cliente nao envia `tenant_id` nem decide categoria de equipe; a API resolve pelo cadastro `teams.team_category_id`.
+  - A RPC continua sem acesso para `public`, `anon` e `authenticated`, com `EXECUTE` apenas para `service_role`.

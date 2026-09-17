@@ -9,6 +9,10 @@ import {
   normalizeExpectedUpdatedAt,
 } from "@/lib/server/concurrency";
 import { fetchTenantLinkedAppUsers, loadAllRows, parsePagination } from "@/lib/server/apiHelpers";
+import {
+  fetchTeamIdsByMeasurementMode,
+  resolveTeamMeasurementMode,
+} from "@/server/modules/medicao/teamMode";
 
 type CompositionRow = {
   id: string;
@@ -175,6 +179,7 @@ type UnmeasuredCompositionIdRow = {
 };
 
 const MEASUREMENT_CONTEXT_PAGE_SIZE = 1000;
+const EMPTY_UUID = "00000000-0000-0000-0000-000000000000";
 
 function normalizeText(value: unknown) {
   return String(value ?? "").trim();
@@ -209,6 +214,29 @@ function normalizeWorkStatus(value: unknown): "WORKING" | "NOT_WORKING" | null {
 function normalizeMeasurementStatus(value: unknown): MeasurementStatusFilter | null {
   const normalized = normalizeText(value).toUpperCase();
   return normalized === "UNMEASURED" ? normalized : null;
+}
+
+async function loadTechnicalTeamIds(supabase: SupabaseClient, tenantId: string, activeOnly = false) {
+  const result = await fetchTeamIdsByMeasurementMode({
+    supabase,
+    tenantId,
+    mode: "TECNICA",
+    activeOnly,
+  });
+
+  if (!result.ok) {
+    return { ok: false as const, message: result.message };
+  }
+
+  return {
+    ok: true as const,
+    ids: result.ids,
+    idSet: new Set(result.ids),
+  };
+}
+
+async function isTechnicalTeam(supabase: SupabaseClient, tenantId: string, teamId: string) {
+  return (await resolveTeamMeasurementMode({ supabase, tenantId, teamId })) === "TECNICA";
 }
 
 function isMissingWorkStatusColumnError(error: unknown) {
@@ -766,18 +794,36 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+    const authorizationError = await authorizePageAction(resolution, "composicao-equipe", "read");
+    if (authorizationError) {
+      return authorizationError;
+    }
+
     const params = request.nextUrl.searchParams;
     const detailId = normalizeUuid(params.get("detailId"));
     const historyId = normalizeUuid(params.get("historyCompositionId"));
     const coverageDate = normalizeIsoDate(params.get("coverageDate"));
 
     if (coverageDate) {
+      const technicalTeamsResult = await loadTechnicalTeamIds(supabase, appUser.tenant_id, true);
+      if (!technicalTeamsResult.ok) {
+        return NextResponse.json({ message: technicalTeamsResult.message }, { status: 500 });
+      }
+      if (!technicalTeamsResult.ids.length) {
+        return NextResponse.json({
+          coverageDate,
+          coverage: [],
+          summary: { total: 0, completed: 0, pending: 0, notWorking: 0 },
+        });
+      }
+
       const [teamsResult, compositionsResult] = await Promise.all([
         loadAllRows<CoverageTeamRow>((from, to) => supabase
           .from("teams")
           .select("id")
           .eq("tenant_id", appUser.tenant_id)
           .eq("ativo", true)
+          .in("id", technicalTeamsResult.ids)
           .order("name", { ascending: true })
           .order("id", { ascending: true })
           .range(from, to)
@@ -788,6 +834,7 @@ export async function GET(request: NextRequest) {
           .eq("tenant_id", appUser.tenant_id)
           .eq("composition_date", coverageDate)
           .eq("is_active", true)
+          .in("team_id", technicalTeamsResult.ids)
           .order("team_id", { ascending: true })
           .range(from, to)
           .returns<CoverageCompositionRow[]>()),
@@ -833,6 +880,9 @@ export async function GET(request: NextRequest) {
       if (!currentComposition) {
         return NextResponse.json({ message: "Composicao nao encontrada." }, { status: 404 });
       }
+      if (!(await isTechnicalTeam(supabase, appUser.tenant_id, currentComposition.team_id))) {
+        return NextResponse.json({ message: "Composicao nao encontrada." }, { status: 404 });
+      }
 
       const { data, error, count } = await supabase
         .from("app_entity_history")
@@ -875,6 +925,9 @@ export async function GET(request: NextRequest) {
       if (!composition) {
         return NextResponse.json({ message: "Composicao nao encontrada." }, { status: 404 });
       }
+      if (!(await isTechnicalTeam(supabase, appUser.tenant_id, composition.team_id))) {
+        return NextResponse.json({ message: "Composicao nao encontrada." }, { status: 404 });
+      }
 
       const members = await loadCompositionMembers(supabase, appUser.tenant_id, [detailId]);
       if (!members) {
@@ -900,6 +953,18 @@ export async function GET(request: NextRequest) {
     const workStatus = normalizeWorkStatus(params.get("workStatus"));
     const measurementStatus = normalizeMeasurementStatus(params.get("measurementStatus"));
     const { page, pageSize, from, to } = parsePagination(params, { maxPageSize: 100 });
+    const technicalTeamsResult = await loadTechnicalTeamIds(supabase, appUser.tenant_id);
+
+    if (!technicalTeamsResult.ok) {
+      return NextResponse.json({ message: technicalTeamsResult.message }, { status: 500 });
+    }
+
+    if (!technicalTeamsResult.ids.length || (teamId && !technicalTeamsResult.idSet.has(teamId))) {
+      return NextResponse.json({
+        compositions: [],
+        pagination: { page, pageSize, total: 0 },
+      });
+    }
 
     let projectCompositionIds: string[] | null = null;
     if (projectId) {
@@ -929,6 +994,7 @@ export async function GET(request: NextRequest) {
         p_end_date: endDate,
         p_project_id: projectId,
         p_team_id: teamId,
+        p_team_ids: teamId ? [teamId] : technicalTeamsResult.ids,
         p_work_status: workStatus,
         p_page: page,
         p_page_size: pageSize,
@@ -958,7 +1024,7 @@ export async function GET(request: NextRequest) {
       }
       if (projectId && projectCompositionIds) {
         if (!projectCompositionIds.length) {
-          query = query.eq("id", "00000000-0000-0000-0000-000000000000");
+          query = query.eq("id", EMPTY_UUID);
         } else {
           query = query.in("id", projectCompositionIds);
         }
@@ -967,11 +1033,13 @@ export async function GET(request: NextRequest) {
       }
       if (teamId) {
         query = query.eq("team_id", teamId);
+      } else {
+        query = query.in("team_id", technicalTeamsResult.ids);
       }
       if (unmeasuredCompositionIds) {
         query = unmeasuredCompositionIds.length
           ? query.in("id", unmeasuredCompositionIds)
-          : query.eq("id", "00000000-0000-0000-0000-000000000000");
+          : query.eq("id", EMPTY_UUID);
       }
       if (workStatus && !skipWorkStatusFilter) {
         query = workStatus === "WORKING"
@@ -1146,10 +1214,11 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
     return NextResponse.json({ message: "A mesma pessoa nao pode aparecer duas vezes na composicao." }, { status: 400 });
   }
 
-  const [selectedProjects, team, peopleMap] = await Promise.all([
+  const [selectedProjects, team, peopleMap, teamMode] = await Promise.all([
     fetchProjectsByIds(supabase, appUser.tenant_id, projectIds),
     fetchTeamById(supabase, appUser.tenant_id, teamId),
     fetchPeopleSnapshots(supabase, appUser.tenant_id, uniqueMemberPersonIds),
+    resolveTeamMeasurementMode({ supabase, tenantId: appUser.tenant_id, teamId }),
   ]);
 
   if (!selectedProjects) {
@@ -1161,6 +1230,12 @@ async function saveComposition(request: NextRequest, method: "POST" | "PUT") {
   const primaryProject = selectedProjects[0] ?? null;
   if (!team) {
     return NextResponse.json({ message: "Equipe invalida ou inativa para o tenant atual." }, { status: 422 });
+  }
+  if (teamMode !== "TECNICA") {
+    return NextResponse.json(
+      { message: "A Composicao de Equipe aceita somente equipes tecnicas." },
+      { status: 422 },
+    );
   }
   const yard = normalizeNullableText(team.serviceCenterName) ?? normalizeNullableText(body.yard);
   if (!yard) {

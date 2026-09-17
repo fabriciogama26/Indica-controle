@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { loadAllRows } from "@/lib/server/apiHelpers";
 import { resolveAuthenticatedAppUser } from "@/lib/server/appUsersAdmin";
+import { authorizePageAction } from "@/lib/server/routeAuthorization";
+import { fetchTeamIdsByMeasurementMode } from "@/server/modules/medicao/teamMode";
 
 type ProjectRow = {
   id: string;
@@ -15,7 +17,7 @@ type TeamRow = {
   name: string;
   vehicle_plate: string | null;
   service_center_id: string | null;
-  foreman_person_id: string;
+  foreman_person_id: string | null;
 };
 
 type PersonRow = {
@@ -57,6 +59,23 @@ export async function GET(request: NextRequest) {
     }
 
     const { supabase, appUser } = resolution;
+    const authorizationError = await authorizePageAction(resolution, "composicao-equipe", "read");
+    if (authorizationError) {
+      return authorizationError;
+    }
+
+    const technicalTeamsResult = await fetchTeamIdsByMeasurementMode({
+      supabase,
+      tenantId: appUser.tenant_id,
+      mode: "TECNICA",
+      activeOnly: true,
+    });
+
+    if (!technicalTeamsResult.ok) {
+      return NextResponse.json({ message: technicalTeamsResult.message }, { status: 500 });
+    }
+
+    const technicalTeamIds = technicalTeamsResult.ids;
     const [
       projectsResult,
       teamsResult,
@@ -74,13 +93,18 @@ export async function GET(request: NextRequest) {
         .order("id", { ascending: true })
         .range(from, to)
         .returns<ProjectRow[]>()),
-      supabase
-        .from("teams")
-        .select("id, name, vehicle_plate, service_center_id, foreman_person_id")
-        .eq("tenant_id", appUser.tenant_id)
-        .eq("ativo", true)
-        .order("name", { ascending: true })
-        .returns<TeamRow[]>(),
+      technicalTeamIds.length
+        ? loadAllRows<TeamRow>((from, to) => supabase
+          .from("teams")
+          .select("id, name, vehicle_plate, service_center_id, foreman_person_id")
+          .eq("tenant_id", appUser.tenant_id)
+          .eq("ativo", true)
+          .in("id", technicalTeamIds)
+          .order("name", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+          .returns<TeamRow[]>())
+        : Promise.resolve({ data: [] as TeamRow[], error: null }),
       loadAllRows<PersonRow>((from, to) => supabase
         .from("people")
         .select("id, nome, matriculation, cpf, phone, job_title_id")
@@ -134,7 +158,7 @@ export async function GET(request: NextRequest) {
         .filter((project) => project.id && project.code),
       teams: (teamsResult.data ?? [])
         .map((team) => {
-          const foreman = personMap.get(team.foreman_person_id) ?? null;
+          const foreman = team.foreman_person_id ? personMap.get(team.foreman_person_id) ?? null : null;
           return {
             id: team.id,
             name: normalizeText(team.name),
