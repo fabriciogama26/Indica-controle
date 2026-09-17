@@ -158,6 +158,103 @@ async function callRpc(sb, name, args) {
 }
 
 // ---------------------------------------------------------------------------
+// Contrato do formulario (migration 444)
+// ---------------------------------------------------------------------------
+
+/** Versao do contrato; espelha `PI_FORM_PAYLOAD_VERSION` e `v_expected_version`. */
+const FORM_VERSION = 1;
+
+/** As 41 chaves editaveis. Na EDICAO, chave ausente e payload invalido. */
+const FORM_KEYS = [
+  "primaryOperationAreaCode", "primaryVoltageLevelCode",
+  "operationAreas", "contactOperationAreas", "voltageLevels", "interferingVoltageLevels",
+  "managerName", "companyName", "contractNumber", "managerPhone", "managerEmail",
+  "utilityContactName", "utilityContactPhone", "utilityContactEmail",
+  "activityDescription", "workPlan", "liveWorkAuthorization", "preApr", "emergencyAuthorization",
+  "startTime", "endDate", "endTime", "secondaryDate", "secondaryStartTime",
+  "installationDescription", "feeder", "address", "coordX", "coordY",
+  "blockedElements", "cutElements", "hasInterferingInstallation", "interferingDescription",
+  "trafficInstructions",
+  "supervisorPersonId", "supervisorAlternatePersonId",
+  "foremanPersonId", "foremanAlternatePersonId",
+  "authorPersonId", "validatorPersonId", "observations",
+];
+
+const ARRAY_KEYS = new Set(["operationAreas", "contactOperationAreas", "voltageLevels", "interferingVoltageLevels"]);
+
+/** Completa o parcial com as 41 chaves, como a tela faz ao mandar o estado inteiro. */
+function fullFormPayload(partial) {
+  const out = {};
+  for (const key of FORM_KEYS) {
+    out[key] = key in partial ? partial[key] : ARRAY_KEYS.has(key) ? [] : null;
+  }
+  for (const [key, value] of Object.entries(partial)) {
+    if (!(key in out)) out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Le a PI e monta o payload com os valores ATUAIS.
+ *
+ * Existe porque a 444 acabou com a escrita "so do plano": a orquestradora
+ * sempre grava o cadastro junto. Mandar o plano com um payload vazio limparia
+ * a PI inteira — e e exatamente por isso que a tela manda sempre o estado
+ * completo do formulario.
+ */
+async function currentFormPayload(sb, tenantId, piId) {
+  const row = await sb.from("permission_intervention").select("*").eq("tenant_id", tenantId).eq("id", piId).maybeSingle();
+  const data = row.data ?? {};
+  const out = {};
+  for (const key of FORM_KEYS) {
+    if (ARRAY_KEYS.has(key)) continue;
+    const column = key.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase());
+    out[key] = data[column] ?? null;
+  }
+  const areas = await sb.from("pi_operation_area_link").select("scope, area_code").eq("tenant_id", tenantId).eq("pi_id", piId);
+  const volts = await sb.from("pi_voltage_level_link").select("scope, voltage_code").eq("tenant_id", tenantId).eq("pi_id", piId);
+  out.operationAreas = (areas.data ?? []).filter((r) => r.scope === "PI").map((r) => r.area_code);
+  out.contactOperationAreas = (areas.data ?? []).filter((r) => r.scope === "CONTACT").map((r) => r.area_code);
+  out.voltageLevels = (volts.data ?? []).filter((r) => r.scope === "PI").map((r) => r.voltage_code);
+  out.interferingVoltageLevels = (volts.data ?? []).filter((r) => r.scope === "INTERFERING").map((r) => r.voltage_code);
+  return out;
+}
+
+/**
+ * Substitui a chamada direta a `save_permission_intervention`, que perdeu o
+ * grant de `service_role` na 444. O teste passa a escrever pelo mesmo caminho
+ * da tela, que e o unico que existe.
+ *
+ * `p_full: false` envia o payload como veio, sem completar as 41 chaves — e o
+ * que permite exercitar a recusa por chave faltando.
+ */
+async function saveForm(sb, args) {
+  const isEdit = Boolean(args.p_pi_id);
+  return callRpc(sb, "save_permission_intervention_form", {
+    p_tenant_id: args.p_tenant_id,
+    p_actor_user_id: args.p_actor_user_id,
+    p_pi_id: args.p_pi_id ?? null,
+    p_payload_version: args.p_payload_version ?? FORM_VERSION,
+    p_payload: isEdit && args.p_full !== false ? fullFormPayload(args.p_payload ?? {}) : args.p_payload ?? {},
+    p_steps: args.p_steps ?? null,
+    p_expected_updated_at: args.p_expected_updated_at ?? null,
+  });
+}
+
+/** Substitui a chamada direta a `save_pi_execution_steps`, tambem sem grant. */
+async function savePlan(sb, args) {
+  return callRpc(sb, "save_permission_intervention_form", {
+    p_tenant_id: args.p_tenant_id,
+    p_actor_user_id: args.p_actor_user_id,
+    p_pi_id: args.p_pi_id,
+    p_payload_version: FORM_VERSION,
+    p_payload: await currentFormPayload(sb, args.p_tenant_id, args.p_pi_id),
+    p_steps: args.p_steps ?? [],
+    p_expected_updated_at: args.p_expected_updated_at ?? null,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Execucao
 // ---------------------------------------------------------------------------
 
@@ -209,7 +306,7 @@ async function main() {
     // -----------------------------------------------------------------------
     section("Criacao sem Programacao");
 
-    const created = await callRpc(sb, "save_permission_intervention", {
+    const created = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: null,
@@ -258,7 +355,7 @@ async function main() {
     // -----------------------------------------------------------------------
     section("Concorrencia otimista");
 
-    const stale = await callRpc(sb, "save_permission_intervention", {
+    const stale = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -267,7 +364,7 @@ async function main() {
     });
     check("salvar com updated_at velho da 409", stale.success === false && Number(stale.status) === 409, stale.reason);
 
-    const noExpected = await callRpc(sb, "save_permission_intervention", {
+    const noExpected = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -279,7 +376,7 @@ async function main() {
     // -----------------------------------------------------------------------
     section("Edicao e historico");
 
-    const edited = await callRpc(sb, "save_permission_intervention", {
+    const edited = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -322,7 +419,7 @@ async function main() {
     // -----------------------------------------------------------------------
     section("Plano de Execucao");
 
-    const steps = await callRpc(sb, "save_pi_execution_steps", {
+    const steps = await savePlan(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -343,7 +440,7 @@ async function main() {
 
     // Reordenar exercita a unique DEFERRABLE: sem ela, a troca de posicoes
     // esbarraria no estado intermediario duplicado.
-    const reordered = await callRpc(sb, "save_pi_execution_steps", {
+    const reordered = await savePlan(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -357,7 +454,7 @@ async function main() {
     check("reordena o plano", reordered.success === true, reordered.message);
     if (reordered.success) updatedAt = reordered.updated_at;
 
-    const overflow = await callRpc(sb, "save_pi_execution_steps", {
+    const overflow = await savePlan(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -381,7 +478,7 @@ async function main() {
     const overflowCodes = (tooManyReady.errors ?? []).map((e) => e.code);
     check("24 etapas bloqueiam a emissao", overflowCodes.includes("EXECUTION_PLAN_OVERFLOW"), overflowCodes.join(","));
 
-    const back = await callRpc(sb, "save_pi_execution_steps", {
+    const back = await savePlan(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -428,6 +525,10 @@ async function main() {
     // -----------------------------------------------------------------------
     section("Contrato do formulario");
     updatedAt = (await runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt })) ?? updatedAt;
+
+    // -----------------------------------------------------------------------
+    section("Atomicidade do formulario (444)");
+    await runFormAtomicityChecks(sb, { tenantId, actorId, piId, updatedAt });
 
     // -----------------------------------------------------------------------
     section("Camada de leitura (queries.ts)");
@@ -520,7 +621,7 @@ async function runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt }) 
     observations: "Observacao de teste",
   };
 
-  const saved = await callRpc(sb, "save_permission_intervention", {
+  const saved = await saveForm(sb, {
     p_tenant_id: tenantId,
     p_actor_user_id: actorId,
     p_pi_id: piId,
@@ -545,15 +646,75 @@ async function runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt }) 
   check("snapshot do nome preenchido pela RPC", Boolean(data.supervisor_name_snapshot), String(data.supervisor_name_snapshot));
   check("string vazia vira nulo", data.secondary_date === null, String(data.secondary_date));
 
-  // Chave ausente tem de LIMPAR, nao preservar.
-  const cleared = await callRpc(sb, "save_permission_intervention", {
+  // -------------------------------------------------------------------------
+  // Contrato NOVO (migration 444). Ate a 443 valia "chave ausente = nulo", e
+  // este bloco provava isso. Agora ausente e payload INVALIDO, e limpar exige
+  // `null` explicito. Os dois lados sao exercitados, e as duas recusas tambem
+  // provam que nada foi gravado.
+  const untouched = async () => {
+    const row = await sb
+      .from("permission_intervention")
+      .select("manager_name, feeder, updated_at")
+      .eq("tenant_id", tenantId)
+      .eq("id", piId)
+      .maybeSingle();
+    return row.data ?? {};
+  };
+
+  const beforeRefusals = await untouched();
+
+  const outdated = await saveForm(sb, {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload_version: 999,
+    p_payload: { feeder: "NAO DEVE GRAVAR" },
+    p_expected_updated_at: saved.updated_at,
+  });
+  check(
+    "versao de contrato errada e recusada",
+    outdated.success === false && outdated.reason === "PI_FORM_VERSION_OUTDATED",
+    outdated.reason,
+  );
+  check("a recusa diz qual versao e a esperada", outdated.expected_version === FORM_VERSION, String(outdated.expected_version));
+
+  const missing = await saveForm(sb, {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: { feeder: "NAO DEVE GRAVAR" },
+    p_full: false,
+    p_expected_updated_at: saved.updated_at,
+  });
+  check(
+    "chave obrigatoria ausente e recusada",
+    missing.success === false && missing.reason === "PI_PAYLOAD_MISSING_KEY",
+    missing.reason,
+  );
+  check(
+    "a recusa nomeia as chaves que faltaram",
+    Array.isArray(missing.missing_keys) && missing.missing_keys.includes("managerName"),
+    JSON.stringify(missing.missing_keys?.slice?.(0, 3)),
+  );
+
+  const afterRefusals = await untouched();
+  check(
+    "nenhuma das duas recusas alterou a PI",
+    afterRefusals.manager_name === beforeRefusals.manager_name &&
+      afterRefusals.feeder === beforeRefusals.feeder &&
+      afterRefusals.updated_at === beforeRefusals.updated_at,
+    `${beforeRefusals.updated_at} -> ${afterRefusals.updated_at}`,
+  );
+
+  // Limpeza EXPLICITA: o payload vai completo, com `null` no que deve sumir.
+  const cleared = await saveForm(sb, {
     p_tenant_id: tenantId,
     p_actor_user_id: actorId,
     p_pi_id: piId,
     p_payload: { feeder: "SO ISSO" },
     p_expected_updated_at: saved.updated_at,
   });
-  if (!check("salva payload parcial", cleared.success === true, cleared.message)) return saved.updated_at;
+  if (!check("salva payload completo com nulos explicitos", cleared.success === true, cleared.message)) return saved.updated_at;
 
   const after = await sb
     .from("permission_intervention")
@@ -561,15 +722,15 @@ async function runFormPayloadChecks(sb, { tenantId, actorId, piId, updatedAt }) 
     .eq("id", piId)
     .maybeSingle();
 
-  check("chave enviada e gravada", after.data?.feeder === "SO ISSO", String(after.data?.feeder));
-  check("chave ausente e limpa, nao preservada", after.data?.manager_name === null, String(after.data?.manager_name));
-  check("booleano ausente volta a nulo", after.data?.has_interfering_installation === null, String(after.data?.has_interfering_installation));
-  check("uuid ausente volta a nulo", after.data?.supervisor_person_id === null, String(after.data?.supervisor_person_id));
+  check("chave com valor e gravada", after.data?.feeder === "SO ISSO", String(after.data?.feeder));
+  check("chave com nulo explicito e limpa", after.data?.manager_name === null, String(after.data?.manager_name));
+  check("booleano nulo explicito e limpo", after.data?.has_interfering_installation === null, String(after.data?.has_interfering_installation));
+  check("uuid nulo explicito e limpo", after.data?.supervisor_person_id === null, String(after.data?.supervisor_person_id));
 
   // O payload parcial acima LIMPOU areas e tensoes, que e o comportamento
   // correto do contrato. As secoes seguintes contam com a PI no estado que a
   // criacao deixou, entao a fixture e reposta aqui.
-  const restored = await callRpc(sb, "save_permission_intervention", {
+  const restored = await saveForm(sb, {
     p_tenant_id: tenantId,
     p_actor_user_id: actorId,
     p_pi_id: piId,
@@ -697,7 +858,7 @@ async function runFromProgrammingFlow(sb, { tenantId, actorId }) {
 
   let piId = null;
   try {
-    const created = await callRpc(sb, "save_permission_intervention", {
+    const created = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: null,
@@ -739,7 +900,7 @@ async function runFromProgrammingFlow(sb, { tenantId, actorId }) {
     check("historico registra a origem", createRow?.metadata?.creationSource === "FROM_PROGRAMMING", JSON.stringify(createRow?.metadata));
 
     // Segunda PI na mesma etapa/data tem de esbarrar na unicidade.
-    const duplicate = await callRpc(sb, "save_permission_intervention", {
+    const duplicate = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: null,
@@ -804,7 +965,7 @@ async function runIssueFlow(sb, ctx) {
   const person = { data: qualified ?? null };
   if (!check("ha pessoa com cargo habilitado para os dois papeis", Boolean(person.data), "nenhuma encontrada")) return;
 
-  const filled = await callRpc(sb, "save_permission_intervention", {
+  const filled = await saveForm(sb, {
     p_tenant_id: tenantId,
     p_actor_user_id: actorId,
     p_pi_id: piId,
@@ -828,7 +989,7 @@ async function runIssueFlow(sb, ctx) {
   // Guarda de cargo: quem nao tem o cargo habilitado nao passa, mesmo chamando
   // a RPC direto. A tela ja filtra o select; isto impede o desvio pela API.
   if (unqualified) {
-    const wrongRole = await callRpc(sb, "save_permission_intervention", {
+    const wrongRole = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -865,7 +1026,7 @@ async function runIssueFlow(sb, ctx) {
       );
 
       // Repoe a pessoa correta para o resto do fluxo.
-      const restore = await callRpc(sb, "save_permission_intervention", {
+      const restore = await saveForm(sb, {
         p_tenant_id: tenantId,
         p_actor_user_id: actorId,
         p_pi_id: piId,
@@ -937,7 +1098,7 @@ async function runIssueFlow(sb, ctx) {
   check("snapshot do Plano de Emergencia gravado", Boolean(row.data?.emergency_plan_snapshot));
   check("template usado registrado", Boolean(row.data?.issued_template_version), String(row.data?.issued_template_version));
 
-  const editAfter = await callRpc(sb, "save_permission_intervention", {
+  const editAfter = await saveForm(sb, {
     p_tenant_id: tenantId,
     p_actor_user_id: actorId,
     p_pi_id: piId,
@@ -1111,7 +1272,7 @@ async function runIssueLinkBarrierFlow(sb, { tenantId, actorId, settings }) {
   try {
     // ---------------------------------------------------------------------
     // Monta uma PI PRONTA vinculada aquela etapa.
-    const created = await callRpc(sb, "save_permission_intervention", {
+    const created = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: null,
@@ -1121,7 +1282,7 @@ async function runIssueLinkBarrierFlow(sb, { tenantId, actorId, settings }) {
     if (!check("monta a PI de teste da barreira", created.success === true, created.message)) return;
     piId = created.pi_id;
 
-    const withStep = await callRpc(sb, "save_pi_execution_steps", {
+    const withStep = await savePlan(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: piId,
@@ -1219,7 +1380,7 @@ async function runIssueLinkBarrierFlow(sb, { tenantId, actorId, settings }) {
       .eq("tenant_id", tenantId)
       .eq("id", piId);
 
-    const createdOther = await callRpc(sb, "save_permission_intervention", {
+    const createdOther = await saveForm(sb, {
       p_tenant_id: tenantId,
       p_actor_user_id: actorId,
       p_pi_id: null,
@@ -1230,7 +1391,7 @@ async function runIssueLinkBarrierFlow(sb, { tenantId, actorId, settings }) {
       otherPiId = createdOther.pi_id;
       check("ela nasce PENDENTE porque a etapa tem dona", createdOther.link_status === "PENDING", String(createdOther.link_status));
 
-      const stepOther = await callRpc(sb, "save_pi_execution_steps", {
+      const stepOther = await savePlan(sb, {
         p_tenant_id: tenantId,
         p_actor_user_id: actorId,
         p_pi_id: otherPiId,
@@ -1278,4 +1439,84 @@ async function runIssueLinkBarrierFlow(sb, { tenantId, actorId, settings }) {
       check("PI da barreira removida", !del.error, del.error?.message);
     }
   }
+}
+
+/**
+ * Atomicidade do salvamento do formulario (migration 444).
+ *
+ * O cenario e o que motivou a migration: o cadastro e valido, o Plano de
+ * Execucao nao. Antes eram duas chamadas HTTP com o plano primeiro, e a falha
+ * da segunda deixava banco meio salvo. Agora e uma transacao so.
+ *
+ * A equipe usada tem UUID bem formado — passa pela pre-checagem de formato — e
+ * NAO existe no contrato, entao a falha acontece la dentro, no helper do plano,
+ * DEPOIS de o cadastro ja ter sido gravado. E exatamente esse o caso que o
+ * `raise` interno precisa desfazer.
+ *
+ * INVARIANTE CONFERIDA: recusa da orquestradora implica cadastro intacto,
+ * plano intacto e `updated_at` intacto.
+ */
+async function runFormAtomicityChecks(sb, { tenantId, actorId, piId, updatedAt }) {
+  const readPi = async () => {
+    const row = await sb
+      .from("permission_intervention")
+      .select("manager_name, feeder, updated_at")
+      .eq("tenant_id", tenantId)
+      .eq("id", piId)
+      .maybeSingle();
+    return row.data ?? {};
+  };
+  const countSteps = async () => {
+    const row = await sb
+      .from("pi_execution_step")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+      .eq("pi_id", piId);
+    return row.count ?? 0;
+  };
+
+  const before = await readPi();
+  const stepsBefore = await countSteps();
+
+  const refused = await saveForm(sb, {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: { managerName: "NAO DEVE GRAVAR", feeder: "NAO DEVE GRAVAR" },
+    p_steps: [
+      { workZone: "ZONA VALIDA", activity: "Etapa valida", origin: "MANUAL" },
+      // UUID bem formado que nao e equipe deste contrato: a recusa vem da FK,
+      // ja dentro do helper do plano.
+      { workZone: "ZONA INVALIDA", activity: "Etapa com equipe inexistente", teamId: "00000000-0000-4000-8000-000000000000", origin: "MANUAL" },
+    ],
+    p_expected_updated_at: before.updated_at ?? updatedAt,
+  });
+
+  check("plano invalido recusa o salvamento inteiro", refused.success === false, JSON.stringify(refused).slice(0, 160));
+  check("a recusa vem da referencia invalida", refused.reason === "INVALID_REFERENCE", refused.reason);
+
+  const after = await readPi();
+  check("cadastro NAO foi gravado", after.manager_name === before.manager_name, `${before.manager_name} -> ${after.manager_name}`);
+  check("segundo campo do cadastro NAO foi gravado", after.feeder === before.feeder, `${before.feeder} -> ${after.feeder}`);
+  check("updated_at NAO mudou", after.updated_at === before.updated_at, `${before.updated_at} -> ${after.updated_at}`);
+  check("Plano de Execucao NAO foi substituido", (await countSteps()) === stepsBefore, `antes ${stepsBefore}`);
+
+  // Equipe com formato invalido para antes de qualquer escrita, na
+  // pre-checagem da propria orquestradora.
+  const badFormat = await saveForm(sb, {
+    p_tenant_id: tenantId,
+    p_actor_user_id: actorId,
+    p_pi_id: piId,
+    p_payload: { managerName: "NAO DEVE GRAVAR" },
+    p_steps: [{ workZone: "ZONA", activity: "Etapa", teamId: "nao-e-uuid", origin: "MANUAL" }],
+    p_expected_updated_at: before.updated_at ?? updatedAt,
+  });
+  check(
+    "equipe com formato invalido para na pre-checagem",
+    badFormat.success === false && badFormat.reason === "INVALID_EXECUTION_PLAN",
+    badFormat.reason,
+  );
+
+  const afterBadFormat = await readPi();
+  check("pre-checagem tambem nao gravou nada", afterBadFormat.updated_at === before.updated_at, String(afterBadFormat.updated_at));
 }

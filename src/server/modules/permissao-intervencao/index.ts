@@ -12,10 +12,8 @@ export {
   linkPermissionInterventionToProgramming,
   listPermissionInterventions,
   savePermissionIntervention,
-  savePermissionInterventionExecutionPlan,
   type ChangePiStatusPayload,
   type LinkPiPayload,
-  type SavePiExecutionPlanPayload,
   type SavePiPayload,
 } from "./handlers";
 export { buildPiComparison } from "./queries";

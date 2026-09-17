@@ -30,3 +30,15 @@ export const EMPTY_PI_FILTERS: PiListFilterState = {
 };
 
 export const PI_PAGE_SIZE = 20;
+
+/**
+ * Versao do contrato do formulario, conferida pela RPC `save_permission_intervention_form`.
+ *
+ * Existe para o caso da aba velha durante um deploy: sem ela, acrescentar um
+ * campo faria o salvamento daquela aba recusar com "falta a chave X", o que e
+ * correto e incompreensivel. Com ela, a recusa vira "recarregue a pagina".
+ *
+ * SOBE SEMPRE que o conjunto das 41 chaves editaveis mudar, e o valor aqui tem
+ * de acompanhar o `v_expected_version` da migration.
+ */
+export const PI_FORM_PAYLOAD_VERSION = 1;

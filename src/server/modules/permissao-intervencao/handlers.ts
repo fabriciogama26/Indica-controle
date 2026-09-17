@@ -394,9 +394,27 @@ export async function getProgrammingStageOptions(
 export type SavePiPayload = {
   piId?: string;
   expectedUpdatedAt?: string;
+  payloadVersion?: number;
   data?: Record<string, unknown>;
+  /**
+   * Plano de Execucao. `undefined` significa "nao mexe no plano"; lista vazia
+   * significa "esvazia o plano". A diferenca e proposital e chega ate o SQL.
+   */
+  steps?: unknown[];
 };
 
+/**
+ * Salva o formulario inteiro numa transacao unica (migration 444).
+ *
+ * Cadastro e Plano de Execucao eram duas chamadas HTTP, e o plano ia primeiro.
+ * Falhar na segunda deixava plano NOVO com cadastro VELHO, e o plano e
+ * substituicao completa. Agora e uma chamada so, e a RPC devolve `success:false`
+ * apenas quando NADA daquela tentativa foi gravado.
+ *
+ * As duas RPCs anteriores perderam o grant de `service_role` na mesma migration:
+ * enquanto a aplicacao pudesse chama-las, a escrita parcial continuaria possivel
+ * por fora.
+ */
 export async function savePermissionIntervention(
   context: AuthenticatedAppUserContext,
   payload: SavePiPayload,
@@ -407,43 +425,18 @@ export async function savePermissionIntervention(
 
   const { supabase, appUser } = context;
 
-  const { data, error } = await supabase.rpc("save_permission_intervention", {
+  const { data, error } = await supabase.rpc("save_permission_intervention_form", {
     p_tenant_id: appUser.tenant_id,
     p_actor_user_id: appUser.id,
     p_pi_id: payload.piId ?? null,
+    p_payload_version: payload.payloadVersion ?? null,
     p_payload: payload.data ?? {},
+    p_steps: payload.steps ?? null,
     p_expected_updated_at: normalizeExpectedUpdatedAt(payload.expectedUpdatedAt),
   });
 
   if (error) return jsonError("Falha ao salvar a PI.", 500);
   return rpcResponse((data ?? {}) as RpcResult, "Falha ao salvar a PI.");
-}
-
-export type SavePiExecutionPlanPayload = {
-  expectedUpdatedAt?: string;
-  steps?: unknown[];
-};
-
-export async function savePermissionInterventionExecutionPlan(
-  context: AuthenticatedAppUserContext,
-  piId: string,
-  payload: SavePiExecutionPlanPayload,
-) {
-  const denied = await authorizePageAction(context, PI_PAGE_KEY, "update");
-  if (denied) return denied;
-
-  const { supabase, appUser } = context;
-
-  const { data, error } = await supabase.rpc("save_pi_execution_steps", {
-    p_tenant_id: appUser.tenant_id,
-    p_actor_user_id: appUser.id,
-    p_pi_id: piId,
-    p_steps: payload.steps ?? [],
-    p_expected_updated_at: normalizeExpectedUpdatedAt(payload.expectedUpdatedAt),
-  });
-
-  if (error) return jsonError("Falha ao salvar o Plano de Execucao.", 500);
-  return rpcResponse((data ?? {}) as RpcResult, "Falha ao salvar o Plano de Execucao.");
 }
 
 export type ChangePiStatusPayload = {

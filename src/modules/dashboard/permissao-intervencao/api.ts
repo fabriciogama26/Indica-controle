@@ -1,3 +1,4 @@
+import { PI_FORM_PAYLOAD_VERSION } from "./constants";
 import type {
   PiDetailResponse,
   PiHistoryEntry,
@@ -98,6 +99,7 @@ export async function createPi(accessToken: string, input: CreatePiInput): Promi
     method: "POST",
     headers: jsonHeaders(accessToken),
     body: JSON.stringify({
+      payloadVersion: PI_FORM_PAYLOAD_VERSION,
       data: {
         projectId: input.projectId,
         workDate: input.workDate,
@@ -157,38 +159,35 @@ export async function fetchPiHistory(accessToken: string, piId: string): Promise
 }
 
 /**
- * Salva a PI.
+ * Salva a PI e o Plano de Execucao numa chamada so.
  *
- * O payload e o conjunto COMPLETO dos campos editaveis: o backend trata chave
- * ausente como nulo, e nao como "nao mexer". Enviar o objeto inteiro e o que
- * torna possivel limpar um campo.
+ * O payload e o conjunto COMPLETO dos campos editaveis, e desde a migration 444
+ * isso deixou de ser convencao: chave AUSENTE e payload invalido e o servidor
+ * recusa dizendo qual faltou. Para limpar um campo, envie a chave com `null`.
+ *
+ * `steps` ausente significa "nao mexe no plano"; lista vazia significa "esvazia
+ * o plano". Eram duas chamadas HTTP, e falhar na segunda deixava plano novo com
+ * cadastro velho.
  */
 export async function savePi(
   accessToken: string,
   piId: string,
   expectedUpdatedAt: string,
   data: Record<string, unknown>,
+  steps?: unknown[],
 ): Promise<PiMutationResponse> {
   const response = await fetch(BASE_URL, {
     method: "POST",
     headers: jsonHeaders(accessToken),
-    body: JSON.stringify({ piId, expectedUpdatedAt, data }),
+    body: JSON.stringify({
+      piId,
+      expectedUpdatedAt,
+      payloadVersion: PI_FORM_PAYLOAD_VERSION,
+      data,
+      ...(steps ? { steps } : {}),
+    }),
   });
   return parseOrThrow(response, "Falha ao salvar a PI.");
-}
-
-export async function savePiExecutionPlan(
-  accessToken: string,
-  piId: string,
-  expectedUpdatedAt: string,
-  steps: unknown[],
-): Promise<PiMutationResponse> {
-  const response = await fetch(`${BASE_URL}/${piId}/plano`, {
-    method: "PUT",
-    headers: jsonHeaders(accessToken),
-    body: JSON.stringify({ expectedUpdatedAt, steps }),
-  });
-  return parseOrThrow(response, "Falha ao salvar o Plano de Execucao.");
 }
 
 /**
