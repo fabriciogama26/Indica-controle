@@ -349,6 +349,51 @@ export function getEnelStatusLabel(status: string) {
   return ENEL_STATUS_LABELS[status] ?? ENEL_STATUS_LABELS.PROGRAMADA;
 }
 
+export type EnelNovoStatus = "PROGRAMADO" | "ADIADO" | "CANCELADO" | "ANTECIPADO" | "CONCLUIDO" | "EXECUTADO";
+
+function toCanonicalEnelNovoWorkCompletionCode(value: string | null) {
+  const code = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+
+  if (
+    code === "BENEFICIO_ATINGIDO"
+    || code === "PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO"
+    || code === "PARCIAL_PLANEJADO_BENFICIO_ATINGIDO"
+  ) {
+    return "BENEFICIO_ATINGIDO";
+  }
+
+  return code;
+}
+
+export function resolveEnelNovoStatus(stage: Pick<ProgrammingStage, "status" | "workCompletionStatus">): EnelNovoStatus {
+  switch (stage.status) {
+    case "CANCELADA":
+      return "CANCELADO";
+    case "ADIADA":
+      return "ADIADO";
+    case "ANTECIPADA":
+      return "ANTECIPADO";
+  }
+
+  const workStatus = toCanonicalEnelNovoWorkCompletionCode(stage.workCompletionStatus);
+
+  switch (workStatus) {
+    case "CONCLUIDO":
+      return "CONCLUIDO";
+    case "PARCIAL_PLANEJADO":
+    case "PARCIAL_NAO_PLANEJADO":
+    case "BENEFICIO_ATINGIDO":
+      return "EXECUTADO";
+    default:
+      return "PROGRAMADO";
+  }
+}
+
 export function isAreaLivreSgd(sgdExportColumn: string | null | undefined, sgdTypeDescription: string | null | undefined) {
   const exportColumn = String(sgdExportColumn ?? "").trim().toUpperCase();
   const description = String(sgdTypeDescription ?? "").trim().toUpperCase();

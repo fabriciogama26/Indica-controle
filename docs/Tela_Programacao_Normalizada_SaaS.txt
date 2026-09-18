@@ -1844,3 +1844,33 @@ Atualizacao 2026-09-10 - Aviso de data bloqueada nos campos de data
   cadastro `datas-bloqueadas`.
 - Validado com `npx tsc --noEmit` (0 erros), `npm run lint` (0 erros, 2 warnings
   legados) e `npm run build`.
+
+Atualizacao 2026-09-18 - STATUS derivado na Extracao ENEL NOVO
+--------------------------------------------------------------
+- A coluna `STATUS` da `Extracao ENEL NOVO` passou a usar uma regra propria,
+  exclusiva desse layout, em `resolveEnelNovoStatus` (`utils.ts`). Nao altera
+  `programming.status`, `work_completion_status`, banco, RPCs, lista da tela,
+  CSV interno nem `Extracao ENEL` antiga.
+- Textos finais exportados no XLSB: `ADIADO`, `ANTECIPADO`, `CANCELADO`,
+  `CONCLUIDO`, `EXECUTADO` e `PROGRAMADO`.
+- Precedencia:
+  1. `CANCELADA` -> `CANCELADO`
+  2. `ADIADA` -> `ADIADO`
+  3. `ANTECIPADA` -> `ANTECIPADO`
+  4. Estado Trabalho `CONCLUIDO` -> `CONCLUIDO`
+  5. Estado Trabalho `PARCIAL_PLANEJADO`, `PARCIAL_NAO_PLANEJADO` ou
+     `BENEFICIO_ATINGIDO` -> `EXECUTADO`
+  6. Demais casos, inclusive `PROGRAMADA` e `REPROGRAMADA` sem Estado Trabalho
+     acima -> `PROGRAMADO`
+- O helper canoniza localmente o codigo legado
+  `PARCIAL_PLANEJADO_BENFICIO_ATINGIDO` e a grafia
+  `PARCIAL_PLANEJADO_BENEFICIO_ATINGIDO` para `BENEFICIO_ATINGIDO`, preservando a
+  equivalencia historica ja usada no backend.
+- Mapa de codigo:
+  - `src/modules/dashboard/programacao-normalizada/utils.ts`:
+    `resolveEnelNovoStatus`, `EnelNovoStatus` e canonizacao local do Estado
+    Trabalho legado.
+  - `src/modules/dashboard/programacao-normalizada/exports.ts`:
+    `buildEnelNovoWorkbookData` usa `resolveEnelNovoStatus(stage)` somente na
+    coluna `STATUS` do ENEL NOVO; `buildEnelCsvContent` permanece usando
+    `getEnelStatusLabel(stage.status)`.

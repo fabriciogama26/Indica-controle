@@ -19,6 +19,7 @@ import {
   isAreaLivreSgd,
   normalizeSgdNumberForExport,
   resolveEnelNovoPeriod,
+  resolveEnelNovoStatus,
   resolveExpectedMinutes,
   resolveTeamStructureCode,
   toExcelDateSerial,
@@ -386,7 +387,7 @@ export function buildEnelNovoWorkbookData({ stages, projectMap, teamMap, sgdType
       (stage.startTime ?? "").slice(0, 5),
       (stage.endTime ?? "").slice(0, 5),
       formatExpectedTimeAsClock(resolveExpectedMinutes(stage)),
-      getEnelStatusLabel(stage.status),
+      resolveEnelNovoStatus(stage),
       // INFO STATUS sai SEM o prefixo "Era": o layout da ENEL espera o rotulo puro
       // ("2ª ETAPA") e quem desambigua e a coluna STATUS ao lado (337). Etapa ativa
       // usa a classificacao atual; encerrada usa a historica — a escolha e da
